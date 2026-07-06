@@ -1,0 +1,7 @@
+/target
+node_modules/
+demo/dist/
+demo/public/pkg/
+nul
+.cursor/
+bun.lock

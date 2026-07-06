@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Box3D for Rust — Interactive Physics Demos</title>
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+  <main class="hero">
+    <div class="cube-grid" aria-hidden="true">
+      <div class="cube c1"></div>
+      <div class="cube c2"></div>
+      <div class="cube c3"></div>
+    </div>
+    <h1 class="logo">Box3D<span class="logo-accent">.rs</span></h1>
+    <p class="tagline">A pure Rust port of Erin Catto's Box3D — 3D physics for games</p>
+
+    <p class="status-line">
+      <span class="badge" id="wasm-status">loading wasm…</span>
+      <span class="badge badge-dim" id="port-version"></span>
+    </p>
+
+    <p class="blurb">
+      The port has just begun. This page runs the current WebAssembly build of the port —
+      as modules land (deterministic math, GJK distance, hulls, manifolds, the dynamic
+      tree, then the full rigid-body solver), interactive 3D samples mirroring the
+      upstream <code>samples</code> app will appear here, just as they did for our
+      completed <a href="https://larsbrubaker.github.io/box2d-rust/">box2d-rust</a> port.
+    </p>
+
+    <p class="links">
+      <a class="button" href="https://github.com/larsbrubaker/box3d-rust">GitHub</a>
+      <a class="button" href="https://crates.io/crates/box3d-rust">crates.io</a>
+      <a class="button button-dim" href="https://github.com/erincatto/box3d">Upstream Box3D</a>
+    </p>
+  </main>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

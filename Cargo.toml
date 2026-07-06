@@ -1,0 +1,42 @@
+[workspace]
+members = [".", "demo/wasm"]
+
+[package]
+name = "box3d-rust"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.77"
+authors = ["Lars Brubaker <larsbrubaker@matterhackers.com>"]
+description = "Pure Rust port of the Box3D 3D physics engine"
+license = "MIT"
+repository = "https://github.com/larsbrubaker/box3d-rust"
+homepage = "https://larsbrubaker.github.io/box3d-rust/"
+documentation = "https://docs.rs/box3d-rust/"
+readme = "README.md"
+keywords = ["physics", "box3d", "3d", "simulation", "gamedev"]
+categories = ["simulation", "game-development", "algorithms"]
+exclude = [
+    "box3d-cpp-reference/",
+    "demo/",
+    "docs/",
+    "Tests/",
+    ".github/",
+    ".claude/",
+    "benches/",
+    "scripts/",
+    "CLAUDE.md",
+    "readme_hero.jpg",
+    "run_demo.cmd",
+]
+
+[lib]
+name = "box3d_rust"
+path = "src/lib.rs"
+
+[features]
+# Mirrors BOX3D_DOUBLE_PRECISION: double precision world positions for large worlds.
+double-precision = []
+
+[dependencies]
+
+[dev-dependencies]
