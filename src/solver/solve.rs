@@ -1,6 +1,6 @@
-//! Serial solve driver from solver.c: prepare → sub-step loop → restitution →
-//! store → finalize → broad-phase enlarge → island sleep. Joints and island
-//! splitting are not yet wired.
+//! Serial solve driver from solver.c: island split → prepare → sub-step loop →
+//! restitution → store → finalize → broad-phase enlarge → island sleep.
+//! Joints are not yet wired.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -16,6 +16,7 @@ use crate::contact_solver::{
 };
 use crate::core::NULL_INDEX;
 use crate::events::BodyMoveEvent;
+use crate::island::split_island;
 use crate::id::BodyId;
 use crate::math_functions::WORLD_TRANSFORM_IDENTITY;
 use crate::shape::shape_flags;
@@ -51,8 +52,14 @@ pub fn solve(world: &mut World, context: &StepContext) {
         task_context.has_hit_events = false;
     }
 
+    // Split an awake island. This modifies:
+    // - world island array and solver set
+    // - island indices on bodies, contacts, and joints
+    // C runs this as a task in parallel with the constraint solve (it cannot
+    // overlap FinalizeBodies); the serial port runs it here, at the point
+    // where C enqueues it. (b3SplitIslandTask)
     if world.split_island_id != NULL_INDEX {
-        // Island split deferred with the sleep/island bring-up slice.
+        split_island(world, world.split_island_id);
         world.split_island_id = NULL_INDEX;
     }
 

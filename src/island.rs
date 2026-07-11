@@ -291,6 +291,268 @@ pub fn unlink_contact(world: &mut World, contact_id: i32) {
     validate_island(world, island_id);
 }
 
+/// Find parent of a node. Use path halving to speed up further queries.
+/// (b3IslandFindParent)
+fn island_find_parent(parents: &mut [i32], mut node: i32) -> i32 {
+    // Walk the chain of parents to find the node that is its own parent (the root)
+    while parents[node as usize] != node {
+        let grand_parent = parents[parents[node as usize] as usize];
+        parents[node as usize] = grand_parent;
+        node = grand_parent;
+    }
+
+    node
+}
+
+/// Connect the components containing node1 and node2.
+/// Uses rank to keep tree balanced. Tracks per-component contact and joint counts.
+/// (b3IslandUnion)
+fn island_union(
+    parents: &mut [i32],
+    ranks: &mut [i32],
+    node1: i32,
+    node2: i32,
+    contact_counts: &mut [i32],
+    joint_counts: &mut [i32],
+) {
+    let root1 = island_find_parent(parents, node1) as usize;
+    let root2 = island_find_parent(parents, node2) as usize;
+    if root1 != root2 {
+        if ranks[root1] < ranks[root2] {
+            parents[root1] = root2 as i32;
+            contact_counts[root2] += contact_counts[root1];
+            joint_counts[root2] += joint_counts[root1];
+        } else if ranks[root1] > ranks[root2] {
+            parents[root2] = root1 as i32;
+            contact_counts[root1] += contact_counts[root2];
+            joint_counts[root1] += joint_counts[root2];
+        } else {
+            parents[root2] = root1 as i32;
+            ranks[root1] += 1;
+            contact_counts[root1] += contact_counts[root2];
+            joint_counts[root1] += joint_counts[root2];
+        }
+    }
+}
+
+/// Split an island because some contacts and/or joints have been removed.
+/// This uses union find and touches a lot of memory, so it can be slow.
+/// (b3SplitIsland)
+///
+/// Note: contacts/joints connected to static bodies must belong to an island
+/// but don't affect island connectivity.
+/// Note: static bodies are never in an island.
+///
+/// <https://en.wikipedia.org/wiki/Disjoint-set_data_structure>
+pub fn split_island(world: &mut World, base_id: i32) {
+    debug_assert!(world.islands[base_id as usize].constraint_remove_count > 0);
+    debug_assert!(world.islands[base_id as usize].set_index == AWAKE_SET);
+
+    validate_island(world, base_id);
+
+    // Take the base island's arrays. C detaches the raw buffers so
+    // b3DestroyIsland won't free them; mem::take is the Rust equivalent.
+    let base_body_ids = std::mem::take(&mut world.islands[base_id as usize].bodies);
+    let base_contacts = std::mem::take(&mut world.islands[base_id as usize].contacts);
+    let base_joints = std::mem::take(&mut world.islands[base_id as usize].joints);
+
+    let base_body_count = base_body_ids.len();
+
+    // C allocates the union-find scratch from the arena; the Rust step scratch
+    // is plain Vecs.
+    let mut parents: Vec<i32> = (0..base_body_count as i32).collect();
+    let mut contact_counts: Vec<i32> = vec![0; base_body_count];
+    let mut joint_counts: Vec<i32> = vec![0; base_body_count];
+    let mut ranks: Vec<i32> = vec![0; base_body_count];
+
+    // Union over contacts, tracking per-component contact counts
+    for link in &base_contacts {
+        debug_assert!(0 <= link.body_id_a && (link.body_id_a as usize) < world.bodies.len());
+        debug_assert!(0 <= link.body_id_b && (link.body_id_b as usize) < world.bodies.len());
+        let island_index_a = world.bodies[link.body_id_a as usize].island_index;
+        let island_index_b = world.bodies[link.body_id_b as usize].island_index;
+
+        // Only connect non-static bodies
+        if island_index_a != NULL_INDEX && island_index_b != NULL_INDEX {
+            debug_assert!(0 <= island_index_a && (island_index_a as usize) < base_body_count);
+            debug_assert!(0 <= island_index_b && (island_index_b as usize) < base_body_count);
+            island_union(
+                &mut parents,
+                &mut ranks,
+                island_index_a,
+                island_index_b,
+                &mut contact_counts,
+                &mut joint_counts,
+            );
+            let root = island_find_parent(&mut parents, island_index_a);
+            contact_counts[root as usize] += 1;
+        } else {
+            let island_index = if island_index_a != NULL_INDEX {
+                island_index_a
+            } else {
+                island_index_b
+            };
+            let root = island_find_parent(&mut parents, island_index);
+            contact_counts[root as usize] += 1;
+        }
+    }
+
+    // Union over joints, tracking per-component joint counts
+    for link in &base_joints {
+        debug_assert!(0 <= link.body_id_a && (link.body_id_a as usize) < world.bodies.len());
+        debug_assert!(0 <= link.body_id_b && (link.body_id_b as usize) < world.bodies.len());
+        let island_index_a = world.bodies[link.body_id_a as usize].island_index;
+        let island_index_b = world.bodies[link.body_id_b as usize].island_index;
+
+        // Only connect non-static bodies
+        if island_index_a != NULL_INDEX && island_index_b != NULL_INDEX {
+            debug_assert!(0 <= island_index_a && (island_index_a as usize) < base_body_count);
+            debug_assert!(0 <= island_index_b && (island_index_b as usize) < base_body_count);
+            island_union(
+                &mut parents,
+                &mut ranks,
+                island_index_a,
+                island_index_b,
+                &mut contact_counts,
+                &mut joint_counts,
+            );
+            let root = island_find_parent(&mut parents, island_index_a);
+            joint_counts[root as usize] += 1;
+        } else {
+            let island_index = if island_index_a != NULL_INDEX {
+                island_index_a
+            } else {
+                island_index_b
+            };
+            let root = island_find_parent(&mut parents, island_index);
+            joint_counts[root as usize] += 1;
+        }
+    }
+
+    // Done with ranks
+    drop(ranks);
+
+    // Flatten all parent indices and count connected components.
+    let mut component_count = 0;
+    for i in 0..base_body_count {
+        parents[i] = island_find_parent(&mut parents, i as i32);
+        if parents[i] == i as i32 {
+            component_count += 1;
+        }
+    }
+
+    // Early return — island is still fully connected, no split needed.
+    if component_count == 1 {
+        let base_island = &mut world.islands[base_id as usize];
+        base_island.constraint_remove_count = 0;
+        base_island.bodies = base_body_ids;
+        base_island.contacts = base_contacts;
+        base_island.joints = base_joints;
+        return;
+    }
+
+    // Map from body index to new island index. Only set for root bodies.
+    let mut root_map: Vec<i32> = vec![NULL_INDEX; base_body_count];
+
+    let mut component_body_counts: Vec<i32> = vec![0; component_count];
+    let mut component_contact_counts: Vec<i32> = vec![0; component_count];
+    let mut component_joint_counts: Vec<i32> = vec![0; component_count];
+    let mut island_count = 0usize;
+
+    // Find the root body for each body and create islands as needed.
+    // Extract per-component counts from the root nodes' accumulated counts.
+    for &parent in parents.iter().take(base_body_count) {
+        let root_index = parent as usize;
+        if root_map[root_index] == NULL_INDEX {
+            root_map[root_index] = island_count as i32;
+            component_body_counts[island_count] = 0;
+            component_contact_counts[island_count] = contact_counts[root_index];
+            component_joint_counts[island_count] = joint_counts[root_index];
+            island_count += 1;
+        }
+
+        component_body_counts[root_map[root_index] as usize] += 1;
+    }
+
+    debug_assert!(island_count == component_count);
+
+    // Map from new island index to island id
+    let mut island_ids: Vec<i32> = Vec::with_capacity(island_count);
+
+    // Create new islands and reserve body/contact/joint arrays
+    for i in 0..island_count {
+        let new_island_id = create_island(world, AWAKE_SET);
+        island_ids.push(new_island_id);
+
+        // Reserve arrays to avoid wasteful growth.
+        let new_island = &mut world.islands[new_island_id as usize];
+        new_island.bodies.reserve(component_body_counts[i] as usize);
+        new_island
+            .contacts
+            .reserve(component_contact_counts[i] as usize);
+        new_island.joints.reserve(component_joint_counts[i] as usize);
+    }
+
+    // Assign bodies to new islands
+    for (i, &body_id) in base_body_ids.iter().enumerate() {
+        let root = island_find_parent(&mut parents, i as i32);
+        let new_island_id = island_ids[root_map[root as usize] as usize];
+
+        let island_index = world.islands[new_island_id as usize].bodies.len() as i32;
+        debug_assert!(
+            (island_index as usize) < world.islands[new_island_id as usize].bodies.capacity()
+        );
+        world.islands[new_island_id as usize].bodies.push(body_id);
+
+        let body = &mut world.bodies[body_id as usize];
+        body.island_id = new_island_id;
+        body.island_index = island_index;
+    }
+
+    // Assign contacts to the island of their bodies
+    for link in &base_contacts {
+        // Static bodies don't have an island id.
+        let island_id_a = world.bodies[link.body_id_a as usize].island_id;
+        let target_island_id = if island_id_a != NULL_INDEX {
+            island_id_a
+        } else {
+            world.bodies[link.body_id_b as usize].island_id
+        };
+
+        let target_island = &mut world.islands[target_island_id as usize];
+        let island_index = target_island.contacts.len() as i32;
+        debug_assert!((island_index as usize) < target_island.contacts.capacity());
+        target_island.contacts.push(*link);
+
+        let contact = &mut world.contacts[link.contact_id as usize];
+        contact.island_id = target_island_id;
+        contact.island_index = island_index;
+    }
+
+    // Assign joints to the island of their bodies
+    for link in &base_joints {
+        // Static bodies don't have an island id.
+        let island_id_a = world.bodies[link.body_id_a as usize].island_id;
+        let target_island_id = if island_id_a != NULL_INDEX {
+            island_id_a
+        } else {
+            world.bodies[link.body_id_b as usize].island_id
+        };
+
+        let target_island = &mut world.islands[target_island_id as usize];
+        let island_index = target_island.joints.len() as i32;
+        debug_assert!((island_index as usize) < target_island.joints.capacity());
+        target_island.joints.push(*link);
+
+        let joint = &mut world.joints[link.joint_id as usize];
+        joint.island_id = target_island_id;
+        joint.island_index = island_index;
+    }
+
+    // Destroy the base island
+    destroy_island(world, base_id);
+}
+
 /// Validate island connectivity and bookkeeping. (b3ValidateIsland)
 ///
 /// C compiles this only with B3_VALIDATE; here it always runs and asserts in

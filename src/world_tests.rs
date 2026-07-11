@@ -215,6 +215,74 @@ fn sleeping_body_wakes_on_new_touching_contact() {
     );
 }
 
+/// Destroying the middle body of a three-cube row leaves one island with a
+/// pending split; the split pass separates the survivors so both can sleep
+/// in their own solver sets. (b3SplitIsland via b3SplitIslandTask)
+#[test]
+fn island_splits_after_constraint_removal_and_sleeps() {
+    use crate::body::{destroy_body, is_body_awake};
+
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let ground_hull = make_box_hull(10.0, 0.5, 10.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_hull.base);
+
+    // Three cubes in a row, overlapping slightly so neighbors touch.
+    let cube = make_cube_hull(0.5);
+    let mut cube_shape = default_shape_def();
+    cube_shape.density = 1.0;
+
+    let mut ids = Vec::new();
+    let mut indices = Vec::new();
+    for i in 0..3 {
+        let mut box_def = default_body_def();
+        box_def.type_ = BodyType::Dynamic;
+        box_def.position = Pos {
+            x: (i as f32 * 0.98) as _,
+            y: 1.05 as _,
+            z: 0.0 as _,
+        };
+        let id = create_body(&mut world, &box_def);
+        create_hull_shape(&mut world, id, &cube_shape, &cube.base);
+        ids.push(id);
+        indices.push(crate::body::get_body_full_id(&world, id));
+    }
+
+    // Let contacts form so all three cubes join one island.
+    world.step(1.0 / 60.0, 4);
+    let island_a = world.bodies[indices[0] as usize].island_id;
+    assert_ne!(island_a, NULL_INDEX);
+    assert_eq!(island_a, world.bodies[indices[1] as usize].island_id);
+    assert_eq!(island_a, world.bodies[indices[2] as usize].island_id);
+
+    // Destroy the middle cube: its contacts unlink, marking the island for a split.
+    destroy_body(&mut world, ids[1]);
+    assert!(world.islands[island_a as usize].constraint_remove_count > 0);
+
+    // Without the split the island could never sleep (pending split + two
+    // bodies). Both survivors sleeping in different sets proves the split ran.
+    let mut both_asleep = false;
+    for _ in 0..600 {
+        world.step(1.0 / 60.0, 4);
+        if !is_body_awake(&world, indices[0]) && !is_body_awake(&world, indices[2]) {
+            both_asleep = true;
+            break;
+        }
+    }
+    assert!(both_asleep, "survivors never fell asleep after the split");
+    assert_ne!(
+        world.bodies[indices[0] as usize].island_id,
+        world.bodies[indices[2] as usize].island_id
+    );
+    assert_ne!(
+        world.bodies[indices[0] as usize].set_index,
+        world.bodies[indices[2] as usize].set_index
+    );
+}
+
 /// Sleep disabled keeps a settled body awake. (world.enable_sleep == false)
 #[test]
 fn sleep_disabled_keeps_body_awake() {
