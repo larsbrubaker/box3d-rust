@@ -8,8 +8,21 @@
 //! Porting has just begun — modules land whole, in dependency order, together with their
 //! portion of the upstream C test suite. See the repository README for live status.
 
+pub mod constants;
+pub mod core;
+pub mod math_functions;
+
+pub use math_functions::{
+    Aabb, CosSin, Matrix3, Plane, Pos, Quat, SegmentDistanceResult, Transform, Vec2, Vec3,
+    WorldTransform, MAT3_IDENTITY, MAT3_ZERO, PI, POS_ZERO, QUAT_IDENTITY, TRANSFORM_IDENTITY,
+    VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z, VEC3_ONE, VEC3_ZERO, WORLD_TRANSFORM_IDENTITY,
+};
+
 /// Crate version, exposed so demos and downstream tools can report the exact port build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod math_functions_tests;
 
 #[cfg(test)]
 mod tests {

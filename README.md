@@ -21,7 +21,7 @@ Until the collision layer lands it is a status page running the current wasm bui
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of
 > Rust graphics and geometry libraries by Lars Brubaker.
 
-## Status: Port starting
+## Status: Foundation math landed
 
 Box3D was released by Erin Catto in June 2026. The pinned reference source lives in the
 `box3d-cpp-reference/` submodule (v0.1.0+, `540ea38`), and this port follows the same
@@ -31,7 +31,8 @@ suite.
 
 | Area | Ported | Tests |
 |---|---|---|
-| Foundation: math_functions (Vec3/Quat/Mat33), core/constants, id, bitset, id_pool, table, container | ⬜ | ⬜ (test_math/id/bitset/table/container.c) |
+| Foundation: math_functions (Vec3/Quat/Matrix3), core/constants | ✅ | ✅ (test_math.c) |
+| Foundation: id, bitset, id_pool, table, container | ⬜ | ⬜ (test_id/bitset/table/container.c) |
 | Collision: aabb, distance (GJK/TOI), hull, dynamic_tree | ⬜ | ⬜ (test_collision/distance/hull.c) |
 | Shapes: sphere, capsule, box, convex hull, compound, mesh, height field | ⬜ | ⬜ (test_shape/compound/height_field.c) |
 | Manifolds: convex, mesh contact, triangle | ⬜ | ⬜ |
