@@ -7,6 +7,7 @@ mod api;
 mod forces;
 mod lifecycle;
 mod mass;
+mod query;
 mod set_type;
 mod types;
 
@@ -14,5 +15,6 @@ pub use api::*;
 pub use forces::*;
 pub use lifecycle::*;
 pub use mass::*;
+pub use query::*;
 pub use set_type::*;
 pub use types::*;

@@ -13,11 +13,10 @@ bring-up rules apply to everything below.
 
 | File | Track | Depends on |
 |---|---|---|
-| [task-5.md](task-5.md) | Deferred world/body query tests | task-4 (`SetHull`, body-level queries) — shape SetHull landed |
 | [task-7.md](task-7.md) | Determinism gate | helpers + large_world done; final `EXPECTED_HASH` unblocked (task-6 on main) |
 
-task-4 and task-6 are complete. task-7 scene helpers and large-world tests are
-on main; only the EXPECTED_HASH / sleep-step gate remains.
+task-4, task-5, and task-6 are complete. task-7 scene helpers and large-world
+tests are on main; only the EXPECTED_HASH / sleep-step gate remains.
 
 ## Recording, replay, and snapshots
 

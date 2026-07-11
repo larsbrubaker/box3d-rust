@@ -1,13 +1,14 @@
-//! Contact hit and sensor event world tests from test_world.c.
+//! Contact hit, begin/end, and sensor event world tests from test_world.c.
 
 use crate::body::{body_get_position, create_body};
 use crate::compound::{create_compound, CompoundDef, CompoundHullDef};
+use crate::contact::contact_is_valid;
 use crate::geometry::{default_surface_material, Sphere};
 use crate::hull::{make_box_hull, make_cube_hull};
 use crate::math_functions::{Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_ZERO};
 use crate::shape::{create_compound_shape, create_hull_shape, create_sphere_shape};
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
-use crate::world::World;
+use crate::world::{world_get_contact_events, World};
 /// (TestHitEvents)
 #[test]
 fn hit_events() {
@@ -353,4 +354,74 @@ fn compound_hit_events() {
             "side {side}: expected child material {expected_hull_material}, got {captured_material_a}/{captured_material_b}"
         );
     }
+}
+
+/// Dynamic sphere with restitution bounces on ground; begin and end contact
+/// events fire with valid shape/contact ids. (TestContactEvents)
+#[test]
+fn contact_events() {
+    let mut world = World::new(&default_world_def());
+
+    // Static ground
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Static;
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: (-0.5) as _,
+        z: 0.0 as _,
+    };
+    let ground_id = create_body(&mut world, &body_def);
+    let ground_box = make_box_hull(10.0, 0.5, 10.0);
+    let ground_shape_id =
+        create_hull_shape(&mut world, ground_id, &default_shape_def(), &ground_box.base);
+
+    // Dynamic sphere dropped onto the ground; restitution causes bounce so we get end events
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: 5.0 as _,
+        z: 0.0 as _,
+    };
+    let sphere_body_id = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    shape_def.enable_contact_events = true;
+    shape_def.base_material.restitution = 0.6;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    let sphere_shape_id = create_sphere_shape(&mut world, sphere_body_id, &shape_def, &sphere);
+
+    let mut begin_count = 0;
+    let mut end_count = 0;
+    let mut ids_checked = false;
+
+    for _ in 0..120 {
+        world.step(1.0 / 60.0, 4);
+
+        let events = world_get_contact_events(&world);
+
+        if !events.begin_events.is_empty() && !ids_checked {
+            let be = events.begin_events[0];
+            let a_is_sphere = be.shape_id_a.id_equals(sphere_shape_id);
+            let b_is_sphere = be.shape_id_b.id_equals(sphere_shape_id);
+            let a_is_ground = be.shape_id_a.id_equals(ground_shape_id);
+            let b_is_ground = be.shape_id_b.id_equals(ground_shape_id);
+            assert!(
+                (a_is_sphere && b_is_ground) || (a_is_ground && b_is_sphere),
+                "begin event shapes must be sphere and ground"
+            );
+            assert!(contact_is_valid(&world, be.contact_id));
+            ids_checked = true;
+        }
+
+        begin_count += events.begin_events.len();
+        end_count += events.end_events.len();
+    }
+
+    assert!(ids_checked);
+    assert!(begin_count >= 1);
+    assert!(end_count >= 1);
 }

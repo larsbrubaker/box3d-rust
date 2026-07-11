@@ -259,3 +259,40 @@ impl Default for BodyPlaneResult {
         }
     }
 }
+
+/// Body cast result for ray and shape casts. (b3BodyCastResult)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BodyCastResult {
+    /// The shape hit.
+    pub shape_id: crate::id::ShapeId,
+    /// The world point on the shape surface.
+    pub point: crate::math_functions::Pos,
+    /// The world normal vector on the shape surface.
+    pub normal: crate::math_functions::Vec3,
+    /// The fraction along the ray hit.
+    /// hit point = origin + fraction * translation
+    pub fraction: f32,
+    /// The triangle index if the shape is a mesh or height-field.
+    pub triangle_index: i32,
+    /// The user material id at the hit point.
+    pub user_material_id: u64,
+    /// The number of iterations used. Diagnostic.
+    pub iterations: i32,
+    /// Did the cast hit? If false, all other fields are invalid.
+    pub hit: bool,
+}
+
+impl Default for BodyCastResult {
+    fn default() -> Self {
+        BodyCastResult {
+            shape_id: crate::id::NULL_SHAPE_ID,
+            point: crate::math_functions::POS_ZERO,
+            normal: crate::math_functions::VEC3_ZERO,
+            fraction: 0.0,
+            triangle_index: 0,
+            user_material_id: 0,
+            iterations: 0,
+            hit: false,
+        }
+    }
+}

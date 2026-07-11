@@ -1,8 +1,8 @@
 //! World API and query tests from test_world.c plus query acceptance coverage.
 //!
 //! Not ported: TestWorldRecycle (global world registry), TestSetWorkerCount
-//! (task system), and test_body_query.c (needs body-level cast APIs from
-//! task-5). TestHullDatabase SetHull path is available via shape_set_hull.
+//! (task system). Body-level casts live in body_query_tests; TestHullDatabase
+//! SetHull path is covered in shape_tests / shape_api_tests.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
