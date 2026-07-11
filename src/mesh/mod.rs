@@ -11,7 +11,7 @@
 //! - `cast`    — AABB, ray cast, shape cast
 //! - `query`   — overlap, query, mover collide, triangle accessor
 //!
-//! Deferred: mesh_contact.c (needs world), world shape attach.
+//! Deferred: world shape attach.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT

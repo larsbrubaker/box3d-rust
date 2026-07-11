@@ -135,6 +135,23 @@ pub fn mul_sv2(s: f32, v: Vec2) -> Vec2 {
     }
 }
 
+/// 2D cross product (scalar). (math_internal.h: b3Cross2)
+pub fn cross2(a: Vec2, b: Vec2) -> f32 {
+    a.x * b.y - a.y * b.x
+}
+
+/// 2D distance squared. (math_internal.h: b3DistanceSquared2)
+pub fn distance_squared2(a: Vec2, b: Vec2) -> f32 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    dx * dx + dy * dy
+}
+
+/// Unit normal from three points. (math_internal.h: b3MakeNormalFromPoints)
+pub fn make_normal_from_points(point1: Vec3, point2: Vec3, point3: Vec3) -> Vec3 {
+    normalize(cross(sub(point2, point1), sub(point3, point1)))
+}
+
 /// Index of the largest component. (math_internal.h: b3MaxElementIndex)
 pub fn max_element_index(v: Vec3) -> i32 {
     if v.x < v.y {

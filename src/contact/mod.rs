@@ -229,8 +229,12 @@ impl Default for ContactSpec {
 
 mod collide;
 mod lifecycle;
+mod mesh_cache;
+mod mesh_contact;
+mod mesh_cull;
 mod update;
 
 pub use collide::*;
 pub use lifecycle::*;
+pub use mesh_contact::{apply_mesh_hit_flags, compute_mesh_manifolds};
 pub use update::*;

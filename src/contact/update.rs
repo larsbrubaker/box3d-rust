@@ -1,9 +1,10 @@
 // Narrow-phase contact update: convex manifold compute and update_contact.
-// Mesh/height manifolds land with mesh_contact.c.
+// Mesh/height manifolds: mesh_contact.rs.
 //
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
+use super::mesh_contact::{apply_mesh_hit_flags, compute_mesh_manifolds};
 use super::{contact_flags, ContactCache, ContactGeometry, ConvexContact};
 use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::core::NULL_INDEX;
@@ -367,8 +368,6 @@ fn update_convex_contact(
 }
 
 /// Update the contact manifold and touching status. (b3UpdateContact)
-///
-/// Mesh/height narrow-phase is not yet wired; those contacts clear manifolds.
 pub fn update_contact(
     world: &mut World,
     worker_index: i32,
@@ -379,7 +378,7 @@ pub fn update_contact(
     shape_id_b: i32,
     local_center_b: crate::math_functions::Vec3,
     xf_b: WorldTransform,
-    _is_fast: bool,
+    is_fast: bool,
 ) -> bool {
     debug_assert!(world.shapes[shape_id_b as usize].shape_type() != ShapeType::Compound);
 
@@ -394,12 +393,28 @@ pub fn update_contact(
             xf_a,
             shape_id_b,
             xf_b,
+            is_fast,
         )
     } else if type_a == ShapeType::Mesh || type_a == ShapeType::Height {
-        // Mesh contact manifolds port with mesh_contact.c.
-        world.contacts[contact_id as usize].manifolds.clear();
-        world.contacts[contact_id as usize].flags &= !contact_flags::SIM_ENABLE_HIT_EVENT;
-        false
+        let shape_a = world.shapes[shape_id_a as usize].clone();
+        let shape_b = world.shapes[shape_id_b as usize].clone();
+        let touching = compute_mesh_manifolds(
+            world,
+            worker_index,
+            contact_id,
+            &shape_a,
+            None,
+            xf_a,
+            &shape_b,
+            xf_b,
+            is_fast,
+        );
+        apply_mesh_hit_flags(world, contact_id, &shape_a, &shape_b);
+        debug_assert!(
+            (touching && !world.contacts[contact_id as usize].manifolds.is_empty())
+                || (!touching && world.contacts[contact_id as usize].manifolds.is_empty())
+        );
+        touching
     } else {
         // Convex vs convex — clone geometry so we can reborrow world for update.
         let geom_a = world.shapes[shape_id_a as usize].geometry.clone();
@@ -448,6 +463,7 @@ fn update_compound_contact(
     xf_a: WorldTransform,
     shape_id_b: i32,
     xf_b: WorldTransform,
+    is_fast: bool,
 ) -> bool {
     use crate::compound::{get_compound_child, ChildGeometry};
 
@@ -462,12 +478,13 @@ fn update_compound_contact(
     };
     let child = get_compound_child(compound, child_index);
     let child_transform = child.transform;
+    let material_indices = child.material_indices;
 
-    let (touching, child_geom) = match child.geometry {
+    let touching = match child.geometry {
         ChildGeometry::Capsule(c) => {
             let child_geom = ShapeGeometry::Capsule(c);
             let flip = type_b == ShapeType::Hull;
-            let touching = if flip {
+            if flip {
                 update_convex_contact(
                     world,
                     worker_index,
@@ -493,13 +510,12 @@ fn update_compound_contact(
                     xf_b,
                     false,
                 )
-            };
-            (touching, child_geom)
+            }
         }
         ChildGeometry::Hull(h) => {
             let child_geom = ShapeGeometry::Hull(Rc::new(h.clone()));
             let xf_child = mul_world_transforms(xf_a, child_transform);
-            let touching = update_convex_contact(
+            update_convex_contact(
                 world,
                 worker_index,
                 contact_id,
@@ -510,13 +526,12 @@ fn update_compound_contact(
                 &geom_b,
                 xf_b,
                 false,
-            );
-            (touching, child_geom)
+            )
         }
         ChildGeometry::Sphere(s) => {
             let child_geom = ShapeGeometry::Sphere(s);
             let flip = type_b == ShapeType::Capsule || type_b == ShapeType::Hull;
-            let touching = if flip {
+            if flip {
                 update_convex_contact(
                     world,
                     worker_index,
@@ -542,16 +557,34 @@ fn update_compound_contact(
                     xf_b,
                     false,
                 )
-            };
-            (touching, child_geom)
+            }
         }
-        ChildGeometry::Mesh(_) => {
-            // Nested mesh child: mesh_contact.c.
-            world.contacts[contact_id as usize].manifolds.clear();
-            (false, ShapeGeometry::default())
+        ChildGeometry::Mesh(mesh) => {
+            let mut child_shape = shape_a.clone();
+            child_shape.geometry = ShapeGeometry::Mesh {
+                data: mesh.data.clone(),
+                scale: mesh.scale,
+            };
+            let xf_child = mul_world_transforms(xf_a, child_transform);
+            let touching = compute_mesh_manifolds(
+                world,
+                worker_index,
+                contact_id,
+                &child_shape,
+                Some(&material_indices),
+                xf_child,
+                &shape_b,
+                xf_b,
+                is_fast,
+            );
+            apply_mesh_hit_flags(world, contact_id, &shape_a, &shape_b);
+            debug_assert!(
+                (touching && !world.contacts[contact_id as usize].manifolds.is_empty())
+                    || (!touching && world.contacts[contact_id as usize].manifolds.is_empty())
+            );
+            touching
         }
     };
-    let _ = child_geom;
 
     if touching {
         let offset = rotate_vector(xf_a.q, child_transform.p);

@@ -10,7 +10,7 @@
 //! - `cast`      — AABB, overlap, ray cast, shape cast
 //! - `query`     — AABB query, collide mover
 //!
-//! Deferred: compound time-of-impact (`#if 0` in C), mesh_contact, world shape attach.
+//! Deferred: compound time-of-impact (`#if 0` in C), world shape attach.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
