@@ -1,8 +1,8 @@
-//! Convex hull construction module.
+//! Convex hull construction and query module.
 //!
-//! Port of `box3d-cpp-reference/src/hull.c` construction path (quickhull, box hulls,
-//! validate, identity). Query APIs (mass/AABB/overlap/cast) and the verstable hull map
-//! are deferred.
+//! Port of `box3d-cpp-reference/src/hull.c`: quickhull construction, box hulls,
+//! validate, identity, plus mass/AABB/overlap/cast query APIs. The verstable hull
+//! map is deferred.
 
 mod box_hull;
 mod builder_init;
@@ -10,11 +10,13 @@ mod builder_ops;
 mod builder_pool;
 mod create;
 mod identity;
+mod queries;
 mod types;
 mod validate;
 
 pub use box_hull::*;
 pub use create::*;
 pub use identity::*;
+pub use queries::*;
 pub use types::*;
 pub use validate::*;

@@ -56,6 +56,12 @@ pub fn linear_slop() -> f32 {
     0.005 * get_length_units_per_meter()
 }
 
+/// Used to determine if two shapes are overlapping. Typically about 10% of
+/// [`linear_slop`]. (B3_OVERLAP_SLOP)
+pub fn overlap_slop() -> f32 {
+    0.1 * linear_slop()
+}
+
 /// The maximum number of points to use for shape cast proxies (swept point cloud).
 /// (B3_MAX_SHAPE_CAST_POINTS)
 pub const MAX_SHAPE_CAST_POINTS: usize = 64;

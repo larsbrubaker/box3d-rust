@@ -154,6 +154,10 @@ pub fn make_transformed_box_hull(hx: f32, hy: f32, hz: f32, transform: Transform
     box_hull.box_points[6] = transform_point(transform, Vec3 { x: -h.x, y: -h.y, z: -h.z });
     box_hull.box_points[7] = transform_point(transform, Vec3 { x: h.x, y: -h.y, z: -h.z });
 
+    // Keep base Vec accessors in sync with the embedded arrays (C offsets into
+    // the same allocation). Hash still uses the contiguous byte layout.
+    box_hull.sync_base_arrays();
+
     box_hull.base.hash = 0;
     let bytes = box_hull.to_bytes_with_hash(0);
     box_hull.base.hash = non_zero_hash(hash(HASH_INIT, &bytes));

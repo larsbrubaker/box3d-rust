@@ -1,0 +1,338 @@
+//! Capsule geometry queries. Port of box3d-cpp-reference/src/capsule.c.
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
+
+use super::sphere::ray_cast_sphere;
+use super::types::{Capsule, MassData, RayCastInput, ShapeCastInput, Sphere};
+use crate::constants::{linear_slop, overlap_slop};
+use crate::distance::{
+    make_proxy, shape_cast, shape_distance, CastOutput, DistanceInput, ShapeCastPairInput,
+    ShapeProxy, SimplexCache,
+};
+use crate::math_functions::{
+    add, add_mm, clamp_float, compute_quat_between_unit_vectors, cylinder_inertia, distance, dot,
+    get_length_and_normalize, inv_mul_transforms, length_squared, make_matrix_from_quat, max, min,
+    mul_add, mul_mm, mul_sub, mul_sv, normalize, sphere_inertia, sub, transform_point, transpose,
+    Aabb, Transform, Vec3, MAT3_IDENTITY, TRANSFORM_IDENTITY, VEC3_AXIS_Y,
+};
+
+/// Compute mass properties of a capsule. (b3ComputeCapsuleMass)
+pub fn compute_capsule_mass(shape: &Capsule, density: f32) -> MassData {
+    let c1 = shape.center1;
+    let c2 = shape.center2;
+    let r = shape.radius;
+
+    // Cylinder
+    let cylinder_height = distance(c1, c2);
+    let cylinder_volume = crate::math_functions::PI * r * r * cylinder_height;
+    let cylinder_mass = cylinder_volume * density;
+
+    // Sphere
+    let sphere_volume = (4.0 / 3.0) * crate::math_functions::PI * r * r * r;
+    let sphere_mass = sphere_volume * density;
+
+    // Local accumulated inertia
+    let mut inertia = add_mm(
+        cylinder_inertia(cylinder_mass, r, cylinder_height),
+        sphere_inertia(sphere_mass, r),
+    );
+
+    let steiner = 0.125 * sphere_mass * (3.0 * r + 2.0 * cylinder_height) * cylinder_height;
+    inertia.cx.x += steiner;
+    inertia.cz.z += steiner;
+
+    // Align capsule axis with chosen up-axis
+    let mut rotation = MAT3_IDENTITY;
+    if cylinder_height * cylinder_height > 1000.0 * f32::MIN_POSITIVE {
+        let direction = normalize(sub(c2, c1));
+        let q = compute_quat_between_unit_vectors(VEC3_AXIS_Y, direction);
+        rotation = make_matrix_from_quat(q);
+    }
+
+    let mass = sphere_mass + cylinder_mass;
+    let center = mul_sv(0.5, add(c1, c2));
+
+    MassData {
+        mass,
+        center,
+        // Rotate the central inertia into the shape frame
+        inertia: mul_mm(rotation, mul_mm(inertia, transpose(rotation))),
+    }
+}
+
+/// Compute the AABB of a capsule. (b3ComputeCapsuleAABB)
+pub fn compute_capsule_aabb(shape: &Capsule, transform: Transform) -> Aabb {
+    let r = shape.radius;
+
+    let center1 = transform_point(transform, shape.center1);
+    let center2 = transform_point(transform, shape.center2);
+    let extent = Vec3 {
+        x: r,
+        y: r,
+        z: r,
+    };
+
+    Aabb {
+        lower_bound: sub(min(center1, center2), extent),
+        upper_bound: add(max(center1, center2), extent),
+    }
+}
+
+/// Compute the swept AABB of a capsule between two transforms.
+/// (b3ComputeSweptCapsuleAABB)
+pub fn compute_swept_capsule_aabb(shape: &Capsule, xf1: Transform, xf2: Transform) -> Aabb {
+    let r = Vec3 {
+        x: shape.radius,
+        y: shape.radius,
+        z: shape.radius,
+    };
+    let a = transform_point(xf1, shape.center1);
+    let b = transform_point(xf1, shape.center2);
+    let c = transform_point(xf2, shape.center1);
+    let d = transform_point(xf2, shape.center2);
+
+    Aabb {
+        lower_bound: sub(min(min(a, b), min(c, d)), r),
+        upper_bound: add(max(max(a, b), max(c, d)), r),
+    }
+}
+
+/// Test overlap between a capsule and a shape proxy. (b3OverlapCapsule)
+pub fn overlap_capsule(
+    shape: &Capsule,
+    shape_transform: Transform,
+    proxy: &ShapeProxy,
+) -> bool {
+    let input = DistanceInput {
+        proxy_a: make_proxy(&[shape.center1, shape.center2], shape.radius),
+        proxy_b: *proxy,
+        transform: inv_mul_transforms(shape_transform, TRANSFORM_IDENTITY),
+        use_radii: true,
+    };
+
+    let mut cache = SimplexCache::default();
+    let output = shape_distance(&input, &mut cache, None);
+    output.distance < overlap_slop()
+}
+
+/// Ray cast versus capsule shape in local space. (b3RayCastCapsule)
+///
+/// Precision Improvements for Ray / Sphere Intersection - Ray Tracing Gems 2019
+/// <http://www.codercorner.com/blog/?p=321>
+pub fn ray_cast_capsule(shape: &Capsule, input: &RayCastInput) -> CastOutput {
+    debug_assert!(super::is_valid_ray(input));
+
+    let c1 = shape.center1;
+    let c2 = shape.center2;
+    let r = shape.radius;
+
+    // Initialize result structure
+    let mut output = CastOutput::default();
+
+    let d = sub(c2, c1);
+
+    // Fall back to sphere if the capsule is short
+    let tol = 0.01 * linear_slop();
+    let length_squared_d = length_squared(d);
+    if length_squared_d < tol * tol {
+        let sphere_center = mul_sv(0.5, add(shape.center1, shape.center2));
+        let sphere = Sphere {
+            center: sphere_center,
+            radius: shape.radius,
+        };
+        return ray_cast_sphere(&sphere, input);
+    }
+
+    // Vector from first center to ray origin.
+    let s = sub(input.origin, c1);
+
+    // Capsule axis
+    let length = length_squared_d.sqrt();
+    let axis = mul_sv(1.0 / length, d);
+
+    // Project ray origin onto capsule axis.
+    let u = dot(s, axis);
+
+    // Closest point on infinite capsule axis, relative to c1.
+    let c = mul_sv(u, axis);
+
+    // Vector from closest point to ray origin
+    let sc = sub(s, c);
+
+    // Squared distance from ray origin to capsule axis
+    let sc2 = length_squared(sc);
+
+    // Is the ray origin within the infinite cylinder along the capsule axis?
+    if sc2 < r * r {
+        // Clamped barycentric coordinate of ray origin projected onto capsule axis.
+        let u_clamped = clamp_float(u, 0.0, length);
+
+        // The closest point on the bounded capsule segment, relative to c1.
+        let cp = mul_sv(u_clamped, axis);
+
+        // Vector from ray origin to closest point on segment.
+        let scp = sub(s, cp);
+
+        // Squared distance of ray origin from capsule segment.
+        let scp2 = length_squared(scp);
+
+        // Is the ray origin within the capsule?
+        if scp2 < r * r {
+            output.hit = true;
+            output.point = input.origin;
+            return output;
+        }
+
+        // The ray can hit an endcap.
+        let sphere = Sphere {
+            center: add(c1, cp),
+            radius: r,
+        };
+
+        return ray_cast_sphere(&sphere, input);
+    }
+
+    // Ray axis. A zero length ray reaching here starts outside the capsule, so it misses.
+    // Same zero length convention as b3RayCastSphere.
+    let dr = input.translation;
+    let mut ray_length = 0.0;
+    let ray_axis = get_length_and_normalize(&mut ray_length, dr);
+    if ray_length == 0.0 {
+        return output;
+    }
+
+    // Barycentric coordinate of ray end point.
+    let v = u + input.max_fraction * dot(dr, axis);
+
+    // Early out: does the projected ray fall outside the capsule?
+    if (u < -r && v < -r) || (length + r < u && length + r < v) {
+        return output;
+    }
+
+    // Compute the closest point between the ray segment and the capsule segment.
+    // See Real-Time Collision Detection, section 5.1.9
+
+    let a1 = axis;
+    let a2 = ray_axis;
+    let a12 = dot(a1, a2);
+
+    // Ray distance to the near intersection with the infinite cylinder. Length units.
+    let tr;
+
+    let det = 1.0 - a12 * a12;
+    if det < f32::EPSILON {
+        // Solve the 2D problem of ray versus circle starting at the ray origin, where the circle is
+        // the axial view of the infinite capsule cylinder. This works well when the ray origin is
+        // not too far from the capsule axis.
+
+        // Instead of a cross product, subtract the parallel part to get a perpendicular vector. Non-dimensional.
+        let perp = mul_sub(a2, a12, a1);
+        let perp2 = length_squared(perp);
+
+        // Project to origin to infinite capsule axis vector onto the perpendicular vector. beta has length units.
+        let beta = dot(sc, perp);
+
+        // Setup quadratic root finder.
+        let gamma = sc2 - r * r;
+
+        // Discriminant
+        let disc = beta * beta - perp2 * gamma;
+
+        // Casting away from the axis, or the perpendicular gap never closes to the radius.
+        if beta >= 0.0 || disc < 0.0 {
+            return output;
+        }
+
+        // Quadratic near root. Expressed in an alternate form to avoid the (-beta - sqrt) cancellation as
+        // the ray nears parallel.
+        tr = gamma / (-beta + disc.sqrt());
+    } else {
+        // Ray and capsules axes are not parallel.
+
+        // Closest points between the infinite ray and the infinite capsule axis.
+        let inv_det = 1.0 / det;
+        let sa1 = u;
+        let sa2 = dot(s, a2);
+
+        let t1 = (sa1 - a12 * sa2) * inv_det;
+        let t2 = (a12 * sa1 - sa2) * inv_det;
+
+        // Closest points
+        let p1 = mul_sv(t1, a1);
+        let p2 = mul_add(s, t2, a2);
+
+        // Vector from closest point on infinite capsule to infinite ray.
+        let g = sub(p2, p1);
+
+        let g2 = length_squared(g);
+        if g2 > r * r {
+            // Early out: closest point on infinite ray is outside infinite cylinder.
+            return output;
+        }
+
+        // Intersect the infinite ray with the infinite cylinder. Like ray versus sphere this is done
+        // relative to the closest point to avoid round-off errors. Length units, not a fraction.
+        // https://en.wikipedia.org/wiki/Line-cylinder_intersection
+        let h = ((r * r - g2) * inv_det).sqrt();
+
+        tr = t2 - h;
+    }
+
+    // Outside ray?
+    if tr < 0.0 || input.max_fraction * ray_length < tr {
+        return output;
+    }
+
+    // The corresponding distance on the capsule axis. Length units.
+    let tc = u + tr * a12;
+
+    // Outside c1 end?
+    if tc < 0.0 {
+        // Ray cast sphere 1.
+        let sphere = Sphere {
+            center: c1,
+            radius: r,
+        };
+
+        return ray_cast_sphere(&sphere, input);
+    }
+
+    // Outside c2 end?
+    if length < tc {
+        // Ray cast sphere 2.
+        let sphere = Sphere {
+            center: c2,
+            radius: r,
+        };
+
+        return ray_cast_sphere(&sphere, input);
+    }
+
+    // Hit point on capsule side, relative to c1.
+    let p = mul_add(s, tr, ray_axis);
+
+    // Hit normal.
+    let mut normal = mul_sub(p, tc, axis);
+    normal = normalize(normal);
+
+    output.point = add(c1, p);
+    output.normal = normal;
+    output.fraction = clamp_float(tr / ray_length, 0.0, input.max_fraction);
+    output.hit = true;
+    output
+}
+
+/// Shape cast versus a capsule. (b3ShapeCastCapsule)
+pub fn shape_cast_capsule(capsule: &Capsule, input: &ShapeCastInput) -> CastOutput {
+    let pair_input = ShapeCastPairInput {
+        proxy_a: make_proxy(&[capsule.center1, capsule.center2], capsule.radius),
+        proxy_b: input.proxy,
+        transform: TRANSFORM_IDENTITY,
+        translation_b: input.translation,
+        max_fraction: input.max_fraction,
+        can_encroach: input.can_encroach,
+    };
+
+    shape_cast(&pair_input)
+}

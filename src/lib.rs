@@ -13,6 +13,7 @@ pub mod bitset;
 pub mod constants;
 pub mod core;
 pub mod distance;
+pub mod geometry;
 pub mod hull;
 pub mod id;
 pub mod id_pool;
@@ -37,6 +38,9 @@ mod bitset_tests;
 
 #[cfg(test)]
 mod distance_tests;
+
+#[cfg(test)]
+mod geometry_tests;
 
 #[cfg(test)]
 mod hull_tests;

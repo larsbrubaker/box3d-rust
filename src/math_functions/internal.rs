@@ -173,3 +173,17 @@ pub fn box_inertia(mass: f32, min: Vec3, max: Vec3) -> Matrix3 {
     let izz = mass * (delta.x * delta.x + delta.y * delta.y) / 12.0;
     make_diagonal_matrix(ixx, iyy, izz)
 }
+
+/// Solid sphere inertia about its center. (math_functions.c: b3SphereInertia)
+pub fn sphere_inertia(mass: f32, radius: f32) -> Matrix3 {
+    let i = 0.4 * mass * radius * radius;
+    make_diagonal_matrix(i, i, i)
+}
+
+/// Solid cylinder inertia about its center, axis along Y.
+/// (math_functions.c: b3CylinderInertia)
+pub fn cylinder_inertia(mass: f32, radius: f32, height: f32) -> Matrix3 {
+    let ixx = mass * (3.0 * radius * radius + height * height) / 12.0;
+    let iyy = 0.5 * mass * radius * radius;
+    make_diagonal_matrix(ixx, iyy, ixx)
+}

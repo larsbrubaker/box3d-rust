@@ -136,6 +136,18 @@ impl BoxHull {
             planes: &self.box_planes,
         }
     }
+
+    /// Mirror the embedded box arrays into `base`'s owned `Vec`s so
+    /// [`get_hull_points`] / [`get_hull_planes`] work on `&box.base`, matching
+    /// C's contiguous `b3BoxHull` layout where offsets point into the same
+    /// allocation.
+    pub fn sync_base_arrays(&mut self) {
+        self.base.vertices = self.box_vertices.to_vec();
+        self.base.points = self.box_points.to_vec();
+        self.base.edges = self.box_edges.to_vec();
+        self.base.faces = self.box_faces.to_vec();
+        self.base.planes = self.box_planes.to_vec();
+    }
 }
 
 /// Borrowed view of hull geometry (owned hull or box hull).
