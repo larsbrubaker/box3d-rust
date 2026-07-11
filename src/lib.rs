@@ -24,6 +24,7 @@ pub mod events;
 pub mod geometry;
 pub mod height_field;
 pub mod hull;
+pub mod human;
 pub mod id;
 pub mod id_pool;
 pub mod island;
@@ -130,6 +131,8 @@ mod world_tests;
 
 #[cfg(test)]
 mod world_api_tests;
+
+#[cfg(test)]
 
 #[cfg(test)]
 mod tests {
