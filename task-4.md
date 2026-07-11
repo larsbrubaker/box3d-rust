@@ -3,11 +3,11 @@
 **Remaining work only; delete items as they complete and delete this file when
 the track is done (also remove its row from todo.md).**
 
-Two related gaps: `create_*_shape` only exists for sphere/capsule/hull
-(`src/shape/lifecycle.rs`), and the `b3Shape_*` (~50 fns) / `b3Body_*`
-(~78 fns, ~13 ported in `src/body/api.rs`) public API surfaces are mostly
-unported. The collision geometry itself (mesh, height field, compound) is
-fully ported and tested — only the shape-attach and API layers are missing.
+Two related gaps were: mesh/height-field/compound `create_*_shape` (now
+ported) and the remaining `b3Shape_*` (~50 fns) / `b3Body_*` public API
+surface. Collision geometry itself is fully ported; shape-attach for the
+three static-ish types is done — filter/material/query APIs and most body
+mutators remain.
 
 Mostly independent of the solver-touching tracks; small overlap with task-3
 on sensor-related shape API.
