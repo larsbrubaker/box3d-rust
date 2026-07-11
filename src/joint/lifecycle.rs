@@ -28,8 +28,8 @@ use crate::solver_set::{
     merge_solver_sets, wake_solver_set, AWAKE_SET, DISABLED_SET, FIRST_SLEEPING_SET, STATIC_SET,
 };
 use crate::types::{
-    BodyType, DistanceJointDef, FilterJointDef, JointDef, ParallelJointDef, PrismaticJointDef,
-    RevoluteJointDef, WeldJointDef,
+    BodyType, DistanceJointDef, FilterJointDef, JointDef, MotorJointDef, ParallelJointDef,
+    PrismaticJointDef, RevoluteJointDef, WeldJointDef,
 };
 use crate::world::World;
 
@@ -326,6 +326,33 @@ pub fn create_distance_joint(world: &mut World, def: &DistanceJointDef) -> Joint
     joint.lower_impulse = 0.0;
     joint.upper_impulse = 0.0;
     joint.motor_impulse = 0.0;
+
+    make_joint_id(world, joint_id)
+}
+
+/// (b3CreateMotorJoint)
+pub fn create_motor_joint(world: &mut World, def: &MotorJointDef) -> JointId {
+    debug_assert!(def.base.internal_value == crate::core::SECRET_COOKIE);
+    debug_assert!(!world.locked);
+    if world.locked {
+        return crate::id::NULL_JOINT_ID;
+    }
+
+    let joint_id = create_joint(world, &def.base, JointType::Motor);
+
+    let joint_sim = get_joint_sim(world, joint_id);
+    let joint = joint_sim.motor_mut();
+    *joint = super::MotorJoint::default();
+    joint.linear_velocity = def.linear_velocity;
+    joint.max_velocity_force = def.max_velocity_force;
+    joint.angular_velocity = def.angular_velocity;
+    joint.max_velocity_torque = def.max_velocity_torque;
+    joint.linear_hertz = def.linear_hertz;
+    joint.linear_damping_ratio = def.linear_damping_ratio;
+    joint.max_spring_force = def.max_spring_force;
+    joint.angular_hertz = def.angular_hertz;
+    joint.angular_damping_ratio = def.angular_damping_ratio;
+    joint.max_spring_torque = def.max_spring_torque;
 
     make_joint_id(world, joint_id)
 }

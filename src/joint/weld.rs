@@ -244,7 +244,7 @@ pub fn warm_start_weld_joint(base: &mut JointSim, states: &mut [BodyState]) {
 
 /// (b3SolveWeldJoint)
 ///
-/// `context` is unused ╬ô├ç├╢ the C function also takes it but never reads it,
+/// `context` is unused -- the C function also takes it but never reads it,
 /// keeping the signature consistent with the other joint solve functions.
 pub fn solve_weld_joint(
     base: &mut JointSim,

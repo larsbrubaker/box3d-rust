@@ -13,6 +13,7 @@ use crate::solver::Softness;
 
 mod distance;
 mod lifecycle;
+mod motor;
 mod parallel;
 mod plumbing;
 mod prismatic;
@@ -21,6 +22,7 @@ mod weld;
 
 pub use distance::*;
 pub use lifecycle::*;
+pub use motor::*;
 pub use parallel::*;
 pub use plumbing::*;
 pub use prismatic::*;
@@ -692,6 +694,21 @@ impl JointSim {
         match &mut self.union_ {
             JointUnion::Prismatic(joint) => joint,
             _ => unreachable!("joint union is not a prismatic joint"),
+        }
+    }
+
+    /// (C: &base->motorJoint)
+    pub fn motor(&self) -> &MotorJoint {
+        match &self.union_ {
+            JointUnion::Motor(joint) => joint,
+            _ => unreachable!("joint union is not a motor joint"),
+        }
+    }
+
+    pub fn motor_mut(&mut self) -> &mut MotorJoint {
+        match &mut self.union_ {
+            JointUnion::Motor(joint) => joint,
+            _ => unreachable!("joint union is not a motor joint"),
         }
     }
 }
