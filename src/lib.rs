@@ -10,8 +10,10 @@
 
 pub mod constants;
 pub mod core;
+pub mod id;
 pub mod math_functions;
 
+pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
 pub use math_functions::{
     Aabb, CosSin, Matrix3, Plane, Pos, Quat, SegmentDistanceResult, Transform, Vec2, Vec3,
     WorldTransform, MAT3_IDENTITY, MAT3_ZERO, PI, POS_ZERO, QUAT_IDENTITY, TRANSFORM_IDENTITY,
@@ -20,6 +22,9 @@ pub use math_functions::{
 
 /// Crate version, exposed so demos and downstream tools can report the exact port build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod id_tests;
 
 #[cfg(test)]
 mod math_functions_tests;
