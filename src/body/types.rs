@@ -241,3 +241,21 @@ impl Default for BodySim {
         }
     }
 }
+
+/// Body plane result for movers. (b3BodyPlaneResult)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BodyPlaneResult {
+    /// The shape id on the body.
+    pub shape_id: crate::id::ShapeId,
+    /// The plane result.
+    pub result: crate::geometry::PlaneResult,
+}
+
+impl Default for BodyPlaneResult {
+    fn default() -> Self {
+        BodyPlaneResult {
+            shape_id: crate::id::NULL_SHAPE_ID,
+            result: crate::geometry::PlaneResult::default(),
+        }
+    }
+}

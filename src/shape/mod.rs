@@ -243,7 +243,9 @@ pub fn mesh_geometry(data: MeshData) -> ShapeGeometry {
 mod api;
 mod dispatch;
 pub(crate) mod lifecycle;
+mod query;
 
 pub use api::*;
 pub use dispatch::*;
+pub use query::*;
 

@@ -100,6 +100,45 @@ impl Default for PlaneResult {
     }
 }
 
+/// Collision planes that can be fed to [`crate::mover::solve_planes`].
+/// Normally assembled by the user from [`PlaneResult`] values. (b3CollisionPlane)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CollisionPlane {
+    /// The collision plane between the mover and some shape.
+    pub plane: Plane,
+    /// Setting this to `f32::MAX` makes the plane as rigid as possible. Lower
+    /// values can make the plane collision soft. Usually in meters.
+    pub push_limit: f32,
+    /// The push on the mover determined by `solve_planes`. Usually in meters.
+    pub push: f32,
+    /// Indicates if `clip_vector` should clip against this plane. Should be
+    /// false for soft collision.
+    pub clip_velocity: bool,
+}
+
+impl Default for CollisionPlane {
+    fn default() -> Self {
+        CollisionPlane {
+            plane: Plane {
+                normal: VEC3_ZERO,
+                offset: 0.0,
+            },
+            push_limit: 0.0,
+            push: 0.0,
+            clip_velocity: false,
+        }
+    }
+}
+
+/// Result returned by [`crate::mover::solve_planes`]. (b3PlaneSolverResult)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PlaneSolverResult {
+    /// The final relative translation.
+    pub delta: Vec3,
+    /// The number of iterations used by the plane solver. For diagnostics.
+    pub iteration_count: i32,
+}
+
 /// Material properties supported per triangle on meshes and height fields.
 /// (b3SurfaceMaterial)
 #[derive(Debug, Clone, Copy, PartialEq)]

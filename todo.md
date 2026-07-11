@@ -20,7 +20,6 @@ row here.
 | [task-1.md](task-1.md) | Joints (lifecycle, 8 joint types, solver stages, events) | — |
 | [task-4.md](task-4.md) | Remaining shape creates + b3Shape_*/b3Body_* API surface | — |
 | [task-5.md](task-5.md) | World queries, casts, explosion, world API surface | — |
-| [task-6.md](task-6.md) | Character mover | task-5 (cast/overlap machinery) |
 
 Merge-conflict warning: task-2 (CCD) and task-3 (sensors) are on main.
 Task-1 still adds joint stages to `src/solver/solve.rs` / `integrate.rs` —
@@ -58,4 +57,4 @@ Mirror the C `samples/` categories as features land (WebGL, `demo/`,
 - [ ] Sensor samples — sensors landed; sample TBD
 - [ ] Bullet/CCD samples — CCD landed; sample TBD
 - [ ] Query/raycast visualizer — after task-5
-- [ ] Character mover playground — after task-6
+- [ ] Character mover playground — mover API landed; sample still TODO
