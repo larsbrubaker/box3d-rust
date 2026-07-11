@@ -23,7 +23,7 @@ land.
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of
 > Rust graphics and geometry libraries by Lars Brubaker.
 
-## Status: Foundation math landed
+## Status: Dynamics core stepping (contacts, islands, sleep)
 
 Box3D was released by Erin Catto in June 2026. The pinned reference source lives in the
 `box3d-cpp-reference/` submodule (v0.1.0+, `540ea38`), and this port follows the same
@@ -38,10 +38,10 @@ suite.
 | Collision: aabb, distance (GJK/TOI) | ✅ | ✅ (test_collision AABB + test_distance.c) |
 | Collision: hull, geometry, manifolds, mesh, height_field, compound, dynamic_tree | ✅ | ✅ (test_hull/shape/compound/height_field + authored) |
 | Broad phase: proxy ops, move buffer (pair update deferred to world) | ✅ | ✅ (authored proxy tests) |
-| Dynamics: body create/destroy + SetMassData (shape attach next) | 🟨 | ✅ (test_body SetMassData + lifecycle) |
-| Dynamics: shape attach, contact/joint lifecycles, constraint graph, solver sets, islands | ⬜ | ⬜ (test_body sphere mass / test_world) |
+| Dynamics: body/shape lifecycle, contact lifecycle, constraint graph, solver sets | ✅ | ✅ (test_body + authored world tests) |
+| Dynamics: islands — link, merge, split, sleep/wake | ✅ | ✅ (authored sleep/split tests) |
 | Joints: distance, motor, prismatic, revolute, spherical, weld, wheel | ⬜ | ⬜ (test_joint.c) |
-| Solver: contact solver + step pipeline, sensors, sleeping, continuous | ⬜ | ⬜ (test_world.c) |
+| Solver: serial contact solve + step pipeline, sleeping, hit events (sensors, continuous next) | 🟨 | 🟨 (HelloWorld, TestHitEvents; more of test_world.c pending) |
 | World API: queries, casts, character movers | ⬜ | ⬜ (test_body_query/mover.c) |
 | Determinism: hand-rolled trig, bit-exact vs the C build | ⬜ | ⬜ (test_determinism.c) |
 | Snapshots and recording/replay | ⬜ | ⬜ (test_recording.c) |
