@@ -100,6 +100,32 @@ pub fn sync_body_flags(world: &mut World, body_index: i32) {
     }
 }
 
+/// Joint `collide_connected` override. (b3ShouldBodiesCollide)
+pub fn should_bodies_collide(world: &World, body_id_a: i32, body_id_b: i32) -> bool {
+    let body_a = &world.bodies[body_id_a as usize];
+    let body_b = &world.bodies[body_id_b as usize];
+
+    let (mut joint_key, other_body_id) = if body_a.joint_count < body_b.joint_count {
+        (body_a.head_joint_key, body_b.id)
+    } else {
+        (body_b.head_joint_key, body_a.id)
+    };
+
+    while joint_key != NULL_INDEX {
+        let joint_id = joint_key >> 1;
+        let edge_index = joint_key & 1;
+        let other_edge_index = edge_index ^ 1;
+        let joint = &world.joints[joint_id as usize];
+        if !joint.collide_connected && joint.edges[other_edge_index as usize].body_id == other_body_id
+        {
+            return false;
+        }
+        joint_key = joint.edges[edge_index as usize].next_key;
+    }
+
+    true
+}
+
 /// (static b3CreateIslandForBody)
 pub(crate) fn create_island_for_body(world: &mut World, set_index: i32, body_index: i32) {
     debug_assert!(world.bodies[body_index as usize].island_id == NULL_INDEX);
@@ -374,10 +400,19 @@ pub fn destroy_body(world: &mut World, body_id: BodyId) {
 
     let body_index = get_body_full_id(world, body_id);
 
-    // Attachment lists: joints empty until joint create; contacts empty until
-    // contact create; shapes are destroyed here like C's b3DestroyBody.
+    // Attachment lists: joints empty until joint create; contacts and shapes
+    // are destroyed here like C's b3DestroyBody.
     debug_assert!(world.bodies[body_index as usize].head_joint_key == NULL_INDEX);
-    debug_assert!(world.bodies[body_index as usize].head_contact_key == NULL_INDEX);
+
+    // Destroy all contacts attached to this body.
+    let mut contact_key = world.bodies[body_index as usize].head_contact_key;
+    while contact_key != NULL_INDEX {
+        let contact_id = contact_key >> 1;
+        let edge_index = contact_key & 1;
+        let next_key = world.contacts[contact_id as usize].edges[edge_index as usize].next_key;
+        crate::contact::destroy_contact(world, contact_id, true);
+        contact_key = next_key;
+    }
 
     // Destroy the attached shapes and their broad-phase proxies.
     let mut shape_id = world.bodies[body_index as usize].head_shape_id;

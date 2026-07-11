@@ -72,6 +72,9 @@ mod broad_phase_tests;
 mod compound_tests;
 
 #[cfg(test)]
+mod contact_tests;
+
+#[cfg(test)]
 mod distance_tests;
 
 #[cfg(test)]

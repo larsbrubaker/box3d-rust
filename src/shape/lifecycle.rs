@@ -357,17 +357,19 @@ pub(crate) fn destroy_shape_internal(
         destroy_shape_proxy(&mut shapes[shape_index as usize], broad_phase);
     }
 
-    // Destroy contacts associated with the shape (empty until contact create).
+    // Destroy any contacts associated with the shape.
     let mut contact_key = world.bodies[body_index as usize].head_contact_key;
     while contact_key != NULL_INDEX {
         let contact_id = contact_key >> 1;
         let edge_index = contact_key & 1;
-        let contact = &world.contacts[contact_id as usize];
-        contact_key = contact.edges[edge_index as usize].next_key;
-        debug_assert!(
-            contact.shape_id_a != shape_index && contact.shape_id_b != shape_index,
-            "contact destroy not yet ported; no contacts should reference shapes"
-        );
+        let next_key = world.contacts[contact_id as usize].edges[edge_index as usize].next_key;
+        let shape_id_a = world.contacts[contact_id as usize].shape_id_a;
+        let shape_id_b = world.contacts[contact_id as usize].shape_id_b;
+        contact_key = next_key;
+
+        if shape_id_a == shape_index || shape_id_b == shape_index {
+            crate::contact::destroy_contact(world, contact_id, wake_bodies);
+        }
     }
 
     if sensor_index != NULL_INDEX {

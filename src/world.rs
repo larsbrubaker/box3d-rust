@@ -294,6 +294,9 @@ impl World {
         debug_assert!(linear_slop() <= mesh_rest_offset());
         debug_assert!(mesh_rest_offset() < speculative_distance());
 
+        use crate::contact::initialize_contact_registers;
+        initialize_contact_registers();
+
         let body_capacity = max_int(
             16,
             def.capacity.static_body_count + def.capacity.dynamic_body_count,
