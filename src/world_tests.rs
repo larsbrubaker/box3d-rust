@@ -319,6 +319,79 @@ fn sleep_disabled_keeps_body_awake() {
     }
 }
 
+/// (TestHitEvents)
+#[test]
+fn hit_events() {
+    let mut world_def = default_world_def();
+    world_def.hit_event_threshold = 1.0;
+    let mut world = World::new(&world_def);
+
+    // Static ground
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Static;
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: -0.5 as _,
+        z: 0.0 as _,
+    };
+    let ground_id = create_body(&mut world, &body_def);
+    let ground_box = make_box_hull(10.0, 0.5, 10.0);
+    create_hull_shape(&mut world, ground_id, &default_shape_def(), &ground_box.base);
+
+    // Sphere driven into the ground fast enough to clear the hit threshold
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.gravity_scale = 0.0;
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: 2.0 as _,
+        z: 0.0 as _,
+    };
+    body_def.linear_velocity = crate::math_functions::Vec3 {
+        x: 0.0,
+        y: -30.0,
+        z: 0.0,
+    };
+    let sphere_body_id = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    shape_def.enable_hit_events = true;
+    shape_def.base_material.user_material_id = 7;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    create_sphere_shape(&mut world, sphere_body_id, &shape_def, &sphere);
+
+    let mut hit_count = 0;
+    let mut captured_speed = 0.0f32;
+    let mut captured_material_a = 0u64;
+    let mut captured_material_b = 0u64;
+    let mut captured_normal = VEC3_ZERO;
+
+    for _ in 0..30 {
+        world.step(1.0 / 60.0, 4);
+
+        if !world.contact_hit_events.is_empty() && hit_count == 0 {
+            let hit = &world.contact_hit_events[0];
+            captured_speed = hit.approach_speed;
+            captured_normal = hit.normal;
+            captured_material_a = hit.user_material_id_a;
+            captured_material_b = hit.user_material_id_b;
+        }
+
+        hit_count += world.contact_hit_events.len();
+    }
+
+    assert!(hit_count >= 1);
+    assert!(captured_speed > 1.0);
+    // Head-on vertical impact: normal lies along Y
+    assert!(captured_normal.x.abs() < 0.01);
+    assert!(captured_normal.z.abs() < 0.01);
+    // One side of the contact carries the sphere's user material
+    assert!(captured_material_a == 7 || captured_material_b == 7);
+}
+
 /// (HelloWorld)
 #[test]
 fn hello_world() {

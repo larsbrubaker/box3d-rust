@@ -137,6 +137,55 @@ impl Shape {
         let mats = self.shape_materials();
         &mats[index as usize]
     }
+
+    /// User material id for a child/triangle of this shape.
+    /// (b3GetShapeUserMaterialId)
+    ///
+    /// C early-returns 0 when materialCount == 0; the Rust shape always
+    /// presents at least the inline material, so that guard has no
+    /// equivalent here.
+    pub fn get_shape_user_material_id(&self, child_index: i32, triangle_index: i32) -> u64 {
+        use crate::compound::{get_compound_child, ChildGeometry, MAX_COMPOUND_MESH_MATERIALS};
+        use crate::height_field::get_height_field_material;
+        use crate::math_functions::clamp_int;
+        use crate::mesh::get_mesh_material_indices;
+
+        let mut material_index = 0i32;
+        match &self.geometry {
+            ShapeGeometry::Mesh { data, .. } => {
+                let indices = get_mesh_material_indices(data);
+                if !indices.is_empty() {
+                    material_index = indices[triangle_index as usize] as i32;
+                }
+            }
+            ShapeGeometry::HeightField(height_field) => {
+                material_index = get_height_field_material(height_field, triangle_index);
+            }
+            ShapeGeometry::Compound(compound) => {
+                let child = get_compound_child(compound, child_index);
+                if let ChildGeometry::Mesh(mesh) = child.geometry {
+                    let indices = get_mesh_material_indices(mesh.data);
+                    let mesh_material_index = if !indices.is_empty() {
+                        indices[triangle_index as usize] as i32
+                    } else {
+                        0
+                    };
+                    let mesh_material_index = clamp_int(
+                        mesh_material_index,
+                        0,
+                        MAX_COMPOUND_MESH_MATERIALS as i32 - 1,
+                    );
+                    material_index = child.material_indices[mesh_material_index as usize];
+                } else {
+                    material_index = child.material_indices[0];
+                }
+            }
+            _ => {}
+        }
+
+        let material_index = clamp_int(material_index, 0, self.material_count() - 1);
+        self.shape_materials()[material_index as usize].user_material_id
+    }
 }
 
 impl Default for Shape {

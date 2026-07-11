@@ -196,6 +196,103 @@ pub fn solve(world: &mut World, context: &StepContext) {
 
     finalize_bodies(world, context);
 
+    // Report hit events flagged during store impulses. C runs this after the
+    // constraint solve completes; joint events precede it once joints land.
+    {
+        use crate::events::ContactHitEvent;
+        use crate::id::{ContactId, ShapeId};
+        use crate::math_functions::{lerp, lerp_position, offset_pos, VEC3_ZERO};
+
+        debug_assert!(world.contact_hit_events.is_empty());
+
+        // Fast path: if no worker flagged any hit-event candidates during
+        // b2StoreImpulsesTask, skip entirely.
+        if world.task_contexts[0].has_hit_events {
+            let threshold = world.hit_event_threshold;
+            let world_id = world.world_id;
+
+            let word_count = world.task_contexts[0].hit_event_bit_set.block_count();
+            for k in 0..word_count {
+                let mut word = world.task_contexts[0].hit_event_bit_set.block(k);
+                while word != 0 {
+                    let ctz = word.trailing_zeros();
+                    let contact_id = (64 * k + ctz) as i32;
+
+                    let contact = &world.contacts[contact_id as usize];
+                    debug_assert!(
+                        contact.set_index == AWAKE_SET && contact.color_index != NULL_INDEX
+                    );
+
+                    let shape_a = &world.shapes[contact.shape_id_a as usize];
+                    let shape_b = &world.shapes[contact.shape_id_b as usize];
+                    let body_a = &world.bodies[shape_a.body_id as usize];
+                    let body_b = &world.bodies[shape_b.body_id as usize];
+                    // (b3GetBodySim)
+                    let sim_a = &world.solver_sets[body_a.set_index as usize].body_sims
+                        [body_a.local_index as usize];
+                    let sim_b = &world.solver_sets[body_b.set_index as usize].body_sims
+                        [body_b.local_index as usize];
+                    let mid_center = lerp_position(sim_a.center, sim_b.center, 0.5);
+
+                    let mut approach_speed = threshold;
+                    let mut point = mid_center;
+                    let mut normal = VEC3_ZERO;
+                    let mut found = false;
+                    let mut triangle_index = 0;
+                    for manifold in &contact.manifolds {
+                        for p in 0..manifold.point_count as usize {
+                            let mp = &manifold.points[p];
+                            let mp_approach_speed = -mp.normal_velocity;
+
+                            // Need to check total impulse because the point may be speculative and not colliding
+                            if mp_approach_speed > approach_speed && mp.total_normal_impulse > 0.0
+                            {
+                                approach_speed = mp_approach_speed;
+                                point = offset_pos(mid_center, lerp(mp.anchor_a, mp.anchor_b, 0.5));
+                                normal = manifold.normal;
+                                triangle_index = mp.triangle_index;
+                                found = true;
+                            }
+                        }
+                    }
+
+                    if found {
+                        let event = ContactHitEvent {
+                            shape_id_a: ShapeId {
+                                index1: shape_a.id + 1,
+                                world0: world_id,
+                                generation: shape_a.generation,
+                            },
+                            shape_id_b: ShapeId {
+                                index1: shape_b.id + 1,
+                                world0: world_id,
+                                generation: shape_b.generation,
+                            },
+                            contact_id: ContactId {
+                                index1: contact.contact_id + 1,
+                                world0: world_id,
+                                padding: 0,
+                                generation: contact.generation,
+                            },
+                            point,
+                            normal,
+                            approach_speed,
+                            // shapeB is never a compound today (asserted in b3CreateContact), so the
+                            // childIndex argument is irrelevant for it. shapeA carries the compound.
+                            user_material_id_a: shape_a
+                                .get_shape_user_material_id(contact.child_index, triangle_index),
+                            user_material_id_b: shape_b
+                                .get_shape_user_material_id(0, triangle_index),
+                        };
+                        world.contact_hit_events.push(event);
+                    }
+
+                    word &= word - 1;
+                }
+            }
+        }
+    }
+
     // Enlarge broad-phase proxies for shapes whose fat AABB grew.
     {
         world.broad_phase.validate_no_enlarged();
