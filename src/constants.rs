@@ -65,3 +65,18 @@ pub fn overlap_slop() -> f32 {
 /// The maximum number of points to use for shape cast proxies (swept point cloud).
 /// (B3_MAX_SHAPE_CAST_POINTS)
 pub const MAX_SHAPE_CAST_POINTS: usize = 64;
+
+/// The maximum number of contact points between two touching shapes.
+/// (B3_MAX_MANIFOLD_POINTS)
+pub const MAX_MANIFOLD_POINTS: usize = 4;
+
+/// Used to determine if two shapes are overlapping. Typically about 4×
+/// [`linear_slop`]. (B3_SPECULATIVE_DISTANCE)
+pub fn speculative_distance() -> f32 {
+    4.0 * linear_slop()
+}
+
+/// Minimum capsule segment length. (B3_MIN_CAPSULE_LENGTH)
+pub fn min_capsule_length() -> f32 {
+    linear_slop()
+}
