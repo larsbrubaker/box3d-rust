@@ -97,6 +97,9 @@ mod hull_tests;
 mod id_tests;
 
 #[cfg(test)]
+mod joint_tests;
+
+#[cfg(test)]
 mod manifold_tests;
 
 #[cfg(test)]
