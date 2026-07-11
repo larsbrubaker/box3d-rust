@@ -1,14 +1,15 @@
-import { readFileSync, existsSync, statSync } from "fs";
+import { mkdirSync, readFileSync, existsSync, statSync, rmSync } from "fs";
 import { join, extname } from "path";
 
 const PORT = parseInt(process.env.PORT || "3000");
 const ROOT = import.meta.dir;
+const DEV_CACHE = join(ROOT, ".dev-cache");
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
   ".css": "text/css",
   ".js": "application/javascript",
-  ".ts": "application/javascript",
+  ".map": "application/json",
   ".wasm": "application/wasm",
   ".json": "application/json",
   ".svg": "image/svg+xml",
@@ -16,25 +17,60 @@ const MIME_TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" });
+function readIndexHtml(): string {
+  let html = readFileSync(join(ROOT, "index.html"), "utf-8");
+  // Dev serves the Bun-bundled entry (resolves bare "three" / "three/addons/...")
+  html = html.replace(
+    '<script type="module" src="./src/main.ts"></script>',
+    '<script type="module" src="./main.js"></script>',
+  );
+  return html;
+}
+
+async function buildDevBundle(): Promise<void> {
+  if (existsSync(DEV_CACHE)) {
+    rmSync(DEV_CACHE, { recursive: true, force: true });
+  }
+  mkdirSync(DEV_CACHE, { recursive: true });
+
+  console.log("[server] Bundling TypeScript (resolves node_modules)...");
+  const result = await Bun.build({
+    entrypoints: [join(ROOT, "src/main.ts")],
+    outdir: DEV_CACHE,
+    splitting: true,
+    target: "browser",
+    format: "esm",
+    sourcemap: "inline",
+    naming: "[dir]/[name].[ext]",
+  });
+
+  if (!result.success) {
+    console.error("[server] Dev bundle failed:");
+    for (const msg of result.logs) {
+      console.error(msg);
+    }
+    throw new Error("Dev bundle failed");
+  }
+
+  console.log(`[server] Dev bundle ready (${result.outputs.length} files)`);
+}
+
+await buildDevBundle();
 
 function tryServe(pathname: string): { content: string | Uint8Array; mime: string } | null {
-  // index.html for root
   if (pathname === "/" || pathname === "/index.html") {
-    const p = join(ROOT, "index.html");
-    if (existsSync(p)) return { content: readFileSync(p, "utf-8"), mime: "text/html" };
+    return { content: readIndexHtml(), mime: "text/html" };
   }
 
-  // TypeScript files from src/ — transpile on the fly
-  if (pathname.startsWith("/src/") && pathname.endsWith(".ts")) {
-    const p = join(ROOT, pathname);
-    if (existsSync(p)) {
-      const code = transpiler.transformSync(readFileSync(p, "utf-8"));
-      return { content: code, mime: "application/javascript" };
-    }
+  // Bundled app JS (entry + code-split chunks, includes three.js)
+  const cachePath = join(DEV_CACHE, pathname.replace(/^\//, ""));
+  if (existsSync(cachePath) && statSync(cachePath).isFile()) {
+    const ext = extname(cachePath);
+    const mime = MIME_TYPES[ext] || "application/octet-stream";
+    return { content: readFileSync(cachePath, "utf-8"), mime };
   }
 
-  // Any file relative to demo root (handles /styles/*, /public/pkg/*, etc.)
+  // Static files relative to demo root (styles, public/pkg, etc.)
   const filePath = join(ROOT, pathname);
   if (existsSync(filePath) && statSync(filePath).isFile()) {
     const ext = extname(filePath);
@@ -64,14 +100,9 @@ const server = Bun.serve({
     }
 
     // SPA fallback: serve index.html for unresolved routes (client-side routing)
-    const indexPath = join(ROOT, "index.html");
-    if (existsSync(indexPath)) {
-      return new Response(readFileSync(indexPath, "utf-8"), {
-        headers: { "Content-Type": "text/html", "Cache-Control": "no-cache" },
-      });
-    }
-
-    return new Response("Not found", { status: 404 });
+    return new Response(readIndexHtml(), {
+      headers: { "Content-Type": "text/html", "Cache-Control": "no-cache" },
+    });
   },
 });
 
