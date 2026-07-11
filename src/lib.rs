@@ -116,6 +116,9 @@ mod table_tests;
 mod world_tests;
 
 #[cfg(test)]
+mod world_api_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
