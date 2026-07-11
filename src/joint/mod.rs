@@ -13,11 +13,19 @@ use crate::solver::Softness;
 
 mod distance;
 mod lifecycle;
+mod parallel;
 mod plumbing;
+mod prismatic;
+mod revolute;
+mod weld;
 
 pub use distance::*;
 pub use lifecycle::*;
+pub use parallel::*;
 pub use plumbing::*;
+pub use prismatic::*;
+pub use revolute::*;
+pub use weld::*;
 
 /// Joint type enumeration. (types.h: b3JointType)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -624,6 +632,66 @@ impl JointSim {
         match &mut self.union_ {
             JointUnion::Distance(joint) => joint,
             _ => unreachable!("joint union is not a distance joint"),
+        }
+    }
+
+    /// (C: &base->parallelJoint)
+    pub fn parallel(&self) -> &ParallelJoint {
+        match &self.union_ {
+            JointUnion::Parallel(joint) => joint,
+            _ => unreachable!("joint union is not a parallel joint"),
+        }
+    }
+
+    pub fn parallel_mut(&mut self) -> &mut ParallelJoint {
+        match &mut self.union_ {
+            JointUnion::Parallel(joint) => joint,
+            _ => unreachable!("joint union is not a parallel joint"),
+        }
+    }
+
+    /// (C: &base->weldJoint)
+    pub fn weld(&self) -> &WeldJoint {
+        match &self.union_ {
+            JointUnion::Weld(joint) => joint,
+            _ => unreachable!("joint union is not a weld joint"),
+        }
+    }
+
+    pub fn weld_mut(&mut self) -> &mut WeldJoint {
+        match &mut self.union_ {
+            JointUnion::Weld(joint) => joint,
+            _ => unreachable!("joint union is not a weld joint"),
+        }
+    }
+
+    /// (C: &base->revoluteJoint)
+    pub fn revolute(&self) -> &RevoluteJoint {
+        match &self.union_ {
+            JointUnion::Revolute(joint) => joint,
+            _ => unreachable!("joint union is not a revolute joint"),
+        }
+    }
+
+    pub fn revolute_mut(&mut self) -> &mut RevoluteJoint {
+        match &mut self.union_ {
+            JointUnion::Revolute(joint) => joint,
+            _ => unreachable!("joint union is not a revolute joint"),
+        }
+    }
+
+    /// (C: &base->prismaticJoint)
+    pub fn prismatic(&self) -> &PrismaticJoint {
+        match &self.union_ {
+            JointUnion::Prismatic(joint) => joint,
+            _ => unreachable!("joint union is not a prismatic joint"),
+        }
+    }
+
+    pub fn prismatic_mut(&mut self) -> &mut PrismaticJoint {
+        match &mut self.union_ {
+            JointUnion::Prismatic(joint) => joint,
+            _ => unreachable!("joint union is not a prismatic joint"),
         }
     }
 }
