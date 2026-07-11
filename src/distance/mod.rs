@@ -29,7 +29,9 @@ pub use types::{
 };
 
 use crate::constants::MAX_SHAPE_CAST_POINTS;
-use crate::math_functions::{min_int, Vec3};
+use crate::math_functions::{
+    add, invert_transform, make_aabb, make_matrix_from_quat, min_int, mul_mv, Aabb, Transform, Vec3,
+};
 
 /// Make a proxy for use in overlap, shape cast, and related functions. This is
 /// a deep copy of the points. (box2d-style helper; C uses a pointer in
@@ -43,4 +45,28 @@ pub fn make_proxy(points: &[Vec3], radius: f32) -> ShapeProxy {
     };
     proxy.points[..count as usize].copy_from_slice(&points[..count as usize]);
     proxy
+}
+
+/// Transform a proxy into the local frame of `transform`.
+/// (shape.c: b3MakeLocalProxy)
+pub fn make_local_proxy(proxy: &ShapeProxy, transform: Transform) -> ShapeProxy {
+    let inv_transform = invert_transform(transform);
+    let r = make_matrix_from_quat(inv_transform.q);
+
+    let count = min_int(proxy.count, MAX_SHAPE_CAST_POINTS as i32);
+    let mut local = ShapeProxy {
+        count,
+        radius: proxy.radius,
+        ..Default::default()
+    };
+    for i in 0..count as usize {
+        local.points[i] = add(mul_mv(r, proxy.points[i]), inv_transform.p);
+    }
+    local
+}
+
+/// Compute the AABB of a shape proxy. (shape.c: b3ComputeProxyAABB)
+pub fn compute_proxy_aabb(proxy: &ShapeProxy) -> Aabb {
+    debug_assert!(proxy.count > 0);
+    make_aabb(&proxy.points[..proxy.count as usize], proxy.radius)
 }

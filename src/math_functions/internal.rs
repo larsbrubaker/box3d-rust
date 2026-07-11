@@ -194,6 +194,17 @@ pub fn cylinder_inertia(mass: f32, radius: f32, height: f32) -> Matrix3 {
     make_diagonal_matrix(ixx, iyy, ixx)
 }
 
+/// A triangle with vertex indices and edge flags.
+/// (math_internal.h: b3Triangle)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Triangle {
+    pub vertices: [Vec3; 3],
+    pub i1: i32,
+    pub i2: i32,
+    pub i3: i32,
+    pub flags: i32,
+}
+
 /// Closest point on a triangle and the feature that owns it.
 /// (math_internal.h: b3TrianglePoint)
 #[derive(Debug, Clone, Copy, PartialEq)]

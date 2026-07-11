@@ -14,6 +14,7 @@ pub mod constants;
 pub mod core;
 pub mod distance;
 pub mod geometry;
+pub mod height_field;
 pub mod hull;
 pub mod id;
 pub mod id_pool;
@@ -23,7 +24,7 @@ pub mod table;
 
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
 pub use math_functions::{
-    Aabb, CosSin, Matrix3, Plane, Pos, Quat, SegmentDistanceResult, Transform, Vec2, Vec3,
+    Aabb, CosSin, Matrix3, Plane, Pos, Quat, SegmentDistanceResult, Transform, Triangle, Vec2, Vec3,
     WorldTransform, MAT3_IDENTITY, MAT3_ZERO, PI, POS_ZERO, QUAT_IDENTITY, TRANSFORM_IDENTITY,
     VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z, VEC3_ONE, VEC3_ZERO, WORLD_TRANSFORM_IDENTITY,
 };
@@ -42,6 +43,9 @@ mod distance_tests;
 
 #[cfg(test)]
 mod geometry_tests;
+
+#[cfg(test)]
+mod height_field_tests;
 
 #[cfg(test)]
 mod hull_tests;

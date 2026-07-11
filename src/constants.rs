@@ -80,3 +80,9 @@ pub fn speculative_distance() -> f32 {
 pub fn min_capsule_length() -> f32 {
     linear_slop()
 }
+
+/// Maximum AABB margin used when expanding bounds for casts.
+/// (B3_MAX_AABB_MARGIN)
+pub fn max_aabb_margin() -> f32 {
+    0.05 * get_length_units_per_meter()
+}
