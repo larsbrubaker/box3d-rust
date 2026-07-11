@@ -11,6 +11,7 @@ use crate::math_functions::{
 };
 use crate::solver::Softness;
 
+mod api;
 mod distance;
 mod lifecycle;
 mod motor;
@@ -24,6 +25,7 @@ mod weld;
 mod wheel;
 mod wheel_api;
 
+pub use api::*;
 pub use distance::*;
 pub use lifecycle::*;
 pub use motor::*;
