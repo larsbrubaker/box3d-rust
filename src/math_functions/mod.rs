@@ -27,7 +27,10 @@ pub use internal::*;
 pub use matrix::*;
 pub use query::*;
 pub use quat::*;
-pub use ray_triangle::{intersect_ray_triangle, test_bounds_triangle_overlap};
+pub use ray_triangle::{
+    intersect_ray_triangle, test_bounds_overlap, test_bounds_ray_overlap,
+    test_bounds_triangle_overlap,
+};
 pub use scalar::*;
 pub use transform::*;
 pub use types::*;

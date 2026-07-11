@@ -20,6 +20,7 @@ pub mod id;
 pub mod id_pool;
 pub mod manifold;
 pub mod math_functions;
+pub mod mesh;
 pub mod table;
 
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
@@ -58,6 +59,9 @@ mod manifold_tests;
 
 #[cfg(test)]
 mod math_functions_tests;
+
+#[cfg(test)]
+mod mesh_tests;
 
 #[cfg(test)]
 mod table_tests;

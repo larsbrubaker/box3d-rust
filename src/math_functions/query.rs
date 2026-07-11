@@ -65,6 +65,14 @@ pub fn aabb_union(a: Aabb, b: Aabb) -> Aabb {
     }
 }
 
+/// Add a point to an AABB. (math_internal.h: b3AABB_AddPoint)
+pub fn aabb_add_point(a: Aabb, point: Vec3) -> Aabb {
+    Aabb {
+        lower_bound: min(a.lower_bound, point),
+        upper_bound: max(a.upper_bound, point),
+    }
+}
+
 /// Add uniform padding to an axis-aligned bounding box.
 pub fn aabb_inflate(a: Aabb, extension: f32) -> Aabb {
     let radius = Vec3 {

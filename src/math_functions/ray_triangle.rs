@@ -127,6 +127,43 @@ pub fn test_bounds_triangle_overlap(
     true
 }
 
+/// True if all components of `a` are ≤ the corresponding components of `b`.
+fn all_less_eq3(a: Vec3, b: Vec3) -> bool {
+    a.x <= b.x && a.y <= b.y && a.z <= b.z
+}
+
+/// Test overlap between two AABBs given as min/max corners.
+/// (simd.h: b3TestBoundsOverlap)
+pub fn test_bounds_overlap(
+    node_min1: Vec3,
+    node_max1: Vec3,
+    node_min2: Vec3,
+    node_max2: Vec3,
+) -> bool {
+    let separation = max(sub(node_min2, node_max1), sub(node_min1, node_max2));
+    all_less_eq3(separation, VEC3_ZERO)
+}
+
+/// Test a ray for edge separation with an AABB (Gino, p80).
+/// (simd.h: b3TestBoundsRayOverlap)
+pub fn test_bounds_ray_overlap(
+    node_min: Vec3,
+    node_max: Vec3,
+    mut ray_start: Vec3,
+    ray_delta: Vec3,
+) -> bool {
+    let node_center = mul_sv(0.5, add(node_min, node_max));
+    let node_extent = sub(node_max, node_center);
+
+    ray_start = sub(ray_start, node_center);
+
+    let edge_separation = sub(
+        abs(cross(ray_delta, ray_start)),
+        modified_cross(abs(ray_delta), node_extent),
+    );
+    all_less_eq3(edge_separation, VEC3_ZERO)
+}
+
 /// Intersect a ray with a triangle. Returns the hit fraction in (0, 1], or 1.0 on miss.
 /// (simd.c: b3IntersectRayTriangle, scalar path)
 pub fn intersect_ray_triangle(

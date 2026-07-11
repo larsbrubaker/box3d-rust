@@ -101,6 +101,33 @@ pub fn max_element_index(v: Vec3) -> i32 {
     }
 }
 
+/// Major axis of a vector (same as [`max_element_index`]). (math_internal.h: b3MajorAxis)
+pub fn major_axis(v: Vec3) -> i32 {
+    max_element_index(v)
+}
+
+/// Get a Vec3 component by index. (math_internal.h: b3GetByIndex)
+pub fn get_by_index(v: Vec3, index: i32) -> f32 {
+    debug_assert!((0..3).contains(&index));
+    match index {
+        0 => v.x,
+        1 => v.y,
+        2 => v.z,
+        _ => unreachable!(),
+    }
+}
+
+/// Negative if `p` is below the triangle v1-v2-v3. (math_internal.h: b3SignedVolume)
+pub fn signed_volume(v1: Vec3, v2: Vec3, v3: Vec3, p: Vec3) -> f32 {
+    let e1 = sub(v2, v1);
+    let e2 = sub(v3, v1);
+    let n = cross(e1, e2);
+    dot(n, sub(p, v1))
+}
+
+/// 2π. (math_internal.h: B3_TWO_PI)
+pub const TWO_PI: f32 = 6.283185307;
+
 /// Diagonal matrix. (math_internal.h: b3MakeDiagonalMatrix)
 pub fn make_diagonal_matrix(a: f32, b: f32, c: f32) -> Matrix3 {
     Matrix3 {
