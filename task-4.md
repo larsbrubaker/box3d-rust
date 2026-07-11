@@ -14,14 +14,16 @@ on sensor-related shape API.
 
 ## Shape creation (shape.c)
 
-- [ ] `create_mesh_shape` (mesh data + per-instance scale, multi-material)
-- [ ] `create_height_field_shape`
-- [ ] `create_compound_shape`
-- [ ] Port `TestCompoundHitEvents` from `test_world.c` — the compound branch
+- [x] `create_mesh_shape` (mesh data + per-instance scale, multi-material)
+- [x] `create_height_field_shape`
+- [x] `create_compound_shape`
+- [x] Port `TestCompoundHitEvents` from `test_world.c` — the compound branch
       of `Shape::get_shape_user_material_id` is already ported and waiting;
       this test makes it reachable
-- [ ] Port `TestMeshDrop` and `TestOverflowColorPile` from `test_world.c`
-      (need mesh shape create; exercise the overflow color path)
+- [ ] Port `TestMeshDrop` from `test_world.c` (need mesh shape create;
+      exercise continuous collision / mesh contact stability)
+- [x] Port `TestOverflowColorPile` from `test_world.c`
+      (exercise the overflow color path)
 
 ## b3Shape_* API (shape.c)
 
