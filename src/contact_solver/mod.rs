@@ -1,12 +1,27 @@
-// Port of contact_solver.h data model. Constraint kernels land later.
-//
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
+//! Scalar Mesh contact constraint kernels from contact_solver.c.
+//!
+//! Both graph-color convex contacts and mesh/overflow contacts route through
+//! these kernels (serial port; float order matches the C Mesh path).
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
+
+mod prepare;
+mod restitution;
+mod solve;
+mod store;
+mod warm_start;
 
 use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::core::NULL_INDEX;
 use crate::math_functions::{Mat2, Matrix3, Vec2, Vec3, MAT2_ZERO, MAT3_ZERO, VEC2_ZERO, VEC3_ZERO};
 use crate::solver::Softness;
+
+pub use prepare::prepare_color_contacts;
+pub use restitution::apply_restitution;
+pub use solve::solve_contacts;
+pub use store::{flag_hit_events, store_impulses};
+pub use warm_start::warm_start_contacts;
 
 /// (b3ManifoldConstraintPoint)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

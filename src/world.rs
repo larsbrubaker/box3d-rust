@@ -459,12 +459,10 @@ impl World {
     }
 
     /// Advance the world simulation by one time step. (b3World_Step)
-    ///
-    /// Pairs phase is live. Collide/solve/sleep land in follow-on commits;
-    /// an empty world (no bodies / no moves) is a full no-op after pair update.
     pub fn step(&mut self, time_step: f32, sub_step_count: i32) {
         use crate::broad_phase::update_broad_phase_pairs;
-        use crate::math_functions::{is_valid_float, max_int};
+        use crate::math_functions::{is_valid_float, max_int, min_float};
+        use crate::solver::{make_soft, solve, StepContext};
 
         debug_assert!(is_valid_float(time_step) && time_step >= 0.0);
         debug_assert!(!self.locked);
@@ -505,19 +503,40 @@ impl World {
         update_broad_phase_pairs(self);
 
         let sub_steps = max_int(1, sub_step_count);
-        let dt = time_step;
+        let mut context = StepContext {
+            dt: time_step,
+            sub_step_count: sub_steps,
+            ..StepContext::default()
+        };
+
         if time_step > 0.0 {
-            self.inv_dt = 1.0 / time_step;
-            self.inv_h = sub_steps as f32 * self.inv_dt;
+            context.inv_dt = 1.0 / time_step;
+            context.h = time_step / sub_steps as f32;
+            context.inv_h = sub_steps as f32 * context.inv_dt;
         } else {
-            self.inv_dt = 0.0;
-            self.inv_h = 0.0;
+            context.inv_dt = 0.0;
+            context.h = 0.0;
+            context.inv_h = 0.0;
         }
 
-        crate::contact::collide(self, dt);
+        self.inv_dt = context.inv_dt;
+        self.inv_h = context.inv_h;
 
-        // Solve / sleep deferred — collide + pairs are live; empty and
-        // overlapping-but-unsolved scenes advance contact state correctly.
+        // Hertz values get reduced for large time steps
+        let contact_hertz = min_float(self.contact_hertz, 0.125 * context.inv_h);
+        context.contact_softness = make_soft(contact_hertz, self.contact_damping_ratio, context.h);
+        context.static_softness =
+            make_soft(2.0 * contact_hertz, 0.5 * self.contact_damping_ratio, context.h);
+        context.restitution_threshold = self.restitution_threshold;
+        context.max_linear_velocity = self.max_linear_speed;
+        context.contact_speed = self.contact_speed;
+        context.enable_warm_starting = self.enable_warm_starting;
+
+        crate::contact::collide(self, time_step);
+
+        if time_step > 0.0 {
+            solve(self, &context);
+        }
 
         self.step_index = self.step_index.wrapping_add(1);
         self.validate_solver_sets();

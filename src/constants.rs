@@ -12,6 +12,16 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::get_length_units_per_meter;
+use crate::math_functions::PI;
+
+/// Maximum body rotation per time step to prevent numerical issues. (B3_MAX_ROTATION)
+pub const MAX_ROTATION: f32 = 0.25 * PI;
+
+/// Velocity constraint iterations per sub-step. (solver.c: ITERATIONS)
+pub const SOLVER_ITERATIONS: i32 = 1;
+
+/// Relaxation iterations per sub-step (bias off). (solver.c: RELAX_ITERATIONS)
+pub const RELAX_ITERATIONS: i32 = 1;
 
 /// Used to detect bad values. In float mode positions greater than about 16km have
 /// precision problems, so 100km is a safe limit. Large world mode keeps coordinates

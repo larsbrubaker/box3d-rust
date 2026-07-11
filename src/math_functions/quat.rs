@@ -99,6 +99,24 @@ pub fn normalize_quat(q: Quat) -> Quat {
     }
 }
 
+/// Integrate rotation from angular velocity.
+/// `delta_rotation` is the angular displacement in radians (ω · h).
+/// q2 = q1 + 0.5 * omega * q1
+/// (math_internal.h: b3IntegrateRotation)
+pub fn integrate_rotation(q1: Quat, delta_rotation: Vec3) -> Quat {
+    // https://fgiesen.wordpress.com/2012/08/24/quaternion-differentiation/
+    let mut qd = Quat {
+        v: mul_sv(0.5, delta_rotation),
+        s: 0.0,
+    };
+    qd = mul_quat(qd, q1);
+    let q2 = Quat {
+        v: add(q1.v, qd.v),
+        s: qd.s + q1.s,
+    };
+    normalize_quat(q2)
+}
+
 /// Make a quaternion that is equivalent to rotating around an axis by a specified angle.
 pub fn make_quat_from_axis_angle(axis: Vec3, radians: f32) -> Quat {
     debug_assert!(is_normalized(axis));

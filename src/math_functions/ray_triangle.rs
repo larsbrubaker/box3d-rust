@@ -5,16 +5,6 @@
 
 use super::*;
 
-/// Modified cross product used by AABB-triangle SAT (a.y*b.z + a.z*b.y, …).
-/// (simd.h: b3ModifiedCrossV, scalar)
-fn modified_cross(a: Vec3, b: Vec3) -> Vec3 {
-    Vec3 {
-        x: a.y * b.z + a.z * b.y,
-        y: a.z * b.x + a.x * b.z,
-        z: a.x * b.y + a.y * b.x,
-    }
-}
-
 /// True if any component of `a` is strictly less than the corresponding component of `b`.
 fn any_less3(a: Vec3, b: Vec3) -> bool {
     a.x < b.x || a.y < b.y || a.z < b.z

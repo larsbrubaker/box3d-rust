@@ -86,6 +86,29 @@ pub fn align_up8(x: usize) -> usize {
     (x + 7) & !7
 }
 
+/// Component-wise product sum used for AABB extent under rotation.
+/// (math_internal.h: b3ModifiedCross)
+pub fn modified_cross(a: Vec3, b: Vec3) -> Vec3 {
+    Vec3 {
+        x: a.y * b.z + a.z * b.y,
+        y: a.z * b.x + a.x * b.z,
+        z: a.x * b.y + a.y * b.x,
+    }
+}
+
+/// 2D dot product. (math_internal.h: b3Dot2)
+pub fn dot2(v1: Vec2, v2: Vec2) -> f32 {
+    v1.x * v2.x + v1.y * v2.y
+}
+
+/// 2D vector subtraction. (math_internal.h: b3Sub2)
+pub fn sub2(a: Vec2, b: Vec2) -> Vec2 {
+    Vec2 {
+        x: a.x - b.x,
+        y: a.y - b.y,
+    }
+}
+
 /// Index of the largest component. (math_internal.h: b3MaxElementIndex)
 pub fn max_element_index(v: Vec3) -> i32 {
     if v.x < v.y {

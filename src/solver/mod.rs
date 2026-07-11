@@ -1,16 +1,19 @@
-// Solver module: Softness / make_soft and the step context from solver.h.
-// The solver stages land in later bring-up commits.
-//
-// The C b3StepContext carries multithreading scratch (solver stages, sync
-// blocks, atomics, per-color wide-constraint arrays and interior pointers to
-// world data). The single-threaded port keeps only the step parameters here;
-// solver scratch is owned locally by the solve pass and world data is passed
-// as separate arguments to avoid aliasing &mut World.
-//
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
+//! Softness / make_soft and the step context from solver.h.
+//! Integration and the serial solve driver live in submodules.
+//!
+//! The C b3StepContext carries multithreading scratch. The single-threaded port
+//! keeps only the step parameters here; solver scratch is owned locally by the
+//! solve pass and world data is passed as separate arguments.
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
+
+mod integrate;
+mod solve;
 
 use crate::math_functions::PI;
+
+pub use solve::solve;
 
 /// Soft constraint coefficients. (b3Softness)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -38,19 +41,6 @@ pub fn make_soft(hertz: f32, zeta: f32, h: f32) -> Softness {
     // bias = w / (2 * z + hw)
     // massScale = hw * (2 * z + hw) / (1 + hw * (2 * z + hw))
     // impulseScale = 1 / (1 + hw * (2 * z + hw))
-    //
-    // If z == 0
-    // bias = 1/h
-    // massScale = hw^2 / (1 + hw^2)
-    // impulseScale = 1 / (1 + hw^2)
-    //
-    // w -> inf
-    // bias = 1/h
-    // massScale = 1
-    // impulseScale = 0
-    //
-    // In all cases:
-    // massScale + impulseScale == 1
     Softness {
         bias_rate: omega / a1,
         mass_scale: a2 * a3,
@@ -120,6 +110,7 @@ pub struct StepContext {
 
     pub restitution_threshold: f32,
     pub max_linear_velocity: f32,
+    pub contact_speed: f32,
 
     pub enable_warm_starting: bool,
 }
