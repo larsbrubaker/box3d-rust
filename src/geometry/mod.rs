@@ -18,19 +18,22 @@ pub(crate) mod types;
 mod sphere;
 
 pub use capsule::{
-    compute_capsule_aabb, compute_capsule_mass, compute_swept_capsule_aabb, overlap_capsule,
-    ray_cast_capsule, shape_cast_capsule,
+    collide_mover_and_capsule, compute_capsule_aabb, compute_capsule_mass,
+    compute_swept_capsule_aabb, overlap_capsule, ray_cast_capsule, shape_cast_capsule,
 };
 pub use sphere::{
-    compute_sphere_aabb, compute_sphere_mass, compute_swept_sphere_aabb, overlap_sphere,
-    ray_cast_hollow_sphere, ray_cast_sphere, shape_cast_sphere,
+    collide_mover_and_sphere, compute_sphere_aabb, compute_sphere_mass, compute_swept_sphere_aabb,
+    overlap_sphere, ray_cast_hollow_sphere, ray_cast_sphere, shape_cast_sphere,
 };
-pub use types::{Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, Sphere};
+pub use types::{
+    Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, ShapeType, Sphere,
+    SurfaceMaterial, default_surface_material, SURFACE_MATERIAL_SIZE,
+};
 
 pub use crate::distance::CastOutput;
 pub use crate::hull::{
-    compute_hull_aabb, compute_hull_mass, compute_swept_hull_aabb, overlap_hull, ray_cast_hull,
-    shape_cast_hull,
+    collide_mover_and_hull, compute_hull_aabb, compute_hull_mass, compute_swept_hull_aabb,
+    overlap_hull, ray_cast_hull, shape_cast_hull,
 };
 
 use crate::constants::huge;

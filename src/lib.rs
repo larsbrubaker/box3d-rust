@@ -10,6 +10,7 @@
 
 pub mod aabb;
 pub mod bitset;
+pub mod compound;
 pub mod constants;
 pub mod core;
 pub mod distance;
@@ -39,6 +40,9 @@ mod aabb_tests;
 
 #[cfg(test)]
 mod bitset_tests;
+
+#[cfg(test)]
+mod compound_tests;
 
 #[cfg(test)]
 mod distance_tests;

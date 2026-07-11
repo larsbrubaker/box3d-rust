@@ -10,10 +10,10 @@ use crate::distance::{
     make_proxy, shape_cast, shape_distance, CastOutput, DistanceInput, ShapeCastPairInput,
     ShapeProxy, SimplexCache,
 };
-use crate::geometry::types::{MassData, RayCastInput, ShapeCastInput};
+use crate::geometry::types::{Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput};
 use crate::hull::types::{get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
-    aabb_transform, aabb_union, add, dot, inv_mul_transforms, mul_sm, mul_sv, Aabb, Transform,
+    aabb_transform, aabb_union, add, dot, inv_mul_transforms, mul_sm, mul_sv, Aabb, Plane, Transform,
     TRANSFORM_IDENTITY,
 };
 
@@ -131,4 +131,40 @@ pub fn shape_cast_hull(shape: &HullData, input: &ShapeCastInput) -> CastOutput {
     };
 
     shape_cast(&pair_input)
+}
+
+/// Collide a capsule mover against a hull. (b3CollideMoverAndHull)
+pub fn collide_mover_and_hull(
+    result: &mut PlaneResult,
+    shape: &HullData,
+    mover: &Capsule,
+) -> i32 {
+    let points = get_hull_points(shape);
+    let distance_input = DistanceInput {
+        proxy_a: make_proxy(points, 0.0),
+        proxy_b: make_proxy(&[mover.center1, mover.center2], mover.radius),
+        transform: TRANSFORM_IDENTITY,
+        use_radii: false,
+    };
+
+    let total_radius = mover.radius;
+
+    let mut cache = SimplexCache::default();
+    let distance_output = shape_distance(&distance_input, &mut cache, None);
+
+    if distance_output.distance == 0.0 {
+        // Deep overlap on hulls is intentionally not handled (matches mesh behavior).
+        return 0;
+    }
+
+    if distance_output.distance <= total_radius {
+        result.plane = Plane {
+            normal: distance_output.normal,
+            offset: total_radius - distance_output.distance,
+        };
+        result.point = distance_output.point_a;
+        return 1;
+    }
+
+    0
 }

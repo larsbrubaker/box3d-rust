@@ -3,15 +3,16 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::types::{MassData, RayCastInput, ShapeCastInput, Sphere};
-use crate::constants::overlap_slop;
+use super::types::{Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, Sphere};
+use crate::constants::{linear_slop, overlap_slop};
 use crate::distance::{
     make_proxy, shape_cast, shape_distance, CastOutput, DistanceInput, ShapeCastPairInput,
     ShapeProxy, SimplexCache,
 };
 use crate::math_functions::{
     add, get_length_and_normalize, inv_mul_transforms, length_squared, make_diagonal_matrix, max,
-    min, mul_add, normalize, sub, transform_point, Aabb, Transform, Vec3, TRANSFORM_IDENTITY,
+    min, mul_add, normalize, perp, point_to_segment_distance, sub, transform_point, Aabb, Plane,
+    Transform, Vec3, TRANSFORM_IDENTITY, VEC3_AXIS_Y,
 };
 
 /// Compute mass properties of a sphere. (b3ComputeSphereMass)
@@ -229,4 +230,43 @@ pub fn shape_cast_sphere(sphere: &Sphere, input: &ShapeCastInput) -> CastOutput 
     };
 
     shape_cast(&pair_input)
+}
+
+/// Collide a capsule mover against a sphere. (b3CollideMoverAndSphere)
+pub fn collide_mover_and_sphere(
+    result: &mut PlaneResult,
+    shape: &Sphere,
+    mover: &Capsule,
+) -> i32 {
+    let total_radius = mover.radius + shape.radius;
+    let closest = point_to_segment_distance(mover.center1, mover.center2, shape.center);
+
+    // The normal points from the sphere toward the mover.
+    let mut distance = 0.0;
+    let mut normal = get_length_and_normalize(&mut distance, sub(closest, shape.center));
+
+    if distance > total_radius {
+        return 0;
+    }
+
+    let linear_slop = linear_slop();
+    if distance < linear_slop {
+        // Deep overlap: the mover axis passes through the sphere center, so no
+        // direction is preferred. Push perpendicular to the mover axis.
+        let mut length = 0.0;
+        let axis = get_length_and_normalize(&mut length, sub(mover.center2, mover.center1));
+        normal = if length > linear_slop {
+            perp(axis)
+        } else {
+            VEC3_AXIS_Y
+        };
+        distance = 0.0;
+    }
+
+    result.plane = Plane {
+        normal,
+        offset: total_radius - distance,
+    };
+    result.point = shape.center;
+    1
 }

@@ -4,7 +4,7 @@
 //! SPDX-License-Identifier: MIT
 
 use super::sphere::ray_cast_sphere;
-use super::types::{Capsule, MassData, RayCastInput, ShapeCastInput, Sphere};
+use super::types::{Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, Sphere};
 use crate::constants::{linear_slop, overlap_slop};
 use crate::distance::{
     make_proxy, shape_cast, shape_distance, CastOutput, DistanceInput, ShapeCastPairInput,
@@ -13,8 +13,9 @@ use crate::distance::{
 use crate::math_functions::{
     add, add_mm, clamp_float, compute_quat_between_unit_vectors, cylinder_inertia, distance, dot,
     get_length_and_normalize, inv_mul_transforms, length_squared, make_matrix_from_quat, max, min,
-    mul_add, mul_mm, mul_sub, mul_sv, normalize, sphere_inertia, sub, transform_point, transpose,
-    Aabb, Transform, Vec3, MAT3_IDENTITY, TRANSFORM_IDENTITY, VEC3_AXIS_Y,
+    mul_add, mul_mm, mul_sub, mul_sv, normalize, perp, segment_distance, sphere_inertia, sub,
+    transform_point, transpose, Aabb, Plane, Transform, Vec3, MAT3_IDENTITY, TRANSFORM_IDENTITY,
+    VEC3_AXIS_Y,
 };
 
 /// Compute mass properties of a capsule. (b3ComputeCapsuleMass)
@@ -335,4 +336,46 @@ pub fn shape_cast_capsule(capsule: &Capsule, input: &ShapeCastInput) -> CastOutp
     };
 
     shape_cast(&pair_input)
+}
+
+/// Collide a capsule mover against a capsule. (b3CollideMoverAndCapsule)
+pub fn collide_mover_and_capsule(
+    result: &mut PlaneResult,
+    shape: &Capsule,
+    mover: &Capsule,
+) -> i32 {
+    let total_radius = mover.radius + shape.radius;
+
+    let approach = segment_distance(shape.center1, shape.center2, mover.center1, mover.center2);
+
+    // The normal points from the shape toward the mover.
+    let mut distance = 0.0;
+    let mut normal =
+        get_length_and_normalize(&mut distance, sub(approach.point2, approach.point1));
+
+    if distance > total_radius {
+        return 0;
+    }
+
+    let linear_slop = linear_slop();
+    if distance < linear_slop {
+        // Deep overlap: the core segments intersect. Pick an arbitrary direction
+        // perpendicular to the capsule axis.
+        let mut mover_length = 0.0;
+        let mover_axis =
+            get_length_and_normalize(&mut mover_length, sub(mover.center2, mover.center1));
+        normal = if mover_length > linear_slop {
+            perp(mover_axis)
+        } else {
+            VEC3_AXIS_Y
+        };
+        distance = 0.0;
+    }
+
+    result.plane = Plane {
+        normal,
+        offset: total_radius - distance,
+    };
+    result.point = approach.point1;
+    1
 }
