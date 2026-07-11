@@ -18,12 +18,14 @@ pub mod constraint_graph;
 pub mod contact;
 pub mod contact_solver;
 pub mod core;
+pub mod determinism;
 pub mod distance;
 pub mod dynamic_tree;
 pub mod events;
 pub mod geometry;
 pub mod height_field;
 pub mod hull;
+pub mod human;
 pub mod id;
 pub mod id_pool;
 pub mod island;
@@ -131,6 +133,11 @@ mod world_tests;
 
 #[cfg(test)]
 mod world_api_tests;
+
+#[cfg(test)]
+mod large_world_tests;
+
+#[cfg(test)]
 
 #[cfg(test)]
 mod tests {

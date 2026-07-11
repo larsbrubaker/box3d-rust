@@ -14,10 +14,10 @@ bring-up rules apply to everything below.
 | File | Track | Depends on |
 |---|---|---|
 | [task-5.md](task-5.md) | Deferred world/body query tests | task-4 (`SetHull`, body-level queries) — shape SetHull landed |
-| [task-7.md](task-7.md) | Determinism gate + large world | scene helpers startable now; final hash needs task-6 |
+| [task-7.md](task-7.md) | Determinism gate | helpers + large_world done; final `EXPECTED_HASH` unblocked (task-6 on main) |
 
-task-4 and task-6 are complete. task-7's scene-helper work is independent of
-both; its final EXPECTED_HASH gate needs the mesh-contact path now on main.
+task-4 and task-6 are complete. task-7 scene helpers and large-world tests are
+on main; only the EXPECTED_HASH / sleep-step gate remains.
 
 ## Recording, replay, and snapshots
 
@@ -40,7 +40,7 @@ After the determinism gate passes (perf work before correctness is wasted).
 Mirror the C `samples/` categories (WebGL, `demo/`, `bun run build`). The
 physics for all of these exists now except the mesh scenes:
 
-- [ ] Joint samples (hinge chain, ragdoll once task-7's human.c port lands)
+- [ ] Joint samples (hinge chain, ragdoll — human.c ported)
 - [ ] Sensor sample
 - [ ] Bullet/CCD sample
 - [ ] Query/raycast visualizer

@@ -265,6 +265,7 @@ mod geometry_set;
 pub(crate) mod lifecycle;
 mod mutators;
 mod query;
+mod world_query;
 
 pub use accessors::*;
 pub use api::*;
@@ -272,3 +273,4 @@ pub use dispatch::*;
 pub use geometry_set::*;
 pub use mutators::*;
 pub use query::*;
+pub use world_query::*;
