@@ -32,6 +32,17 @@ pub struct SensorEndTouchEvent {
     pub visitor_shape_id: ShapeId,
 }
 
+/// Sensor events buffered in the world for the current time step.
+/// Borrowed from world storage; invalidated by the next `World::step`.
+/// (b3SensorEvents)
+#[derive(Debug, Clone, Copy)]
+pub struct SensorEvents<'a> {
+    /// Array of sensor begin touch events
+    pub begin_events: &'a [SensorBeginTouchEvent],
+    /// Array of sensor end touch events (previous double-buffer slot)
+    pub end_events: &'a [SensorEndTouchEvent],
+}
+
 /// A begin-touch event is generated when two shapes begin touching.
 /// (b3ContactBeginTouchEvent)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -329,13 +329,12 @@ pub(crate) fn destroy_shape_internal(
 ) {
     let _ = wake_bodies; // contact destroy uses this; contacts land next
 
-    let (prev_shape_id, next_shape_id, sensor_index, generation) = {
+    let (prev_shape_id, next_shape_id, sensor_index) = {
         let shape = &world.shapes[shape_index as usize];
         (
             shape.prev_shape_id,
             shape.next_shape_id,
             shape.sensor_index,
-            shape.generation,
         )
     };
 
@@ -373,35 +372,7 @@ pub(crate) fn destroy_shape_internal(
     }
 
     if sensor_index != NULL_INDEX {
-        let world_id = world.world_id;
-        let overlaps: Vec<_> = world.sensors[sensor_index as usize].overlaps2.clone();
-        for visitor in overlaps {
-            world.sensor_end_events[world.end_event_array_index as usize].push(
-                crate::events::SensorEndTouchEvent {
-                    sensor_shape_id: ShapeId {
-                        index1: shape_index + 1,
-                        world0: world_id,
-                        generation,
-                    },
-                    visitor_shape_id: ShapeId {
-                        index1: visitor.shape_id + 1,
-                        world0: world_id,
-                        generation: visitor.generation,
-                    },
-                },
-            );
-        }
-
-        world.sensors[sensor_index as usize].hits.clear();
-        world.sensors[sensor_index as usize].overlaps1.clear();
-        world.sensors[sensor_index as usize].overlaps2.clear();
-
-        let last = world.sensors.len() as i32 - 1;
-        world.sensors.swap_remove(sensor_index as usize);
-        if sensor_index < last {
-            let moved_shape_id = world.sensors[sensor_index as usize].shape_id;
-            world.shapes[moved_shape_id as usize].sensor_index = sensor_index;
-        }
+        crate::sensor::destroy_sensor(world, shape_index);
     }
 
     destroy_shape_allocations(world, shape_index);

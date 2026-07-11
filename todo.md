@@ -19,15 +19,14 @@ row here.
 |---|---|---|
 | [task-1.md](task-1.md) | Joints (lifecycle, 8 joint types, solver stages, events) | — |
 | [task-2.md](task-2.md) | Continuous collision / bullets (CCD) | — |
-| [task-3.md](task-3.md) | Sensors (overlap sweep, events, hit reporting) | — |
 | [task-4.md](task-4.md) | Remaining shape creates + b3Shape_*/b3Body_* API surface | — |
 | [task-5.md](task-5.md) | World queries, casts, explosion, world API surface | — |
 | [task-6.md](task-6.md) | Character mover | task-5 (cast/overlap machinery) |
 
-Merge-conflict warning: task-1, task-2, and task-3 all add passes to
-`src/solver/solve.rs` (joint stages, bullet pass, sensor-hits report) and
+Merge-conflict warning: task-1 and task-2 add passes to
+`src/solver/solve.rs` (joint stages, bullet pass) and
 task-1/task-2 both touch `src/solver/integrate.rs`. Land whichever finishes
-first and rebase the others.
+first and rebase the others. Sensor-hits report (task-3) already landed.
 
 ## Determinism gate (after the parallel tracks)
 

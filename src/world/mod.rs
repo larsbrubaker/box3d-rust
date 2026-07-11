@@ -414,4 +414,14 @@ impl World {
             in_use: true,
         }
     }
+
+    /// Sensor begin/end events from the previous step. End events come from
+    /// the previous double-buffer slot. (b3World_GetSensorEvents)
+    pub fn get_sensor_events(&self) -> crate::events::SensorEvents<'_> {
+        let end_event_array_index = 1 - self.end_event_array_index;
+        crate::events::SensorEvents {
+            begin_events: &self.sensor_begin_events,
+            end_events: &self.sensor_end_events[end_event_array_index as usize],
+        }
+    }
 }
