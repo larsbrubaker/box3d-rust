@@ -1,35 +1,29 @@
-# Task 4 — Remaining shape creates + Shape/Body API surface
+# Task 4 — Remaining b3Shape_* API + shape/body test remainders
 
 **Remaining work only; delete items as they complete and delete this file when
 the track is done (also remove its row from todo.md).**
 
-**Done on main (do not re-port):** mesh / height-field / compound `create_*_shape`,
-`TestCompoundHitEvents`, `TestOverflowColorPile`, body damping / gravity scale /
-`EnableSleep` (+ flag-sync tests), motion locks set/get, bullet API, name /
-user data, local/world point/vector + point velocity, ApplyForce/Torque/
-Impulse variants, `SetTransform`, `SetAwake` / `IsAwake` / `IsEnabled` /
-`GetType`, `SetType` / `Enable` / `Disable`, shape filter get/set (proxy +
-contact refresh), material get/set (base + per-index friction/restitution/rolling).
+What's left of the public shape API in `shape.c` and the last unported tests
+from `test_shape.c` / `test_body.c`. (The geometry-level ray-cast suite from
+`test_shape.c` is already ported under `src/geometry_tests/` — don't redo it.
+Mesh narrow-phase moved to task-6.)
 
-Collision geometry and body/shape filter+material mutators are ported. Remaining:
-shape enable/geometry/query APIs, mesh narrow-phase (needed by TestMeshDrop),
-and test remainders.
-
-## Mesh narrow-phase (blocks TestMeshDrop)
-
-- [ ] Port `mesh_contact.c` (mesh/height narrow-phase in `update_contact`;
-      contacts currently clear manifolds — bodies fall through meshes)
-- [ ] Port `TestMeshDrop` from `test_world.c` (needs mesh_contact; exercises
-      mesh contact stability until sleep)
+Unblocks the deferred task-5 tests (`SetHull` for `TestHullDatabase`,
+body-level queries for `test_body_query.c`).
 
 ## b3Shape_* API (shape.c)
 
-- [ ] Enable flags: sensor events, contact events, hit events, pre-solve
-- [ ] Geometry get/set (SetSphere/SetCapsule/SetHull/… with proxy rebuild)
-- [ ] Ray cast / point test / closest point against a single shape
-- [ ] AABB getters, user data, density (with mass update)
+- [ ] Enable flags get/set: sensor events, contact events, hit events,
+      pre-solve events (per-shape bits with contact flag refresh)
+- [ ] Geometry get/set: `SetSphere` / `SetCapsule` / `SetHull` / getters,
+      with proxy rebuild and contact recreation on change
+- [ ] Shape-level queries: ray cast, point test, closest point against a
+      single shape (world-space wrappers over the ported geometry kernels)
+- [ ] AABB getters, user data get/set, density set (with body mass update),
+      shape name get/set (NameCache)
 
 ## Tests
 
-- [ ] Port the remainder of `test_body.c` alongside the API slices
-- [ ] Port the remainder of `test_shape.c`
+- [ ] Port `PointInShapeTest`, `RayCastShapeTest`, `ShapeNameTest` /
+      `CheckShapeName`, `ShapeFlagsTest` from `test_shape.c`
+- [ ] Port `BodyTest` (the generic coverage test) from `test_body.c`

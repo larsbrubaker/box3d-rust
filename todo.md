@@ -9,45 +9,43 @@ Read `CLAUDE.md` first: the pinned C reference is `box3d-cpp-reference/`
 (never upstream), ports must match C behavior exactly, and the dynamics-core
 bring-up rules apply to everything below.
 
-## Remaining API / test tracks
+## Parallel tracks
 
-Tasks 1 (joints), 2 (CCD), and 3 (sensors) are on main. Character mover and
-core world queries landed with task-5. What remains:
-
-| File | Track | Status |
+| File | Track | Depends on |
 |---|---|---|
-| [task-4.md](task-4.md) | Shape/Body public API + `TestMeshDrop` | Partial — body mutators + shape filter/material landed; remaining: shape enable/geometry/query APIs, `mesh_contact`, `TestMeshDrop`, test remainders |
-| [task-5.md](task-5.md) | Deferred world/body query tests | Deferred — needs task-4 body/shape APIs (`SetHull`, body-level cast/overlap, contact-recycling flag) |
+| [task-4.md](task-4.md) | Remaining `b3Shape_*` API + shape/body test remainders | — |
+| [task-5.md](task-5.md) | Deferred world/body query tests | task-4 (`SetHull`, body-level queries) |
+| [task-6.md](task-6.md) | Mesh & height-field narrow phase (`mesh_contact.c`) — **critical path**: bodies currently fall through meshes | — |
+| [task-7.md](task-7.md) | Determinism gate + large world | scene helpers startable now; final hash needs task-6 |
 
-## Determinism gate (after task-4 leftovers)
-
-The acceptance bar for the whole dynamics unit. Needs joints (landed) and
-sleep-step parity; other features affect the hash only if used by the test scene.
-
-- [ ] Build the C reference with CMake and `BOX3D_DISABLE_SIMD=ON` (scalar path
-      is the behavioral reference; single-threaded run order)
-- [ ] Port `test/test_determinism.c` (falling-stack hash + sleep step)
-- [ ] Match `EXPECTED_SLEEP_STEP` and `EXPECTED_HASH` against the C build;
-      on divergence, instrument both sides and diff traces — never guess
-- [ ] Port `test/test_large_world.c` and run it under
-      `--features double-precision` (both configurations must pass)
+task-4 and task-6 don't overlap in files (API layer vs `src/contact/update.rs`)
+and can run on separate machines. task-7's scene-helper work is independent of
+both.
 
 ## Recording, replay, and snapshots
 
-Big surface; needs most of the public API from tasks 4–5 to exist first.
+Start after task-4 (op capture spans the public API surface).
 
 - [ ] Port `world_snapshot.c` (serialize/deserialize world state)
 - [ ] Port `recording.c` + `recording_ops.inl` (op capture)
 - [ ] Port `recording_replay.c` (deterministic replay)
 - [ ] Port `test/test_recording.c`
 
+## Benchmarks
+
+After the determinism gate passes (perf work before correctness is wasted).
+
+- [ ] Port `benchmark/` scenes as criterion benches (informs whether the
+      pooled manifold allocator or SIMD ever become worth it)
+
 ## Demo site samples
 
-Mirror the C `samples/` categories as features land (WebGL, `demo/`,
-`bun run build`). Add a sample when its physics exists:
+Mirror the C `samples/` categories (WebGL, `demo/`, `bun run build`). The
+physics for all of these exists now except the mesh scenes:
 
-- [ ] Joint samples (hinge chain, ragdoll-style) — joints landed; sample TBD
-- [ ] Sensor samples — sensors landed; sample TBD
-- [ ] Bullet/CCD samples — CCD landed; sample TBD
-- [ ] Query/raycast visualizer — after deferred task-5 tests / shape API
-- [ ] Character mover playground — mover API landed; sample still TODO
+- [ ] Joint samples (hinge chain, ragdoll once task-7's human.c port lands)
+- [ ] Sensor sample
+- [ ] Bullet/CCD sample
+- [ ] Query/raycast visualizer
+- [ ] Character mover playground
+- [ ] Mesh/height-field terrain scene — after task-6

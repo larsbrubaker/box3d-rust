@@ -551,7 +551,6 @@ pub fn try_sleep_island(world: &mut World, island_id: i32) {
 /// This is called when joints are created between sets. I want to allow the sets
 /// to continue sleeping if both are asleep. Otherwise one set is waked.
 /// Islands will get merged when the set is woke. (b3MergeSolverSets)
-#[allow(dead_code)] // bring-up: reachable once joint create lands
 pub fn merge_solver_sets(world: &mut World, set_id1: i32, set_id2: i32) {
     debug_assert!(set_id1 >= FIRST_SLEEPING_SET);
     debug_assert!(set_id2 >= FIRST_SLEEPING_SET);

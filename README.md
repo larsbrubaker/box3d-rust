@@ -23,7 +23,7 @@ land.
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of
 > Rust graphics and geometry libraries by Lars Brubaker.
 
-## Status: Dynamics core stepping (contacts, islands, sleep)
+## Status: Full pipeline stepping (joints, CCD, sensors, queries)
 
 Box3D was released by Erin Catto in June 2026. The pinned reference source lives in the
 `box3d-cpp-reference/` submodule (v0.1.0+, `540ea38`), and this port follows the same
@@ -40,9 +40,11 @@ suite.
 | Broad phase: proxy ops, move buffer (pair update deferred to world) | ✅ | ✅ (authored proxy tests) |
 | Dynamics: body/shape lifecycle, contact lifecycle, constraint graph, solver sets | ✅ | ✅ (test_body + authored world tests) |
 | Dynamics: islands — link, merge, split, sleep/wake | ✅ | ✅ (authored sleep/split tests) |
-| Joints: distance, motor, prismatic, revolute, spherical, weld, wheel | ⬜ | ⬜ (test_joint.c) |
-| Solver: serial contact solve + step pipeline, sleeping, hit events (sensors, continuous next) | 🟨 | 🟨 (HelloWorld, TestHitEvents; more of test_world.c pending) |
-| World API: queries, casts, character movers | ⬜ | ⬜ (test_body_query/mover.c) |
+| Joints: distance, motor, parallel, prismatic, revolute, spherical, weld, wheel | ✅ | ✅ (test_joint.c) |
+| Solver: serial contact solve, sub-step pipeline, sleeping, CCD/bullets, sensors, hit events | ✅ | 🟨 (test_world.c mostly ported; mesh-dependent tests pending) |
+| Narrow phase: mesh/height-field contacts (mesh_contact.c) | ⬜ | ⬜ (TestMeshDrop) |
+| World API: queries, casts, explode, character mover | ✅ | 🟨 (test_mover.c ✅; test_body_query.c deferred on shape API) |
+| Shape API remainder: enable flags, geometry set, per-shape queries | ⬜ | ⬜ (test_shape.c remainder) |
 | Determinism: hand-rolled trig, bit-exact vs the C build | ⬜ | ⬜ (test_determinism.c) |
 | Snapshots and recording/replay | ⬜ | ⬜ (test_recording.c) |
 | Large world mode (`double-precision` feature = `BOX3D_DOUBLE_PRECISION`) | ⬜ | ⬜ (test_large_world.c) |
