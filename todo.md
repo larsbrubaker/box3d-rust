@@ -16,7 +16,7 @@ bring-up rules apply to everything below.
 | [task-4.md](task-4.md) | Remaining `b3Shape_*` API + shape/body test remainders | — |
 | [task-5.md](task-5.md) | Deferred world/body query tests | task-4 (`SetHull`, body-level queries) |
 | [task-6.md](task-6.md) | Mesh & height-field narrow phase (`mesh_contact.c`) — **critical path**: bodies currently fall through meshes | — |
-| [task-7.md](task-7.md) | Determinism gate + large world | scene helpers startable now; final hash needs task-6 |
+| [task-7.md](task-7.md) | Determinism gate + large world | **helpers + large_world done** on `agent/task-7-helpers`; final `EXPECTED_HASH` needs task-6 |
 
 task-4 and task-6 don't overlap in files (API layer vs `src/contact/update.rs`)
 and can run on separate machines. task-7's scene-helper work is independent of
@@ -43,7 +43,7 @@ After the determinism gate passes (perf work before correctness is wasted).
 Mirror the C `samples/` categories (WebGL, `demo/`, `bun run build`). The
 physics for all of these exists now except the mesh scenes:
 
-- [ ] Joint samples (hinge chain, ragdoll once task-7's human.c port lands)
+- [ ] Joint samples (hinge chain, ragdoll — human.c ported on task-7 branch)
 - [ ] Sensor sample
 - [ ] Bullet/CCD sample
 - [ ] Query/raycast visualizer

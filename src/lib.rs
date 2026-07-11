@@ -134,6 +134,9 @@ mod world_tests;
 mod world_api_tests;
 
 #[cfg(test)]
+mod large_world_tests;
+
+#[cfg(test)]
 
 #[cfg(test)]
 mod tests {

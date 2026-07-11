@@ -263,8 +263,10 @@ mod dispatch;
 pub(crate) mod lifecycle;
 mod mutators;
 mod query;
+mod world_query;
 
 pub use api::*;
 pub use dispatch::*;
 pub use mutators::*;
 pub use query::*;
+pub use world_query::*;
