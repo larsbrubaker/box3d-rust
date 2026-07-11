@@ -13,11 +13,59 @@ use crate::distance::{
 use crate::geometry::types::{
     Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, ShapeExtent,
 };
-use crate::hull::types::{get_hull_planes, get_hull_points, HullData};
-use crate::math_functions::{
-    aabb_transform, aabb_union, abs, add, dot, inv_mul_transforms, max, mul_sm, mul_sv, sub, Aabb,
-    Plane, Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
+use crate::hull::types::{
+    get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, HullData,
 };
+use crate::math_functions::{
+    aabb_transform, aabb_union, abs, add, cross, dot, inv_mul_transforms, max, max_float, mul_sm,
+    mul_sv, sub, Aabb, Plane, Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
+};
+
+/// Projected area of a hull onto a plane with the given direction.
+/// Fan-triangulates each face and sums max(dot(cross(e1, e2), direction), 0).
+/// (b3ComputeHullProjectedArea)
+pub fn compute_hull_projected_area(hull: &HullData, direction: Vec3) -> f32 {
+    let mut area = 0.0;
+
+    let face_count = hull.face_count;
+    let hull_faces = get_hull_faces(hull);
+    let hull_edges = get_hull_edges(hull);
+    let hull_points = get_hull_points(hull);
+
+    for i in 0..face_count {
+        let face = &hull_faces[i as usize];
+
+        let base_edge = face.edge as i32;
+        let mut edge = &hull_edges[base_edge as usize];
+        let p1 = hull_points[edge.origin as usize];
+
+        let mut edge_index = edge.next as i32;
+        edge = &hull_edges[edge_index as usize];
+        let mut p2 = hull_points[edge.origin as usize];
+
+        edge_index = edge.next as i32;
+
+        loop {
+            edge = &hull_edges[edge_index as usize];
+            let p3 = hull_points[edge.origin as usize];
+
+            let e1 = sub(p2, p1);
+            let e2 = sub(p3, p1);
+            let n = cross(e1, e2);
+            let a = dot(n, direction);
+            area += max_float(a, 0.0);
+
+            p2 = p3;
+            edge_index = edge.next as i32;
+
+            if edge_index == base_edge {
+                break;
+            }
+        }
+    }
+
+    0.5 * area
+}
 
 /// Compute mass properties of a hull. (b3ComputeHullMass)
 pub fn compute_hull_mass(shape: &HullData, density: f32) -> MassData {

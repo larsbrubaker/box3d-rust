@@ -98,3 +98,18 @@ pub struct JointEvent {
     /// The user data from the joint for convenience
     pub user_data: u64,
 }
+
+/// Sensor events buffered in the world after a time step. (b3SensorEvents)
+#[derive(Debug, Clone, Copy)]
+pub struct SensorEvents<'a> {
+    pub begin_events: &'a [SensorBeginTouchEvent],
+    pub end_events: &'a [SensorEndTouchEvent],
+}
+
+/// Contact events buffered in the world after a time step. (b3ContactEvents)
+#[derive(Debug, Clone, Copy)]
+pub struct ContactEvents<'a> {
+    pub begin_events: &'a [ContactBeginTouchEvent],
+    pub end_events: &'a [ContactEndTouchEvent],
+    pub hit_events: &'a [ContactHitEvent],
+}

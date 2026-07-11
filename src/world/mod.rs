@@ -20,8 +20,13 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
+mod api;
+mod query;
 mod step;
 mod validate;
+
+pub use api::*;
+pub use query::*;
 
 use crate::bitset::BitSet;
 use crate::body::Body;

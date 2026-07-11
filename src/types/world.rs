@@ -96,3 +96,115 @@ impl Default for WorldDef {
         default_world_def()
     }
 }
+
+/// Result from 3World_CastRayClosest. (b3RayResult)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RayResult {
+    /// The shape hit.
+    pub shape_id: crate::id::ShapeId,
+    /// The world point of the hit.
+    pub point: crate::math_functions::Pos,
+    /// The world normal of the shape surface at the hit point.
+    pub normal: Vec3,
+    /// The user material id at the hit point.
+    pub user_material_id: u64,
+    /// The fraction of the input ray.
+    pub fraction: f32,
+    /// The triangle index if the shape is a mesh, height-field, or compound with child mesh.
+    pub triangle_index: i32,
+    /// The child index if the shape is a compound.
+    pub child_index: i32,
+    /// The number of BVH nodes visited. Diagnostic.
+    pub node_visits: i32,
+    /// The number of BVH leaves visited. Diagnostic.
+    pub leaf_visits: i32,
+    /// Did the ray hit? If false, all other data is invalid.
+    pub hit: bool,
+}
+
+impl Default for RayResult {
+    fn default() -> Self {
+        RayResult {
+            shape_id: crate::id::ShapeId::default(),
+            point: crate::math_functions::POS_ZERO,
+            normal: crate::math_functions::VEC3_ZERO,
+            user_material_id: 0,
+            fraction: 0.0,
+            triangle_index: 0,
+            child_index: 0,
+            node_visits: 0,
+            leaf_visits: 0,
+            hit: false,
+        }
+    }
+}
+
+/// Counters that give details of the simulation size. (b3Counters)
+///
+/// yte_count, stack_used, rena_capacity, and 	ask_count are always
+/// zero in this port: there is no global allocation tracker, no arena stack
+/// allocator, and no task system in the serial Rust implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Counters {
+    pub body_count: i32,
+    pub shape_count: i32,
+    pub contact_count: i32,
+    pub joint_count: i32,
+    pub island_count: i32,
+    pub stack_used: i32,
+    pub arena_capacity: i32,
+    pub static_tree_height: i32,
+    pub tree_height: i32,
+    pub sat_call_count: i32,
+    pub sat_cache_hit_count: i32,
+    pub byte_count: i32,
+    pub task_count: i32,
+    pub color_counts: [i32; crate::constants::GRAPH_COLOR_COUNT as usize],
+    pub manifold_counts: [i32; crate::constants::CONTACT_MANIFOLD_COUNT_BUCKETS],
+    /// Number of contacts touched by the collide pass (graph contacts +
+    /// awake-set non-touching).
+    pub awake_contact_count: i32,
+    /// Number of contacts recycled in the most recent step.
+    pub recycled_contact_count: i32,
+    /// Maximum number of time of impact iterations
+    pub distance_iterations: i32,
+    pub push_back_iterations: i32,
+    pub root_iterations: i32,
+}
+
+/// The explosion definition is used to configure options for explosions.
+/// Explosions consider shape geometry when computing the impulse.
+/// (b3ExplosionDef)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExplosionDef {
+    /// Mask bits to filter shapes
+    pub mask_bits: u64,
+    /// The center of the explosion in world space
+    pub position: crate::math_functions::Pos,
+    /// The radius of the explosion
+    pub radius: f32,
+    /// The falloff distance beyond the radius. Impulse is reduced to zero at
+    /// this distance.
+    pub falloff: f32,
+    /// Impulse per unit area. This applies an impulse according to the shape
+    /// area that is facing the explosion. Explosions only apply to spheres,
+    /// capsules, and hulls. This may be negative for implosions.
+    pub impulse_per_area: f32,
+}
+
+/// Use this to initialize your explosion definition. (b3DefaultExplosionDef)
+pub fn default_explosion_def() -> ExplosionDef {
+    ExplosionDef {
+        mask_bits: crate::dynamic_tree::DEFAULT_MASK_BITS,
+        position: crate::math_functions::POS_ZERO,
+        radius: 0.0,
+        falloff: 0.0,
+        impulse_per_area: 0.0,
+    }
+}
+
+impl Default for ExplosionDef {
+    fn default() -> Self {
+        default_explosion_def()
+    }
+}
