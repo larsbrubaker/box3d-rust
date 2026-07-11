@@ -24,12 +24,11 @@ builder has everything it needs.
 - [x] Port `test/test_large_world.c` (stack / bullet / query) →
       `src/large_world_tests.rs`, float + `--features double-precision`
 - [x] Minimal `b3Shape_RayCast` dependency for the query subtest →
-      `src/shape/world_query.rs` (fuller shape API remainders stay on task-4)
+      `src/shape/accessors.rs` (landed with task-4; interim world_query.rs dropped on merge)
 
-## Final gate (needs task-6 mesh_contact on main)
+## Final gate (task-6 mesh_contact is on main)
 
-Do **not** claim `EXPECTED_HASH` / full `test_determinism.c` until mesh
-narrow-phase lands — ragdolls currently fall through mesh grounds.
+Mesh narrow-phase has landed. Port the hash gate next:
 
 - [ ] Build the C reference with CMake and `BOX3D_DISABLE_SIMD=ON`
       (scalar single-threaded path is the behavioral reference)
