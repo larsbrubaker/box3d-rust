@@ -17,14 +17,15 @@ use super::{
     get_joint_full_id, get_joint_sim, make_joint_id, Joint, JointSim, JointType, JointUnion,
 };
 use crate::body::get_body_full_id;
+use crate::constants::linear_slop;
 use crate::core::NULL_INDEX;
 use crate::id::JointId;
 use crate::island::link_joint;
-use crate::math_functions::{is_valid_float, is_valid_transform, max_int};
+use crate::math_functions::{is_valid_float, is_valid_transform, max_float, max_int};
 use crate::solver_set::{
     merge_solver_sets, wake_solver_set, AWAKE_SET, DISABLED_SET, FIRST_SLEEPING_SET, STATIC_SET,
 };
-use crate::types::{BodyType, FilterJointDef, JointDef};
+use crate::types::{BodyType, DistanceJointDef, FilterJointDef, JointDef};
 use crate::world::World;
 
 /// (static b3DestroyContactsBetweenBodies)
@@ -289,6 +290,41 @@ pub fn create_filter_joint(world: &mut World, def: &FilterJointDef) -> JointId {
     make_joint_id(world, joint_id)
 }
 
+/// (b3CreateDistanceJoint)
+pub fn create_distance_joint(world: &mut World, def: &DistanceJointDef) -> JointId {
+    debug_assert!(def.base.internal_value == crate::core::SECRET_COOKIE);
+    debug_assert!(is_valid_float(def.length) && def.length > 0.0);
+    debug_assert!(def.lower_spring_force <= def.upper_spring_force);
+    debug_assert!(!world.locked);
+    if world.locked {
+        return crate::id::NULL_JOINT_ID;
+    }
+
+    let joint_id = create_joint(world, &def.base, JointType::Distance);
+
+    let joint_sim = get_joint_sim(world, joint_id);
+    let joint = joint_sim.distance_mut();
+    *joint = super::DistanceJoint::default();
+    joint.length = max_float(def.length, linear_slop());
+    joint.hertz = def.hertz;
+    joint.damping_ratio = def.damping_ratio;
+    joint.lower_spring_force = def.lower_spring_force;
+    joint.upper_spring_force = def.upper_spring_force;
+    joint.min_length = max_float(def.min_length, linear_slop());
+    joint.max_length = max_float(def.min_length, def.max_length);
+    joint.max_motor_force = def.max_motor_force;
+    joint.motor_speed = def.motor_speed;
+    joint.enable_spring = def.enable_spring;
+    joint.enable_limit = def.enable_limit;
+    joint.enable_motor = def.enable_motor;
+    joint.impulse = 0.0;
+    joint.lower_impulse = 0.0;
+    joint.upper_impulse = 0.0;
+    joint.motor_impulse = 0.0;
+
+    make_joint_id(world, joint_id)
+}
+
 /// (b3Joint_SetCollideConnected)
 pub fn joint_set_collide_connected(world: &mut World, joint_id: JointId, should_collide: bool) {
     debug_assert!(!world.locked);
@@ -478,6 +514,83 @@ mod tests {
         destroy_body(&mut world, body_a);
         assert!(!joint_is_valid(&world, filter_id));
         assert_eq!(world.joint_id_pool.id_count(), 0);
+        world.validate_solver_sets();
+    }
+
+    #[test]
+    fn create_distance_joint_and_accessors() {
+        use crate::joint::{
+            distance_joint_enable_limit, distance_joint_enable_motor, distance_joint_enable_spring,
+            distance_joint_get_current_length, distance_joint_get_length,
+            distance_joint_get_max_length, distance_joint_get_max_motor_force,
+            distance_joint_get_min_length, distance_joint_get_motor_speed,
+            distance_joint_get_spring_damping_ratio, distance_joint_get_spring_force_range,
+            distance_joint_get_spring_hertz, distance_joint_is_limit_enabled,
+            distance_joint_is_motor_enabled, distance_joint_is_spring_enabled,
+            distance_joint_set_length, distance_joint_set_length_range,
+            distance_joint_set_max_motor_force, distance_joint_set_motor_speed,
+            distance_joint_set_spring_damping_ratio, distance_joint_set_spring_force_range,
+            distance_joint_set_spring_hertz,
+        };
+        use crate::types::default_distance_joint_def;
+
+        let mut world = World::new(&default_world_def());
+        let ground = create_body(&mut world, &default_body_def());
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.position = crate::math_functions::Pos {
+            x: 0.0 as _,
+            y: 4.0 as _,
+            z: 0.0 as _,
+        };
+        let body = create_body(&mut world, &body_def);
+
+        let mut def = default_distance_joint_def();
+        def.base.body_id_a = ground;
+        def.base.body_id_b = body;
+        def.base.local_frame_a.p = crate::math_functions::Vec3 {
+            x: 0.0,
+            y: 4.0,
+            z: 0.0,
+        };
+        def.length = 2.0;
+        let id = create_distance_joint(&mut world, &def);
+
+        assert_eq!(joint_get_type(&world, id), JointType::Distance);
+        assert_eq!(distance_joint_get_length(&world, id), 2.0);
+
+        distance_joint_set_length(&mut world, id, 3.0);
+        assert_eq!(distance_joint_get_length(&world, id), 3.0);
+
+        distance_joint_enable_limit(&mut world, id, true);
+        assert!(distance_joint_is_limit_enabled(&world, id));
+        distance_joint_set_length_range(&mut world, id, 1.0, 5.0);
+        assert_eq!(distance_joint_get_min_length(&world, id), 1.0);
+        assert_eq!(distance_joint_get_max_length(&world, id), 5.0);
+
+        distance_joint_enable_spring(&mut world, id, true);
+        assert!(distance_joint_is_spring_enabled(&world, id));
+        distance_joint_set_spring_hertz(&mut world, id, 4.0);
+        assert_eq!(distance_joint_get_spring_hertz(&world, id), 4.0);
+        distance_joint_set_spring_damping_ratio(&mut world, id, 0.5);
+        assert_eq!(distance_joint_get_spring_damping_ratio(&world, id), 0.5);
+        distance_joint_set_spring_force_range(&mut world, id, -10.0, 20.0);
+        assert_eq!(
+            distance_joint_get_spring_force_range(&world, id),
+            (-10.0, 20.0)
+        );
+
+        distance_joint_enable_motor(&mut world, id, true);
+        assert!(distance_joint_is_motor_enabled(&world, id));
+        distance_joint_set_motor_speed(&mut world, id, 1.5);
+        assert_eq!(distance_joint_get_motor_speed(&world, id), 1.5);
+        distance_joint_set_max_motor_force(&mut world, id, 25.0);
+        assert_eq!(distance_joint_get_max_motor_force(&world, id), 25.0);
+
+        let current = distance_joint_get_current_length(&world, id);
+        assert!((current - 0.0).abs() < 1e-5, "current={current}");
+
+        destroy_joint(&mut world, id, true);
         world.validate_solver_sets();
     }
 

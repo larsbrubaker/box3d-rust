@@ -11,9 +11,11 @@ use crate::math_functions::{
 };
 use crate::solver::Softness;
 
+mod distance;
 mod lifecycle;
 mod plumbing;
 
+pub use distance::*;
 pub use lifecycle::*;
 pub use plumbing::*;
 
@@ -606,6 +608,23 @@ impl JointUnion {
 impl Default for JointUnion {
     fn default() -> Self {
         JointUnion::Distance(DistanceJoint::default())
+    }
+}
+
+impl JointSim {
+    /// (C: &base->distanceJoint)
+    pub fn distance(&self) -> &DistanceJoint {
+        match &self.union_ {
+            JointUnion::Distance(joint) => joint,
+            _ => unreachable!("joint union is not a distance joint"),
+        }
+    }
+
+    pub fn distance_mut(&mut self) -> &mut DistanceJoint {
+        match &mut self.union_ {
+            JointUnion::Distance(joint) => joint,
+            _ => unreachable!("joint union is not a distance joint"),
+        }
     }
 }
 
