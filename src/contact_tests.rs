@@ -2,10 +2,15 @@
 
 use crate::body::create_body;
 use crate::broad_phase::update_broad_phase_pairs;
+use crate::constraint_graph::{add_contact_to_graph, remove_contact_from_graph, OVERFLOW_INDEX};
+use crate::contact::contact_flags;
 use crate::contact::{can_collide, create_contact, destroy_contact};
 use crate::core::NULL_INDEX;
 use crate::geometry::{ShapeType, Sphere};
 use crate::hull::make_box_hull;
+use crate::island::{link_contact, unlink_contact};
+use crate::manifold::{Manifold, ManifoldPoint};
+use crate::math_functions::{Pos, VEC3_AXIS_Y, VEC3_ZERO};
 use crate::shape::{create_hull_shape, create_sphere_shape, destroy_shape};
 use crate::solver_set::AWAKE_SET;
 use crate::table::shape_pair_key;
@@ -113,4 +118,92 @@ fn update_pairs_creates_contact_for_overlap() {
     };
     destroy_shape(&mut world, shape, true);
     assert!(world.solver_sets[AWAKE_SET as usize].contact_indices.is_empty());
+}
+
+#[test]
+fn link_and_graph_dyn_static_contact() {
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+
+    let mut ball_def = default_body_def();
+    ball_def.type_ = BodyType::Dynamic;
+    ball_def.position = Pos {
+        x: 0.0 as _,
+        y: 1.0 as _,
+        z: 0.0 as _,
+    };
+    let ball = create_body(&mut world, &ball_def);
+
+    let shape_def = default_shape_def();
+    let box_hull = make_box_hull(5.0, 0.5, 5.0);
+    let ground_shape = create_hull_shape(&mut world, ground, &shape_def, &box_hull.base);
+
+    let mut ball_shape_def = default_shape_def();
+    ball_shape_def.density = 1.0;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    let ball_shape = create_sphere_shape(&mut world, ball, &ball_shape_def, &sphere);
+
+    create_contact(
+        &mut world,
+        ground_shape.index1 - 1,
+        ball_shape.index1 - 1,
+        0,
+    );
+    let contact_id = world.solver_sets[AWAKE_SET as usize].contact_indices[0];
+
+    // Simulate a touching manifold so link/graph can run without narrow phase.
+    {
+        let contact = &mut world.contacts[contact_id as usize];
+        let mut manifold = Manifold::default();
+        manifold.normal = VEC3_AXIS_Y;
+        manifold.point_count = 1;
+        manifold.points[0] = ManifoldPoint {
+            anchor_a: VEC3_ZERO,
+            anchor_b: VEC3_ZERO,
+            separation: -0.01,
+            ..ManifoldPoint::default()
+        };
+        contact.manifolds.push(manifold);
+        contact.flags |= contact_flags::TOUCHING | contact_flags::SIM_TOUCHING;
+    }
+
+    link_contact(&mut world, contact_id);
+    assert_ne!(world.contacts[contact_id as usize].island_id, NULL_INDEX);
+    assert_eq!(
+        world.contacts[contact_id as usize].island_id,
+        world.bodies[ball.index1 as usize - 1].island_id
+    );
+
+    add_contact_to_graph(&mut world, contact_id);
+    let color_index = world.contacts[contact_id as usize].color_index;
+    let local_index = world.contacts[contact_id as usize].local_index;
+    assert_ne!(color_index, NULL_INDEX);
+    assert!(color_index < OVERFLOW_INDEX); // dyn-static prefers non-overflow colors
+
+    let color = &world.constraint_graph.colors[color_index as usize];
+    assert!(
+        color.convex_contacts.contains(&contact_id)
+            || color.contacts.iter().any(|s| s.contact_id == contact_id)
+    );
+
+    unlink_contact(&mut world, contact_id);
+    assert_eq!(world.contacts[contact_id as usize].island_id, NULL_INDEX);
+
+    remove_contact_from_graph(
+        &mut world,
+        ground.index1 - 1,
+        ball.index1 - 1,
+        color_index,
+        local_index,
+        false,
+    );
+    let color = &world.constraint_graph.colors[color_index as usize];
+    assert!(!color.convex_contacts.contains(&contact_id));
+    assert!(!color.contacts.iter().any(|s| s.contact_id == contact_id));
 }

@@ -306,18 +306,29 @@ pub fn destroy_contact(world: &mut World, contact_id: i32, wake_bodies: bool) {
     }
 
     if world.contacts[contact_id as usize].island_id != NULL_INDEX {
-        // Island unlink lands with collide/island link.
-        debug_assert!(false, "unlink_contact not yet ported");
+        crate::island::unlink_contact(world, contact_id);
     }
 
-    let (color_index, local_index, set_index) = {
+    let (color_index, local_index, set_index, mesh_contact) = {
         let c = &world.contacts[contact_id as usize];
-        (c.color_index, c.local_index, c.set_index)
+        (
+            c.color_index,
+            c.local_index,
+            c.set_index,
+            (c.flags & contact_flags::SIM_MESH_CONTACT) != 0,
+        )
     };
 
     if color_index != NULL_INDEX {
         debug_assert!(set_index == AWAKE_SET);
-        debug_assert!(false, "remove_contact_from_graph not yet ported");
+        crate::constraint_graph::remove_contact_from_graph(
+            world,
+            body_id_a,
+            body_id_b,
+            color_index,
+            local_index,
+            mesh_contact,
+        );
     } else {
         debug_assert!(
             set_index != AWAKE_SET

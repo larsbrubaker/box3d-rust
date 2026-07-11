@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::NULL_INDEX;
-use crate::solver_set::{AWAKE_SET, FIRST_SLEEPING_SET};
+use crate::solver_set::{AWAKE_SET, DISABLED_SET, FIRST_SLEEPING_SET, STATIC_SET};
 use crate::world::World;
 
 /// Cached contact data stored in the island for fast contiguous iteration.
@@ -142,6 +142,153 @@ pub fn destroy_island(world: &mut World, island_id: i32) {
     island.set_index = NULL_INDEX;
 
     world.island_id_pool.free_id(island_id);
+}
+
+/// Merge two islands, keeping the larger. Either id may be NULL_INDEX (static).
+/// (b3MergeIslands)
+fn merge_islands(world: &mut World, island_id_a: i32, island_id_b: i32) -> i32 {
+    if island_id_a == island_id_b {
+        return island_id_a;
+    }
+    if island_id_a == NULL_INDEX {
+        debug_assert!(island_id_b != NULL_INDEX);
+        return island_id_b;
+    }
+    if island_id_b == NULL_INDEX {
+        debug_assert!(island_id_a != NULL_INDEX);
+        return island_id_a;
+    }
+
+    let (big_id, small_id) = {
+        let count_a = world.islands[island_id_a as usize].bodies.len();
+        let count_b = world.islands[island_id_b as usize].bodies.len();
+        if count_a >= count_b {
+            (island_id_a, island_id_b)
+        } else {
+            (island_id_b, island_id_a)
+        }
+    };
+
+    let small_bodies = std::mem::take(&mut world.islands[small_id as usize].bodies);
+    for body_id in small_bodies {
+        debug_assert!(world.bodies[body_id as usize].island_id == small_id);
+        let island_index = world.islands[big_id as usize].bodies.len() as i32;
+        world.bodies[body_id as usize].island_id = big_id;
+        world.bodies[body_id as usize].island_index = island_index;
+        world.islands[big_id as usize].bodies.push(body_id);
+    }
+
+    let small_contacts = std::mem::take(&mut world.islands[small_id as usize].contacts);
+    for link in small_contacts {
+        let contact = &mut world.contacts[link.contact_id as usize];
+        contact.island_id = big_id;
+        contact.island_index = world.islands[big_id as usize].contacts.len() as i32;
+        world.islands[big_id as usize].contacts.push(link);
+    }
+
+    let small_joints = std::mem::take(&mut world.islands[small_id as usize].joints);
+    for link in small_joints {
+        let joint = &mut world.joints[link.joint_id as usize];
+        joint.island_id = big_id;
+        joint.island_index = world.islands[big_id as usize].joints.len() as i32;
+        world.islands[big_id as usize].joints.push(link);
+    }
+
+    world.islands[big_id as usize].constraint_remove_count +=
+        world.islands[small_id as usize].constraint_remove_count;
+
+    destroy_island(world, small_id);
+    validate_island(world, big_id);
+    big_id
+}
+
+/// (b3AddContactToIsland)
+fn add_contact_to_island(world: &mut World, island_id: i32, contact_id: i32) {
+    debug_assert!(world.contacts[contact_id as usize].island_id == NULL_INDEX);
+    debug_assert!(world.contacts[contact_id as usize].island_index == NULL_INDEX);
+
+    let island_index = world.islands[island_id as usize].contacts.len() as i32;
+    let link = ContactLink {
+        contact_id,
+        body_id_a: world.contacts[contact_id as usize].edges[0].body_id,
+        body_id_b: world.contacts[contact_id as usize].edges[1].body_id,
+    };
+
+    world.contacts[contact_id as usize].island_id = island_id;
+    world.contacts[contact_id as usize].island_index = island_index;
+    world.islands[island_id as usize].contacts.push(link);
+
+    validate_island(world, island_id);
+}
+
+/// Link a touching contact into an island, waking sleeping partners and merging
+/// as needed. (b3LinkContact)
+pub fn link_contact(world: &mut World, contact_id: i32) {
+    use crate::contact::contact_flags;
+    use crate::solver_set::wake_solver_set;
+
+    debug_assert!(
+        (world.contacts[contact_id as usize].flags & contact_flags::TOUCHING) != 0
+    );
+
+    let body_id_a = world.contacts[contact_id as usize].edges[0].body_id;
+    let body_id_b = world.contacts[contact_id as usize].edges[1].body_id;
+
+    let set_a = world.bodies[body_id_a as usize].set_index;
+    let set_b = world.bodies[body_id_b as usize].set_index;
+    debug_assert!(set_a != DISABLED_SET && set_b != DISABLED_SET);
+    debug_assert!(set_a != STATIC_SET || set_b != STATIC_SET);
+
+    // Wake bodyB if bodyA is awake and bodyB is sleeping
+    if set_a == AWAKE_SET && set_b >= FIRST_SLEEPING_SET {
+        wake_solver_set(world, set_b);
+    }
+
+    // Wake bodyA if bodyB is awake and bodyA is sleeping
+    let set_a = world.bodies[body_id_a as usize].set_index;
+    let set_b = world.bodies[body_id_b as usize].set_index;
+    if set_b == AWAKE_SET && set_a >= FIRST_SLEEPING_SET {
+        wake_solver_set(world, set_a);
+    }
+
+    let island_id_a = world.bodies[body_id_a as usize].island_id;
+    let island_id_b = world.bodies[body_id_b as usize].island_id;
+
+    debug_assert!(
+        world.bodies[body_id_a as usize].set_index != STATIC_SET || island_id_a == NULL_INDEX
+    );
+    debug_assert!(
+        world.bodies[body_id_b as usize].set_index != STATIC_SET || island_id_b == NULL_INDEX
+    );
+    debug_assert!(island_id_a != NULL_INDEX || island_id_b != NULL_INDEX);
+
+    let final_island_id = merge_islands(world, island_id_a, island_id_b);
+    add_contact_to_island(world, final_island_id, contact_id);
+}
+
+/// Remove a contact from its island. (b3UnlinkContact)
+pub fn unlink_contact(world: &mut World, contact_id: i32) {
+    let island_id = world.contacts[contact_id as usize].island_id;
+    debug_assert!(island_id != NULL_INDEX);
+
+    let remove_index = world.contacts[contact_id as usize].island_index;
+    let island = &mut world.islands[island_id as usize];
+    debug_assert!(0 <= remove_index && (remove_index as usize) < island.contacts.len());
+    debug_assert!(island.contacts[remove_index as usize].contact_id == contact_id);
+
+    let moved_index = island.contacts.len() as i32 - 1;
+    island.contacts.swap_remove(remove_index as usize);
+    if moved_index != remove_index {
+        let moved_contact_id = island.contacts[remove_index as usize].contact_id;
+        debug_assert!(world.contacts[moved_contact_id as usize].island_index == moved_index);
+        world.contacts[moved_contact_id as usize].island_index = remove_index;
+    }
+
+    world.contacts[contact_id as usize].island_id = NULL_INDEX;
+    world.contacts[contact_id as usize].island_index = NULL_INDEX;
+    world.islands[island_id as usize].constraint_remove_count += 1;
+
+    validate_island(world, island_id);
 }
 
 /// Validate island connectivity and bookkeeping. (b3ValidateIsland)
