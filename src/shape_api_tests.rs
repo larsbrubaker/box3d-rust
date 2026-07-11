@@ -1,19 +1,29 @@
-//! Shape filter and material public API tests.
+//! Shape filter, material, flag, name, density, geometry, and query API tests.
 //!
-//! Covers b3Shape_Get/SetFilter and friction/restitution/surface/mesh materials.
+//! Covers b3Shape_Get/SetFilter, friction/restitution/surface/mesh materials,
+//! ShapeFlagsTest / ShapeNameTest from test_shape.c, plus density/AABB/userData
+//! and SetSphere/SetCapsule/SetHull round-trips.
 
-use crate::body::create_body;
+use crate::body::{body_get_mass, create_body};
 use crate::broad_phase::{proxy_id, proxy_type};
+use crate::constants::SHAPE_NAME_LENGTH;
 use crate::contact::create_contact;
 use crate::core::NULL_INDEX;
-use crate::geometry::{default_surface_material, Sphere};
-use crate::math_functions::{Vec3, VEC3_ONE, VEC3_ZERO};
+use crate::geometry::{default_surface_material, Capsule, Sphere};
+use crate::hull::make_box_hull;
+use crate::math_functions::{Vec3, POS_ZERO, VEC3_ONE, VEC3_ZERO};
 use crate::mesh::create_box_mesh;
 use crate::shape::{
-    create_mesh_shape, create_sphere_shape, shape_get_filter, shape_get_friction,
-    shape_get_mesh_material_count, shape_get_mesh_surface_material, shape_get_restitution,
-    shape_get_surface_material, shape_set_filter, shape_set_friction, shape_set_mesh_material,
-    shape_set_restitution, shape_set_surface_material,
+    create_hull_shape, create_mesh_shape, create_sphere_shape, shape_are_contact_events_enabled,
+    shape_are_hit_events_enabled, shape_are_pre_solve_events_enabled,
+    shape_are_sensor_events_enabled, shape_enable_contact_events, shape_enable_hit_events,
+    shape_enable_pre_solve_events, shape_enable_sensor_events, shape_get_aabb, shape_get_capsule,
+    shape_get_closest_point, shape_get_density, shape_get_filter, shape_get_friction,
+    shape_get_hull, shape_get_mesh_material_count, shape_get_mesh_surface_material, shape_get_name,
+    shape_get_restitution, shape_get_sphere, shape_get_surface_material, shape_get_user_data,
+    shape_ray_cast, shape_set_capsule, shape_set_density, shape_set_filter, shape_set_friction,
+    shape_set_hull, shape_set_mesh_material, shape_set_name, shape_set_restitution,
+    shape_set_sphere, shape_set_surface_material, shape_set_user_data,
 };
 use crate::solver_set::AWAKE_SET;
 use crate::types::{
@@ -35,6 +45,15 @@ fn make_dynamic_sphere(world: &mut World) -> (crate::id::BodyId, crate::id::Shap
     };
     let shape = create_sphere_shape(world, body, &shape_def, &sphere);
     (body, shape)
+}
+
+fn check_shape_name(world: &World, shape_id: crate::id::ShapeId, expected: &str) {
+    let got = shape_get_name(world, shape_id);
+    let expect_len = expected.len().min(SHAPE_NAME_LENGTH);
+    assert_eq!(got.len(), expect_len);
+    if expect_len > 0 {
+        assert_eq!(&got[..expect_len], &expected[..expect_len]);
+    }
 }
 
 #[test]
@@ -94,15 +113,24 @@ fn mesh_materials_get_set_by_index() {
     let shape = create_mesh_shape(&mut world, body, &shape_def, &mesh, VEC3_ONE);
 
     assert_eq!(shape_get_mesh_material_count(&world, shape), 2);
-    assert_eq!(shape_get_mesh_surface_material(&world, shape, 0).user_material_id, 1);
-    assert_eq!(shape_get_mesh_surface_material(&world, shape, 1).user_material_id, 2);
+    assert_eq!(
+        shape_get_mesh_surface_material(&world, shape, 0).user_material_id,
+        1
+    );
+    assert_eq!(
+        shape_get_mesh_surface_material(&world, shape, 1).user_material_id,
+        2
+    );
 
     let mut mat_b2 = mat_b;
     mat_b2.restitution = 0.9;
     shape_set_mesh_material(&mut world, shape, mat_b2, 1);
     assert!((shape_get_mesh_surface_material(&world, shape, 1).restitution - 0.9).abs() < 1e-6);
     // Index 0 (base) unchanged.
-    assert_eq!(shape_get_mesh_surface_material(&world, shape, 0).user_material_id, 1);
+    assert_eq!(
+        shape_get_mesh_surface_material(&world, shape, 0).user_material_id,
+        1
+    );
 }
 
 #[test]
@@ -191,4 +219,215 @@ fn filter_invoke_destroys_contacts_and_rebuilds_proxy() {
     );
     let _ = (proxy_before, shape_b);
     assert!(!world.locked);
+}
+
+/// ShapeFlagsTest from test_shape.c — each enable bit is independent.
+#[test]
+fn shape_flags_test() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body = create_body(&mut world, &body_def);
+
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    shape_def.enable_sensor_events = true;
+    shape_def.enable_contact_events = true;
+    shape_def.enable_hit_events = true;
+    shape_def.enable_pre_solve_events = true;
+    let shape = create_sphere_shape(&mut world, body, &shape_def, &sphere);
+
+    assert!(shape_are_sensor_events_enabled(&world, shape));
+    assert!(shape_are_contact_events_enabled(&world, shape));
+    assert!(shape_are_hit_events_enabled(&world, shape));
+    assert!(shape_are_pre_solve_events_enabled(&world, shape));
+
+    shape_enable_sensor_events(&mut world, shape, false);
+    assert!(!shape_are_sensor_events_enabled(&world, shape));
+    assert!(shape_are_contact_events_enabled(&world, shape));
+    assert!(shape_are_hit_events_enabled(&world, shape));
+    assert!(shape_are_pre_solve_events_enabled(&world, shape));
+
+    shape_enable_sensor_events(&mut world, shape, true);
+    shape_enable_hit_events(&mut world, shape, false);
+    assert!(shape_are_sensor_events_enabled(&world, shape));
+    assert!(shape_are_contact_events_enabled(&world, shape));
+    assert!(!shape_are_hit_events_enabled(&world, shape));
+    assert!(shape_are_pre_solve_events_enabled(&world, shape));
+
+    shape_enable_contact_events(&mut world, shape, false);
+    shape_enable_pre_solve_events(&mut world, shape, false);
+    assert!(shape_are_sensor_events_enabled(&world, shape));
+    assert!(!shape_are_contact_events_enabled(&world, shape));
+    assert!(!shape_are_hit_events_enabled(&world, shape));
+    assert!(!shape_are_pre_solve_events_enabled(&world, shape));
+}
+
+/// ShapeNameTest from test_shape.c — def path, setter, truncation, clear.
+#[test]
+fn shape_name_test() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body = create_body(&mut world, &body_def);
+
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    let shape = create_sphere_shape(&mut world, body, &shape_def, &sphere);
+    check_shape_name(&world, shape, "");
+
+    shape_def.name = "box".to_string();
+    let named = create_sphere_shape(&mut world, body, &shape_def, &sphere);
+    check_shape_name(&world, named, "box");
+
+    shape_set_name(&mut world, shape, "wheel");
+    check_shape_name(&world, shape, "wheel");
+
+    shape_set_name(&mut world, shape, "abcdefghijklmnopqrstuvwxyz");
+    check_shape_name(&world, shape, "abcdefghijklmnopqrstuvwxyz");
+
+    shape_set_name(&mut world, shape, "");
+    check_shape_name(&world, shape, "");
+}
+
+#[test]
+fn density_user_data_aabb_round_trip() {
+    let mut world = World::new(&default_world_def());
+    let (body, shape) = make_dynamic_sphere(&mut world);
+
+    assert!((shape_get_density(&world, shape) - 1.0).abs() < 1e-6);
+    let mass_before = body_get_mass(&world, body);
+
+    shape_set_density(&mut world, shape, 3.0, true);
+    assert!((shape_get_density(&world, shape) - 3.0).abs() < 1e-6);
+    let mass_after = body_get_mass(&world, body);
+    assert!((mass_after - 3.0 * mass_before).abs() < 1e-4);
+
+    // Same density is a no-op.
+    shape_set_density(&mut world, shape, 3.0, true);
+
+    shape_set_user_data(&mut world, shape, 0xDEAD_BEEF);
+    assert_eq!(shape_get_user_data(&world, shape), 0xDEAD_BEEF);
+
+    let aabb = shape_get_aabb(&world, shape);
+    assert!(aabb.upper_bound.x > aabb.lower_bound.x);
+}
+
+#[test]
+fn set_sphere_capsule_hull_round_trip() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body = create_body(&mut world, &body_def);
+
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    shape_def.invoke_contact_creation = false;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    let shape = create_sphere_shape(&mut world, body, &shape_def, &sphere);
+    assert_eq!(shape_get_sphere(&world, shape).radius, 0.5);
+
+    let new_sphere = Sphere {
+        center: Vec3::new(0.1, 0.0, 0.0),
+        radius: 1.25,
+    };
+    shape_set_sphere(&mut world, shape, &new_sphere);
+    assert_eq!(shape_get_sphere(&world, shape), new_sphere);
+
+    let capsule = Capsule {
+        center1: Vec3::new(0.0, -0.5, 0.0),
+        center2: Vec3::new(0.0, 0.5, 0.0),
+        radius: 0.25,
+    };
+    shape_set_capsule(&mut world, shape, &capsule);
+    assert_eq!(shape_get_capsule(&world, shape), capsule);
+
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    shape_set_hull(&mut world, shape, &box_hull.base);
+    let got_hash = shape_get_hull(&world, shape).expect("hull").hash;
+    assert_eq!(got_hash, box_hull.base.hash);
+    assert_eq!(world.hull_database.len(), 1);
+
+    // Same shared content is a no-op (no extra database entry).
+    shape_set_hull(&mut world, shape, &box_hull.base);
+    assert_eq!(world.hull_database.len(), 1);
+}
+
+#[test]
+fn shape_ray_cast_and_closest_point() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Static;
+    let body = create_body(&mut world, &body_def);
+
+    let mut shape_def = default_shape_def();
+    shape_def.invoke_contact_creation = false;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 1.0,
+    };
+    let shape = create_sphere_shape(&mut world, body, &shape_def, &sphere);
+
+    let origin = crate::math_functions::offset_pos(POS_ZERO, Vec3::new(-4.0, 0.0, 0.0));
+    let translation = Vec3::new(8.0, 0.0, 0.0);
+    let hit = shape_ray_cast(&world, shape, origin, translation);
+    assert!(hit.hit);
+    assert!((hit.fraction - 0.375).abs() < 1e-5);
+    assert!((hit.normal.x + 1.0).abs() < 1e-5);
+
+    let closest = shape_get_closest_point(&world, shape, Vec3::new(3.0, 0.0, 0.0));
+    assert!((closest.x - 1.0).abs() < 1e-4);
+    assert!(closest.y.abs() < 1e-4);
+    assert!(closest.z.abs() < 1e-4);
+}
+
+#[test]
+fn set_hull_from_sphere_rebuilds_proxy() {
+    let mut world = World::new(&default_world_def());
+    let (_body, shape) = make_dynamic_sphere(&mut world);
+    let raw = (shape.index1 - 1) as usize;
+
+    let box_hull = make_box_hull(1.0, 1.0, 1.0);
+    shape_set_hull(&mut world, shape, &box_hull.base);
+    assert!(shape_get_hull(&world, shape).is_some());
+    assert!(world.shapes[raw].proxy_key != NULL_INDEX);
+}
+
+#[test]
+fn hull_set_shares_database_entry() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body_a = create_body(&mut world, &body_def);
+    let body_b = create_body(&mut world, &body_def);
+
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    let shape_def = default_shape_def();
+    let shape_a = create_hull_shape(&mut world, body_a, &shape_def, &box_hull.base);
+    let shape_b = create_hull_shape(&mut world, body_b, &shape_def, &box_hull.base);
+    assert_eq!(world.hull_database.len(), 1);
+
+    let got_a = shape_get_hull(&world, shape_a).unwrap() as *const _;
+    // Re-set from the stack hull; content match keeps the shared database entry.
+    shape_set_hull(&mut world, shape_b, &box_hull.base);
+    let got_b = shape_get_hull(&world, shape_b).unwrap() as *const _;
+    assert_eq!(got_a, got_b);
+    assert_eq!(world.hull_database.len(), 1);
 }

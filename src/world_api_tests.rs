@@ -2,7 +2,7 @@
 //!
 //! Not ported: TestWorldRecycle (global world registry), TestSetWorkerCount
 //! (task system), and test_body_query.c (needs body-level cast APIs from
-//! task-4). TestHullDatabase SetHull path deferred with remaining shape API.
+//! task-5). TestHullDatabase SetHull path is available via shape_set_hull.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
