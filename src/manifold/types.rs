@@ -155,3 +155,57 @@ pub(crate) struct ClipVertex {
     pub separation: f32,
     pub pair: FeaturePair,
 }
+
+/// Maximum vertices in a clipped polygon buffer. (B3_MAX_CLIP_POINTS)
+pub(crate) const MAX_CLIP_POINTS: usize = 64;
+
+/// Face SAT query result. (b3FaceQuery)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct FaceQuery {
+    pub separation: f32,
+    pub face_index: i32,
+    pub vertex_index: i32,
+}
+
+/// Edge-pair SAT query result. (b3EdgeQuery)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct EdgeQuery {
+    pub separation: f32,
+    pub index_a: i32,
+    pub index_b: i32,
+}
+
+/// Cached separating axis feature. (b3SeparatingFeature)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum SeparatingFeature {
+    #[default]
+    InvalidAxis = 0,
+    BacksideAxis = 1,
+    FaceAxisA = 2,
+    FaceAxisB = 3,
+    EdgePairAxis = 4,
+    ClosestPointsAxis = 5,
+    /// Testing only
+    ManualFaceAxisA = 6,
+    /// Testing only
+    ManualFaceAxisB = 7,
+    /// Testing only
+    ManualEdgePairAxis = 8,
+}
+
+/// Separating axis test cache. Provides temporal acceleration of collision routines.
+/// (b3SATCache)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SatCache {
+    /// The separation when the cache is populated. Negative for overlap.
+    pub separation: f32,
+    /// [`SeparatingFeature`].
+    pub type_: u8,
+    /// Index of the feature on shape A.
+    pub index_a: u8,
+    /// Index of the feature on shape B.
+    pub index_b: u8,
+    /// Was the cache re-used?
+    pub hit: u8,
+}

@@ -122,6 +122,12 @@ pub fn make_diagonal_matrix(a: f32, b: f32, c: f32) -> Matrix3 {
     }
 }
 
+/// True if both closest-point fractions lie on their segments. (math_internal.h: b3IsWithinSegments)
+pub fn is_within_segments(result: &SegmentDistanceResult) -> bool {
+    (0.0 <= result.fraction1 && result.fraction1 <= 1.0)
+        && (0.0 <= result.fraction2 && result.fraction2 <= 1.0)
+}
+
 /// Plane through `point` with given `normal`. (math_internal.h: b3MakePlaneFromNormalAndPoint)
 pub fn make_plane_from_normal_and_point(normal: Vec3, point: Vec3) -> Plane {
     Plane {

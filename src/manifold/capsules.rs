@@ -3,6 +3,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use super::clip::clip_segment;
 use super::types::{
     make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, FEATURE_PAIR_SINGLE,
 };
@@ -10,47 +11,9 @@ use crate::constants::{linear_slop, min_capsule_length, speculative_distance};
 use crate::geometry::Capsule;
 use crate::math_functions::{
     add, cross, distance, dot, get_length_and_normalize, length_squared, mul_add, mul_sub, mul_sv,
-    neg, normalize, plane_separation, point_to_segment_distance, segment_distance, sub,
+    neg, normalize, point_to_segment_distance, segment_distance, sub,
     transform_point, Plane, Transform,
 };
-
-/// Clip a 2-vertex segment against a plane in place. (static b3ClipSegment)
-pub(crate) fn clip_segment(segment: &mut [ClipVertex; 2], plane: Plane) -> i32 {
-    let mut vertex_count = 0;
-    let vertex1 = segment[0];
-    let vertex2 = segment[1];
-
-    let distance1 = plane_separation(plane, vertex1.position);
-    let distance2 = plane_separation(plane, vertex2.position);
-
-    // If the points are behind the plane
-    if distance1 <= 0.0 {
-        segment[vertex_count as usize] = vertex1;
-        vertex_count += 1;
-    }
-    if distance2 <= 0.0 {
-        segment[vertex_count as usize] = vertex2;
-        vertex_count += 1;
-    }
-
-    // If the points are on different sides of the plane
-    if distance1 * distance2 < 0.0 {
-        // Find intersection point of edge and plane
-        let t = distance1 / (distance1 - distance2);
-        segment[vertex_count as usize].position = add(
-            mul_sv(1.0 - t, vertex1.position),
-            mul_sv(t, vertex2.position),
-        );
-        segment[vertex_count as usize].pair = if distance1 > 0.0 {
-            vertex1.pair
-        } else {
-            vertex2.pair
-        };
-        vertex_count += 1;
-    }
-
-    vertex_count
-}
 
 /// Collide two capsules. (b3CollideCapsules)
 pub fn collide_capsules(
