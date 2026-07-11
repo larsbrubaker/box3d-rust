@@ -380,6 +380,26 @@ pub fn solve(world: &mut World, context: &StepContext) {
         }
     }
 
+    // Report sensor hits. This may include bullet sensor hits.
+    {
+        let mut drained: Vec<(i32, i32, u16)> = Vec::new();
+        for task_context in &world.task_contexts {
+            for hit in &task_context.sensor_hits {
+                let sensor_index = world.shapes[hit.sensor_id as usize].sensor_index;
+                let generation = world.shapes[hit.visitor_id as usize].generation;
+                drained.push((sensor_index, hit.visitor_id, generation));
+            }
+        }
+        for (sensor_index, visitor_id, generation) in drained {
+            world.sensors[sensor_index as usize]
+                .hits
+                .push(crate::sensor::Visitor {
+                    shape_id: visitor_id,
+                    generation,
+                });
+        }
+    }
+
     // Island sleeping
     // This must be done last because putting islands to sleep invalidates the enlarged body bits.
     if world.enable_sleep {

@@ -87,8 +87,16 @@ impl World {
             solve(self, &context);
         }
 
+        // Update sensors (after solve; C physics_world.c runs b3OverlapSensors here)
+        crate::sensor::overlap_sensors(self);
+
         self.step_index = self.step_index.wrapping_add(1);
         self.validate_solver_sets();
+
+        // Swap end event array buffers
+        self.end_event_array_index = 1 - self.end_event_array_index;
+        self.sensor_end_events[self.end_event_array_index as usize].clear();
+        self.contact_end_events[self.end_event_array_index as usize].clear();
         self.locked = false;
     }
 }
