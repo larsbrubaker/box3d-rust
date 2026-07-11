@@ -101,11 +101,37 @@ pub fn dot2(v1: Vec2, v2: Vec2) -> f32 {
     v1.x * v2.x + v1.y * v2.y
 }
 
+/// 2D length. (math_internal.h: b3Length2)
+pub fn length2(v: Vec2) -> f32 {
+    dot2(v, v).sqrt()
+}
+
+/// 2D length squared. (math_internal.h: b3LengthSquared2)
+pub fn length_squared2(v: Vec2) -> f32 {
+    dot2(v, v)
+}
+
+/// 2D vector addition. (math_internal.h: b3Add2)
+pub fn add2(a: Vec2, b: Vec2) -> Vec2 {
+    Vec2 {
+        x: a.x + b.x,
+        y: a.y + b.y,
+    }
+}
+
 /// 2D vector subtraction. (math_internal.h: b3Sub2)
 pub fn sub2(a: Vec2, b: Vec2) -> Vec2 {
     Vec2 {
         x: a.x - b.x,
         y: a.y - b.y,
+    }
+}
+
+/// 2D scalar multiply. (math_internal.h: b3MulSV2)
+pub fn mul_sv2(s: f32, v: Vec2) -> Vec2 {
+    Vec2 {
+        x: s * v.x,
+        y: s * v.y,
     }
 }
 

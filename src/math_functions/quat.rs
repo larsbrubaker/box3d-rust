@@ -259,6 +259,23 @@ pub fn get_twist_angle(q: Quat) -> f32 {
     twist
 }
 
+/// Pseudo angular velocity from a quaternion target.
+/// `w = 2 * (target - q) * conj(q)` (math_internal.h: b3DeltaQuatToRotation)
+pub fn delta_quat_to_rotation(q: Quat, target: Quat) -> Vec3 {
+    let mut s = q;
+    if dot_quat(q, target) < 0.0 {
+        // Correct polarity
+        s = negate_quat(q);
+    }
+
+    let diff = Quat {
+        v: sub(target.v, s.v),
+        s: target.s - s.s,
+    };
+    let product = mul_quat(diff, conjugate(s));
+    mul_sv(2.0, product.v)
+}
+
 /// Swing angle used for cone limit
 pub fn get_swing_angle(q: Quat) -> f32 {
     // Polarity should not matter because all terms are squared.

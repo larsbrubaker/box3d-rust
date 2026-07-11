@@ -1,6 +1,6 @@
 //! Serial solve driver from solver.c: island split → prepare → sub-step loop →
-//! restitution → store → finalize → broad-phase enlarge → island sleep.
-//! Joints are not yet wired.
+//! restitution → store → finalize → joint events → hit events → broad-phase
+//! enlarge → island sleep.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -18,14 +18,101 @@ use crate::contact_solver::{
     warm_start_contacts, ContactConstraint,
 };
 use crate::core::NULL_INDEX;
-use crate::events::BodyMoveEvent;
+use crate::events::{BodyMoveEvent, JointEvent};
+use crate::id::{BodyId, JointId};
 use crate::island::split_island;
-use crate::id::BodyId;
+use crate::joint::{get_joint_reaction, prepare_joint, solve_joint, warm_start_joint};
 use crate::math_functions::WORLD_TRANSFORM_IDENTITY;
 use crate::shape::shape_flags;
 use crate::solver_set::{try_sleep_island, AWAKE_SET};
 use crate::types::BodyType;
 use crate::world::World;
+
+/// Solve joints then contacts for overflow + colors. During biased solve,
+/// force/torque thresholds set bits in `joint_state_bit_set`. (serial of
+/// b3SolveJointsTask / b3SolveContacts + overflow)
+fn solve_joints_then_contacts(
+    world: &mut World,
+    color_constraints: &mut [Vec<ContactConstraint>],
+    context: &StepContext,
+    use_bias: bool,
+) {
+    // Overflow first
+    {
+        let mut joint_sims =
+            std::mem::take(&mut world.constraint_graph.colors[OVERFLOW_INDEX as usize].joint_sims);
+        {
+            let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
+            for joint in &mut joint_sims {
+                solve_joint(joint, context, states, use_bias);
+            }
+        }
+        if use_bias {
+            for joint in &mut joint_sims {
+                maybe_flag_joint_reaction(world, joint, context.inv_h);
+            }
+        }
+        world.constraint_graph.colors[OVERFLOW_INDEX as usize].joint_sims = joint_sims;
+
+        let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
+        solve_contacts(
+            &mut color_constraints[OVERFLOW_INDEX as usize],
+            states,
+            context,
+            use_bias,
+        );
+    }
+
+    for color_index in 0..OVERFLOW_INDEX as usize {
+        let mut joint_sims =
+            std::mem::take(&mut world.constraint_graph.colors[color_index].joint_sims);
+        {
+            let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
+            for joint in &mut joint_sims {
+                solve_joint(joint, context, states, use_bias);
+            }
+        }
+        if use_bias {
+            for joint in &mut joint_sims {
+                maybe_flag_joint_reaction(world, joint, context.inv_h);
+            }
+        }
+        world.constraint_graph.colors[color_index].joint_sims = joint_sims;
+
+        let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
+        solve_contacts(
+            &mut color_constraints[color_index],
+            states,
+            context,
+            use_bias,
+        );
+    }
+}
+
+fn maybe_flag_joint_reaction(
+    world: &mut World,
+    joint: &crate::joint::JointSim,
+    inv_h: f32,
+) {
+    if !(joint.force_threshold < f32::MAX || joint.torque_threshold < f32::MAX) {
+        return;
+    }
+    if world.task_contexts[0]
+        .joint_state_bit_set
+        .get_bit(joint.joint_id as u32)
+    {
+        return;
+    }
+
+    let (force, torque) = get_joint_reaction(world, joint, inv_h);
+
+    // Check thresholds. A zero threshold means all awake joints get reported.
+    if force >= joint.force_threshold || torque >= joint.torque_threshold {
+        world.task_contexts[0]
+            .joint_state_bit_set
+            .set_bit(joint.joint_id as u32);
+    }
+}
 
 /// Solve with graph coloring. (b3Solve — serial)
 ///
@@ -48,12 +135,16 @@ pub fn solve(world: &mut World, context: &StepContext) {
     );
 
     let contact_id_capacity = world.contact_id_pool.id_capacity();
+    let joint_id_capacity = world.joint_id_pool.id_capacity();
     {
         let task_context = &mut world.task_contexts[0];
         task_context
             .hit_event_bit_set
             .set_bit_count_and_clear(contact_id_capacity as u32);
         task_context.has_hit_events = false;
+        task_context
+            .joint_state_bit_set
+            .set_bit_count_and_clear(joint_id_capacity as u32);
     }
 
     // Split an awake island. This modifies:
@@ -65,6 +156,17 @@ pub fn solve(world: &mut World, context: &StepContext) {
     if world.split_island_id != NULL_INDEX {
         split_island(world, world.split_island_id);
         world.split_island_id = NULL_INDEX;
+    }
+
+    // Prepare joints for every color (incl. overflow) before contacts.
+    // mem::take avoids &World + &mut joint_sims from the same World.
+    for color_index in 0..GRAPH_COLOR_COUNT as usize {
+        let mut joint_sims =
+            std::mem::take(&mut world.constraint_graph.colors[color_index].joint_sims);
+        for joint in &mut joint_sims {
+            prepare_joint(world, joint, context);
+        }
+        world.constraint_graph.colors[color_index].joint_sims = joint_sims;
     }
 
     // Prepare contact constraints for every color (convex + mesh → Mesh kernels).
@@ -95,53 +197,37 @@ pub fn solve(world: &mut World, context: &StepContext) {
     for _sub_step_index in 0..sub_step_count {
         integrate_velocities(world, context);
 
-        // Warm start: overflow first, then colors
+        // Warm start: joints then contacts; overflow first, then colors.
+        // constraint_graph and solver_sets are distinct World fields.
         {
-            let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
+            let World {
+                constraint_graph,
+                solver_sets,
+                ..
+            } = world;
+            let states = &mut solver_sets[AWAKE_SET as usize].body_states;
+            for joint in &mut constraint_graph.colors[OVERFLOW_INDEX as usize].joint_sims {
+                warm_start_joint(joint, states);
+            }
             warm_start_contacts(&mut color_constraints[OVERFLOW_INDEX as usize], states);
             for color_index in 0..OVERFLOW_INDEX as usize {
+                for joint in &mut constraint_graph.colors[color_index].joint_sims {
+                    warm_start_joint(joint, states);
+                }
                 warm_start_contacts(&mut color_constraints[color_index], states);
             }
         }
 
         for _ in 0..SOLVER_ITERATIONS {
             let use_bias = true;
-            let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
-            solve_contacts(
-                &mut color_constraints[OVERFLOW_INDEX as usize],
-                states,
-                context,
-                use_bias,
-            );
-            for color_index in 0..OVERFLOW_INDEX as usize {
-                solve_contacts(
-                    &mut color_constraints[color_index],
-                    states,
-                    context,
-                    use_bias,
-                );
-            }
+            solve_joints_then_contacts(world, &mut color_constraints, context, use_bias);
         }
 
         integrate_positions(world, context);
 
         for _ in 0..RELAX_ITERATIONS {
             let use_bias = false;
-            let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
-            solve_contacts(
-                &mut color_constraints[OVERFLOW_INDEX as usize],
-                states,
-                context,
-                use_bias,
-            );
-            for color_index in 0..OVERFLOW_INDEX as usize {
-                solve_contacts(
-                    &mut color_constraints[color_index],
-                    states,
-                    context,
-                    use_bias,
-                );
-            }
+            solve_joints_then_contacts(world, &mut color_constraints, context, use_bias);
         }
     }
 
@@ -201,8 +287,38 @@ pub fn solve(world: &mut World, context: &StepContext) {
 
     finalize_bodies(world, context, &mut bullet_bodies);
 
+    // Report joint events (C block between finalize and hit events).
+    {
+        debug_assert!(world.joint_events.is_empty());
+        let world_id = world.world_id;
+        let word_count = world.task_contexts[0].joint_state_bit_set.block_count();
+        for k in 0..word_count {
+            let mut word = world.task_contexts[0].joint_state_bit_set.block(k);
+            while word != 0 {
+                let ctz = word.trailing_zeros();
+                let joint_id = (64 * k + ctz) as i32;
+
+                debug_assert!((joint_id as usize) < world.joints.len());
+
+                let joint = &world.joints[joint_id as usize];
+                debug_assert!(joint.set_index == AWAKE_SET);
+
+                world.joint_events.push(JointEvent {
+                    joint_id: JointId {
+                        index1: joint_id + 1,
+                        world0: world_id,
+                        generation: joint.generation,
+                    },
+                    user_data: joint.user_data,
+                });
+
+                word &= word - 1;
+            }
+        }
+    }
+
     // Report hit events flagged during store impulses. C runs this after the
-    // constraint solve completes; joint events precede it once joints land.
+    // joint events pass.
     {
         use crate::events::ContactHitEvent;
         use crate::id::{ContactId, ShapeId};

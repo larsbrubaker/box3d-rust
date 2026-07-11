@@ -327,3 +327,24 @@ pub fn solve2(m: Mat2, b: Vec2) -> Vec2 {
         Vec2 { x: 0.0, y: 0.0 }
     }
 }
+
+/// Skew-symmetric cross-product matrix. (math_internal.h: b3Skew)
+pub fn skew(v: Vec3) -> Matrix3 {
+    Matrix3 {
+        cx: Vec3 {
+            x: 0.0,
+            y: v.z,
+            z: -v.y,
+        },
+        cy: Vec3 {
+            x: -v.z,
+            y: 0.0,
+            z: v.x,
+        },
+        cz: Vec3 {
+            x: v.y,
+            y: -v.x,
+            z: 0.0,
+        },
+    }
+}
