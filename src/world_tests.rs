@@ -1,6 +1,9 @@
 //! World step tests. EmptyWorld and HelloWorld from test_world.c.
 
-use crate::body::{body_get_position, create_body, get_body_transform_quick};
+use crate::body::{
+    body_enable_sleep, body_get_position, body_is_sleep_enabled, create_body,
+    get_body_transform_quick,
+};
 use crate::compound::{create_compound, CompoundDef, CompoundHullDef};
 use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::contact::contact_flags;
@@ -392,6 +395,44 @@ fn hit_events() {
     assert!(captured_normal.z.abs() < 0.01);
     // One side of the contact carries the sphere's user material
     assert!(captured_material_a == 7 || captured_material_b == 7);
+}
+
+/// (EnableSleepFlagSyncTest) — EnableSleep must sync bodySim/bodyState flags.
+#[test]
+fn enable_sleep_flag_sync() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.enable_sleep = false;
+    let body_id = create_body(&mut world, &body_def);
+
+    assert!(!body_is_sleep_enabled(&world, body_id));
+
+    body_enable_sleep(&mut world, body_id, true);
+    assert!(body_is_sleep_enabled(&world, body_id));
+
+    // Would trip validate_solver_sets if bodySim/bodyState flags were stale.
+    world.step(1.0 / 60.0, 4);
+}
+
+/// (EnableSleepNoopUnlockTest) — no-op EnableSleep must not leak world->locked.
+#[test]
+fn enable_sleep_noop_unlock() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.enable_sleep = true;
+    let body_id = create_body(&mut world, &body_def);
+
+    // No-op: enableSleep is already true. Must not leak the world lock.
+    body_enable_sleep(&mut world, body_id, true);
+
+    // Would fail if the lock had leaked (world.locked stays true).
+    body_enable_sleep(&mut world, body_id, false);
+    assert!(!body_is_sleep_enabled(&world, body_id));
+    assert!(!world.locked);
 }
 
 /// (TestCompoundHitEvents)

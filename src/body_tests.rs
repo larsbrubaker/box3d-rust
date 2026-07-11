@@ -484,3 +484,27 @@ fn deferred_mass_extents() {
         assert!(sim.min_extent < huge());
     }
 }
+
+#[test]
+fn damping_gravity_and_sleep_threshold() {
+    use crate::body::{
+        body_get_angular_damping, body_get_gravity_scale, body_get_linear_damping,
+        body_get_sleep_threshold, body_set_angular_damping, body_set_gravity_scale,
+        body_set_linear_damping, body_set_sleep_threshold,
+    };
+
+    let mut world = World::new(&default_world_def());
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body_id = create_body(&mut world, &body_def);
+
+    body_set_linear_damping(&mut world, body_id, 0.25);
+    body_set_angular_damping(&mut world, body_id, 0.5);
+    body_set_gravity_scale(&mut world, body_id, 2.0);
+    body_set_sleep_threshold(&mut world, body_id, 0.1);
+
+    assert_eq!(body_get_linear_damping(&world, body_id), 0.25);
+    assert_eq!(body_get_angular_damping(&world, body_id), 0.5);
+    assert_eq!(body_get_gravity_scale(&world, body_id), 2.0);
+    assert_eq!(body_get_sleep_threshold(&world, body_id), 0.1);
+}

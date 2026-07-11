@@ -234,3 +234,107 @@ pub fn body_get_position(world: &World, body_id: BodyId) -> Pos {
     let body_index = get_body_full_id(world, body_id);
     get_body_transform_quick(world, &world.bodies[body_index as usize]).p
 }
+
+/// (b3Body_SetLinearDamping)
+pub fn body_set_linear_damping(world: &mut World, body_id: BodyId, linear_damping: f32) {
+    debug_assert!(is_valid_float(linear_damping) && linear_damping >= 0.0);
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+    let body_index = get_body_full_id(world, body_id);
+    get_body_sim_mut(world, body_index).linear_damping = linear_damping;
+}
+
+/// (b3Body_GetLinearDamping)
+pub fn body_get_linear_damping(world: &World, body_id: BodyId) -> f32 {
+    let body_index = get_body_full_id(world, body_id);
+    let body = &world.bodies[body_index as usize];
+    world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize].linear_damping
+}
+
+/// (b3Body_SetAngularDamping)
+pub fn body_set_angular_damping(world: &mut World, body_id: BodyId, angular_damping: f32) {
+    debug_assert!(is_valid_float(angular_damping) && angular_damping >= 0.0);
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+    let body_index = get_body_full_id(world, body_id);
+    get_body_sim_mut(world, body_index).angular_damping = angular_damping;
+}
+
+/// (b3Body_GetAngularDamping)
+pub fn body_get_angular_damping(world: &World, body_id: BodyId) -> f32 {
+    let body_index = get_body_full_id(world, body_id);
+    let body = &world.bodies[body_index as usize];
+    world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize].angular_damping
+}
+
+/// (b3Body_SetGravityScale)
+pub fn body_set_gravity_scale(world: &mut World, body_id: BodyId, gravity_scale: f32) {
+    debug_assert!(is_valid_float(gravity_scale));
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+    let body_index = get_body_full_id(world, body_id);
+    get_body_sim_mut(world, body_index).gravity_scale = gravity_scale;
+}
+
+/// (b3Body_GetGravityScale)
+pub fn body_get_gravity_scale(world: &World, body_id: BodyId) -> f32 {
+    let body_index = get_body_full_id(world, body_id);
+    let body = &world.bodies[body_index as usize];
+    world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize].gravity_scale
+}
+
+/// (b3Body_IsSleepEnabled)
+pub fn body_is_sleep_enabled(world: &World, body_id: BodyId) -> bool {
+    let body_index = get_body_full_id(world, body_id);
+    (world.bodies[body_index as usize].flags & body_flags::ENABLE_SLEEP) != 0
+}
+
+/// (b3Body_SetSleepThreshold)
+pub fn body_set_sleep_threshold(world: &mut World, body_id: BodyId, sleep_threshold: f32) {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].sleep_threshold = sleep_threshold;
+}
+
+/// (b3Body_GetSleepThreshold)
+pub fn body_get_sleep_threshold(world: &World, body_id: BodyId) -> f32 {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].sleep_threshold
+}
+
+/// (b3Body_EnableSleep)
+///
+/// No-op when the flag is already at the requested value — must not leave the
+/// world locked (EnableSleepNoopUnlockTest regression).
+pub fn body_enable_sleep(world: &mut World, body_id: BodyId, enable_sleep: bool) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    let body_index = get_body_full_id(world, body_id);
+    let flag = (world.bodies[body_index as usize].flags & body_flags::ENABLE_SLEEP) != 0;
+    if enable_sleep == flag {
+        return;
+    }
+
+    world.locked = true;
+
+    if enable_sleep {
+        world.bodies[body_index as usize].flags |= body_flags::ENABLE_SLEEP;
+    } else {
+        world.bodies[body_index as usize].flags &= !body_flags::ENABLE_SLEEP;
+    }
+    sync_body_flags(world, body_index);
+
+    if !enable_sleep {
+        wake_body(world, body_index);
+    }
+
+    world.locked = false;
+}

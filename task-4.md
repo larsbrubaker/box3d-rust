@@ -43,7 +43,7 @@ on sensor-related shape API.
 - [ ] `SetTransform` (teleport with contact refresh), `SetAwake`
 - [ ] Forces/impulses: ApplyForce/Torque/LinearImpulse/AngularImpulse
       (center + point variants, wake semantics)
-- [ ] Damping, gravity scale, sleep threshold, `EnableSleep` get/set —
+- [x] Damping, gravity scale, sleep threshold, `EnableSleep` get/set —
       port `EnableSleepFlagSyncTest` and `EnableSleepNoopUnlockTest`
       (the no-op unlock regression) from `test_world.c`
 - [ ] Motion locks get/set (`b3Body_SetMotionLocks`)
