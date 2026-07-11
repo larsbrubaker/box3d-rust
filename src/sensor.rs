@@ -258,7 +258,7 @@ fn sensor_task(world: &mut World, start_index: usize, end_index: usize) {
 
         world.sensors[sensor_index]
             .overlaps2
-            .sort_unstable_by(|a, b| a.shape_id.cmp(&b.shape_id));
+            .sort_unstable_by_key(|a| a.shape_id);
 
         {
             let overlaps = &mut world.sensors[sensor_index].overlaps2;
