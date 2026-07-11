@@ -3,32 +3,17 @@
 **Remaining work only; delete items as they complete and delete this file when
 the track is done (also remove its row from todo.md).**
 
-Port the joint system: lifecycle from `joint.c`, the eight per-type C files,
-the joint solver stages in `solver.c`, and the joint-events report pass.
+Port the joint system: the eight per-type C files, the joint solver stages in
+`solver.c`, and the joint-events report pass.
 
-The Rust side already has: the full joint data model (`src/joint.rs`), the
-graph-color functions (`assign_joint_color`, `create_joint_in_graph`,
-`add_joint_to_graph`, `remove_joint_from_graph` in `src/constraint_graph.rs`),
-and `merge_solver_sets` / `transfer_joint` in `src/solver_set.rs` — all marked
-`#[allow(dead_code)] // bring-up:`. This track makes them reachable; drop the
-allowances as that happens. `wake_solver_set` and `try_sleep_island` already
-handle joint transfer, so sleeping islands connected by joints should work once
-creation exists — verify with tests rather than assuming.
+Lifecycle is done: `link_joint` / `unlink_joint`, shared `create_joint`,
+`destroy_joint` / `destroy_joint_internal`, `create_filter_joint`,
+`joint_set_collide_connected` (Box3D C destroys contacts only here — not on
+create), default defs for every joint type, and body-destroy tears down
+attached joints.
 
 Touches `src/solver/solve.rs` and `src/solver/integrate.rs` — coordinate with
 task-2 (CCD) and task-3 (sensors).
-
-## Lifecycle (joint.c)
-
-- [ ] `b3LinkJoint` / `b3UnlinkJoint` from `island.c` into `src/island.rs`
-      (JointLink plumbing mirrors the contact versions)
-- [ ] Joint id pool + create path (`b3CreateJointInternal`): destination set
-      selection (static/awake/sleeping/disabled), island link, graph insert,
-      wake-on-create, `merge_solver_sets` when joining two sleeping sets
-- [ ] `collide_connected == false`: destroy existing contacts between the two
-      bodies on joint create; restore filtering on destroy
-- [ ] Destroy path: unlink island, remove from graph or solver set, free id
-- [ ] Default defs for every joint type (`b3Default*JointDef`)
 
 ## Per-type ports (one C file per commit)
 

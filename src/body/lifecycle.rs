@@ -387,9 +387,6 @@ pub fn create_body(world: &mut World, def: &crate::types::BodyDef) -> BodyId {
 }
 
 /// Destroy a rigid body. (b3DestroyBody)
-///
-/// Attachment teardown (joints/contacts/shapes) lands with those create slices;
-/// until then bodies have empty attachment lists — matching C's empty-list path.
 pub fn destroy_body(world: &mut World, body_id: BodyId) {
     debug_assert!(!world.locked);
     if world.locked {
@@ -400,9 +397,19 @@ pub fn destroy_body(world: &mut World, body_id: BodyId) {
 
     let body_index = get_body_full_id(world, body_id);
 
-    // Attachment lists: joints empty until joint create; contacts and shapes
-    // are destroyed here like C's b3DestroyBody.
-    debug_assert!(world.bodies[body_index as usize].head_joint_key == NULL_INDEX);
+    // Wake bodies attached to this body, even if this body is static.
+    let wake_bodies = true;
+
+    // Destroy the attached joints
+    let mut edge_key = world.bodies[body_index as usize].head_joint_key;
+    while edge_key != NULL_INDEX {
+        let joint_id = edge_key >> 1;
+        let edge_index = edge_key & 1;
+        edge_key = world.joints[joint_id as usize].edges[edge_index as usize].next_key;
+
+        // Careful because this modifies the list being traversed
+        crate::joint::destroy_joint_internal(world, joint_id, wake_bodies);
+    }
 
     // Destroy all contacts attached to this body.
     let mut contact_key = world.bodies[body_index as usize].head_contact_key;

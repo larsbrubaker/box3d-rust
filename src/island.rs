@@ -291,6 +291,87 @@ pub fn unlink_contact(world: &mut World, contact_id: i32) {
     validate_island(world, island_id);
 }
 
+/// (b3AddJointToIsland)
+fn add_joint_to_island(world: &mut World, island_id: i32, joint_id: i32) {
+    debug_assert!(world.joints[joint_id as usize].island_id == NULL_INDEX);
+    debug_assert!(world.joints[joint_id as usize].island_index == NULL_INDEX);
+
+    let island_index = world.islands[island_id as usize].joints.len() as i32;
+    let link = JointLink {
+        joint_id,
+        body_id_a: world.joints[joint_id as usize].edges[0].body_id,
+        body_id_b: world.joints[joint_id as usize].edges[1].body_id,
+    };
+
+    world.joints[joint_id as usize].island_id = island_id;
+    world.joints[joint_id as usize].island_index = island_index;
+    world.islands[island_id as usize].joints.push(link);
+
+    validate_island(world, island_id);
+}
+
+/// Link a joint into the island graph when it is created. (b3LinkJoint)
+pub fn link_joint(world: &mut World, joint_id: i32) {
+    use crate::solver_set::wake_solver_set;
+    use crate::types::BodyType;
+
+    let body_id_a = world.joints[joint_id as usize].edges[0].body_id;
+    let body_id_b = world.joints[joint_id as usize].edges[1].body_id;
+
+    debug_assert!(
+        world.bodies[body_id_a as usize].type_ == BodyType::Dynamic
+            || world.bodies[body_id_b as usize].type_ == BodyType::Dynamic
+    );
+
+    let set_a = world.bodies[body_id_a as usize].set_index;
+    let set_b = world.bodies[body_id_b as usize].set_index;
+
+    if set_a == AWAKE_SET && set_b >= FIRST_SLEEPING_SET {
+        wake_solver_set(world, set_b);
+    } else if set_b == AWAKE_SET && set_a >= FIRST_SLEEPING_SET {
+        wake_solver_set(world, set_a);
+    }
+
+    let island_id_a = world.bodies[body_id_a as usize].island_id;
+    let island_id_b = world.bodies[body_id_b as usize].island_id;
+
+    debug_assert!(island_id_a != NULL_INDEX || island_id_b != NULL_INDEX);
+
+    // Merge islands. This will destroy one of the islands.
+    let final_island_id = merge_islands(world, island_id_a, island_id_b);
+
+    // Add joint to the island that survived
+    add_joint_to_island(world, final_island_id, joint_id);
+}
+
+/// Unlink a joint from the island graph when it is destroyed. (b3UnlinkJoint)
+pub fn unlink_joint(world: &mut World, joint_id: i32) {
+    let island_id = world.joints[joint_id as usize].island_id;
+    if island_id == NULL_INDEX {
+        return;
+    }
+
+    let remove_index = world.joints[joint_id as usize].island_index;
+    let island = &mut world.islands[island_id as usize];
+    debug_assert!(0 <= remove_index && (remove_index as usize) < island.joints.len());
+    debug_assert!(island.joints[remove_index as usize].joint_id == joint_id);
+
+    let moved_index = island.joints.len() as i32 - 1;
+    island.joints.swap_remove(remove_index as usize);
+    if moved_index != remove_index {
+        // Fix islandIndex on the joint that was swapped into removeIndex
+        let moved_joint_id = island.joints[remove_index as usize].joint_id;
+        debug_assert!(world.joints[moved_joint_id as usize].island_index == moved_index);
+        world.joints[moved_joint_id as usize].island_index = remove_index;
+    }
+
+    world.joints[joint_id as usize].island_id = NULL_INDEX;
+    world.joints[joint_id as usize].island_index = NULL_INDEX;
+    world.islands[island_id as usize].constraint_remove_count += 1;
+
+    validate_island(world, island_id);
+}
+
 /// Find parent of a node. Use path halving to speed up further queries.
 /// (b3IslandFindParent)
 fn island_find_parent(parents: &mut [i32], mut node: i32) -> i32 {

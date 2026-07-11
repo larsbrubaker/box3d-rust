@@ -1,5 +1,5 @@
 // Port of the joint data model from box3d-cpp-reference/src/joint.h.
-// Logic from joint.c and the per-joint .c files lands in later bring-up commits.
+// Lifecycle and plumbing from joint.c; per-type solve lands in later commits.
 //
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
@@ -10,6 +10,12 @@ use crate::math_functions::{
     VEC3_ZERO,
 };
 use crate::solver::Softness;
+
+mod lifecycle;
+mod plumbing;
+
+pub use lifecycle::*;
+pub use plumbing::*;
 
 /// Joint type enumeration. (types.h: b3JointType)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -566,9 +572,11 @@ impl Default for WheelJoint {
 }
 
 /// Joint-specific simulation union. (C anonymous union in b3JointSim)
+/// Filter joints have no simulation payload.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum JointUnion {
     Distance(DistanceJoint),
+    Filter,
     Motor(MotorJoint),
     Parallel(ParallelJoint),
     Revolute(RevoluteJoint),
@@ -576,6 +584,23 @@ pub enum JointUnion {
     Prismatic(PrismaticJoint),
     Weld(WeldJoint),
     Wheel(WheelJoint),
+}
+
+impl JointUnion {
+    /// Empty payload for the given type (C memset of the union).
+    pub fn empty(joint_type: JointType) -> Self {
+        match joint_type {
+            JointType::Distance => JointUnion::Distance(DistanceJoint::default()),
+            JointType::Filter => JointUnion::Filter,
+            JointType::Motor => JointUnion::Motor(MotorJoint::default()),
+            JointType::Parallel => JointUnion::Parallel(ParallelJoint::default()),
+            JointType::Prismatic => JointUnion::Prismatic(PrismaticJoint::default()),
+            JointType::Revolute => JointUnion::Revolute(RevoluteJoint::default()),
+            JointType::Spherical => JointUnion::Spherical(SphericalJoint::default()),
+            JointType::Weld => JointUnion::Weld(WeldJoint::default()),
+            JointType::Wheel => JointUnion::Wheel(WheelJoint::default()),
+        }
+    }
 }
 
 impl Default for JointUnion {

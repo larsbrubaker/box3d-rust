@@ -5,9 +5,11 @@
 // SPDX-License-Identifier: MIT
 
 mod body;
+mod joint;
 mod shape;
 mod world;
 
 pub use body::*;
+pub use joint::*;
 pub use shape::*;
 pub use world::*;
