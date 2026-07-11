@@ -1,10 +1,8 @@
-//! Contact manifold generation for convex primitive pairs.
+//! Contact manifold generation for convex primitive pairs and mesh narrow phase.
 //!
 //! Port of `box3d-cpp-reference/src/convex_manifold.c` (sphere / capsule / hull
 //! pairs), `triangle_manifold.c`, plus the clip/edge helpers from
-//! `manifold.h` / `manifold.c`.
-//!
-//! Deferred: mesh_contact.c.
+//! `manifold.h` / `manifold.c`. Mesh contact assembly lives in `contact/mesh_contact.rs`.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT

@@ -4,7 +4,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::constants::MAX_MANIFOLD_POINTS;
+use crate::constants::{MAX_MANIFOLD_POINTS, MAX_POINTS_PER_TRIANGLE};
 use crate::math_functions::{Vec3, VEC3_ZERO};
 
 /// Which shape owns a clipped feature edge. (b3FeatureOwner)
@@ -101,8 +101,9 @@ pub struct LocalManifoldPoint {
 /// A local manifold with no dynamic information. Used by collide functions.
 ///
 /// Unlike C (which holds a `b3LocalManifoldPoint*` into an external buffer),
-/// this embeds a fixed [`MAX_MANIFOLD_POINTS`] point array. Callers pass
-/// `capacity` to the collide functions, matching the C API.
+/// this embeds a fixed [`MAX_POINTS_PER_TRIANGLE`] point array so mesh
+/// narrow-phase can gather up to 32 clip points before cluster reduction.
+/// Convex callers still pass `capacity == MAX_MANIFOLD_POINTS`.
 /// (b3LocalManifold)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LocalManifold {
@@ -111,7 +112,7 @@ pub struct LocalManifold {
     /// The triangle normal.
     pub triangle_normal: Vec3,
     /// The manifold points.
-    pub points: [LocalManifoldPoint; MAX_MANIFOLD_POINTS],
+    pub points: [LocalManifoldPoint; MAX_POINTS_PER_TRIANGLE],
     /// The number of manifold points. Only bounded by the buffer capacity.
     pub point_count: i32,
     /// The index of the triangle.
@@ -135,7 +136,7 @@ impl Default for LocalManifold {
         LocalManifold {
             normal: VEC3_ZERO,
             triangle_normal: VEC3_ZERO,
-            points: [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS],
+            points: [LocalManifoldPoint::default(); MAX_POINTS_PER_TRIANGLE],
             point_count: 0,
             triangle_index: 0,
             i1: 0,

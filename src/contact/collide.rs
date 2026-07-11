@@ -1,7 +1,6 @@
 // Narrow-phase collide pass and contact state machine from physics_world.c.
 //
-// Serial path only (worker_count == 1). Mesh contacts clear through
-// update_contact until mesh_contact.c lands.
+// Serial path only (worker_count == 1).
 //
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT

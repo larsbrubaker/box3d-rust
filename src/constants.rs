@@ -80,6 +80,13 @@ pub const MAX_SHAPE_CAST_POINTS: usize = 64;
 /// (B3_MAX_MANIFOLD_POINTS)
 pub const MAX_MANIFOLD_POINTS: usize = 4;
 
+/// Max clip points written per triangle during mesh narrow phase.
+/// (B3_MAX_POINTS_PER_TRIANGLE)
+pub const MAX_POINTS_PER_TRIANGLE: usize = 32;
+
+/// Max triangles queried for one mesh contact. (B3_MAX_MESH_CONTACT_TRIANGLES)
+pub const MAX_MESH_CONTACT_TRIANGLES: usize = 256;
+
 /// Maximum number of colors in the constraint graph. Constraints that cannot
 /// find a color are added to the overflow set. (B3_GRAPH_COLOR_COUNT)
 pub const GRAPH_COLOR_COUNT: i32 = 24;
