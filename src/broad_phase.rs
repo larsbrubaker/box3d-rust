@@ -6,12 +6,15 @@
 // SPDX-License-Identifier: MIT
 
 use crate::bitset::BitSet;
+use crate::body::get_body_transform;
 use crate::core::NULL_INDEX;
 use crate::dynamic_tree::{DynamicTree, DEFAULT_MASK_BITS};
 use crate::geometry::ShapeType;
 use crate::id::ShapeId;
-use crate::math_functions::{aabb_overlaps, max_int, Aabb};
-use crate::shape::shape_flags;
+use crate::math_functions::{
+    aabb_overlaps, aabb_transform, invert_transform, max_int, to_relative_transform, Aabb, POS_ZERO,
+};
+use crate::shape::{shape_flags, ShapeGeometry};
 use crate::table::{shape_pair_key, HashSet};
 use crate::types::{BodyType, Capacity, BODY_TYPE_COUNT};
 use crate::world::World;
@@ -228,8 +231,95 @@ impl BroadPhase {
     }
 }
 
+/// Consider one shape pair candidate for the move-pair list.
+/// (body of b3PairQueryCallback after compound resolution)
+fn consider_move_pair(
+    world: &World,
+    tree_type: BodyType,
+    query_proxy_key: i32,
+    query_shape_index: i32,
+    shape_index: i32,
+    proxy_id_: i32,
+    child_index: i32,
+    pair_list: &mut Vec<(i32, i32, i32)>,
+) {
+    let proxy_key_ = proxy_key(proxy_id_, tree_type);
+    debug_assert!(proxy_key_ != query_proxy_key);
+
+    let query_proxy_type = proxy_type(query_proxy_key);
+    let bp = &world.broad_phase;
+
+    // De-duplication when both proxies are moving.
+    if query_proxy_type == BodyType::Dynamic {
+        if tree_type == BodyType::Dynamic && proxy_key_ < query_proxy_key {
+            if bp.moved_proxies[tree_type as usize].get_bit(proxy_id_ as u32) {
+                return;
+            }
+        }
+    } else {
+        debug_assert!(tree_type == BodyType::Dynamic);
+        if bp.moved_proxies[tree_type as usize].get_bit(proxy_id_ as u32) {
+            return;
+        }
+    }
+
+    let pair_key = shape_pair_key(shape_index, query_shape_index, child_index);
+    if bp.pair_set.contains_key(pair_key) {
+        return;
+    }
+
+    let shape_id_a = shape_index;
+    let shape_id_b = query_shape_index;
+    let shape_a = &world.shapes[shape_id_a as usize];
+    let shape_b = &world.shapes[shape_id_b as usize];
+    let body_id_a = shape_a.body_id;
+    let body_id_b = shape_b.body_id;
+
+    if body_id_a == body_id_b {
+        return;
+    }
+
+    if shape_a.sensor_index != NULL_INDEX || shape_b.sensor_index != NULL_INDEX {
+        return;
+    }
+
+    if !crate::shape::should_shapes_collide(shape_a.filter, shape_b.filter) {
+        return;
+    }
+
+    if !crate::body::should_bodies_collide(world, body_id_a, body_id_b) {
+        return;
+    }
+
+    if (shape_a.flags & shape_flags::ENABLE_CUSTOM_FILTERING) != 0
+        || (shape_b.flags & shape_flags::ENABLE_CUSTOM_FILTERING) != 0
+    {
+        if let Some(custom_filter_fcn) = world.custom_filter_fcn {
+            let id_a = ShapeId {
+                index1: shape_id_a + 1,
+                world0: world.world_id,
+                generation: shape_a.generation,
+            };
+            let id_b = ShapeId {
+                index1: shape_id_b + 1,
+                world0: world.world_id,
+                generation: shape_b.generation,
+            };
+            if !custom_filter_fcn(id_a, id_b, world.custom_filter_context) {
+                return;
+            }
+        }
+    }
+
+    if !crate::contact::can_collide(shape_a.shape_type(), shape_b.shape_type()) {
+        return;
+    }
+
+    pair_list.push((shape_id_a, shape_id_b, child_index));
+}
+
 /// Query one tree for new pairs against a moved proxy.
-/// (b3PairQueryCallback — serial; compound child recursion deferred)
+/// (b3PairQueryCallback — serial, with compound child recursion)
 fn query_tree_for_pairs(
     world: &World,
     tree_type: BodyType,
@@ -238,8 +328,6 @@ fn query_tree_for_pairs(
     fat_aabb: Aabb,
     pair_list: &mut Vec<(i32, i32, i32)>,
 ) {
-    let query_proxy_type = proxy_type(query_proxy_key);
-
     world.broad_phase.trees[tree_type as usize].query(
         fat_aabb,
         DEFAULT_MASK_BITS,
@@ -250,84 +338,54 @@ fn query_tree_for_pairs(
                 return true;
             }
 
-            // Compound child pairing lands with compound world attach.
             if world.shapes[shape_index as usize].shape_type() == ShapeType::Compound {
-                return true;
-            }
+                // Query bounds are float world space; demote the body transform to the
+                // matching float frame, then recurse into the compound BVH.
+                let body_id = world.shapes[shape_index as usize].body_id;
+                let compound_transform =
+                    to_relative_transform(get_body_transform(world, body_id), POS_ZERO);
+                let local_aabb = aabb_transform(invert_transform(compound_transform), fat_aabb);
 
-            let proxy_key_ = proxy_key(proxy_id_, tree_type);
-            debug_assert!(proxy_key_ != query_proxy_key);
-
-            let bp = &world.broad_phase;
-
-            // De-duplication when both proxies are moving.
-            if query_proxy_type == BodyType::Dynamic {
-                if tree_type == BodyType::Dynamic && proxy_key_ < query_proxy_key {
-                    if bp.moved_proxies[tree_type as usize].get_bit(proxy_id_ as u32) {
-                        return true;
-                    }
+                let mut child_indices = Vec::new();
+                if let ShapeGeometry::Compound(compound) =
+                    &world.shapes[shape_index as usize].geometry
+                {
+                    compound.tree.query(
+                        local_aabb,
+                        DEFAULT_MASK_BITS,
+                        false,
+                        |_child_proxy, child_user_data| {
+                            child_indices.push(child_user_data as i32);
+                            true
+                        },
+                    );
                 }
-            } else {
-                debug_assert!(tree_type == BodyType::Dynamic);
-                if bp.moved_proxies[tree_type as usize].get_bit(proxy_id_ as u32) {
-                    return true;
+
+                for child_index in child_indices {
+                    consider_move_pair(
+                        world,
+                        tree_type,
+                        query_proxy_key,
+                        query_shape_index,
+                        shape_index,
+                        proxy_id_,
+                        child_index,
+                        pair_list,
+                    );
                 }
-            }
-
-            let child_index = 0;
-            let pair_key = shape_pair_key(shape_index, query_shape_index, child_index);
-            if bp.pair_set.contains_key(pair_key) {
                 return true;
             }
 
-            let shape_id_a = shape_index;
-            let shape_id_b = query_shape_index;
-            let shape_a = &world.shapes[shape_id_a as usize];
-            let shape_b = &world.shapes[shape_id_b as usize];
-            let body_id_a = shape_a.body_id;
-            let body_id_b = shape_b.body_id;
-
-            if body_id_a == body_id_b {
-                return true;
-            }
-
-            if shape_a.sensor_index != NULL_INDEX || shape_b.sensor_index != NULL_INDEX {
-                return true;
-            }
-
-            if !crate::shape::should_shapes_collide(shape_a.filter, shape_b.filter) {
-                return true;
-            }
-
-            if !crate::body::should_bodies_collide(world, body_id_a, body_id_b) {
-                return true;
-            }
-
-            if (shape_a.flags & shape_flags::ENABLE_CUSTOM_FILTERING) != 0
-                || (shape_b.flags & shape_flags::ENABLE_CUSTOM_FILTERING) != 0
-            {
-                if let Some(custom_filter_fcn) = world.custom_filter_fcn {
-                    let id_a = ShapeId {
-                        index1: shape_id_a + 1,
-                        world0: world.world_id,
-                        generation: shape_a.generation,
-                    };
-                    let id_b = ShapeId {
-                        index1: shape_id_b + 1,
-                        world0: world.world_id,
-                        generation: shape_b.generation,
-                    };
-                    if !custom_filter_fcn(id_a, id_b, world.custom_filter_context) {
-                        return true;
-                    }
-                }
-            }
-
-            if !crate::contact::can_collide(shape_a.shape_type(), shape_b.shape_type()) {
-                return true;
-            }
-
-            pair_list.push((shape_id_a, shape_id_b, child_index));
+            consider_move_pair(
+                world,
+                tree_type,
+                query_proxy_key,
+                query_shape_index,
+                shape_index,
+                proxy_id_,
+                0,
+                pair_list,
+            );
             true
         },
     );

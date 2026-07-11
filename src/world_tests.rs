@@ -1,12 +1,17 @@
 //! World step tests. EmptyWorld and HelloWorld from test_world.c.
 
-use crate::body::{body_get_position, create_body, get_body_transform_quick};
+use crate::body::{
+    body_enable_sleep, body_get_position, body_is_sleep_enabled, create_body,
+    get_body_transform_quick,
+};
+use crate::compound::{create_compound, CompoundDef, CompoundHullDef};
+use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::contact::contact_flags;
 use crate::core::NULL_INDEX;
-use crate::geometry::Sphere;
+use crate::geometry::{default_surface_material, Sphere};
 use crate::hull::{make_box_hull, make_cube_hull};
-use crate::math_functions::{Pos, VEC3_ZERO};
-use crate::shape::{create_hull_shape, create_sphere_shape};
+use crate::math_functions::{Pos, Transform, Vec3, PI, QUAT_IDENTITY, VEC3_ZERO};
+use crate::shape::{create_compound_shape, create_hull_shape, create_sphere_shape};
 use crate::solver_set::AWAKE_SET;
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::World;
@@ -547,6 +552,237 @@ fn sensor_events_persist_across_sleep() {
 
 /// (HelloWorld)
 #[test]
+
+/// (EnableSleepFlagSyncTest) — EnableSleep must sync bodySim/bodyState flags.
+#[test]
+fn enable_sleep_flag_sync() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.enable_sleep = false;
+    let body_id = create_body(&mut world, &body_def);
+
+    assert!(!body_is_sleep_enabled(&world, body_id));
+
+    body_enable_sleep(&mut world, body_id, true);
+    assert!(body_is_sleep_enabled(&world, body_id));
+
+    // Would trip validate_solver_sets if bodySim/bodyState flags were stale.
+    world.step(1.0 / 60.0, 4);
+}
+
+/// (EnableSleepNoopUnlockTest) — no-op EnableSleep must not leak world->locked.
+#[test]
+fn enable_sleep_noop_unlock() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.enable_sleep = true;
+    let body_id = create_body(&mut world, &body_def);
+
+    // No-op: enableSleep is already true. Must not leak the world lock.
+    body_enable_sleep(&mut world, body_id, true);
+
+    // Would fail if the lock had leaked (world.locked stays true).
+    body_enable_sleep(&mut world, body_id, false);
+    assert!(!body_is_sleep_enabled(&world, body_id));
+    assert!(!world.locked);
+}
+
+/// (TestCompoundHitEvents)
+#[test]
+fn compound_hit_events() {
+    const HULL_MATERIAL_A: u64 = 11;
+    const HULL_MATERIAL_B: u64 = 22;
+    const SPHERE_MATERIAL: u64 = 99;
+    const HULL_CENTER_X: f32 = 3.0;
+
+    for side in 0..2 {
+        let expected_hull_material = if side == 0 {
+            HULL_MATERIAL_A
+        } else {
+            HULL_MATERIAL_B
+        };
+        let spawn_x = if side == 0 {
+            -HULL_CENTER_X
+        } else {
+            HULL_CENTER_X
+        };
+
+        let mut world_def = default_world_def();
+        world_def.hit_event_threshold = 1.0;
+        let mut world = World::new(&world_def);
+
+        let box_a = make_box_hull(1.0, 1.0, 1.0);
+        let box_b = make_box_hull(1.0, 1.0, 1.0);
+
+        let mut mat_a = default_surface_material();
+        mat_a.user_material_id = HULL_MATERIAL_A;
+        let mut mat_b = default_surface_material();
+        mat_b.user_material_id = HULL_MATERIAL_B;
+
+        let hulls = [
+            CompoundHullDef {
+                hull: &box_a.base,
+                transform: Transform {
+                    p: Vec3::new(-HULL_CENTER_X, 0.0, 0.0),
+                    q: QUAT_IDENTITY,
+                },
+                material: mat_a,
+            },
+            CompoundHullDef {
+                hull: &box_b.base,
+                transform: Transform {
+                    p: Vec3::new(HULL_CENTER_X, 0.0, 0.0),
+                    q: QUAT_IDENTITY,
+                },
+                material: mat_b,
+            },
+        ];
+        let compound = create_compound(&CompoundDef {
+            hulls: &hulls,
+            ..Default::default()
+        })
+        .expect("compound");
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        let compound_body = create_body(&mut world, &body_def);
+        create_compound_shape(&mut world, compound_body, &default_shape_def(), &compound);
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.gravity_scale = 0.0;
+        body_def.position = Pos {
+            x: spawn_x as _,
+            y: 3.0 as _,
+            z: 0.0 as _,
+        };
+        body_def.linear_velocity = Vec3 {
+            x: 0.0,
+            y: -30.0,
+            z: 0.0,
+        };
+        let sphere_body = create_body(&mut world, &body_def);
+        let mut sphere_shape_def = default_shape_def();
+        sphere_shape_def.density = 1.0;
+        sphere_shape_def.enable_hit_events = true;
+        sphere_shape_def.base_material.user_material_id = SPHERE_MATERIAL;
+        let sphere = Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        };
+        create_sphere_shape(&mut world, sphere_body, &sphere_shape_def, &sphere);
+
+        let mut hit_count = 0;
+        let mut captured_material_a = 0u64;
+        let mut captured_material_b = 0u64;
+
+        for _ in 0..30 {
+            world.step(1.0 / 60.0, 4);
+
+            if !world.contact_hit_events.is_empty() && hit_count == 0 {
+                let hit = &world.contact_hit_events[0];
+                captured_material_a = hit.user_material_id_a;
+                captured_material_b = hit.user_material_id_b;
+            }
+            hit_count += world.contact_hit_events.len();
+        }
+
+        assert!(hit_count >= 1, "side {side}: expected hit events");
+        assert!(
+            captured_material_a == SPHERE_MATERIAL || captured_material_b == SPHERE_MATERIAL,
+            "side {side}: sphere material missing"
+        );
+        assert!(
+            captured_material_a == expected_hull_material
+                || captured_material_b == expected_hull_material,
+            "side {side}: expected child material {expected_hull_material}, got {captured_material_a}/{captured_material_b}"
+        );
+    }
+}
+
+/// (TestOverflowColorPile) — exercises the overflow graph-color path.
+#[test]
+fn overflow_color_pile() {
+    const RING_COUNT: i32 = 5;
+    const PER_RING: i32 = 5;
+
+    let mut world = World::new(&default_world_def());
+
+    {
+        let mut body_def = default_body_def();
+        body_def.position = Pos {
+            x: 0.0 as _,
+            y: -1.0 as _,
+            z: 0.0 as _,
+        };
+        let ground_id = create_body(&mut world, &body_def);
+        let box_hull = make_box_hull(20.0, 1.0, 20.0);
+        create_hull_shape(&mut world, ground_id, &default_shape_def(), &box_hull.base);
+    }
+
+    let hub_half_x = 0.5f32;
+    let hub_half_y = 2.5f32;
+    let hub_half_z = 0.5f32;
+    {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.position = Pos {
+            x: 0.0 as _,
+            y: hub_half_y as _,
+            z: 0.0 as _,
+        };
+        let hub_id = create_body(&mut world, &body_def);
+        let box_hull = make_box_hull(hub_half_x, hub_half_y, hub_half_z);
+        let mut shape_def = default_shape_def();
+        shape_def.density = 50.0;
+        create_hull_shape(&mut world, hub_id, &shape_def, &box_hull.base);
+    }
+
+    let neighbor_half = 0.2f32;
+    let ring_radius = hub_half_x + neighbor_half - 0.03;
+    let neighbor_box = make_box_hull(neighbor_half, neighbor_half, neighbor_half);
+    let neighbor_shape = default_shape_def();
+    let ring_spacing = 0.5f32;
+    let base_y = neighbor_half + 0.05;
+
+    for ring in 0..RING_COUNT {
+        let y = base_y + ring_spacing * ring as f32;
+        let theta_offset = if (ring & 1) != 0 {
+            PI / PER_RING as f32
+        } else {
+            0.0
+        };
+
+        for slot in 0..PER_RING {
+            let theta = theta_offset + (2.0 * PI * slot as f32) / PER_RING as f32;
+            let mut body_def = default_body_def();
+            body_def.type_ = BodyType::Dynamic;
+            body_def.position = Pos {
+                x: (ring_radius * theta.cos()) as _,
+                y: y as _,
+                z: (ring_radius * theta.sin()) as _,
+            };
+            let body_id = create_body(&mut world, &body_def);
+            create_hull_shape(&mut world, body_id, &neighbor_shape, &neighbor_box.base);
+        }
+    }
+
+    for _ in 0..10 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let overflow = &world.constraint_graph.colors[OVERFLOW_INDEX as usize];
+    let overflow_contacts = overflow.contacts.len() + overflow.convex_contacts.len();
+    assert!(
+        overflow_contacts > 0,
+        "expected contacts in overflow color, got 0"
+    );
+}
+
 fn hello_world() {
     let mut world_def = default_world_def();
     world_def.gravity = crate::math_functions::Vec3 {

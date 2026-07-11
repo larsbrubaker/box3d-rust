@@ -10,7 +10,7 @@ use crate::events::ContactEndTouchEvent;
 use crate::geometry::ShapeType;
 use crate::id::{ContactId, ShapeId};
 use crate::math_functions::max_float;
-use crate::shape::shape_flags;
+use crate::shape::{shape_flags, ShapeGeometry};
 use crate::solver_set::{AWAKE_SET, DISABLED_SET, STATIC_SET};
 use crate::table::shape_pair_key;
 use crate::types::BodyType;
@@ -129,7 +129,16 @@ pub fn create_contact(world: &mut World, shape_id_a: i32, shape_id_b: i32, child
         world.contacts[contact_id as usize].flags |= contact_flags::SIM_MESH_CONTACT;
         world.contacts[contact_id as usize].geometry = ContactGeometry::Mesh(MeshContact::default());
     } else if type_a == ShapeType::Compound {
-        // Child mesh detection lands with compound world attach.
+        use crate::compound::{get_compound_child, ChildGeometry};
+        let ShapeGeometry::Compound(compound) = &world.shapes[shape_id_a as usize].geometry else {
+            unreachable!()
+        };
+        let child = get_compound_child(compound, child_index);
+        if matches!(child.geometry, ChildGeometry::Mesh(_)) {
+            world.contacts[contact_id as usize].flags |= contact_flags::SIM_MESH_CONTACT;
+            world.contacts[contact_id as usize].geometry =
+                ContactGeometry::Mesh(MeshContact::default());
+        }
     }
 
     debug_assert!(

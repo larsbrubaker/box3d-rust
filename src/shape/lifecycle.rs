@@ -6,17 +6,20 @@
 use super::{
     create_shape_proxy, destroy_shape_proxy, get_shape_centroid, shape_flags, Shape, ShapeGeometry,
 };
+use crate::compound::{get_compound_materials, CompoundData};
 use crate::constants::{linear_slop, max_aabb_margin, AABB_MARGIN_FRACTION, MAX_SHAPES};
 use crate::core::{NULL_INDEX, SECRET_COOKIE};
-use crate::geometry::{Capsule, Sphere};
+use crate::geometry::{Capsule, ShapeType, Sphere};
+use crate::height_field::HeightFieldData;
 use crate::hull::{get_hull_points, HullData};
 use crate::id::{ShapeId, NULL_SHAPE_ID};
 use crate::math_functions::{
-    distance, distance_squared, is_valid_float, lerp, min_float, Aabb, WorldTransform, VEC3_ZERO,
+    distance, distance_squared, is_valid_float, lerp, min_float, safe_scale, Aabb, Vec3,
+    WorldTransform, VEC3_ZERO,
 };
+use crate::mesh::{is_valid_mesh, MeshData};
 use crate::solver_set::DISABLED_SET;
 use crate::types::{BodyType, ShapeDef};
-use crate::geometry::ShapeType;
 use crate::world::World;
 
 /// AABB margin for the broad phase fat AABB, limited by shape size.
@@ -115,7 +118,23 @@ pub(crate) fn create_shape_internal(
         shape.generation = shape.generation.wrapping_add(1);
 
         if shape_type == ShapeType::Compound {
-            // Compounds copy materials from the geometry; handled when compound create lands.
+            // Own a copy of the compound materials so every shape frees its array
+            // the same way. Compounds are few, so the copy is cheap and avoids
+            // aliasing the geometry blob. (C: b3CreateShapeInternal)
+            let mats = match &shape.geometry {
+                ShapeGeometry::Compound(compound) => get_compound_materials(compound).to_vec(),
+                _ => unreachable!(),
+            };
+            if mats.is_empty() {
+                shape.material = def.base_material;
+                shape.materials.clear();
+            } else if mats.len() == 1 {
+                shape.material = mats[0];
+                shape.materials.clear();
+            } else {
+                shape.material = def.base_material;
+                shape.materials = mats;
+            }
         } else if def.materials.len() > 1 {
             shape.materials = def.materials.clone();
             shape.material = def.base_material;
@@ -275,6 +294,67 @@ pub fn create_hull_shape(
     debug_assert!(hull.hash != 0);
     let shared = world.hull_database.add(hull);
     create_shape(world, body_id, def, ShapeGeometry::Hull(shared))
+}
+
+/// (b3CreateMeshShape)
+///
+/// The shape stores an owned clone of `mesh` (C keeps a borrowed pointer). Per-instance
+/// `scale` is sanitized via [`safe_scale`].
+pub fn create_mesh_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    mesh: &MeshData,
+    scale: Vec3,
+) -> ShapeId {
+    debug_assert!(is_valid_mesh(Some(mesh)));
+    debug_assert!(mesh.hash != 0);
+    create_shape(
+        world,
+        body_id,
+        def,
+        ShapeGeometry::Mesh {
+            data: mesh.clone(),
+            scale: safe_scale(scale),
+        },
+    )
+}
+
+/// (b3CreateHeightFieldShape)
+///
+/// Height fields must be on static bodies (enforced in [`create_shape`]).
+pub fn create_height_field_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    height_field: &HeightFieldData,
+) -> ShapeId {
+    debug_assert!(height_field.hash != 0);
+    create_shape(
+        world,
+        body_id,
+        def,
+        ShapeGeometry::HeightField(height_field.clone()),
+    )
+}
+
+/// (b3CreateCompoundShape)
+///
+/// Compounds must be on static non-sensor bodies. Materials are copied from the
+/// compound geometry into the shape (see [`create_shape_internal`]).
+pub fn create_compound_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    compound: &CompoundData,
+) -> ShapeId {
+    debug_assert!(!def.is_sensor);
+    create_shape(
+        world,
+        body_id,
+        def,
+        ShapeGeometry::Compound(compound.clone()),
+    )
 }
 
 /// Resolve a ShapeId to the shape index. (b3GetShape)

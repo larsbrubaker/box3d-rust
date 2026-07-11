@@ -3,25 +3,27 @@
 **Remaining work only; delete items as they complete and delete this file when
 the track is done (also remove its row from todo.md).**
 
-Two related gaps: `create_*_shape` only exists for sphere/capsule/hull
-(`src/shape/lifecycle.rs`), and the `b3Shape_*` (~50 fns) / `b3Body_*`
-(~78 fns, ~13 ported in `src/body/api.rs`) public API surfaces are mostly
-unported. The collision geometry itself (mesh, height field, compound) is
-fully ported and tested — only the shape-attach and API layers are missing.
+Two related gaps were: mesh/height-field/compound `create_*_shape` (now
+ported) and the remaining `b3Shape_*` (~50 fns) / `b3Body_*` public API
+surface. Collision geometry itself is fully ported; shape-attach for the
+three static-ish types is done — filter/material/query APIs and most body
+mutators remain.
 
 Mostly independent of the solver-touching tracks; small overlap with task-3
 on sensor-related shape API.
 
 ## Shape creation (shape.c)
 
-- [ ] `create_mesh_shape` (mesh data + per-instance scale, multi-material)
-- [ ] `create_height_field_shape`
-- [ ] `create_compound_shape`
-- [ ] Port `TestCompoundHitEvents` from `test_world.c` — the compound branch
+- [x] `create_mesh_shape` (mesh data + per-instance scale, multi-material)
+- [x] `create_height_field_shape`
+- [x] `create_compound_shape`
+- [x] Port `TestCompoundHitEvents` from `test_world.c` — the compound branch
       of `Shape::get_shape_user_material_id` is already ported and waiting;
       this test makes it reachable
-- [ ] Port `TestMeshDrop` and `TestOverflowColorPile` from `test_world.c`
-      (need mesh shape create; exercise the overflow color path)
+- [ ] Port `TestMeshDrop` from `test_world.c` (need mesh shape create;
+      exercise continuous collision / mesh contact stability)
+- [x] Port `TestOverflowColorPile` from `test_world.c`
+      (exercise the overflow color path)
 
 ## b3Shape_* API (shape.c)
 
@@ -41,7 +43,7 @@ on sensor-related shape API.
 - [ ] `SetTransform` (teleport with contact refresh), `SetAwake`
 - [ ] Forces/impulses: ApplyForce/Torque/LinearImpulse/AngularImpulse
       (center + point variants, wake semantics)
-- [ ] Damping, gravity scale, sleep threshold, `EnableSleep` get/set —
+- [x] Damping, gravity scale, sleep threshold, `EnableSleep` get/set —
       port `EnableSleepFlagSyncTest` and `EnableSleepNoopUnlockTest`
       (the no-op unlock regression) from `test_world.c`
 - [ ] Motion locks get/set (`b3Body_SetMotionLocks`)
