@@ -1,4 +1,4 @@
-//! Shape query dispatch: projected area, proxy, ray/shape cast, and overlap.
+//! Shape query dispatch: projected area, ray/shape cast, overlap, and mover collide.
 //! Port of the corresponding functions from box3d-cpp-reference/src/shape.c.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
@@ -9,7 +9,7 @@ use crate::compound::{
     collide_mover_and_compound, overlap_compound, ray_cast_compound, shape_cast_compound,
 };
 use crate::constants::MAX_SHAPE_CAST_POINTS;
-use crate::distance::{make_proxy, CastOutput, ShapeProxy};
+use crate::distance::{CastOutput, ShapeProxy};
 use crate::geometry::{
     collide_mover_and_capsule, collide_mover_and_sphere, overlap_capsule, overlap_sphere,
     ray_cast_capsule, ray_cast_sphere, shape_cast_capsule, shape_cast_sphere, Capsule,
@@ -20,7 +20,7 @@ use crate::height_field::{
     shape_cast_height_field,
 };
 use crate::hull::{
-    collide_mover_and_hull, compute_hull_projected_area, get_hull_points, overlap_hull,
+    collide_mover_and_hull, compute_hull_projected_area, overlap_hull,
     ray_cast_hull, shape_cast_hull,
 };
 use crate::math_functions::{
@@ -49,23 +49,6 @@ pub fn get_shape_projected_area(shape: &Shape, plane_normal: Vec3) -> f32 {
     }
 }
 
-/// Make a GJK shape proxy for a convex shape. (b3MakeShapeProxy)
-pub fn make_shape_proxy(shape: &Shape) -> ShapeProxy {
-    match &shape.geometry {
-        ShapeGeometry::Capsule(capsule) => {
-            make_proxy(&[capsule.center1, capsule.center2], capsule.radius)
-        }
-        ShapeGeometry::Sphere(sphere) => make_proxy(&[sphere.center], sphere.radius),
-        ShapeGeometry::Hull(hull) => {
-            let points = get_hull_points(hull);
-            make_proxy(points, 0.0)
-        }
-        _ => {
-            debug_assert!(false, "make_shape_proxy only supports capsule/sphere/hull");
-            ShapeProxy::default()
-        }
-    }
-}
 
 /// Ray cast a shape in world (or relative) space. Transforms the ray into
 /// local space, dispatches, then transforms the hit back. (b3RayCastShape)
