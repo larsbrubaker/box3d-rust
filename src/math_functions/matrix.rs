@@ -5,11 +5,17 @@ use super::*;
 
 /// A 2x2 matrix stored as columns. Ported from math_internal.h for tests and
 /// internal use (`b3Matrix2`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Mat2 {
     pub cx: Vec2,
     pub cy: Vec2,
 }
+
+/// Zero 2x2 matrix. (math_internal.h literal)
+pub const MAT2_ZERO: Mat2 = Mat2 {
+    cx: Vec2 { x: 0.0, y: 0.0 },
+    cy: Vec2 { x: 0.0, y: 0.0 },
+};
 
 /// Compute the determinant of a 3-by-3 matrix.
 pub fn det(m: Matrix3) -> f32 {

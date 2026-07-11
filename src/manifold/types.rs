@@ -209,3 +209,61 @@ pub struct SatCache {
     /// Was the cache re-used?
     pub hit: u8,
 }
+
+/// A manifold point is a contact point belonging to a contact manifold.
+/// Box3D uses speculative collision so some contact points may be separated.
+/// (b3ManifoldPoint)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ManifoldPoint {
+    /// Location of the contact point relative to body A center of mass in world space.
+    pub anchor_a: Vec3,
+    /// Location of the contact point relative to body B center of mass in world space.
+    pub anchor_b: Vec3,
+    /// Separation of the contact point; negative if penetrating.
+    pub separation: f32,
+    /// Cached separation used for contact recycling.
+    pub base_separation: f32,
+    /// Impulse along the manifold normal from the final sub-step.
+    pub normal_impulse: f32,
+    /// Total normal impulse applied during sub-stepping.
+    pub total_normal_impulse: f32,
+    /// Relative normal velocity pre-solve. Negative means approaching.
+    pub normal_velocity: f32,
+    /// Uniquely identifies a contact point between two shapes.
+    pub feature_id: u32,
+    /// Triangle index if one of the shapes is a mesh or height field.
+    pub triangle_index: i32,
+    /// Did this contact point exist in the previous step?
+    pub persisted: bool,
+}
+
+/// A contact manifold describes the contact points between colliding shapes.
+/// (b3Manifold)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Manifold {
+    /// The manifold points. There may be 0 to [`MAX_MANIFOLD_POINTS`] valid points.
+    pub points: [ManifoldPoint; MAX_MANIFOLD_POINTS],
+    /// Unit normal in world space, points from shape A to shape B.
+    pub normal: Vec3,
+    /// Central friction angular impulse (applied about the normal).
+    pub twist_impulse: f32,
+    /// Central friction linear impulse.
+    pub friction_impulse: Vec3,
+    /// Rolling resistance angular impulse.
+    pub rolling_impulse: Vec3,
+    /// The number of contact points, 0 to 4.
+    pub point_count: i32,
+}
+
+impl Default for Manifold {
+    fn default() -> Self {
+        Manifold {
+            points: [ManifoldPoint::default(); MAX_MANIFOLD_POINTS],
+            normal: VEC3_ZERO,
+            twist_impulse: 0.0,
+            friction_impulse: VEC3_ZERO,
+            rolling_impulse: VEC3_ZERO,
+            point_count: 0,
+        }
+    }
+}

@@ -175,10 +175,11 @@ impl SurfaceMaterial {
 }
 
 /// Shape type. (b3ShapeType)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(i32)]
 pub enum ShapeType {
     /// A capsule is an extruded sphere.
+    #[default]
     Capsule = 0,
     /// A baked compound shape.
     Compound = 1,
@@ -190,4 +191,12 @@ pub enum ShapeType {
     Mesh = 4,
     /// A sphere with an offset.
     Sphere = 5,
+}
+
+/// Minimum and maximum extent of a shape relative to a local origin.
+/// (math_internal.h: b3ShapeExtent)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ShapeExtent {
+    pub min_extent: f32,
+    pub max_extent: Vec3,
 }

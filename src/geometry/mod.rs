@@ -26,7 +26,7 @@ pub use sphere::{
     overlap_sphere, ray_cast_hollow_sphere, ray_cast_sphere, shape_cast_sphere,
 };
 pub use types::{
-    Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, ShapeType, Sphere,
+    Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, ShapeExtent, ShapeType, Sphere,
     SurfaceMaterial, default_surface_material, SURFACE_MATERIAL_SIZE,
 };
 

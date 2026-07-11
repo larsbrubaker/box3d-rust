@@ -29,5 +29,6 @@ pub use triangle::{collide_capsule_and_triangle, collide_sphere_and_triangle};
 pub use triangle_hull::collide_hull_and_triangle;
 pub use types::{
     make_feature_id, make_feature_pair, FeatureOwner, FeaturePair, LocalManifold,
-    LocalManifoldPoint, SatCache, SeparatingFeature, TriangleFeature, FEATURE_PAIR_SINGLE,
+    LocalManifoldPoint, Manifold, ManifoldPoint, SatCache, SeparatingFeature, TriangleFeature,
+    FEATURE_PAIR_SINGLE,
 };

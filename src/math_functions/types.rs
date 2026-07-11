@@ -109,6 +109,8 @@ pub const RAD_TO_DEG: f32 = 57.2957795131;
 /// Minimum scale used for scaling collision meshes, etc. (B3_MIN_SCALE)
 pub const MIN_SCALE: f32 = 0.01;
 
+pub const VEC2_ZERO: Vec2 = Vec2 { x: 0.0, y: 0.0 };
+
 pub const VEC3_ZERO: Vec3 = Vec3 {
     x: 0.0,
     y: 0.0,

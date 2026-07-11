@@ -70,6 +70,21 @@ pub const MAX_SHAPE_CAST_POINTS: usize = 64;
 /// (B3_MAX_MANIFOLD_POINTS)
 pub const MAX_MANIFOLD_POINTS: usize = 4;
 
+/// Maximum number of colors in the constraint graph. Constraints that cannot
+/// find a color are added to the overflow set. (B3_GRAPH_COLOR_COUNT)
+pub const GRAPH_COLOR_COUNT: i32 = 24;
+
+/// Contact-point buckets for reporting manifold counts per pair.
+/// (B3_CONTACT_MANIFOLD_COUNT_BUCKETS)
+pub const CONTACT_MANIFOLD_COUNT_BUCKETS: usize = 8;
+
+/// Time a body must be still before it will go to sleep, in seconds.
+/// (B3_TIME_TO_SLEEP)
+pub const TIME_TO_SLEEP: f32 = 0.5;
+
+/// Null name id in the name cache. (B3_NULL_NAME)
+pub const NULL_NAME: u32 = 0;
+
 /// Used to determine if two shapes are overlapping. Typically about 4×
 /// [`linear_slop`]. (B3_SPECULATIVE_DISTANCE)
 pub fn speculative_distance() -> f32 {

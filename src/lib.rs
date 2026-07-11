@@ -10,22 +10,35 @@
 
 pub mod aabb;
 pub mod bitset;
+pub mod body;
 pub mod broad_phase;
 pub mod compound;
 pub mod constants;
+pub mod constraint_graph;
+pub mod contact;
+pub mod contact_solver;
 pub mod core;
 pub mod distance;
 pub mod dynamic_tree;
+pub mod events;
 pub mod geometry;
 pub mod height_field;
 pub mod hull;
 pub mod id;
 pub mod id_pool;
+pub mod island;
+pub mod joint;
 pub mod manifold;
 pub mod math_functions;
 pub mod mesh;
+pub mod name_cache;
+pub mod sensor;
+pub mod shape;
+pub mod solver;
+pub mod solver_set;
 pub mod table;
 pub mod types;
+pub mod world;
 
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
 pub use math_functions::{
