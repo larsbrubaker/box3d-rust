@@ -370,3 +370,21 @@ pub fn destroy_contact(world: &mut World, contact_id: i32, wake_bodies: bool) {
         crate::body::wake_body(world, body_id_b);
     }
 }
+
+/// Contact identifier validation. (b3Contact_IsValid — world registry checks
+/// collapse to the world argument)
+pub fn contact_is_valid(world: &World, id: ContactId) -> bool {
+    let contact_id = id.index1 - 1;
+    if contact_id < 0 || (world.contacts.len() as i32) <= contact_id {
+        return false;
+    }
+
+    let contact = &world.contacts[contact_id as usize];
+    if contact.contact_id == NULL_INDEX {
+        return false;
+    }
+
+    debug_assert!(contact.contact_id == contact_id);
+
+    id.generation == contact.generation
+}

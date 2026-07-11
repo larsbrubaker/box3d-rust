@@ -372,6 +372,36 @@ pub fn body_is_bullet(world: &World, body_id: BodyId) -> bool {
     (world.bodies[body_index as usize].flags & body_flags::IS_BULLET) != 0
 }
 
+/// (b3Body_EnableContactRecycling)
+pub fn body_enable_contact_recycling(world: &mut World, body_id: BodyId, flag: bool) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    let new_flag = if flag {
+        body_flags::BODY_ENABLE_CONTACT_RECYCLING
+    } else {
+        0
+    };
+    let body_index = get_body_full_id(world, body_id);
+    if (world.bodies[body_index as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING)
+        == new_flag
+    {
+        return;
+    }
+
+    world.bodies[body_index as usize].flags &= !body_flags::BODY_ENABLE_CONTACT_RECYCLING;
+    world.bodies[body_index as usize].flags |= new_flag;
+    sync_body_flags(world, body_index);
+}
+
+/// (b3Body_IsContactRecyclingEnabled)
+pub fn body_is_contact_recycling_enabled(world: &World, body_id: BodyId) -> bool {
+    let body_index = get_body_full_id(world, body_id);
+    (world.bodies[body_index as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
+}
+
 /// (b3Body_SetMotionLocks)
 pub fn body_set_motion_locks(world: &mut World, body_id: BodyId, locks: crate::types::MotionLocks) {
     use super::mass::update_body_mass_data;
