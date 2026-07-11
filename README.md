@@ -34,8 +34,7 @@ suite.
 | Foundation: math_functions (Vec3/Quat/Matrix3), core/constants | ✅ | ✅ (test_math.c) |
 | Foundation: id, bitset, id_pool, table (container → Vec) | ✅ | ✅ (test_id/bitset/table.c) |
 | Collision: aabb, distance (GJK/TOI) | ✅ | ✅ (test_collision AABB + test_distance.c) |
-| Collision: hull construction + geometry (sphere/capsule/hull queries) | ✅ | ✅ (test_hull.c + test_shape geometry) |
-| Collision: manifolds, mesh/compound/height field, dynamic_tree | ⬜ | ⬜ |
+| Collision: hull, geometry, manifolds, mesh, height_field, compound, dynamic_tree | ✅ | ✅ (test_hull/shape/compound/height_field + authored) |
 | Broad phase: proxy ops, move buffer, pair update → contact creation | ⬜ | ⬜ |
 | Dynamics: body/shape/contact lifecycles, constraint graph, solver sets, islands | ⬜ | ⬜ (test_body.c) |
 | Joints: distance, motor, prismatic, revolute, spherical, weld, wheel | ⬜ | ⬜ (test_joint.c) |
