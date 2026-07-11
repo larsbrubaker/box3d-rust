@@ -12,8 +12,10 @@ use crate::distance::SimplexCache;
 use crate::geometry::{Capsule, Sphere};
 use crate::hull::make_box_hull;
 use crate::manifold::{
-    collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule, collide_hull_and_sphere,
-    collide_hulls, collide_spheres, LocalManifold, SatCache,
+    collide_capsule_and_sphere, collide_capsule_and_triangle, collide_capsules,
+    collide_hull_and_capsule, collide_hull_and_sphere, collide_hull_and_triangle, collide_hulls,
+    collide_sphere_and_triangle, collide_spheres, LocalManifold, SatCache, SeparatingFeature,
+    TriangleFeature,
 };
 use crate::math_functions::{
     inv_mul_world_transforms, offset_pos, Transform, Vec3, WorldTransform, POS_ZERO, QUAT_IDENTITY,
@@ -421,5 +423,172 @@ fn large_world_manifold_test() {
             ensure_small(m_large.points[i].point.z - m_origin.points[i].point.z, 1e-4);
         }
     }
+}
+
+fn unit_triangle() -> [Vec3; 3] {
+    // CCW when viewed from +y: Edge1 is the z=-1 edge, normal points +y
+    [v(1.0, 0.0, -1.0), v(-1.0, 0.0, -1.0), v(0.0, 0.0, 1.0)]
+}
+
+#[test]
+fn collide_sphere_and_triangle_face_edge_vertex() {
+    let tri = unit_triangle();
+
+    // Sphere above face center → face feature, normal +y.
+    let sphere_face = Sphere {
+        center: v(0.0, 0.4, 0.0),
+        radius: 0.5,
+    };
+    let mut face = LocalManifold::default();
+    collide_sphere_and_triangle(&mut face, MAX_MANIFOLD_POINTS as i32, &sphere_face, &tri);
+    assert_eq!(face.point_count, 1);
+    assert_eq!(face.feature, TriangleFeature::TriangleFace);
+    ensure_small(face.normal.x, 1e-5);
+    ensure_small(face.normal.y - 1.0, 1e-5);
+    ensure_small(face.normal.z, 1e-5);
+    ensure_small(face.points[0].separation + 0.1, 1e-4);
+
+    // Sphere outside edge v1-v2 (along -z past the edge at z=-1).
+    let sphere_edge = Sphere {
+        center: v(0.0, 0.0, -1.4),
+        radius: 0.5,
+    };
+    let mut edge = LocalManifold::default();
+    collide_sphere_and_triangle(&mut edge, MAX_MANIFOLD_POINTS as i32, &sphere_edge, &tri);
+    assert_eq!(edge.point_count, 1);
+    assert_eq!(edge.feature, TriangleFeature::Edge1);
+    ensure_small(edge.points[0].separation + 0.1, 1e-4);
+
+    // Sphere near vertex v3 (0,0,1).
+    let sphere_vert = Sphere {
+        center: v(0.0, 0.0, 1.4),
+        radius: 0.5,
+    };
+    let mut vert = LocalManifold::default();
+    collide_sphere_and_triangle(&mut vert, MAX_MANIFOLD_POINTS as i32, &sphere_vert, &tri);
+    assert_eq!(vert.point_count, 1);
+    assert_eq!(vert.feature, TriangleFeature::Vertex3);
+    ensure_small(vert.points[0].separation + 0.1, 1e-4);
+}
+
+#[test]
+fn collide_sphere_and_triangle_backface_cull() {
+    let tri = unit_triangle();
+    // Sphere below the triangle (negative plane offset) must be culled.
+    let sphere = Sphere {
+        center: v(0.0, -0.2, 0.0),
+        radius: 0.5,
+    };
+    let mut manifold = LocalManifold::default();
+    collide_sphere_and_triangle(&mut manifold, MAX_MANIFOLD_POINTS as i32, &sphere, &tri);
+    assert_eq!(manifold.point_count, 0);
+}
+
+#[test]
+fn collide_capsule_and_triangle_face_vs_edge() {
+    let tri = unit_triangle();
+
+    // Capsule parallel to the face, above it → face contact with 2 points.
+    let capsule_face = Capsule {
+        center1: v(-0.3, 0.4, 0.0),
+        center2: v(0.3, 0.4, 0.0),
+        radius: 0.5,
+    };
+    let mut face = LocalManifold::default();
+    let mut cache = SimplexCache::default();
+    collide_capsule_and_triangle(
+        &mut face,
+        MAX_MANIFOLD_POINTS as i32,
+        &capsule_face,
+        &tri,
+        &mut cache,
+    );
+    assert_eq!(face.point_count, 2);
+    assert_eq!(face.feature, TriangleFeature::TriangleFace);
+    ensure_small(face.normal.y - 1.0, 1e-4);
+    ensure_small(face.points[0].separation + 0.1, 1e-3);
+    ensure_small(face.points[1].separation + 0.1, 1e-3);
+
+    // Capsule beside edge v1-v2 (z=-1), axis parallel to the edge → edge/closest contact.
+    let capsule_edge = Capsule {
+        center1: v(-0.3, 0.0, -1.4),
+        center2: v(0.3, 0.0, -1.4),
+        radius: 0.5,
+    };
+    let mut edge = LocalManifold::default();
+    let mut edge_cache = SimplexCache::default();
+    collide_capsule_and_triangle(
+        &mut edge,
+        MAX_MANIFOLD_POINTS as i32,
+        &capsule_edge,
+        &tri,
+        &mut edge_cache,
+    );
+    assert!(edge.point_count >= 1);
+    // Shallow path: feature from GJK simplex (edge1) or face clip.
+    assert!(
+        edge.feature == TriangleFeature::Edge1
+            || edge.feature == TriangleFeature::TriangleFace
+            || edge.point_count == 1
+    );
+    ensure_small(edge.points[0].separation + 0.1, 0.05);
+}
+
+#[test]
+fn collide_hull_and_triangle_face_overlap_and_separation() {
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+
+    // Box at origin; triangle at y=-0.4 so hull bottom (y=-0.5) penetrates by 0.1.
+    // CCW from +y so the triangle normal points toward the hull.
+    let mut manifold = LocalManifold::default();
+    let mut cache = SatCache::default();
+    collide_hull_and_triangle(
+        &mut manifold,
+        MAX_MANIFOLD_POINTS as i32,
+        &box_hull.base,
+        v(2.0, -0.4, -2.0),
+        v(-2.0, -0.4, -2.0),
+        v(0.0, -0.4, 2.0),
+        0,
+        &mut cache,
+    );
+    assert!(manifold.point_count >= 1);
+    // Normal should point roughly +y (triangle face) or from hull toward triangle.
+    assert!(manifold.normal.y > 0.5);
+    for i in 0..manifold.point_count {
+        ensure_small(manifold.points[i as usize].separation + 0.1, 0.05);
+    }
+
+    // Far below: separated.
+    let mut far = LocalManifold::default();
+    let mut far_cache = SatCache::default();
+    collide_hull_and_triangle(
+        &mut far,
+        MAX_MANIFOLD_POINTS as i32,
+        &box_hull.base,
+        v(2.0, -10.0, -2.0),
+        v(-2.0, -10.0, -2.0),
+        v(0.0, -10.0, 2.0),
+        0,
+        &mut far_cache,
+    );
+    assert_eq!(far.point_count, 0);
+    assert!(far_cache.separation > 0.0 || far_cache.type_ != 0);
+
+    // Backface: triangle above the hull with +y normal → hull is behind the plane.
+    let mut back = LocalManifold::default();
+    let mut back_cache = SatCache::default();
+    collide_hull_and_triangle(
+        &mut back,
+        MAX_MANIFOLD_POINTS as i32,
+        &box_hull.base,
+        v(2.0, 2.0, -2.0),
+        v(-2.0, 2.0, -2.0),
+        v(0.0, 2.0, 2.0),
+        0,
+        &mut back_cache,
+    );
+    assert_eq!(back.point_count, 0);
+    assert_eq!(back_cache.type_, SeparatingFeature::BacksideAxis as u8);
 }
 

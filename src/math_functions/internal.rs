@@ -193,3 +193,97 @@ pub fn cylinder_inertia(mass: f32, radius: f32, height: f32) -> Matrix3 {
     let iyy = 0.5 * mass * radius * radius;
     make_diagonal_matrix(ixx, iyy, ixx)
 }
+
+/// Closest point on a triangle and the feature that owns it.
+/// (math_internal.h: b3TrianglePoint)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrianglePoint {
+    pub point: Vec3,
+    pub feature: crate::manifold::TriangleFeature,
+}
+
+/// Closest point on triangle ABC to query point Q (Ericson §5.1.5).
+/// (math_functions.c: b3ClosestPointOnTriangle)
+pub fn closest_point_on_triangle(a: Vec3, b: Vec3, c: Vec3, q: Vec3) -> TrianglePoint {
+    use crate::manifold::TriangleFeature;
+
+    // Check if P lies in vertex region of A
+    let ab = sub(b, a);
+    let ac = sub(c, a);
+    let aq = sub(q, a);
+
+    let d1 = dot(ab, aq);
+    let d2 = dot(ac, aq);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return TrianglePoint {
+            point: a,
+            feature: TriangleFeature::Vertex1,
+        };
+    }
+
+    // Check if P lies in vertex region of B
+    let bq = sub(q, b);
+
+    let d3 = dot(ab, bq);
+    let d4 = dot(ac, bq);
+    if d3 > 0.0 && d4 <= d3 {
+        return TrianglePoint {
+            point: b,
+            feature: TriangleFeature::Vertex2,
+        };
+    }
+
+    // Check if P lies in edge region AB
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let t = d1 / (d1 - d3);
+        return TrianglePoint {
+            point: mul_add(a, t, ab),
+            feature: TriangleFeature::Edge1,
+        };
+    }
+
+    // Check if P lies in vertex region of C
+    let cq = sub(q, c);
+
+    let d5 = dot(ab, cq);
+    let d6 = dot(ac, cq);
+    if d6 >= 0.0 && d5 <= d6 {
+        return TrianglePoint {
+            point: c,
+            feature: TriangleFeature::Vertex3,
+        };
+    }
+
+    // Check if P lies in edge region AC
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let t = d2 / (d2 - d6);
+        return TrianglePoint {
+            point: mul_add(a, t, ac),
+            feature: TriangleFeature::Edge3,
+        };
+    }
+
+    // Check if P lies in edge region of BC
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && d4 >= d3 && d5 >= d6 {
+        let bc = sub(c, b);
+        let t = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return TrianglePoint {
+            point: mul_add(b, t, bc),
+            feature: TriangleFeature::Edge2,
+        };
+    }
+
+    // P inside face region ABC
+    let t1 = vb / (va + vb + vc);
+    let t2 = vc / (va + vb + vc);
+
+    let mut p = mul_add(a, t1, ab);
+    p = mul_add(p, t2, ac);
+    TrianglePoint {
+        point: p,
+        feature: TriangleFeature::TriangleFace,
+    }
+}
