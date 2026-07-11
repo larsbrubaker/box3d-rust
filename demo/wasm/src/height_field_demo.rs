@@ -4,8 +4,7 @@ use wasm_bindgen::prelude::*;
 
 use box3d_rust::geometry::RayCastInput;
 use box3d_rust::height_field::{
-    create_wave, get_height_field_triangle, get_height_field_triangle_count,
-    ray_cast_height_field,
+    create_wave, get_height_field_triangle, get_height_field_triangle_count, ray_cast_height_field,
 };
 use box3d_rust::math_functions::Vec3;
 use std::cell::RefCell;
@@ -86,14 +85,7 @@ pub fn hf_wireframe() -> Vec<f32> {
 
 /// Ray cast the height field. Returns [hit, fraction, px,py,pz, nx,ny,nz, tri].
 #[wasm_bindgen]
-pub fn hf_ray_cast(
-    ox: f32,
-    oy: f32,
-    oz: f32,
-    tx: f32,
-    ty: f32,
-    tz: f32,
-) -> Vec<f32> {
+pub fn hf_ray_cast(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     ensure_wave();
     HF.with(|cell| {
         let borrow = cell.borrow();

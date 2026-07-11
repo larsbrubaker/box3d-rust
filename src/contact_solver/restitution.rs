@@ -53,7 +53,9 @@ pub fn apply_restitution(
 
             let normal = cm.normal;
             let point_count = cm.point_count;
-            debug_assert!(0 < point_count && point_count as usize <= crate::constants::MAX_MANIFOLD_POINTS);
+            debug_assert!(
+                0 < point_count && point_count as usize <= crate::constants::MAX_MANIFOLD_POINTS
+            );
 
             for point_index in 0..point_count as usize {
                 let cp = &mut cm.points[point_index];

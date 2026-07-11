@@ -56,7 +56,10 @@ fn step_collide_marks_overlapping_contact_touching() {
 
     world.step(1.0 / 60.0, 1);
 
-    assert_eq!(world.solver_sets[AWAKE_SET as usize].contact_indices.len(), 0);
+    assert_eq!(
+        world.solver_sets[AWAKE_SET as usize].contact_indices.len(),
+        0
+    );
     let mut found_touching = false;
     for contact in &world.contacts {
         if contact.contact_id == NULL_INDEX {

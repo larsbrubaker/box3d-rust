@@ -16,7 +16,10 @@ use crate::math_functions::{
 
 /// Squared distance from a point to a node AABB. (static b3DistanceToNodeSqr)
 fn distance_to_node_sqr(point: Vec3, node_aabb: Aabb) -> f32 {
-    let r = sub(point, clamp(point, node_aabb.lower_bound, node_aabb.upper_bound));
+    let r = sub(
+        point,
+        clamp(point, node_aabb.lower_bound, node_aabb.upper_bound),
+    );
     dot(r, r)
 }
 
@@ -237,12 +240,7 @@ impl DynamicTree {
                 continue;
             }
 
-            if !test_bounds_ray_overlap(
-                node_aabb.lower_bound,
-                node_aabb.upper_bound,
-                p1,
-                d,
-            ) {
+            if !test_bounds_ray_overlap(node_aabb.lower_bound, node_aabb.upper_bound, p1, d) {
                 continue;
             }
 

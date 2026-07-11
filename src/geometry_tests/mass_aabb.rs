@@ -77,10 +77,7 @@ fn shape_mass_test() {
         let h1 = v(0.25, 0.5, 0.3);
         let h2 = v(0.25, 0.3, 0.5);
         let q = compute_quat_between_unit_vectors(VEC3_AXIS_Y, VEC3_AXIS_Z);
-        let transform = Transform {
-            p: VEC3_ZERO,
-            q,
-        };
+        let transform = Transform { p: VEC3_ZERO, q };
         let b1 = make_transformed_box_hull(h1.x, h1.y, h1.z, transform);
         let b2 = make_box_hull(h2.x, h2.y, h2.z);
 
@@ -191,15 +188,9 @@ fn shape_mass_test() {
         let md_lower = compute_hull_mass(&hull, 1.0);
 
         assert!(md_lower.mass < md.mass && md.mass < md_upper.mass);
-        assert!(
-            md_lower.inertia.cx.x < md.inertia.cx.x && md.inertia.cx.x < md_upper.inertia.cx.x
-        );
-        assert!(
-            md_lower.inertia.cy.y < md.inertia.cy.y && md.inertia.cy.y < md_upper.inertia.cy.y
-        );
-        assert!(
-            md_lower.inertia.cz.z < md.inertia.cz.z && md.inertia.cz.z < md_upper.inertia.cz.z
-        );
+        assert!(md_lower.inertia.cx.x < md.inertia.cx.x && md.inertia.cx.x < md_upper.inertia.cx.x);
+        assert!(md_lower.inertia.cy.y < md.inertia.cy.y && md.inertia.cy.y < md_upper.inertia.cy.y);
+        assert!(md_lower.inertia.cz.z < md.inertia.cz.z && md.inertia.cz.z < md_upper.inertia.cz.z);
 
         destroy_hull(hull);
     }

@@ -7,8 +7,8 @@ use super::{get_joint_sim_check_type, get_joint_sim_check_type_ref, JointSim, Jo
 use crate::body::{get_body_state_index, get_body_transform};
 use crate::id::JointId;
 use crate::math_functions::{
-    atan2, dot, make_matrix_from_quat, mul_quat, mul_sv, rotate_vector, sub, Vec2, Vec3, VEC3_AXIS_Z,
-    VEC3_ZERO,
+    atan2, dot, make_matrix_from_quat, mul_quat, mul_sv, rotate_vector, sub, Vec2, Vec3,
+    VEC3_AXIS_Z, VEC3_ZERO,
 };
 use crate::solver_set::AWAKE_SET;
 use crate::world::World;

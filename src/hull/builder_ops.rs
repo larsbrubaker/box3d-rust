@@ -12,8 +12,10 @@ fn is_edge_convex(b: &HullBuilder, edge: i32, tolerance: f32) -> bool {
     let twin = b.edges[edge as usize].twin;
     let face = b.edges[edge as usize].face;
     let twin_face = b.edges[twin as usize].face;
-    let distance =
-        plane_separation(b.faces[face as usize].plane, b.faces[twin_face as usize].centroid);
+    let distance = plane_separation(
+        b.faces[face as usize].plane,
+        b.faces[twin_face as usize].centroid,
+    );
     distance < -tolerance
 }
 
@@ -21,8 +23,10 @@ fn is_edge_concave(b: &HullBuilder, edge: i32, tolerance: f32) -> bool {
     let twin = b.edges[edge as usize].twin;
     let face = b.edges[edge as usize].face;
     let twin_face = b.edges[twin as usize].face;
-    let distance =
-        plane_separation(b.faces[face as usize].plane, b.faces[twin_face as usize].centroid);
+    let distance = plane_separation(
+        b.faces[face as usize].plane,
+        b.faces[twin_face as usize].centroid,
+    );
     distance > tolerance
 }
 
@@ -95,8 +99,10 @@ fn recache_conflicts(b: &mut HullBuilder, face: i32, min_outside: f32) {
     let mut node = b.faces[face as usize].conflict_list_head.next;
     while node != SENTINEL {
         let vertex = node;
-        let distance =
-            plane_separation(b.faces[face as usize].plane, b.vertices[vertex as usize].position);
+        let distance = plane_separation(
+            b.faces[face as usize].plane,
+            b.vertices[vertex as usize].position,
+        );
         if distance > max_distance {
             max_distance = distance;
             max_vertex = vertex;
@@ -140,12 +146,7 @@ impl HullBuilder {
         debug_assert!(list_empty(&self.faces[face as usize].conflict_list_head));
     }
 
-    fn enter_horizon_face(
-        &mut self,
-        face: i32,
-        entry_edge: i32,
-        frame_out: &mut HorizonFrame,
-    ) {
+    fn enter_horizon_face(&mut self, face: i32, entry_edge: i32, frame_out: &mut HorizonFrame) {
         self.faces[face as usize].mark = MARK_DELETE;
         self.drain_conflict_list(face);
 
@@ -217,9 +218,7 @@ impl HullBuilder {
     fn build_cone(&mut self, apex: i32) {
         for i in 0..self.horizon_count {
             let edge = self.horizon[i as usize];
-            debug_assert!(
-                self.edges[self.edges[edge as usize].twin as usize].twin == edge
-            );
+            debug_assert!(self.edges[self.edges[edge as usize].twin as usize].twin == edge);
 
             let origin = self.edges[edge as usize].origin;
             let twin_origin = self.edges[self.edges[edge as usize].twin as usize].origin;
@@ -267,7 +266,9 @@ impl HullBuilder {
                 let dead_edge2 = self.edges[dead_edge1 as usize].prev;
 
                 twin = self.edges[dead_edge2 as usize].twin;
-                debug_assert!(self.faces[self.edges[twin as usize].face as usize].mark != MARK_DELETE);
+                debug_assert!(
+                    self.faces[self.edges[twin as usize].face as usize].mark != MARK_DELETE
+                );
 
                 let opposing_face = prev_twin_face;
                 self.faces[opposing_face as usize].mark = MARK_DELETE;
@@ -375,9 +376,7 @@ impl HullBuilder {
             edge_prev = self.edges[edge_prev as usize].prev;
             twin_next = self.edges[twin_next as usize].next;
         }
-        debug_assert!(
-            self.edges[edge_prev as usize].face != self.edges[twin_next as usize].face
-        );
+        debug_assert!(self.edges[edge_prev as usize].face != self.edges[twin_next as usize].face);
 
         while self.edges[self.edges[edge_next as usize].twin as usize].face
             == self.edges[twin as usize].face
@@ -387,9 +386,7 @@ impl HullBuilder {
             edge_next = self.edges[edge_next as usize].next;
             twin_prev = self.edges[twin_prev as usize].prev;
         }
-        debug_assert!(
-            self.edges[edge_next as usize].face != self.edges[twin_prev as usize].face
-        );
+        debug_assert!(self.edges[edge_next as usize].face != self.edges[twin_prev as usize].face);
 
         self.faces[face as usize].edge = edge_prev;
 

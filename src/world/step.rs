@@ -38,10 +38,9 @@ impl World {
                 c.dynamic_shape_count,
                 self.broad_phase.trees[crate::types::BodyType::Dynamic as usize].proxy_count(),
             );
-            let static_body_count =
-                self.solver_sets[crate::solver_set::STATIC_SET as usize]
-                    .body_sims
-                    .len() as i32;
+            let static_body_count = self.solver_sets[crate::solver_set::STATIC_SET as usize]
+                .body_sims
+                .len() as i32;
             c.static_body_count = max_int(c.static_body_count, static_body_count);
             let total_body_count = self.body_id_pool.id_count();
             c.dynamic_body_count =
@@ -74,8 +73,11 @@ impl World {
         // Hertz values get reduced for large time steps
         let contact_hertz = min_float(self.contact_hertz, 0.125 * context.inv_h);
         context.contact_softness = make_soft(contact_hertz, self.contact_damping_ratio, context.h);
-        context.static_softness =
-            make_soft(2.0 * contact_hertz, 0.5 * self.contact_damping_ratio, context.h);
+        context.static_softness = make_soft(
+            2.0 * contact_hertz,
+            0.5 * self.contact_damping_ratio,
+            context.h,
+        );
         context.restitution_threshold = self.restitution_threshold;
         context.max_linear_velocity = self.max_linear_speed;
         context.contact_speed = self.contact_speed;

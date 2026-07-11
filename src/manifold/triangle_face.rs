@@ -12,8 +12,8 @@ use super::types::{
 use crate::constants::speculative_distance;
 use crate::hull::{get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
-    abs_float, add, cross, dot, line_distance, make_plane_from_normal_and_point, min_float, min_int,
-    mul_sv, mul_sub, neg, normalize, plane_separation, sub, Vec3,
+    abs_float, add, cross, dot, line_distance, make_plane_from_normal_and_point, min_float,
+    min_int, mul_sub, mul_sv, neg, normalize, plane_separation, sub, Vec3,
 };
 /// Clip triangle against a hull reference face. (static b3CollideHullFace)
 pub(crate) fn collide_hull_face(

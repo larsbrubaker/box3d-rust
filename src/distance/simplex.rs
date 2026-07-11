@@ -497,22 +497,8 @@ pub(crate) fn compute_witness_points(simplex: &Simplex) -> (Vec3, Vec3) {
             blend2(vs[0].a, vs[0].w_b, vs[1].a, vs[1].w_b),
         ),
         3 => (
-            blend3(
-                vs[0].a,
-                vs[0].w_a,
-                vs[1].a,
-                vs[1].w_a,
-                vs[2].a,
-                vs[2].w_a,
-            ),
-            blend3(
-                vs[0].a,
-                vs[0].w_b,
-                vs[1].a,
-                vs[1].w_b,
-                vs[2].a,
-                vs[2].w_b,
-            ),
+            blend3(vs[0].a, vs[0].w_a, vs[1].a, vs[1].w_a, vs[2].a, vs[2].w_a),
+            blend3(vs[0].a, vs[0].w_b, vs[1].a, vs[1].w_b, vs[2].a, vs[2].w_b),
         ),
         4 => {
             // Force identical points and *zero* distance

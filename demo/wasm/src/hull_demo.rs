@@ -38,7 +38,7 @@ pub fn box_hull_edges(hx: f32, hy: f32, hz: f32) -> Vec<f32> {
 /// Returns [vertex_count, face_count, edge_count, then edge segments xyzxyz...].
 #[wasm_bindgen]
 pub fn create_hull_demo(sides: u32, radius: f32, height: f32) -> Vec<f32> {
-    let n = sides.max(3).min(16) as i32;
+    let n = sides.clamp(3, 16) as i32;
     let mut points = Vec::with_capacity((n + 2) as usize);
     for i in 0..n {
         let angle = 2.0 * PI * i as f32 / n as f32;

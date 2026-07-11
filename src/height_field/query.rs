@@ -12,8 +12,8 @@ use crate::distance::{
 };
 use crate::geometry::{Capsule, PlaneResult};
 use crate::math_functions::{
-    aabb_overlaps, add, max, min, mul_sv, sub, test_bounds_triangle_overlap, Aabb, Plane, Transform,
-    Vec3, TRANSFORM_IDENTITY,
+    aabb_overlaps, add, max, min, mul_sv, sub, test_bounds_triangle_overlap, Aabb, Plane,
+    Transform, Vec3, TRANSFORM_IDENTITY,
 };
 
 /// Test overlap between a height field and a shape proxy. (b3OverlapHeightField)

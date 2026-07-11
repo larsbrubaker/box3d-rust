@@ -4,13 +4,9 @@ use wasm_bindgen::prelude::*;
 
 use box3d_rust::aabb::ray_cast_aabb;
 use box3d_rust::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
-use box3d_rust::geometry::{
-    ray_cast_capsule, ray_cast_sphere, Capsule, RayCastInput, Sphere,
-};
+use box3d_rust::geometry::{ray_cast_capsule, ray_cast_sphere, Capsule, RayCastInput, Sphere};
 use box3d_rust::hull::{make_box_hull, ray_cast_hull};
-use box3d_rust::math_functions::{
-    add, mul_add, Aabb, Vec3, TRANSFORM_IDENTITY,
-};
+use box3d_rust::math_functions::{add, mul_add, Aabb, Vec3, TRANSFORM_IDENTITY};
 
 fn scene_sphere() -> Sphere {
     Sphere {
@@ -155,14 +151,7 @@ fn aabb_hit_normal(aabb: Aabb, point: Vec3) -> Vec3 {
 /// Cast a ray against sphere, capsule, hull box, and AABB.
 /// Returns 4 × [hit, fraction, px, py, pz, nx, ny, nz] (32 floats).
 #[wasm_bindgen]
-pub fn ray_cast_scene(
-    ox: f32,
-    oy: f32,
-    oz: f32,
-    tx: f32,
-    ty: f32,
-    tz: f32,
-) -> Vec<f32> {
+pub fn ray_cast_scene(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     let origin = Vec3 {
         x: ox,
         y: oy,

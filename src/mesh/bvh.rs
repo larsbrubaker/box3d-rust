@@ -7,8 +7,8 @@ use super::types::{MeshData, MeshNode, MeshTriangle, MESH_STACK_SIZE};
 use crate::constants::linear_slop;
 use crate::core::NULL_INDEX;
 use crate::math_functions::{
-    aabb_add_point, aabb_area, aabb_center, aabb_extents, aabb_union, get_by_index, major_axis, max,
-    min, Aabb, Vec3, BOUNDS3_EMPTY,
+    aabb_add_point, aabb_area, aabb_center, aabb_extents, aabb_union, get_by_index, major_axis,
+    max, min, Aabb, Vec3, BOUNDS3_EMPTY,
 };
 use std::collections::HashMap;
 
@@ -51,9 +51,18 @@ struct SpatialHash<'a> {
 
 fn cell_key(x: i32, y: i32, z: i32) -> u64 {
     let mut key: u64 = 0;
-    key ^= (x as u64).wrapping_add(0x9e3779b9).wrapping_add(key << 6).wrapping_add(key >> 2);
-    key ^= (y as u64).wrapping_add(0x9e3779b9).wrapping_add(key << 6).wrapping_add(key >> 2);
-    key ^= (z as u64).wrapping_add(0x9e3779b9).wrapping_add(key << 6).wrapping_add(key >> 2);
+    key ^= (x as u64)
+        .wrapping_add(0x9e3779b9)
+        .wrapping_add(key << 6)
+        .wrapping_add(key >> 2);
+    key ^= (y as u64)
+        .wrapping_add(0x9e3779b9)
+        .wrapping_add(key << 6)
+        .wrapping_add(key >> 2);
+    key ^= (z as u64)
+        .wrapping_add(0x9e3779b9)
+        .wrapping_add(key << 6)
+        .wrapping_add(key >> 2);
     key
 }
 
@@ -294,7 +303,8 @@ fn split_median(count: i32, primitives: &mut [Primitive]) -> Split {
     }
 
     let d = crate::math_functions::sub(upper_bound, lower_bound);
-    let c = crate::math_functions::mul_sv(0.5, crate::math_functions::add(lower_bound, upper_bound));
+    let c =
+        crate::math_functions::mul_sv(0.5, crate::math_functions::add(lower_bound, upper_bound));
 
     let mut split = Split {
         left_bounds: Aabb::default(),
@@ -495,7 +505,8 @@ pub(super) fn sort_mesh_triangles(mesh: &mut MeshData) -> bool {
     debug_assert!(temp_triangles.len() == mesh.triangle_count as usize);
 
     mesh.triangles.copy_from_slice(&temp_triangles);
-    mesh.material_indices.copy_from_slice(&temp_material_indices);
+    mesh.material_indices
+        .copy_from_slice(&temp_material_indices);
     true
 }
 

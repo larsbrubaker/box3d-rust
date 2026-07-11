@@ -49,10 +49,7 @@ const CUBE_CORNERS: [Vec3; 8] = [
 ];
 
 fn ensure_small(v: f32, tol: f32) {
-    assert!(
-        abs_float(v) <= tol,
-        "expected |{v}| <= {tol}"
-    );
+    assert!(abs_float(v) <= tol, "expected |{v}| <= {tol}");
 }
 
 #[test]
@@ -61,10 +58,7 @@ fn create_hull_cube() {
     assert_eq!(hull.vertex_count, 8);
     assert_eq!(hull.edge_count, 24);
     assert_eq!(hull.face_count, 6);
-    assert_eq!(
-        hull.vertex_count - hull.edge_count / 2 + hull.face_count,
-        2
-    );
+    assert_eq!(hull.vertex_count - hull.edge_count / 2 + hull.face_count, 2);
 
     let ref_hull = make_box_hull(1.0, 1.0, 1.0);
     ensure_small(hull.volume - ref_hull.base.volume, 1e-4);
@@ -123,10 +117,7 @@ fn create_hull_tetrahedron() {
     assert_eq!(hull.vertex_count, 4);
     assert_eq!(hull.edge_count, 12);
     assert_eq!(hull.face_count, 4);
-    assert_eq!(
-        hull.vertex_count - hull.edge_count / 2 + hull.face_count,
-        2
-    );
+    assert_eq!(hull.vertex_count - hull.edge_count / 2 + hull.face_count, 2);
 
     let expected_volume = 1.0 / 6.0;
     let expected_surface_area = 1.5 + 0.5 * 3.0f32.sqrt();
@@ -203,26 +194,106 @@ fn create_hull_max_vertex() {
 #[test]
 fn create_hull_redundant_input() {
     let points = [
-        Vec3 { x: 1.0, y: 1.0, z: 1.0 },
-        Vec3 { x: -1.0, y: 1.0, z: 1.0 },
-        Vec3 { x: -1.0, y: -1.0, z: 1.0 },
-        Vec3 { x: 1.0, y: -1.0, z: 1.0 },
-        Vec3 { x: 1.0, y: 1.0, z: -1.0 },
-        Vec3 { x: -1.0, y: 1.0, z: -1.0 },
-        Vec3 { x: -1.0, y: -1.0, z: -1.0 },
-        Vec3 { x: 1.0, y: -1.0, z: -1.0 },
-        Vec3 { x: 1.0, y: 1.0, z: 1.0 },
-        Vec3 { x: 1.0, y: 1.0, z: 1.0 },
-        Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 0.5, y: 0.0, z: 0.0 },
-        Vec3 { x: 0.0, y: 0.5, z: 0.0 },
-        Vec3 { x: 0.0, y: 0.0, z: 0.5 },
-        Vec3 { x: -0.5, y: 0.0, z: 0.0 },
-        Vec3 { x: 0.0, y: -0.5, z: 0.0 },
-        Vec3 { x: 0.0, y: 0.0, z: -0.5 },
-        Vec3 { x: 0.25, y: 0.25, z: 0.25 },
-        Vec3 { x: -0.25, y: -0.25, z: -0.25 },
-        Vec3 { x: 0.5, y: 0.5, z: 0.5 },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        Vec3 {
+            x: -1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        Vec3 {
+            x: -1.0,
+            y: -1.0,
+            z: 1.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: -1.0,
+            z: 1.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: -1.0,
+        },
+        Vec3 {
+            x: -1.0,
+            y: 1.0,
+            z: -1.0,
+        },
+        Vec3 {
+            x: -1.0,
+            y: -1.0,
+            z: -1.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: -1.0,
+            z: -1.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.5,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.0,
+            y: 0.5,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.5,
+        },
+        Vec3 {
+            x: -0.5,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.0,
+            y: -0.5,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: -0.5,
+        },
+        Vec3 {
+            x: 0.25,
+            y: 0.25,
+            z: 0.25,
+        },
+        Vec3 {
+            x: -0.25,
+            y: -0.25,
+            z: -0.25,
+        },
+        Vec3 {
+            x: 0.5,
+            y: 0.5,
+            z: 0.5,
+        },
     ];
 
     let hull = create_hull(&points, 8).expect("redundant");
@@ -351,10 +422,7 @@ fn create_hull_sphere_reduction() {
     fill_sphere_sample(&mut points, 12345);
     let hull = create_hull(&points, 20).expect("sphere reduction");
     assert!(hull.vertex_count >= 4 && hull.vertex_count <= 20);
-    assert_eq!(
-        hull.vertex_count - hull.edge_count / 2 + hull.face_count,
-        2
-    );
+    assert_eq!(hull.vertex_count - hull.edge_count / 2 + hull.face_count, 2);
     destroy_hull(hull);
 }
 
@@ -374,10 +442,7 @@ fn create_hull_sphere_stress() {
         for &m in &m_values {
             let hull = create_hull(&points, m).expect("sphere stress");
             assert!(hull.vertex_count >= 4 && hull.vertex_count <= m);
-            assert_eq!(
-                hull.vertex_count - hull.edge_count / 2 + hull.face_count,
-                2
-            );
+            assert_eq!(hull.vertex_count - hull.edge_count / 2 + hull.face_count, 2);
             assert!(hull.face_count >= 4);
             destroy_hull(hull);
         }
@@ -417,14 +482,46 @@ fn create_hull_merge_churn_stress() {
 #[test]
 fn create_hull_degenerate() {
     let collinear = [
-        Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 1.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 2.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 3.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 4.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 5.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 6.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 7.0, y: 0.0, z: 0.0 },
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 2.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 3.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 4.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 5.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 6.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 7.0,
+            y: 0.0,
+            z: 0.0,
+        },
     ];
     assert!(create_hull(&collinear[..0], 8).is_none());
     assert!(create_hull(&collinear[..3], 8).is_none());
@@ -438,12 +535,36 @@ fn create_hull_degenerate() {
     assert!(create_hull(&collinear, 8).is_none());
 
     let coplanar = [
-        Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 1.0, y: 0.0, z: 0.0 },
-        Vec3 { x: 0.0, y: 1.0, z: 0.0 },
-        Vec3 { x: 1.0, y: 1.0, z: 0.0 },
-        Vec3 { x: 2.0, y: 0.5, z: 0.0 },
-        Vec3 { x: 0.5, y: 2.0, z: 0.0 },
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 2.0,
+            y: 0.5,
+            z: 0.0,
+        },
+        Vec3 {
+            x: 0.5,
+            y: 2.0,
+            z: 0.0,
+        },
     ];
     assert!(create_hull(&coplanar, 8).is_none());
 }

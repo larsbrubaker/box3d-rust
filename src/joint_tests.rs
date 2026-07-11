@@ -414,12 +414,7 @@ fn sleeping_islands_merge_on_new_joint() {
     ground_def.type_ = BodyType::Static;
     let ground = create_body(&mut world, &ground_def);
     let ground_hull = make_box_hull(20.0, 0.5, 5.0);
-    create_hull_shape(
-        &mut world,
-        ground,
-        &default_shape_def(),
-        &ground_hull.base,
-    );
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_hull.base);
 
     let cube = make_cube_hull(0.5);
     let mut cube_shape = default_shape_def();

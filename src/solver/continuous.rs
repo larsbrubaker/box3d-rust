@@ -54,9 +54,7 @@ pub(super) fn make_relative_sweep(body_sim: &BodySim, base: Pos) -> Sweep {
 /// Process one broad-phase leaf against the fast shape. (b3ContinuousQueryCallback)
 fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, shape_id: i32) {
     let fast_shape_id = ctx.fast_shape_id;
-    debug_assert!(
-        world.shapes[fast_shape_id as usize].sensor_index == NULL_INDEX
-    );
+    debug_assert!(world.shapes[fast_shape_id as usize].sensor_index == NULL_INDEX);
 
     if shape_id == fast_shape_id {
         return;
@@ -71,7 +69,8 @@ fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, sha
     let is_sensor = world.shapes[shape_id as usize].sensor_index != NULL_INDEX;
     if is_sensor
         && ((world.shapes[shape_id as usize].flags & shape_flags::ENABLE_SENSOR_EVENTS) == 0
-            || (world.shapes[fast_shape_id as usize].flags & shape_flags::ENABLE_SENSOR_EVENTS) == 0)
+            || (world.shapes[fast_shape_id as usize].flags & shape_flags::ENABLE_SENSOR_EVENTS)
+                == 0)
     {
         return;
     }
@@ -87,8 +86,7 @@ fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, sha
     let other_sim_flags =
         world.solver_sets[other_set as usize].body_sims[other_local as usize].flags;
 
-    let fast_sim =
-        &world.solver_sets[AWAKE_SET as usize].body_sims[ctx.fast_body_sim_index];
+    let fast_sim = &world.solver_sets[AWAKE_SET as usize].body_sims[ctx.fast_body_sim_index];
     debug_assert!(
         world.bodies[other_body_id as usize].type_ == BodyType::Static
             || (fast_sim.flags & body_flags::IS_BULLET) != 0
@@ -102,8 +100,8 @@ fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, sha
         return;
     }
 
-    let custom_a = (world.shapes[shape_id as usize].flags & shape_flags::ENABLE_CUSTOM_FILTERING)
-        != 0;
+    let custom_a =
+        (world.shapes[shape_id as usize].flags & shape_flags::ENABLE_CUSTOM_FILTERING) != 0;
     let custom_b =
         (world.shapes[fast_shape_id as usize].flags & shape_flags::ENABLE_CUSTOM_FILTERING) != 0;
     if custom_a || custom_b {
@@ -151,10 +149,11 @@ fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, sha
         }
     } else if 0.0 < output.fraction && output.fraction < ctx.fraction {
         let mut did_hit = true;
-        let pre_a = (world.shapes[shape_id as usize].flags & shape_flags::ENABLE_PRE_SOLVE_EVENTS)
+        let pre_a =
+            (world.shapes[shape_id as usize].flags & shape_flags::ENABLE_PRE_SOLVE_EVENTS) != 0;
+        let pre_b = (world.shapes[fast_shape_id as usize].flags
+            & shape_flags::ENABLE_PRE_SOLVE_EVENTS)
             != 0;
-        let pre_b =
-            (world.shapes[fast_shape_id as usize].flags & shape_flags::ENABLE_PRE_SOLVE_EVENTS) != 0;
         if did_hit && (pre_a || pre_b) {
             if let Some(pre_solve) = world.pre_solve_fcn {
                 let shape_id_a = ShapeId {
@@ -230,9 +229,9 @@ pub(super) fn solve_continuous(world: &mut World, body_sim_index: i32) {
     };
 
     let fast_body_id = world.solver_sets[AWAKE_SET as usize].body_sims[sim_index].body_id;
-    let is_bullet =
-        (world.solver_sets[AWAKE_SET as usize].body_sims[sim_index].flags & body_flags::IS_BULLET)
-            != 0;
+    let is_bullet = (world.solver_sets[AWAKE_SET as usize].body_sims[sim_index].flags
+        & body_flags::IS_BULLET)
+        != 0;
 
     let mut ctx = ContinuousContext {
         fast_body_sim_index: sim_index,
@@ -256,7 +255,10 @@ pub(super) fn solve_continuous(world: &mut World, body_sim_index: i32) {
         let _centroid2 = transform_point(xf2, local_centroid);
 
         let box1 = world.shapes[shape_id as usize].aabb;
-        let box2 = offset_aabb(compute_shape_aabb(&world.shapes[shape_id as usize], xf2), base);
+        let box2 = offset_aabb(
+            compute_shape_aabb(&world.shapes[shape_id as usize], xf2),
+            base,
+        );
         world.shapes[shape_id as usize].aabb = box2;
 
         let shape_type = world.shapes[shape_id as usize].shape_type();
@@ -365,9 +367,7 @@ pub(super) fn solve_continuous(world: &mut World, body_sim_index: i32) {
 
     for i in 0..ctx.sensor_count as usize {
         if ctx.sensor_fractions[i] < ctx.fraction {
-            world.task_contexts[0]
-                .sensor_hits
-                .push(ctx.sensor_hits[i]);
+            world.task_contexts[0].sensor_hits.push(ctx.sensor_hits[i]);
         }
     }
 

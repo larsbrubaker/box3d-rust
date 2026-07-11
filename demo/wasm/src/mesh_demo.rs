@@ -3,12 +3,12 @@
 use wasm_bindgen::prelude::*;
 
 use box3d_rust::geometry::RayCastInput;
+use box3d_rust::math_functions::TRANSFORM_IDENTITY;
 use box3d_rust::math_functions::{Aabb, Vec3, VEC3_ONE};
 use box3d_rust::mesh::{
     compute_mesh_aabb, create_box_mesh, create_grid_mesh, get_mesh_triangles, get_mesh_vertices,
     ray_cast_mesh, Mesh,
 };
-use box3d_rust::math_functions::TRANSFORM_IDENTITY;
 use std::cell::RefCell;
 
 thread_local! {
@@ -124,14 +124,7 @@ pub fn mesh_aabb() -> Vec<f32> {
 
 /// Ray cast the current mesh. Returns [hit, fraction, px,py,pz, nx,ny,nz, tri].
 #[wasm_bindgen]
-pub fn mesh_ray_cast(
-    ox: f32,
-    oy: f32,
-    oz: f32,
-    tx: f32,
-    ty: f32,
-    tz: f32,
-) -> Vec<f32> {
+pub fn mesh_ray_cast(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     ensure_box_mesh();
     MESH.with(|cell| {
         let borrow = cell.borrow();

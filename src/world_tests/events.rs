@@ -25,7 +25,12 @@ fn hit_events() {
     };
     let ground_id = create_body(&mut world, &body_def);
     let ground_box = make_box_hull(10.0, 0.5, 10.0);
-    create_hull_shape(&mut world, ground_id, &default_shape_def(), &ground_box.base);
+    create_hull_shape(
+        &mut world,
+        ground_id,
+        &default_shape_def(),
+        &ground_box.base,
+    );
 
     // Sphere driven into the ground fast enough to clear the hit threshold
     let mut body_def = default_body_def();
@@ -212,7 +217,10 @@ fn sensor_events_persist_across_sleep() {
         }
     }
 
-    assert!(saw_begin, "expected at least one sensor begin while settling");
+    assert!(
+        saw_begin,
+        "expected at least one sensor begin while settling"
+    );
     let box_index = crate::body::get_body_full_id(&world, box_id);
     assert!(
         !is_body_awake(&world, box_index),
@@ -233,9 +241,6 @@ fn sensor_events_persist_across_sleep() {
         );
     }
 }
-
-/// (HelloWorld)
-#[test]
 
 /// (TestCompoundHitEvents)
 #[test]

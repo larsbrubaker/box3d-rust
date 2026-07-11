@@ -3,16 +3,14 @@
 use wasm_bindgen::prelude::*;
 
 use box3d_rust::constants::MAX_MANIFOLD_POINTS;
+use box3d_rust::distance::SimplexCache;
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::hull::make_box_hull;
-use box3d_rust::distance::SimplexCache;
 use box3d_rust::manifold::{
     collide_capsules, collide_hull_and_sphere, collide_hulls, collide_spheres, LocalManifold,
     SatCache,
 };
-use box3d_rust::math_functions::{
-    make_quat_from_axis_angle, Transform, Vec3, VEC3_AXIS_Y,
-};
+use box3d_rust::math_functions::{make_quat_from_axis_angle, Transform, Vec3, VEC3_AXIS_Y};
 
 fn xf(px: f32, py: f32, pz: f32, angle: f32) -> Transform {
     Transform {
@@ -26,12 +24,7 @@ fn xf(px: f32, py: f32, pz: f32, angle: f32) -> Transform {
 }
 
 fn pack_manifold(m: &LocalManifold) -> Vec<f32> {
-    let mut out = vec![
-        m.normal.x,
-        m.normal.y,
-        m.normal.z,
-        m.point_count as f32,
-    ];
+    let mut out = vec![m.normal.x, m.normal.y, m.normal.z, m.point_count as f32];
     for i in 0..m.point_count as usize {
         let p = &m.points[i];
         out.push(p.point.x);
@@ -67,7 +60,13 @@ pub fn collide_spheres_demo(bx: f32, by: f32, bz: f32) -> Vec<f32> {
         radius: 0.7,
     };
     let mut m = LocalManifold::default();
-    collide_spheres(&mut m, MAX_MANIFOLD_POINTS as i32, &a, &b, xf(bx, by, bz, 0.0));
+    collide_spheres(
+        &mut m,
+        MAX_MANIFOLD_POINTS as i32,
+        &a,
+        &b,
+        xf(bx, by, bz, 0.0),
+    );
     pack_manifold(&m)
 }
 

@@ -153,11 +153,10 @@ impl World {
                             // (b3GetJointSim)
                             let joint_sim = if joint.set_index == AWAKE_SET {
                                 debug_assert!(
-                                    0 <= joint.color_index
-                                        && joint.color_index < GRAPH_COLOR_COUNT
+                                    0 <= joint.color_index && joint.color_index < GRAPH_COLOR_COUNT
                                 );
-                                &self.constraint_graph.colors[joint.color_index as usize]
-                                    .joint_sims[joint.local_index as usize]
+                                &self.constraint_graph.colors[joint.color_index as usize].joint_sims
+                                    [joint.local_index as usize]
                             } else {
                                 debug_assert!(joint.color_index == NULL_INDEX);
                                 &self.solver_sets[joint.set_index as usize].joint_sims
@@ -261,8 +260,16 @@ impl World {
                             == (body_b.type_ == BodyType::Dynamic)
                     );
 
-                    bit_count += if body_a.type_ == BodyType::Dynamic { 1 } else { 0 };
-                    bit_count += if body_b.type_ == BodyType::Dynamic { 1 } else { 0 };
+                    bit_count += if body_a.type_ == BodyType::Dynamic {
+                        1
+                    } else {
+                        0
+                    };
+                    bit_count += if body_b.type_ == BodyType::Dynamic {
+                        1
+                    } else {
+                        0
+                    };
                 }
                 let _ = (contact, local_index);
             }
@@ -293,8 +300,16 @@ impl World {
                             == (body_b.type_ == BodyType::Dynamic)
                     );
 
-                    bit_count += if body_a.type_ == BodyType::Dynamic { 1 } else { 0 };
-                    bit_count += if body_b.type_ == BodyType::Dynamic { 1 } else { 0 };
+                    bit_count += if body_a.type_ == BodyType::Dynamic {
+                        1
+                    } else {
+                        0
+                    };
+                    bit_count += if body_b.type_ == BodyType::Dynamic {
+                        1
+                    } else {
+                        0
+                    };
                 }
                 let _ = (contact, local_index);
             }
@@ -318,8 +333,16 @@ impl World {
                             == (body_b.type_ == BodyType::Dynamic)
                     );
 
-                    bit_count += if body_a.type_ == BodyType::Dynamic { 1 } else { 0 };
-                    bit_count += if body_b.type_ == BodyType::Dynamic { 1 } else { 0 };
+                    bit_count += if body_a.type_ == BodyType::Dynamic {
+                        1
+                    } else {
+                        0
+                    };
+                    bit_count += if body_b.type_ == BodyType::Dynamic {
+                        1
+                    } else {
+                        0
+                    };
                 }
                 let _ = (joint, local_index);
             }

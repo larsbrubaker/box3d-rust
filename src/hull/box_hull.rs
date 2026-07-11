@@ -1,6 +1,8 @@
 //! Box hull constructors. (hull.c: b3Make*BoxHull, b3ScaleBox)
 
-use super::types::{BoxHull, HullData, HullFace, HullHalfEdge, HullVertex, BOX_HULL_SIZE, HULL_VERSION};
+use super::types::{
+    BoxHull, HullData, HullFace, HullHalfEdge, HullVertex, BOX_HULL_SIZE, HULL_VERSION,
+};
 use crate::constants::linear_slop;
 use crate::core::{hash, non_zero_hash, HASH_INIT};
 use crate::math_functions::{
@@ -12,30 +14,150 @@ use crate::math_functions::{
 
 fn box_hull_template() -> BoxHull {
     let edges: [HullHalfEdge; 24] = [
-        HullHalfEdge { next: 2, twin: 1, origin: 2, face: 0 },
-        HullHalfEdge { next: 17, twin: 0, origin: 1, face: 5 },
-        HullHalfEdge { next: 4, twin: 3, origin: 1, face: 0 },
-        HullHalfEdge { next: 20, twin: 2, origin: 5, face: 3 },
-        HullHalfEdge { next: 6, twin: 5, origin: 5, face: 0 },
-        HullHalfEdge { next: 23, twin: 4, origin: 6, face: 4 },
-        HullHalfEdge { next: 0, twin: 7, origin: 6, face: 0 },
-        HullHalfEdge { next: 18, twin: 6, origin: 2, face: 2 },
-        HullHalfEdge { next: 10, twin: 9, origin: 0, face: 1 },
-        HullHalfEdge { next: 21, twin: 8, origin: 3, face: 5 },
-        HullHalfEdge { next: 12, twin: 11, origin: 3, face: 1 },
-        HullHalfEdge { next: 16, twin: 10, origin: 7, face: 2 },
-        HullHalfEdge { next: 14, twin: 13, origin: 7, face: 1 },
-        HullHalfEdge { next: 19, twin: 12, origin: 4, face: 4 },
-        HullHalfEdge { next: 8, twin: 15, origin: 4, face: 1 },
-        HullHalfEdge { next: 22, twin: 14, origin: 0, face: 3 },
-        HullHalfEdge { next: 7, twin: 17, origin: 3, face: 2 },
-        HullHalfEdge { next: 9, twin: 16, origin: 2, face: 5 },
-        HullHalfEdge { next: 11, twin: 19, origin: 6, face: 2 },
-        HullHalfEdge { next: 5, twin: 18, origin: 7, face: 4 },
-        HullHalfEdge { next: 15, twin: 21, origin: 1, face: 3 },
-        HullHalfEdge { next: 1, twin: 20, origin: 0, face: 5 },
-        HullHalfEdge { next: 3, twin: 23, origin: 4, face: 3 },
-        HullHalfEdge { next: 13, twin: 22, origin: 5, face: 4 },
+        HullHalfEdge {
+            next: 2,
+            twin: 1,
+            origin: 2,
+            face: 0,
+        },
+        HullHalfEdge {
+            next: 17,
+            twin: 0,
+            origin: 1,
+            face: 5,
+        },
+        HullHalfEdge {
+            next: 4,
+            twin: 3,
+            origin: 1,
+            face: 0,
+        },
+        HullHalfEdge {
+            next: 20,
+            twin: 2,
+            origin: 5,
+            face: 3,
+        },
+        HullHalfEdge {
+            next: 6,
+            twin: 5,
+            origin: 5,
+            face: 0,
+        },
+        HullHalfEdge {
+            next: 23,
+            twin: 4,
+            origin: 6,
+            face: 4,
+        },
+        HullHalfEdge {
+            next: 0,
+            twin: 7,
+            origin: 6,
+            face: 0,
+        },
+        HullHalfEdge {
+            next: 18,
+            twin: 6,
+            origin: 2,
+            face: 2,
+        },
+        HullHalfEdge {
+            next: 10,
+            twin: 9,
+            origin: 0,
+            face: 1,
+        },
+        HullHalfEdge {
+            next: 21,
+            twin: 8,
+            origin: 3,
+            face: 5,
+        },
+        HullHalfEdge {
+            next: 12,
+            twin: 11,
+            origin: 3,
+            face: 1,
+        },
+        HullHalfEdge {
+            next: 16,
+            twin: 10,
+            origin: 7,
+            face: 2,
+        },
+        HullHalfEdge {
+            next: 14,
+            twin: 13,
+            origin: 7,
+            face: 1,
+        },
+        HullHalfEdge {
+            next: 19,
+            twin: 12,
+            origin: 4,
+            face: 4,
+        },
+        HullHalfEdge {
+            next: 8,
+            twin: 15,
+            origin: 4,
+            face: 1,
+        },
+        HullHalfEdge {
+            next: 22,
+            twin: 14,
+            origin: 0,
+            face: 3,
+        },
+        HullHalfEdge {
+            next: 7,
+            twin: 17,
+            origin: 3,
+            face: 2,
+        },
+        HullHalfEdge {
+            next: 9,
+            twin: 16,
+            origin: 2,
+            face: 5,
+        },
+        HullHalfEdge {
+            next: 11,
+            twin: 19,
+            origin: 6,
+            face: 2,
+        },
+        HullHalfEdge {
+            next: 5,
+            twin: 18,
+            origin: 7,
+            face: 4,
+        },
+        HullHalfEdge {
+            next: 15,
+            twin: 21,
+            origin: 1,
+            face: 3,
+        },
+        HullHalfEdge {
+            next: 1,
+            twin: 20,
+            origin: 0,
+            face: 5,
+        },
+        HullHalfEdge {
+            next: 3,
+            twin: 23,
+            origin: 4,
+            face: 3,
+        },
+        HullHalfEdge {
+            next: 13,
+            twin: 22,
+            origin: 5,
+            face: 4,
+        },
     ];
 
     // Offsets match offsetof in C b3BoxHull.
@@ -117,10 +239,13 @@ pub fn make_transformed_box_hull(hx: f32, hy: f32, hz: f32, transform: Transform
         },
     );
 
-    box_hull.base.aabb = aabb_transform(transform, Aabb {
-        lower_bound: neg(h),
-        upper_bound: h,
-    });
+    box_hull.base.aabb = aabb_transform(
+        transform,
+        Aabb {
+            lower_bound: neg(h),
+            upper_bound: h,
+        },
+    );
     box_hull.base.surface_area = 8.0 * (h.x * h.y + h.x * h.z + h.y * h.z);
     box_hull.base.volume = 8.0 * h.x * h.y * h.z;
     box_hull.base.inner_radius = min_float(h.x, min_float(h.y, h.z));
@@ -132,27 +257,95 @@ pub fn make_transformed_box_hull(hx: f32, hy: f32, hz: f32, transform: Transform
     let lower = neg(h);
     let upper = h;
 
-    box_hull.box_planes[0] =
-        transform_plane(transform, make_plane_from_normal_and_point(neg(VEC3_AXIS_X), lower));
-    box_hull.box_planes[1] =
-        transform_plane(transform, make_plane_from_normal_and_point(VEC3_AXIS_X, upper));
-    box_hull.box_planes[2] =
-        transform_plane(transform, make_plane_from_normal_and_point(neg(VEC3_AXIS_Y), lower));
-    box_hull.box_planes[3] =
-        transform_plane(transform, make_plane_from_normal_and_point(VEC3_AXIS_Y, upper));
-    box_hull.box_planes[4] =
-        transform_plane(transform, make_plane_from_normal_and_point(neg(VEC3_AXIS_Z), lower));
-    box_hull.box_planes[5] =
-        transform_plane(transform, make_plane_from_normal_and_point(VEC3_AXIS_Z, upper));
+    box_hull.box_planes[0] = transform_plane(
+        transform,
+        make_plane_from_normal_and_point(neg(VEC3_AXIS_X), lower),
+    );
+    box_hull.box_planes[1] = transform_plane(
+        transform,
+        make_plane_from_normal_and_point(VEC3_AXIS_X, upper),
+    );
+    box_hull.box_planes[2] = transform_plane(
+        transform,
+        make_plane_from_normal_and_point(neg(VEC3_AXIS_Y), lower),
+    );
+    box_hull.box_planes[3] = transform_plane(
+        transform,
+        make_plane_from_normal_and_point(VEC3_AXIS_Y, upper),
+    );
+    box_hull.box_planes[4] = transform_plane(
+        transform,
+        make_plane_from_normal_and_point(neg(VEC3_AXIS_Z), lower),
+    );
+    box_hull.box_planes[5] = transform_plane(
+        transform,
+        make_plane_from_normal_and_point(VEC3_AXIS_Z, upper),
+    );
 
-    box_hull.box_points[0] = transform_point(transform, Vec3 { x: h.x, y: h.y, z: h.z });
-    box_hull.box_points[1] = transform_point(transform, Vec3 { x: -h.x, y: h.y, z: h.z });
-    box_hull.box_points[2] = transform_point(transform, Vec3 { x: -h.x, y: -h.y, z: h.z });
-    box_hull.box_points[3] = transform_point(transform, Vec3 { x: h.x, y: -h.y, z: h.z });
-    box_hull.box_points[4] = transform_point(transform, Vec3 { x: h.x, y: h.y, z: -h.z });
-    box_hull.box_points[5] = transform_point(transform, Vec3 { x: -h.x, y: h.y, z: -h.z });
-    box_hull.box_points[6] = transform_point(transform, Vec3 { x: -h.x, y: -h.y, z: -h.z });
-    box_hull.box_points[7] = transform_point(transform, Vec3 { x: h.x, y: -h.y, z: -h.z });
+    box_hull.box_points[0] = transform_point(
+        transform,
+        Vec3 {
+            x: h.x,
+            y: h.y,
+            z: h.z,
+        },
+    );
+    box_hull.box_points[1] = transform_point(
+        transform,
+        Vec3 {
+            x: -h.x,
+            y: h.y,
+            z: h.z,
+        },
+    );
+    box_hull.box_points[2] = transform_point(
+        transform,
+        Vec3 {
+            x: -h.x,
+            y: -h.y,
+            z: h.z,
+        },
+    );
+    box_hull.box_points[3] = transform_point(
+        transform,
+        Vec3 {
+            x: h.x,
+            y: -h.y,
+            z: h.z,
+        },
+    );
+    box_hull.box_points[4] = transform_point(
+        transform,
+        Vec3 {
+            x: h.x,
+            y: h.y,
+            z: -h.z,
+        },
+    );
+    box_hull.box_points[5] = transform_point(
+        transform,
+        Vec3 {
+            x: -h.x,
+            y: h.y,
+            z: -h.z,
+        },
+    );
+    box_hull.box_points[6] = transform_point(
+        transform,
+        Vec3 {
+            x: -h.x,
+            y: -h.y,
+            z: -h.z,
+        },
+    );
+    box_hull.box_points[7] = transform_point(
+        transform,
+        Vec3 {
+            x: h.x,
+            y: -h.y,
+            z: -h.z,
+        },
+    );
 
     // Keep base Vec accessors in sync with the embedded arrays (C offsets into
     // the same allocation). Hash still uses the contiguous byte layout.
@@ -238,11 +431,7 @@ pub fn scale_box(
 }
 
 /// Make a scaled box hull. (b3MakeScaledBoxHull)
-pub fn make_scaled_box_hull(
-    half_widths: Vec3,
-    transform: Transform,
-    post_scale: Vec3,
-) -> BoxHull {
+pub fn make_scaled_box_hull(half_widths: Vec3, transform: Transform, post_scale: Vec3) -> BoxHull {
     let mut h = half_widths;
     let mut xf = transform;
     scale_box(&mut h, &mut xf, post_scale, 4.0 * linear_slop());

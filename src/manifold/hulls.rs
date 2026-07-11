@@ -21,7 +21,7 @@ use crate::hull::{
 use crate::math_functions::{
     abs_float, add, cross, dot, inv_rotate_vector, inv_transform_point, invert_transform,
     is_within_segments, line_distance, make_matrix_from_quat, make_plane_from_normal_and_point,
-    min_float, min_int, mul_mv, mul_sv, mul_sub, neg, normalize, plane_separation, rotate_vector,
+    min_float, min_int, mul_mv, mul_sub, mul_sv, neg, normalize, plane_separation, rotate_vector,
     sub, transform_point, Transform,
 };
 
@@ -48,7 +48,8 @@ fn build_face_a_contact(
 
     let mut buffer1 = [ClipVertex::default(); MAX_CLIP_POINTS];
     let mut buffer2 = [ClipVertex::default(); MAX_CLIP_POINTS];
-    let mut point_count = build_polygon(&mut buffer1, transform_b_to_a, hull_b, inc_face, ref_plane);
+    let mut point_count =
+        build_polygon(&mut buffer1, transform_b_to_a, hull_b, inc_face, ref_plane);
 
     // Clip incident face against side planes of reference face.
     // C swaps input/output pointers; we track which buffer is current with a bool.
@@ -283,8 +284,7 @@ pub fn collide_hulls(
             debug_assert!((cache.index_a as i32) < hull_a.face_count);
 
             let plane = planes_a[cache.index_a as usize];
-            let search_direction_in_b =
-                neg(inv_rotate_vector(transform_b_to_a.q, plane.normal));
+            let search_direction_in_b = neg(inv_rotate_vector(transform_b_to_a.q, plane.normal));
             let vertex_index = find_hull_support_vertex(hull_b, search_direction_in_b);
             let support = transform_point(transform_b_to_a, points_b[vertex_index as usize]);
             let separation = plane_separation(plane, support);
@@ -428,7 +428,14 @@ pub fn collide_hulls(
         t if t == SeparatingFeature::ManualEdgePairAxis as u8 => {
             let edge_query = query_edge_directions(hull_a, hull_b, transform_b_to_a);
             if edge_query.index_a != NULL_INDEX {
-                build_edge_contact(manifold, hull_a, hull_b, transform_b_to_a, edge_query, cache);
+                build_edge_contact(
+                    manifold,
+                    hull_a,
+                    hull_b,
+                    transform_b_to_a,
+                    edge_query,
+                    cache,
+                );
             }
             return;
         }

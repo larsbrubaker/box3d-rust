@@ -11,7 +11,8 @@ use crate::distance::{make_proxy, shape_cast, CastOutput, ShapeCastPairInput};
 use crate::geometry::{RayCastInput, ShapeCastInput};
 use crate::math_functions::{
     aabb_center, aabb_extents, aabb_overlaps, abs, add, cross, intersect_ray_triangle, make_aabb,
-    max, min, mul_add, mul_sv, normalize, sub, Aabb, Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
+    max, min, mul_add, mul_sv, normalize, sub, Aabb, Transform, Vec3, TRANSFORM_IDENTITY,
+    VEC3_ZERO,
 };
 
 /// Compute the AABB of a height field. (b3ComputeHeightFieldAABB)
@@ -117,7 +118,8 @@ pub fn shape_cast_height_field(
     if column_start < column_end {
         debug_assert!(abs_clamped_delta.x > 0.0);
         delta_alpha_x = scale.x / abs_clamped_delta.x;
-        next_fraction_x = (scale.x * ((column_start + 1) as f32) - clamped_start.x) / abs_clamped_delta.x;
+        next_fraction_x =
+            (scale.x * ((column_start + 1) as f32) - clamped_start.x) / abs_clamped_delta.x;
         delta_column = 1;
     } else if column_end < column_start {
         debug_assert!(abs_clamped_delta.x > 0.0);
@@ -137,7 +139,8 @@ pub fn shape_cast_height_field(
     if row_start < row_end {
         debug_assert!(abs_clamped_delta.z > 0.0);
         delta_alpha_z = scale.z / abs_clamped_delta.z;
-        next_fraction_z = (scale.z * ((row_start + 1) as f32) - clamped_start.z) / abs_clamped_delta.z;
+        next_fraction_z =
+            (scale.z * ((row_start + 1) as f32) - clamped_start.z) / abs_clamped_delta.z;
         delta_row = 1;
     } else if row_end < row_start {
         debug_assert!(abs_clamped_delta.z > 0.0);
@@ -241,8 +244,13 @@ pub fn shape_cast_height_field(
                             (point21, point12)
                         };
 
-                        let alpha =
-                            intersect_ray_triangle(ray_origin, ray_translation, vertex1, vertex2, vertex3);
+                        let alpha = intersect_ray_triangle(
+                            ray_origin,
+                            ray_translation,
+                            vertex1,
+                            vertex2,
+                            vertex3,
+                        );
                         debug_assert!((0.0..=1.0).contains(&alpha));
 
                         if alpha < best_fraction {
@@ -272,8 +280,13 @@ pub fn shape_cast_height_field(
                             (point12, point21)
                         };
 
-                        let alpha =
-                            intersect_ray_triangle(ray_origin, ray_translation, vertex1, vertex2, vertex3);
+                        let alpha = intersect_ray_triangle(
+                            ray_origin,
+                            ray_translation,
+                            vertex1,
+                            vertex2,
+                            vertex3,
+                        );
                         debug_assert!((0.0..=1.0).contains(&alpha));
 
                         if alpha < best_fraction {
@@ -298,11 +311,8 @@ pub fn shape_cast_height_field(
                     // Shape cast
                     {
                         let origin = point11;
-                        let triangle_vertices = [
-                            VEC3_ZERO,
-                            sub(point21, origin),
-                            sub(point12, origin),
-                        ];
+                        let triangle_vertices =
+                            [VEC3_ZERO, sub(point21, origin), sub(point12, origin)];
                         pair_input.proxy_a = make_proxy(&triangle_vertices, 0.0);
                         pair_input.max_fraction = best_fraction;
                         pair_input.transform = Transform {
@@ -322,11 +332,8 @@ pub fn shape_cast_height_field(
 
                     {
                         let origin = point21;
-                        let triangle_vertices = [
-                            VEC3_ZERO,
-                            sub(point22, origin),
-                            sub(point12, origin),
-                        ];
+                        let triangle_vertices =
+                            [VEC3_ZERO, sub(point22, origin), sub(point12, origin)];
                         pair_input.proxy_a = make_proxy(&triangle_vertices, 0.0);
                         pair_input.max_fraction = best_fraction;
                         pair_input.transform = Transform {

@@ -246,8 +246,14 @@ pub fn collide_hull_and_triangle(
             };
 
             let mut local_cache = *cache;
-            let clipped_separation =
-                collide_triangle_face(manifold, capacity, &triangle, hull_a, face_query, &mut local_cache);
+            let clipped_separation = collide_triangle_face(
+                manifold,
+                capacity,
+                &triangle,
+                hull_a,
+                face_query,
+                &mut local_cache,
+            );
 
             if manifold.point_count > 0
                 && abs_float(cache.separation - clipped_separation) < linear_slop
@@ -290,8 +296,14 @@ pub fn collide_hull_and_triangle(
                 };
 
                 let mut local_cache = *cache;
-                let clipped_separation =
-                    collide_hull_face(manifold, capacity, &triangle, hull_a, face_query, &mut local_cache);
+                let clipped_separation = collide_hull_face(
+                    manifold,
+                    capacity,
+                    &triangle,
+                    hull_a,
+                    face_query,
+                    &mut local_cache,
+                );
 
                 if manifold.point_count > 0
                     && abs_float(cache.separation - clipped_separation) < linear_slop

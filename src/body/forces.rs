@@ -3,17 +3,15 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::lifecycle::{
-    get_body_full_id, get_body_sim_mut, wake_body, wake_body_with_lock,
-};
+use super::lifecycle::{get_body_full_id, get_body_sim_mut, wake_body, wake_body_with_lock};
 use crate::constants::speculative_distance;
 use crate::core::NULL_INDEX;
 use crate::id::BodyId;
 use crate::island::split_island;
 use crate::math_functions::{
     aabb_contains, add, cross, inv_rotate_vector, is_valid_position, is_valid_quat, is_valid_vec3,
-    length_squared, make_matrix_from_quat, mul_add, mul_mm, mul_mv, mul_sv, normalize, rotate_vector,
-    sub_pos, transform_world_point, transpose, Pos, Quat, Vec3, Aabb,
+    length_squared, make_matrix_from_quat, mul_add, mul_mm, mul_mv, mul_sv, normalize,
+    rotate_vector, sub_pos, transform_world_point, transpose, Aabb, Pos, Quat, Vec3,
 };
 use crate::shape::compute_fat_shape_aabb;
 use crate::solver_set::{try_sleep_island, AWAKE_SET, FIRST_SLEEPING_SET};

@@ -50,24 +50,21 @@ pub fn world_overlap_aabb(
 
     for i in 0..BODY_TYPE_COUNT {
         let tree_result =
-            world
-                .broad_phase
-                .trees[i]
-                .query(aabb, filter.mask_bits, false, |_, user_data| {
-                    let shape_id = user_data as i32;
-                    let shape = &world.shapes[shape_id as usize];
+            world.broad_phase.trees[i].query(aabb, filter.mask_bits, false, |_, user_data| {
+                let shape_id = user_data as i32;
+                let shape = &world.shapes[shape_id as usize];
 
-                    if !should_query_collide(&shape.filter, filter) {
-                        return true;
-                    }
+                if !should_query_collide(&shape.filter, filter) {
+                    return true;
+                }
 
-                    let id = ShapeId {
-                        index1: shape_id + 1,
-                        world0: world.world_id,
-                        generation: shape.generation,
-                    };
-                    fcn(id)
-                });
+                let id = ShapeId {
+                    index1: shape_id + 1,
+                    world0: world.world_id,
+                    generation: shape.generation,
+                };
+                fcn(id)
+            });
 
         tree_stats.node_visits += tree_result.node_visits;
         tree_stats.leaf_visits += tree_result.leaf_visits;
@@ -102,29 +99,26 @@ pub fn world_overlap_shape(
 
     for i in 0..BODY_TYPE_COUNT {
         let tree_result =
-            world
-                .broad_phase
-                .trees[i]
-                .query(aabb, filter.mask_bits, false, |_, user_data| {
-                    let shape_id = user_data as i32;
-                    let shape = &world.shapes[shape_id as usize];
+            world.broad_phase.trees[i].query(aabb, filter.mask_bits, false, |_, user_data| {
+                let shape_id = user_data as i32;
+                let shape = &world.shapes[shape_id as usize];
 
-                    if !should_query_collide(&shape.filter, filter) {
-                        return true;
-                    }
+                if !should_query_collide(&shape.filter, filter) {
+                    return true;
+                }
 
-                    // Re-center on the query origin so the overlap test stays in float precision
-                    let body = &world.bodies[shape.body_id as usize];
-                    let transform =
-                        to_relative_transform(get_body_transform_quick(world, body), origin);
+                // Re-center on the query origin so the overlap test stays in float precision
+                let body = &world.bodies[shape.body_id as usize];
+                let transform =
+                    to_relative_transform(get_body_transform_quick(world, body), origin);
 
-                    if !overlap_shape(shape, transform, proxy) {
-                        return true;
-                    }
+                if !overlap_shape(shape, transform, proxy) {
+                    return true;
+                }
 
-                    let id = query_shape_id(world, shape);
-                    fcn(id)
-                });
+                let id = query_shape_id(world, shape);
+                fcn(id)
+            });
 
         tree_stats.node_visits += tree_result.node_visits;
         tree_stats.leaf_visits += tree_result.leaf_visits;
@@ -419,32 +413,28 @@ pub fn world_collide_mover(
     let aabb = offset_aabb(rel_box, origin);
 
     for i in 0..BODY_TYPE_COUNT {
-        world
-            .broad_phase
-            .trees[i]
-            .query(aabb, filter.mask_bits, false, |_, user_data| {
-                let shape_id = user_data as i32;
-                let shape = &world.shapes[shape_id as usize];
+        world.broad_phase.trees[i].query(aabb, filter.mask_bits, false, |_, user_data| {
+            let shape_id = user_data as i32;
+            let shape = &world.shapes[shape_id as usize];
 
-                if !should_query_collide(&shape.filter, filter) {
-                    return true;
-                }
+            if !should_query_collide(&shape.filter, filter) {
+                return true;
+            }
 
-                // Re-center on the query origin, the mover and the resulting planes are origin relative
-                let body = &world.bodies[shape.body_id as usize];
-                let transform =
-                    to_relative_transform(get_body_transform_quick(world, body), origin);
+            // Re-center on the query origin, the mover and the resulting planes are origin relative
+            let body = &world.bodies[shape.body_id as usize];
+            let transform = to_relative_transform(get_body_transform_quick(world, body), origin);
 
-                let mut buffer = [PlaneResult::default(); 64];
-                let count = collide_mover(&mut buffer, shape, transform, mover);
+            let mut buffer = [PlaneResult::default(); 64];
+            let count = collide_mover(&mut buffer, shape, transform, mover);
 
-                if count > 0 {
-                    let id = query_shape_id(world, shape);
-                    return fcn(id, &buffer[..count as usize]);
-                }
+            if count > 0 {
+                let id = query_shape_id(world, shape);
+                return fcn(id, &buffer[..count as usize]);
+            }
 
-                true
-            });
+            true
+        });
     }
 }
 

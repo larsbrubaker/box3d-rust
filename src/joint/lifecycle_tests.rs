@@ -309,17 +309,17 @@ fn create_weld_joint_and_accessors() {
 #[test]
 fn create_revolute_joint_and_accessors() {
     use crate::joint::{
-        get_joint_sim_ref, get_revolute_joint_force,
-        revolute_joint_enable_limit, revolute_joint_enable_motor, revolute_joint_enable_spring,
-        revolute_joint_get_angle, revolute_joint_get_lower_limit,
-        revolute_joint_get_max_motor_torque, revolute_joint_get_motor_speed,
-        revolute_joint_get_motor_torque, revolute_joint_get_spring_damping_ratio,
-        revolute_joint_get_spring_hertz, revolute_joint_get_target_angle,
-        revolute_joint_get_upper_limit, revolute_joint_is_limit_enabled,
-        revolute_joint_is_motor_enabled, revolute_joint_is_spring_enabled,
-        revolute_joint_set_limits, revolute_joint_set_max_motor_torque,
-        revolute_joint_set_motor_speed, revolute_joint_set_spring_damping_ratio,
-        revolute_joint_set_spring_hertz, revolute_joint_set_target_angle,
+        get_joint_sim_ref, get_revolute_joint_force, revolute_joint_enable_limit,
+        revolute_joint_enable_motor, revolute_joint_enable_spring, revolute_joint_get_angle,
+        revolute_joint_get_lower_limit, revolute_joint_get_max_motor_torque,
+        revolute_joint_get_motor_speed, revolute_joint_get_motor_torque,
+        revolute_joint_get_spring_damping_ratio, revolute_joint_get_spring_hertz,
+        revolute_joint_get_target_angle, revolute_joint_get_upper_limit,
+        revolute_joint_is_limit_enabled, revolute_joint_is_motor_enabled,
+        revolute_joint_is_spring_enabled, revolute_joint_set_limits,
+        revolute_joint_set_max_motor_torque, revolute_joint_set_motor_speed,
+        revolute_joint_set_spring_damping_ratio, revolute_joint_set_spring_hertz,
+        revolute_joint_set_target_angle,
     };
     use crate::types::default_revolute_joint_def;
 
@@ -384,17 +384,16 @@ fn create_revolute_joint_and_accessors() {
 fn create_prismatic_joint_and_accessors() {
     use crate::joint::{
         get_joint_sim_ref, get_prismatic_joint_force, get_prismatic_joint_torque,
-        prismatic_joint_enable_limit, prismatic_joint_enable_motor,
-        prismatic_joint_enable_spring, prismatic_joint_get_lower_limit,
-        prismatic_joint_get_max_motor_force, prismatic_joint_get_motor_force,
-        prismatic_joint_get_motor_speed, prismatic_joint_get_spring_damping_ratio,
-        prismatic_joint_get_spring_hertz, prismatic_joint_get_target_translation,
-        prismatic_joint_get_translation, prismatic_joint_get_upper_limit,
-        prismatic_joint_is_limit_enabled, prismatic_joint_is_motor_enabled,
-        prismatic_joint_is_spring_enabled, prismatic_joint_set_limits,
-        prismatic_joint_set_max_motor_force, prismatic_joint_set_motor_speed,
-        prismatic_joint_set_spring_damping_ratio, prismatic_joint_set_spring_hertz,
-        prismatic_joint_set_target_translation,
+        prismatic_joint_enable_limit, prismatic_joint_enable_motor, prismatic_joint_enable_spring,
+        prismatic_joint_get_lower_limit, prismatic_joint_get_max_motor_force,
+        prismatic_joint_get_motor_force, prismatic_joint_get_motor_speed,
+        prismatic_joint_get_spring_damping_ratio, prismatic_joint_get_spring_hertz,
+        prismatic_joint_get_target_translation, prismatic_joint_get_translation,
+        prismatic_joint_get_upper_limit, prismatic_joint_is_limit_enabled,
+        prismatic_joint_is_motor_enabled, prismatic_joint_is_spring_enabled,
+        prismatic_joint_set_limits, prismatic_joint_set_max_motor_force,
+        prismatic_joint_set_motor_speed, prismatic_joint_set_spring_damping_ratio,
+        prismatic_joint_set_spring_hertz, prismatic_joint_set_target_translation,
     };
     use crate::types::default_prismatic_joint_def;
 

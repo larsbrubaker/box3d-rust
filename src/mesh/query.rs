@@ -4,8 +4,8 @@
 //! SPDX-License-Identifier: MIT
 
 use super::types::{
-    Mesh, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3, INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2,
-    INVERSE_CONCAVE_EDGE3, MESH_STACK_SIZE,
+    Mesh, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3, INVERSE_CONCAVE_EDGE1,
+    INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3, MESH_STACK_SIZE,
 };
 use crate::constants::linear_slop;
 use crate::distance::{
@@ -14,8 +14,8 @@ use crate::distance::{
 };
 use crate::geometry::{Capsule, PlaneResult};
 use crate::math_functions::{
-    add, max, min, mul, mul_sv, sub, test_bounds_overlap, test_bounds_triangle_overlap, Aabb, Plane,
-    Transform, Triangle, Vec3, TRANSFORM_IDENTITY,
+    add, max, min, mul, mul_sv, sub, test_bounds_overlap, test_bounds_triangle_overlap, Aabb,
+    Plane, Transform, Triangle, Vec3, TRANSFORM_IDENTITY,
 };
 
 /// Test overlap between a mesh and a shape proxy. (b3OverlapMesh)
@@ -36,8 +36,7 @@ pub fn overlap_mesh(shape: &Mesh<'_>, shape_transform: Transform, proxy: &ShapeP
     let temp2 = mul(inv_scale, aabb.upper_bound);
     let inv_scaled_bounds_min = min(temp1, temp2);
     let inv_scaled_bounds_max = max(temp1, temp2);
-    let inv_scaled_bounds_center =
-        mul_sv(0.5, add(inv_scaled_bounds_min, inv_scaled_bounds_max));
+    let inv_scaled_bounds_center = mul_sv(0.5, add(inv_scaled_bounds_min, inv_scaled_bounds_max));
     let inv_scaled_bounds_extent = sub(inv_scaled_bounds_max, inv_scaled_bounds_center);
 
     let mut input = DistanceInput {
@@ -204,8 +203,7 @@ pub fn collide_mover_and_mesh(
     let temp2 = mul(inv_scale, bounds_max);
     let inv_scaled_bounds_min = min(temp1, temp2);
     let inv_scaled_bounds_max = max(temp1, temp2);
-    let inv_scaled_bounds_center =
-        mul_sv(0.5, add(inv_scaled_bounds_min, inv_scaled_bounds_max));
+    let inv_scaled_bounds_center = mul_sv(0.5, add(inv_scaled_bounds_min, inv_scaled_bounds_max));
     let inv_scaled_bounds_extent = sub(inv_scaled_bounds_max, inv_scaled_bounds_center);
 
     let mut stack = [0i32; MESH_STACK_SIZE];
@@ -311,8 +309,7 @@ where
     let temp2 = mul(inv_scale, bounds.upper_bound);
     let inv_scaled_bounds_min = min(temp1, temp2);
     let inv_scaled_bounds_max = max(temp1, temp2);
-    let inv_scaled_bounds_center =
-        mul_sv(0.5, add(inv_scaled_bounds_min, inv_scaled_bounds_max));
+    let inv_scaled_bounds_center = mul_sv(0.5, add(inv_scaled_bounds_min, inv_scaled_bounds_max));
     let inv_scaled_bounds_extent = sub(inv_scaled_bounds_max, inv_scaled_bounds_center);
 
     let data = mesh.data;

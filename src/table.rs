@@ -90,7 +90,9 @@ impl HashSet {
     /// Remove all keys, keeping capacity. (b3ClearSet)
     pub fn clear(&mut self) {
         self.count = 0;
-        self.items.iter_mut().for_each(|slot| *slot = SetItem::default());
+        self.items
+            .iter_mut()
+            .for_each(|slot| *slot = SetItem::default());
     }
 
     /// Number of keys in the set.

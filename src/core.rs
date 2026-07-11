@@ -122,7 +122,10 @@ pub fn hash(hash: u32, data: &[u8]) -> u32 {
         // Little-endian load; matches memcpy of uint64_t on LE hosts (and the
         // explicit byte-swap path on BE in the C source).
         let word = u64::from_le_bytes(data[i..i + 8].try_into().unwrap());
-        result = result.wrapping_shl(5).wrapping_add(result).wrapping_add(word as u32);
+        result = result
+            .wrapping_shl(5)
+            .wrapping_add(result)
+            .wrapping_add(word as u32);
         result = result
             .wrapping_shl(5)
             .wrapping_add(result)

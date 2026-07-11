@@ -4,7 +4,7 @@ use crate::body::{body_get_position, create_body, get_body_transform_quick};
 use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::geometry::Sphere;
 use crate::hull::{make_box_hull, make_cube_hull};
-use crate::math_functions::{Pos, Vec3, PI, VEC3_ZERO};
+use crate::math_functions::{Pos, PI, VEC3_ZERO};
 use crate::shape::{create_hull_shape, create_sphere_shape};
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::World;
@@ -87,6 +87,8 @@ fn overflow_color_pile() {
     );
 }
 
+/// (HelloWorld)
+#[test]
 fn hello_world() {
     let mut world_def = default_world_def();
     world_def.gravity = crate::math_functions::Vec3 {

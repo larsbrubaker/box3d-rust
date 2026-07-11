@@ -132,7 +132,9 @@ pub fn wake_solver_set(world: &mut World, set_index: i32) {
             debug_assert!(
                 0 <= local_index
                     && (local_index as usize)
-                        < world.solver_sets[DISABLED_SET as usize].contact_indices.len()
+                        < world.solver_sets[DISABLED_SET as usize]
+                            .contact_indices
+                            .len()
             );
             debug_assert!(
                 world.solver_sets[DISABLED_SET as usize].contact_indices[local_index as usize]
@@ -155,8 +157,7 @@ pub fn wake_solver_set(world: &mut World, set_index: i32) {
                 .contact_indices
                 .push(contact_id);
 
-            let disabled_contacts =
-                &mut world.solver_sets[DISABLED_SET as usize].contact_indices;
+            let disabled_contacts = &mut world.solver_sets[DISABLED_SET as usize].contact_indices;
             let moved_local_index = disabled_contacts.len() as i32 - 1;
             disabled_contacts.swap_remove(local_index as usize);
             if moved_local_index != local_index {
@@ -296,8 +297,7 @@ pub fn try_sleep_island(world: &mut World, island_id: i32) {
             // move body sim to sleep set
             let awake_sim =
                 world.solver_sets[AWAKE_SET as usize].body_sims[awake_body_index as usize];
-            let sleep_body_index =
-                world.solver_sets[sleep_set_id as usize].body_sims.len() as i32;
+            let sleep_body_index = world.solver_sets[sleep_set_id as usize].body_sims.len() as i32;
             world.solver_sets[sleep_set_id as usize]
                 .body_sims
                 .push(awake_sim);
@@ -347,8 +347,7 @@ pub fn try_sleep_island(world: &mut World, island_id: i32) {
                 if world.contacts[contact_id as usize].color_index != NULL_INDEX {
                     // contact is touching and will be moved separately
                     debug_assert!(
-                        (world.contacts[contact_id as usize].flags & contact_flags::TOUCHING)
-                            != 0
+                        (world.contacts[contact_id as usize].flags & contact_flags::TOUCHING) != 0
                     );
                     continue;
                 }
@@ -375,8 +374,9 @@ pub fn try_sleep_island(world: &mut World, island_id: i32) {
 
                 // Move the non-touching contact to the disabled set.
                 {
-                    let disabled_contact_count =
-                        world.solver_sets[DISABLED_SET as usize].contact_indices.len() as i32;
+                    let disabled_contact_count = world.solver_sets[DISABLED_SET as usize]
+                        .contact_indices
+                        .len() as i32;
                     let contact = &mut world.contacts[contact_id as usize];
                     contact.set_index = DISABLED_SET;
 
@@ -423,16 +423,16 @@ pub fn try_sleep_island(world: &mut World, island_id: i32) {
                 color.body_set.clear_bit(body_id_b as u32);
             }
 
-            let sleep_contact_index =
-                world.solver_sets[sleep_set_id as usize].contact_indices.len() as i32;
+            let sleep_contact_index = world.solver_sets[sleep_set_id as usize]
+                .contact_indices
+                .len() as i32;
             world.solver_sets[sleep_set_id as usize]
                 .contact_indices
                 .push(contact_id);
 
             let local_index = world.contacts[contact_id as usize].local_index;
-            let is_mesh = (world.contacts[contact_id as usize].flags
-                & contact_flags::SIM_MESH_CONTACT)
-                != 0;
+            let is_mesh =
+                (world.contacts[contact_id as usize].flags & contact_flags::SIM_MESH_CONTACT) != 0;
             if is_mesh || color_index == OVERFLOW_INDEX {
                 let color = &mut world.constraint_graph.colors[color_index as usize];
                 let moved_local_index = color.contacts.len() as i32 - 1;
@@ -478,9 +478,8 @@ pub fn try_sleep_island(world: &mut World, island_id: i32) {
 
             debug_assert!(0 <= color_index && color_index < GRAPH_COLOR_COUNT);
 
-            let awake_joint_sim =
-                world.constraint_graph.colors[color_index as usize].joint_sims
-                    [local_index as usize];
+            let awake_joint_sim = world.constraint_graph.colors[color_index as usize].joint_sims
+                [local_index as usize];
 
             if color_index != OVERFLOW_INDEX {
                 // might clear a bit for a static body, but this has no effect
@@ -588,8 +587,7 @@ pub fn merge_solver_sets(world: &mut World, set_id1: i32, set_id2: i32) {
         for i in 0..contact_count {
             let contact_index = world.solver_sets[set_id2 as usize].contact_indices[i];
 
-            let target_count =
-                world.solver_sets[set_id1 as usize].contact_indices.len() as i32;
+            let target_count = world.solver_sets[set_id1 as usize].contact_indices.len() as i32;
             let contact = &mut world.contacts[contact_index as usize];
             debug_assert!(contact.set_index == set_id2);
             contact.set_index = set_id1;
@@ -613,7 +611,9 @@ pub fn merge_solver_sets(world: &mut World, set_id1: i32, set_id2: i32) {
             joint.set_index = set_id1;
             joint.local_index = target_count;
 
-            world.solver_sets[set_id1 as usize].joint_sims.push(joint_src);
+            world.solver_sets[set_id1 as usize]
+                .joint_sims
+                .push(joint_src);
         }
     }
 
@@ -642,7 +642,12 @@ pub fn merge_solver_sets(world: &mut World, set_id1: i32, set_id2: i32) {
 }
 
 /// Move a body sim between solver sets. (b3TransferBody)
-pub fn transfer_body(world: &mut World, target_set_index: i32, source_set_index: i32, body_id: i32) {
+pub fn transfer_body(
+    world: &mut World,
+    target_set_index: i32,
+    source_set_index: i32,
+    body_id: i32,
+) {
     use crate::body::{body_flags, IDENTITY_BODY_STATE};
 
     if target_set_index == source_set_index {
@@ -724,7 +729,9 @@ pub fn transfer_joint(
         add_joint_to_graph(world, source_sim, joint_id);
         world.joints[joint_id as usize].set_index = AWAKE_SET;
     } else {
-        let target_count = world.solver_sets[target_set_index as usize].joint_sims.len() as i32;
+        let target_count = world.solver_sets[target_set_index as usize]
+            .joint_sims
+            .len() as i32;
         {
             let joint = &mut world.joints[joint_id as usize];
             joint.set_index = target_set_index;

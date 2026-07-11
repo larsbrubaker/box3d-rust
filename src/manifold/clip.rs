@@ -154,7 +154,11 @@ pub(crate) fn clip_polygon(
             out_count += 1;
         } else if distance1 <= 0.0 && distance2 > 0.0 {
             let fraction = distance1 / (distance1 - distance2);
-            let position = mul_add(vertex1.position, fraction, sub(vertex2.position, vertex1.position));
+            let position = mul_add(
+                vertex1.position,
+                fraction,
+                sub(vertex2.position, vertex1.position),
+            );
 
             let mut vertex = ClipVertex {
                 position,
@@ -167,7 +171,11 @@ pub(crate) fn clip_polygon(
             out_count += 1;
         } else if distance2 <= 0.0 && distance1 > 0.0 {
             let fraction = distance1 / (distance1 - distance2);
-            let position = mul_add(vertex1.position, fraction, sub(vertex2.position, vertex1.position));
+            let position = mul_add(
+                vertex1.position,
+                fraction,
+                sub(vertex2.position, vertex1.position),
+            );
 
             let mut vertex = ClipVertex {
                 position,

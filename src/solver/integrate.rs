@@ -12,10 +12,10 @@ use crate::core::NULL_INDEX;
 use crate::events::BodyMoveEvent;
 use crate::id::BodyId;
 use crate::math_functions::{
-    aabb_contains, abs, add, blend2, dot, integrate_rotation, inv_rotate_vector, is_valid_vec3,
-    length, make_matrix_from_quat, max_float, modified_cross, mul_add, mul_mm, mul_mv, mul_quat,
-    mul_sv, neg, normalize_quat, offset_pos, rotate_vector, solve3, sub, transpose, invert_matrix,
-    Matrix3, Vec3, QUAT_IDENTITY, VEC3_ZERO,
+    aabb_contains, abs, add, blend2, dot, integrate_rotation, inv_rotate_vector, invert_matrix,
+    is_valid_vec3, length, make_matrix_from_quat, max_float, modified_cross, mul_add, mul_mm,
+    mul_mv, mul_quat, mul_sv, neg, normalize_quat, offset_pos, rotate_vector, solve3, sub,
+    transpose, Matrix3, Vec3, QUAT_IDENTITY, VEC3_ZERO,
 };
 use crate::shape::shape_flags;
 use crate::solver_set::AWAKE_SET;
@@ -248,7 +248,8 @@ pub(super) fn finalize_bodies(
         {
             let body = &mut world.bodies[body_id as usize];
             body.flags &= !body_flags::BODY_TRANSIENT_FLAGS;
-            body.flags |= sim.flags & (body_flags::IS_SPEED_CAPPED | body_flags::HAD_TIME_OF_IMPACT);
+            body.flags |=
+                sim.flags & (body_flags::IS_SPEED_CAPPED | body_flags::HAD_TIME_OF_IMPACT);
             body.flags |=
                 state.flags & (body_flags::IS_SPEED_CAPPED | body_flags::HAD_TIME_OF_IMPACT);
         }

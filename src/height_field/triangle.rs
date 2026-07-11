@@ -43,26 +43,38 @@ pub(crate) fn get_height_field_cell_corners(
 
     let scale = hf.scale;
     [
-        mul(scale, Vec3 {
-            x: x1,
-            y: height11,
-            z: z1,
-        }),
-        mul(scale, Vec3 {
-            x: x2,
-            y: height12,
-            z: z1,
-        }),
-        mul(scale, Vec3 {
-            x: x1,
-            y: height21,
-            z: z2,
-        }),
-        mul(scale, Vec3 {
-            x: x2,
-            y: height22,
-            z: z2,
-        }),
+        mul(
+            scale,
+            Vec3 {
+                x: x1,
+                y: height11,
+                z: z1,
+            },
+        ),
+        mul(
+            scale,
+            Vec3 {
+                x: x2,
+                y: height12,
+                z: z1,
+            },
+        ),
+        mul(
+            scale,
+            Vec3 {
+                x: x1,
+                y: height21,
+                z: z2,
+            },
+        ),
+        mul(
+            scale,
+            Vec3 {
+                x: x2,
+                y: height22,
+                z: z2,
+            },
+        ),
     ]
 }
 

@@ -1,6 +1,9 @@
 //! Hull validation and support queries.
 
-use super::types::{get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, get_hull_vertices, HullData, HULL_VERSION};
+use super::types::{
+    get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, get_hull_vertices, HullData,
+    HULL_VERSION,
+};
 use crate::core::NULL_INDEX;
 use crate::math_functions::{dot, plane_separation, Vec3};
 

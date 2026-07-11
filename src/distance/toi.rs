@@ -4,9 +4,7 @@
 
 use super::cast::{get_final_sweep_transform, get_sweep_transform};
 use super::gjk::{get_point_support, shape_distance};
-use super::types::{
-    DistanceInput, ShapeProxy, SimplexCache, Sweep, ToiInput, ToiOutput, ToiState,
-};
+use super::types::{DistanceInput, ShapeProxy, SimplexCache, Sweep, ToiInput, ToiOutput, ToiState};
 use crate::constants::linear_slop;
 use crate::math_functions::{
     abs_float, add, cross, dot, inv_mul_transforms, inv_rotate_vector, length_squared, lerp,
@@ -596,8 +594,15 @@ pub fn time_of_impact(input: &ToiInput) -> ToiOutput {
         }
 
         // Initialize the separating axis.
-        let mut function =
-            make_separation_function(cache, &proxy_a, &sweep_a, &proxy_b, &sweep_b, world_normal, t1);
+        let mut function = make_separation_function(
+            cache,
+            &proxy_a,
+            &sweep_a,
+            &proxy_b,
+            &sweep_b,
+            world_normal,
+            t1,
+        );
 
         // Compute the TOI on the separating axis. We do this by successively resolving the deepest point.
         let mut done = false;

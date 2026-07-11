@@ -14,7 +14,9 @@ mod warm_start;
 
 use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::core::NULL_INDEX;
-use crate::math_functions::{Mat2, Matrix3, Vec2, Vec3, MAT2_ZERO, MAT3_ZERO, VEC2_ZERO, VEC3_ZERO};
+use crate::math_functions::{
+    Mat2, Matrix3, Vec2, Vec3, MAT2_ZERO, MAT3_ZERO, VEC2_ZERO, VEC3_ZERO,
+};
 use crate::solver::Softness;
 
 pub use prepare::prepare_color_contacts;

@@ -69,7 +69,11 @@ pub fn spherical_joint_get_cone_angle(world: &World, joint_id: JointId) -> f32 {
 }
 
 /// (b3SphericalJoint_EnableTwistLimit)
-pub fn spherical_joint_enable_twist_limit(world: &mut World, joint_id: JointId, enable_limit: bool) {
+pub fn spherical_joint_enable_twist_limit(
+    world: &mut World,
+    joint_id: JointId,
+    enable_limit: bool,
+) {
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Spherical).spherical_mut();
     if enable_limit != joint.enable_twist_limit {
         joint.lower_twist_impulse = 0.0;
@@ -459,19 +463,13 @@ pub fn warm_start_spherical_joint(base: &mut JointSim, states: &mut [BodyState])
     v_a = mul_sub(v_a, m_a, joint.linear_impulse);
     w_a = sub(
         w_a,
-        mul_mv(
-            i_a,
-            add(cross(r_a, joint.linear_impulse), angular_impulse),
-        ),
+        mul_mv(i_a, add(cross(r_a, joint.linear_impulse), angular_impulse)),
     );
 
     v_b = mul_add(v_b, m_b, joint.linear_impulse);
     w_b = add(
         w_b,
-        mul_mv(
-            i_b,
-            add(cross(r_b, joint.linear_impulse), angular_impulse),
-        ),
+        mul_mv(i_b, add(cross(r_b, joint.linear_impulse), angular_impulse)),
     );
 
     if state_a.flags & body_flags::DYNAMIC_FLAG != 0 {
@@ -548,10 +546,7 @@ pub fn solve_spherical_joint(
     if joint.enable_motor && !fixed_rotation {
         let cdot = sub(w_b, w_a);
 
-        let mut lambda = neg(mul_mv(
-            joint.rotation_mass,
-            sub(cdot, joint.motor_velocity),
-        ));
+        let mut lambda = neg(mul_mv(joint.rotation_mass, sub(cdot, joint.motor_velocity)));
         let mut new_impulse = add(joint.motor_impulse, lambda);
         let len = length(new_impulse);
         let max_impulse = joint.max_motor_torque * context.h;

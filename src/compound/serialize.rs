@@ -13,9 +13,7 @@ use super::types::{
 use crate::core::NULL_INDEX;
 use crate::dynamic_tree::{DynamicTree, TreeNode, ALLOCATED_NODE, DYNAMIC_TREE_VERSION, LEAF_NODE};
 use crate::geometry::{SurfaceMaterial, SURFACE_MATERIAL_SIZE};
-use crate::hull::{
-    HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION,
-};
+use crate::hull::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION};
 use crate::math_functions::{
     Aabb, Matrix3, Plane, Quat, Transform, Vec3, MAT3_ZERO, QUAT_IDENTITY, TRANSFORM_IDENTITY,
     VEC3_ONE, VEC3_ZERO,
@@ -179,7 +177,8 @@ impl CompoundData {
         }
         // Shared hull blobs at their recorded offsets
         for (i, hull) in self.shared_hulls.iter().enumerate() {
-            let offset = self.hull_instances
+            let offset = self
+                .hull_instances
                 .iter()
                 .find(|inst| inst.shared_index as usize == i)
                 .map(|inst| inst.hull_offset as usize)
@@ -195,7 +194,8 @@ impl CompoundData {
             write_mesh_instance(&mut buf, inst);
         }
         for (i, mesh) in self.shared_meshes.iter().enumerate() {
-            let offset = self.mesh_instances
+            let offset = self
+                .mesh_instances
                 .iter()
                 .find(|inst| inst.shared_index as usize == i)
                 .map(|inst| inst.mesh_offset as usize)
@@ -559,7 +559,9 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
     let mut materials = Vec::with_capacity(material_count as usize);
     for i in 0..material_count as usize {
         let o = material_offset as usize + i * SURFACE_MATERIAL_SIZE;
-        materials.push(SurfaceMaterial::from_bytes(&bytes[o..o + SURFACE_MATERIAL_SIZE]));
+        materials.push(SurfaceMaterial::from_bytes(
+            &bytes[o..o + SURFACE_MATERIAL_SIZE],
+        ));
     }
 
     let mut capsules = Vec::with_capacity(capsule_count as usize);

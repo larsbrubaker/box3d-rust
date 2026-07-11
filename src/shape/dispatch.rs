@@ -10,8 +10,8 @@ use crate::compound::compute_compound_aabb;
 use crate::constants::speculative_distance;
 use crate::core::NULL_INDEX;
 use crate::geometry::{
-    compute_capsule_aabb, compute_capsule_mass, compute_sphere_aabb, compute_sphere_mass,
-    MassData, ShapeExtent,
+    compute_capsule_aabb, compute_capsule_mass, compute_sphere_aabb, compute_sphere_mass, MassData,
+    ShapeExtent,
 };
 use crate::height_field::compute_height_field_aabb;
 use crate::hull::{compute_hull_aabb, compute_hull_extent, compute_hull_mass};
@@ -193,10 +193,7 @@ pub fn shape_time_of_impact(
     use crate::geometry::ShapeType;
 
     let type_a = shape_a.shape_type();
-    if type_a == ShapeType::Compound
-        || type_a == ShapeType::Height
-        || type_a == ShapeType::Mesh
-    {
+    if type_a == ShapeType::Compound || type_a == ShapeType::Height || type_a == ShapeType::Mesh {
         // Mesh/height/compound CCD against the fast shape is a separate port
         // (b3MeshTimeOfImpactFcn / b3CompoundTimeOfImpactFcn). Convex walls
         // cover the continuous tests in this track.

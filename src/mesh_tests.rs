@@ -162,7 +162,7 @@ fn mesh_grid_ray_and_bvh_vs_brute() {
         (v(-3.0, 1.0, -2.0), v(6.0, -2.0, 4.0)),
         (v(1.5, 5.0, -1.5), v(0.0, -10.0, 0.0)),
         (v(0.0, -1.0, 0.0), v(0.0, -1.0, 0.0)), // miss (below plane, going down)
-        (v(10.0, 1.0, 10.0), v(1.0, 0.0, 0.0)),  // miss
+        (v(10.0, 1.0, 10.0), v(1.0, 0.0, 0.0)), // miss
     ];
 
     for (origin, translation) in rays {

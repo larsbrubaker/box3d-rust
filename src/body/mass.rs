@@ -3,9 +3,7 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
-use super::lifecycle::{
-    get_body_full_id, get_body_sim_mut, get_body_state_index, sync_body_flags,
-};
+use super::lifecycle::{get_body_full_id, get_body_sim_mut, get_body_state_index, sync_body_flags};
 use super::{body_flags, BodySim};
 use crate::constants::huge;
 use crate::core::NULL_INDEX;

@@ -591,4 +591,3 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
     assert_eq!(back.point_count, 0);
     assert_eq!(back_cache.type_, SeparatingFeature::BacksideAxis as u8);
 }
-

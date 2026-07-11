@@ -403,10 +403,7 @@ fn arbitrary_perp_is_orthogonal() {
 #[test]
 fn world_position_boundary_helpers() {
     // World position boundary helpers. The query agrees with the built type sizes.
-    assert_eq!(
-        is_double_precision(),
-        size_of::<Pos>() > size_of::<Vec3>()
-    );
+    assert_eq!(is_double_precision(), size_of::<Pos>() > size_of::<Vec3>());
 
     // Deltas and offsets round trip exactly for representable inputs in both modes.
     let a = Vec3 {

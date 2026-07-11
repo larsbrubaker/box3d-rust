@@ -19,7 +19,7 @@ use crate::math_functions::{
     TRANSFORM_IDENTITY,
 };
 use crate::mesh::{overlap_mesh, Mesh};
-use crate::shape::{should_shapes_collide, shape_flags, Shape, ShapeGeometry};
+use crate::shape::{shape_flags, should_shapes_collide, Shape, ShapeGeometry};
 use crate::solver_set::DISABLED_SET;
 use crate::types::BodyType;
 use crate::world::World;
@@ -264,7 +264,8 @@ fn sensor_task(world: &mut World, start_index: usize, end_index: usize) {
             let overlaps = &mut world.sensors[sensor_index].overlaps2;
             let mut unique_count = 0usize;
             for i in 0..overlaps.len() {
-                if unique_count == 0 || overlaps[i].shape_id != overlaps[unique_count - 1].shape_id {
+                if unique_count == 0 || overlaps[i].shape_id != overlaps[unique_count - 1].shape_id
+                {
                     overlaps[unique_count] = overlaps[i];
                     unique_count += 1;
                 }

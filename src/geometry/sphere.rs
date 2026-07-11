@@ -64,11 +64,7 @@ pub fn compute_swept_sphere_aabb(shape: &Sphere, xf1: Transform, xf2: Transform)
 }
 
 /// Test overlap between a sphere and a shape proxy. (b3OverlapSphere)
-pub fn overlap_sphere(
-    shape: &Sphere,
-    shape_transform: Transform,
-    proxy: &ShapeProxy,
-) -> bool {
+pub fn overlap_sphere(shape: &Sphere, shape_transform: Transform, proxy: &ShapeProxy) -> bool {
     let input = DistanceInput {
         proxy_a: make_proxy(&[shape.center], shape.radius),
         proxy_b: *proxy,
@@ -233,11 +229,7 @@ pub fn shape_cast_sphere(sphere: &Sphere, input: &ShapeCastInput) -> CastOutput 
 }
 
 /// Collide a capsule mover against a sphere. (b3CollideMoverAndSphere)
-pub fn collide_mover_and_sphere(
-    result: &mut PlaneResult,
-    shape: &Sphere,
-    mover: &Capsule,
-) -> i32 {
+pub fn collide_mover_and_sphere(result: &mut PlaneResult, shape: &Sphere, mover: &Capsule) -> i32 {
     let total_radius = mover.radius + shape.radius;
     let closest = point_to_segment_distance(mover.center1, mover.center2, shape.center);
 

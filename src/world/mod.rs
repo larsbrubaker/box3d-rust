@@ -54,7 +54,8 @@ use crate::types::{Capacity, FrictionCallback, RestitutionCallback};
 pub type CustomFilterFcn = fn(ShapeId, ShapeId, u64) -> bool;
 
 /// Prototype for a pre-solve callback. (b3PreSolveFcn)
-pub type PreSolveFcn = fn(ShapeId, ShapeId, crate::math_functions::Pos, crate::math_functions::Vec3, u64) -> bool;
+pub type PreSolveFcn =
+    fn(ShapeId, ShapeId, crate::math_functions::Pos, crate::math_functions::Vec3, u64) -> bool;
 
 /// Profiling data. Times are in milliseconds. (b3Profile)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

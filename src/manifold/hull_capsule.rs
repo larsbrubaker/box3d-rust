@@ -19,7 +19,7 @@ use crate::hull::{
     find_hull_support_face, get_hull_edges, get_hull_planes, get_hull_points, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, cross, dot, is_within_segments, line_distance, mul_sv, mul_sub, neg, normalize,
+    abs_float, add, cross, dot, is_within_segments, line_distance, mul_sub, mul_sv, neg, normalize,
     plane_separation, sub, transform_point, Transform,
 };
 
@@ -130,7 +130,10 @@ fn build_hull_and_capsule_edge_contact(
 
     let point = mul_sv(
         0.5,
-        add(mul_sub(result.point1, capsule_b.radius, normal), result.point2),
+        add(
+            mul_sub(result.point1, capsule_b.radius, normal),
+            result.point2,
+        ),
     );
 
     let separation = dot(normal, sub(result.point2, result.point1));

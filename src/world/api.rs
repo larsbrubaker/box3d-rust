@@ -5,7 +5,10 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::{default_friction_callback, default_restitution_callback, CustomFilterFcn, PreSolveFcn, Profile, World};
+use super::{
+    default_friction_callback, default_restitution_callback, CustomFilterFcn, PreSolveFcn, Profile,
+    World,
+};
 use crate::body::{get_body_transform_quick, wake_body};
 use crate::constants::GRAPH_COLOR_COUNT;
 use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
@@ -281,25 +284,24 @@ pub fn world_get_counters(world: &World) -> Counters {
 
     for i in 0..world.worker_count as usize {
         s.recycled_contact_count += world.task_contexts[i].recycled_contact_count;
-        s.distance_iterations =
-            max_int(s.distance_iterations, world.task_contexts[i].distance_iterations);
+        s.distance_iterations = max_int(
+            s.distance_iterations,
+            world.task_contexts[i].distance_iterations,
+        );
         s.push_back_iterations = max_int(
             s.push_back_iterations,
             world.task_contexts[i].push_back_iterations,
         );
-        s.root_iterations =
-            max_int(s.root_iterations, world.task_contexts[i].root_iterations);
+        s.root_iterations = max_int(s.root_iterations, world.task_contexts[i].root_iterations);
     }
 
     for i in 0..GRAPH_COLOR_COUNT as usize {
         let color = &world.constraint_graph.colors[i];
-        let color_contact_count =
-            (color.convex_contacts.len() + color.contacts.len()) as i32;
+        let color_contact_count = (color.convex_contacts.len() + color.contacts.len()) as i32;
         s.color_counts[i] = color_contact_count + color.joint_sims.len() as i32;
         s.awake_contact_count += color_contact_count;
     }
-    s.awake_contact_count +=
-        world.solver_sets[AWAKE_SET as usize].contact_indices.len() as i32;
+    s.awake_contact_count += world.solver_sets[AWAKE_SET as usize].contact_indices.len() as i32;
 
     s
 }
@@ -521,5 +523,8 @@ fn explode_shape(
 
     // Lever arm from the center of mass to the closest point, rotated to world
     let r = rotate_vector(direction_q, sub(closest_for_torque, local_center));
-    state.angular_velocity = add(state.angular_velocity, mul_mv(inv_inertia_world, cross(r, impulse)));
+    state.angular_velocity = add(
+        state.angular_velocity,
+        mul_mv(inv_inertia_world, cross(r, impulse)),
+    );
 }

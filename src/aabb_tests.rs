@@ -6,9 +6,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::aabb::ray_cast_aabb;
-use crate::math_functions::{
-    aabb_contains, aabb_overlaps, abs_float, is_valid_aabb, Aabb, Vec3,
-};
+use crate::math_functions::{aabb_contains, aabb_overlaps, abs_float, is_valid_aabb, Aabb, Vec3};
 
 fn aabb(lx: f32, ly: f32, lz: f32, ux: f32, uy: f32, uz: f32) -> Aabb {
     Aabb {
@@ -58,7 +56,13 @@ fn test_ray_aabb_intersection() {
     // Test 1: Ray passing through center of AABB
     {
         let a = aabb(-1.0, -1.0, -1.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-2.0, 0.0, 0.0), v(2.0, 0.0, 0.0), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-2.0, 0.0, 0.0),
+            v(2.0, 0.0, 0.0),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert!(abs_float(min_fraction - 0.25) < 0.001); // Enters at 25% of ray
         assert!(abs_float(max_fraction - 0.75) < 0.001); // Exits at 75% of ray
@@ -67,7 +71,13 @@ fn test_ray_aabb_intersection() {
     // Test 2: Ray starting inside AABB
     {
         let a = aabb(-1.0, -1.0, -1.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(0.0, 0.0, 0.0), v(2.0, 0.0, 0.0), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(0.0, 0.0, 0.0),
+            v(2.0, 0.0, 0.0),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert_eq!(min_fraction, 0.0); // Starts inside
         assert!(abs_float(max_fraction - 0.5) < 0.001); // Exits at 50% of ray
@@ -76,7 +86,13 @@ fn test_ray_aabb_intersection() {
     // Test 3: Ray ending inside AABB
     {
         let a = aabb(-1.0, -1.0, -1.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-2.0, 0.0, 0.0), v(0.0, 0.0, 0.0), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-2.0, 0.0, 0.0),
+            v(0.0, 0.0, 0.0),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert!(abs_float(min_fraction - 0.5) < 0.001); // Enters at 50% of ray
         assert_eq!(max_fraction, 1.0); // Ends inside
@@ -85,7 +101,13 @@ fn test_ray_aabb_intersection() {
     // Test 4: Ray completely inside AABB
     {
         let a = aabb(-2.0, -2.0, -2.0, 2.0, 2.0, 2.0);
-        let hit = ray_cast_aabb(a, v(-1.0, 0.0, 0.0), v(1.0, 0.0, 0.0), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, 0.0, 0.0),
+            v(1.0, 0.0, 0.0),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert_eq!(min_fraction, 0.0);
         assert_eq!(max_fraction, 1.0);
@@ -94,21 +116,39 @@ fn test_ray_aabb_intersection() {
     // Test 5: Ray missing AABB
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-1.0, 2.0, 0.5), v(2.0, 2.0, 0.5), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, 2.0, 0.5),
+            v(2.0, 2.0, 0.5),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(!hit);
     }
 
     // Test 6: Ray parallel to AABB face (no intersection)
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-1.0, 2.0, 0.5), v(2.0, 2.0, 0.5), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, 2.0, 0.5),
+            v(2.0, 2.0, 0.5),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(!hit);
     }
 
     // Test 7: Ray parallel to AABB face (within bounds)
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-1.0, 0.5, 0.5), v(2.0, 0.5, 0.5), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, 0.5, 0.5),
+            v(2.0, 0.5, 0.5),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert!(abs_float(min_fraction - 1.0 / 3.0) < 0.001);
         assert!(abs_float(max_fraction - 2.0 / 3.0) < 0.001);
@@ -117,7 +157,13 @@ fn test_ray_aabb_intersection() {
     // Test 8: Degenerate ray (point) inside AABB
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(0.5, 0.5, 0.5), v(0.5, 0.5, 0.5), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(0.5, 0.5, 0.5),
+            v(0.5, 0.5, 0.5),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert_eq!(min_fraction, 0.0);
         assert_eq!(max_fraction, 0.0);
@@ -126,21 +172,39 @@ fn test_ray_aabb_intersection() {
     // Test 9: Degenerate ray (point) outside AABB
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(2.0, 2.0, 2.0), v(2.0, 2.0, 2.0), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(2.0, 2.0, 2.0),
+            v(2.0, 2.0, 2.0),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(!hit);
     }
 
     // Test 10: Ray pointing away from AABB
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-1.0, 0.5, 0.5), v(-2.0, 0.5, 0.5), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, 0.5, 0.5),
+            v(-2.0, 0.5, 0.5),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(!hit);
     }
 
     // Test 11: Ray hitting corner of AABB
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-1.0, -1.0, -1.0), v(2.0, 2.0, 2.0), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, -1.0, -1.0),
+            v(2.0, 2.0, 2.0),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert!(abs_float(min_fraction - 1.0 / 3.0) < 0.001);
         assert!(abs_float(max_fraction - 2.0 / 3.0) < 0.001);
@@ -149,7 +213,13 @@ fn test_ray_aabb_intersection() {
     // Test 12: Ray grazing edge of AABB
     {
         let a = aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-        let hit = ray_cast_aabb(a, v(-1.0, 0.0, 0.5), v(2.0, 0.0, 0.5), &mut min_fraction, &mut max_fraction);
+        let hit = ray_cast_aabb(
+            a,
+            v(-1.0, 0.0, 0.5),
+            v(2.0, 0.0, 0.5),
+            &mut min_fraction,
+            &mut max_fraction,
+        );
         assert!(hit);
         assert!(abs_float(min_fraction - 1.0 / 3.0) < 0.001);
         assert!(abs_float(max_fraction - 2.0 / 3.0) < 0.001);

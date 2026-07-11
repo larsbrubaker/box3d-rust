@@ -33,7 +33,7 @@ pub fn tree_reset(count: u32) -> i32 {
         PROXY_IDS.with(|ids| {
             let mut tree = DynamicTree::new(32);
             let mut list = Vec::new();
-            let n = count.max(1).min(27) as i32;
+            let n = count.clamp(1, 27) as i32;
             let side = ((n as f32).cbrt().ceil() as i32).max(1);
             let mut placed = 0;
             for iz in 0..side {

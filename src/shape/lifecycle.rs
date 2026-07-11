@@ -39,9 +39,7 @@ pub(crate) fn compute_shape_margin(shape: &Shape) -> f32 {
             }
             max_extent_sqr.sqrt()
         }
-        ShapeGeometry::Mesh { .. }
-        | ShapeGeometry::HeightField(_)
-        | ShapeGeometry::Compound(_) => {
+        ShapeGeometry::Mesh { .. } | ShapeGeometry::HeightField(_) | ShapeGeometry::Compound(_) => {
             // Static-only shapes: return the cap so incidental use is generous.
             return max_aabb_margin();
         }
@@ -148,8 +146,7 @@ pub(crate) fn create_shape_internal(
     }
 
     if body_set_index != DISABLED_SET {
-        let force_pair_creation =
-            def.invoke_contact_creation && shape_type != ShapeType::Compound;
+        let force_pair_creation = def.invoke_contact_creation && shape_type != ShapeType::Compound;
         let (shapes, broad_phase) = (&mut world.shapes, &mut world.broad_phase);
         create_shape_proxy(
             &mut shapes[shape_id as usize],
@@ -196,9 +193,7 @@ fn create_shape(
 
     debug_assert!(def.internal_value == SECRET_COOKIE);
     debug_assert!(is_valid_float(def.density) && def.density >= 0.0);
-    debug_assert!(
-        is_valid_float(def.base_material.friction) && def.base_material.friction >= 0.0
-    );
+    debug_assert!(is_valid_float(def.base_material.friction) && def.base_material.friction >= 0.0);
     debug_assert!(
         is_valid_float(def.base_material.restitution) && def.base_material.restitution >= 0.0
     );
@@ -411,11 +406,7 @@ pub(crate) fn destroy_shape_internal(
 
     let (prev_shape_id, next_shape_id, sensor_index) = {
         let shape = &world.shapes[shape_index as usize];
-        (
-            shape.prev_shape_id,
-            shape.next_shape_id,
-            shape.sensor_index,
-        )
+        (shape.prev_shape_id, shape.next_shape_id, shape.sensor_index)
     };
 
     // Remove the shape from the body's doubly linked list.

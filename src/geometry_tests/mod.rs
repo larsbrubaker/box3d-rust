@@ -89,4 +89,3 @@ fn check_initial_overlap(out: CastOutput, origin: Vec3) {
     assert_eq!(out.normal.y, 0.0);
     assert_eq!(out.normal.z, 0.0);
 }
-

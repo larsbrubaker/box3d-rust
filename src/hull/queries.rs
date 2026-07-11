@@ -199,11 +199,7 @@ pub fn shape_cast_hull(shape: &HullData, input: &ShapeCastInput) -> CastOutput {
 }
 
 /// Collide a capsule mover against a hull. (b3CollideMoverAndHull)
-pub fn collide_mover_and_hull(
-    result: &mut PlaneResult,
-    shape: &HullData,
-    mover: &Capsule,
-) -> i32 {
+pub fn collide_mover_and_hull(result: &mut PlaneResult, shape: &HullData, mover: &Capsule) -> i32 {
     let points = get_hull_points(shape);
     let distance_input = DistanceInput {
         proxy_a: make_proxy(points, 0.0),

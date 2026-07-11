@@ -14,8 +14,8 @@
 
 mod internal;
 mod matrix;
-mod query;
 mod quat;
+mod query;
 mod ray_triangle;
 mod scalar;
 mod transform;
@@ -25,8 +25,8 @@ mod vector;
 
 pub use internal::*;
 pub use matrix::*;
-pub use query::*;
 pub use quat::*;
+pub use query::*;
 pub use ray_triangle::{
     intersect_ray_triangle, test_bounds_overlap, test_bounds_ray_overlap,
     test_bounds_triangle_overlap,

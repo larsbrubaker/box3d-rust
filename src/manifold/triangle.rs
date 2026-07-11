@@ -13,7 +13,7 @@ use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
 use crate::geometry::{Capsule, Sphere};
 use crate::math_functions::{
     abs_float, add, closest_point_on_triangle, cross, distance_squared, dot, lerp,
-    make_plane_from_normal_and_point, make_plane_from_points, min_float, mul_sv, mul_sub, neg,
+    make_plane_from_normal_and_point, make_plane_from_points, min_float, mul_sub, mul_sv, neg,
     normalize, plane_separation, sub, Plane, Vec3, TRANSFORM_IDENTITY,
 };
 

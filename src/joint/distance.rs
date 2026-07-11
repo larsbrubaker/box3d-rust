@@ -448,8 +448,8 @@ pub fn solve_distance_joint(
                     impulse_coeff = constraint_softness.impulse_scale;
                 }
 
-                let mut impulse =
-                    -mass_coeff * joint.axial_mass * (c_dot + bias) - impulse_coeff * joint.lower_impulse;
+                let mut impulse = -mass_coeff * joint.axial_mass * (c_dot + bias)
+                    - impulse_coeff * joint.lower_impulse;
                 let new_impulse = max_float(0.0, joint.lower_impulse + impulse);
                 impulse = new_impulse - joint.lower_impulse;
                 joint.lower_impulse = new_impulse;
@@ -478,8 +478,8 @@ pub fn solve_distance_joint(
                     impulse_scale = constraint_softness.impulse_scale;
                 }
 
-                let mut impulse =
-                    -mass_scale * joint.axial_mass * (c_dot + bias) - impulse_scale * joint.upper_impulse;
+                let mut impulse = -mass_scale * joint.axial_mass * (c_dot + bias)
+                    - impulse_scale * joint.upper_impulse;
                 let new_impulse = max_float(0.0, joint.upper_impulse + impulse);
                 impulse = new_impulse - joint.upper_impulse;
                 joint.upper_impulse = new_impulse;

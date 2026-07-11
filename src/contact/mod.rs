@@ -9,9 +9,7 @@
 use crate::core::NULL_INDEX;
 use crate::distance::SimplexCache;
 use crate::manifold::{Manifold, SatCache};
-use crate::math_functions::{
-    Quat, Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
-};
+use crate::math_functions::{Quat, Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO};
 
 /// Contact flag bits. (enum b3ContactFlags)
 pub mod contact_flags {
@@ -236,4 +234,3 @@ mod update;
 pub use collide::*;
 pub use lifecycle::*;
 pub use update::*;
-

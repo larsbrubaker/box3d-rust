@@ -7,15 +7,14 @@
 use crate::constants::huge;
 use crate::core::{get_length_units_per_meter, SECRET_COOKIE};
 use crate::id::BodyId;
-use crate::math_functions::{
-    Quat, Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
-};
+use crate::math_functions::{Quat, Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO};
 
 /// Base joint definition used by all joint types. The local frames are measured
 /// from the body's origin rather than the center of mass because:
 /// 1. You might not know where the center of mass will be.
 /// 2. If you add/remove shapes from a body and recompute the mass, the joints
 ///    will be broken.
+///
 /// (b3JointDef)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct JointDef {

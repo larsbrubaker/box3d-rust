@@ -11,3 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 box3d-rust = { path = "../.." }
 wasm-bindgen = "0.2"
+
+[lints]
+workspace = true
+

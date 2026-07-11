@@ -14,9 +14,7 @@ use crate::distance::make_proxy;
 use crate::geometry::Sphere;
 use crate::hull::make_box_hull;
 use crate::id::ShapeId;
-use crate::math_functions::{
-    abs_float, length, offset_pos, Aabb, Pos, Vec3, POS_ZERO, VEC3_ZERO,
-};
+use crate::math_functions::{abs_float, length, offset_pos, Aabb, Pos, Vec3, POS_ZERO, VEC3_ZERO};
 use crate::shape::{create_hull_shape, create_sphere_shape, shape_is_valid};
 use crate::types::{
     default_body_def, default_explosion_def, default_query_filter, default_shape_def,

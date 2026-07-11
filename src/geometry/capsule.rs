@@ -68,11 +68,7 @@ pub fn compute_capsule_aabb(shape: &Capsule, transform: Transform) -> Aabb {
 
     let center1 = transform_point(transform, shape.center1);
     let center2 = transform_point(transform, shape.center2);
-    let extent = Vec3 {
-        x: r,
-        y: r,
-        z: r,
-    };
+    let extent = Vec3 { x: r, y: r, z: r };
 
     Aabb {
         lower_bound: sub(min(center1, center2), extent),
@@ -100,11 +96,7 @@ pub fn compute_swept_capsule_aabb(shape: &Capsule, xf1: Transform, xf2: Transfor
 }
 
 /// Test overlap between a capsule and a shape proxy. (b3OverlapCapsule)
-pub fn overlap_capsule(
-    shape: &Capsule,
-    shape_transform: Transform,
-    proxy: &ShapeProxy,
-) -> bool {
+pub fn overlap_capsule(shape: &Capsule, shape_transform: Transform, proxy: &ShapeProxy) -> bool {
     let input = DistanceInput {
         proxy_a: make_proxy(&[shape.center1, shape.center2], shape.radius),
         proxy_b: *proxy,
@@ -350,8 +342,7 @@ pub fn collide_mover_and_capsule(
 
     // The normal points from the shape toward the mover.
     let mut distance = 0.0;
-    let mut normal =
-        get_length_and_normalize(&mut distance, sub(approach.point2, approach.point1));
+    let mut normal = get_length_and_normalize(&mut distance, sub(approach.point2, approach.point1));
 
     if distance > total_radius {
         return 0;

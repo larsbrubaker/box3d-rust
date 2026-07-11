@@ -416,9 +416,7 @@ pub fn update_broad_phase_pairs(world: &mut World) {
         let fat_aabb = base_tree.aabb(proxy_id_);
         let query_shape_index = base_tree.user_data(proxy_id_) as i32;
 
-        debug_assert!(
-            world.shapes[query_shape_index as usize].shape_type() != ShapeType::Compound
-        );
+        debug_assert!(world.shapes[query_shape_index as usize].shape_type() != ShapeType::Compound);
 
         if proxy_type_ == BodyType::Dynamic {
             query_tree_for_pairs(

@@ -605,7 +605,6 @@ pub fn joint_get_body_b(world: &World, joint_id: JointId) -> crate::id::BodyId {
     crate::body::make_body_id(world, body_index)
 }
 
-
 #[cfg(test)]
 #[path = "lifecycle_tests.rs"]
 mod tests;

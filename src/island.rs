@@ -227,9 +227,7 @@ pub fn link_contact(world: &mut World, contact_id: i32) {
     use crate::contact::contact_flags;
     use crate::solver_set::wake_solver_set;
 
-    debug_assert!(
-        (world.contacts[contact_id as usize].flags & contact_flags::TOUCHING) != 0
-    );
+    debug_assert!((world.contacts[contact_id as usize].flags & contact_flags::TOUCHING) != 0);
 
     let body_id_a = world.contacts[contact_id as usize].edges[0].body_id;
     let body_id_b = world.contacts[contact_id as usize].edges[1].body_id;
@@ -571,7 +569,9 @@ pub fn split_island(world: &mut World, base_id: i32) {
         new_island
             .contacts
             .reserve(component_contact_counts[i] as usize);
-        new_island.joints.reserve(component_joint_counts[i] as usize);
+        new_island
+            .joints
+            .reserve(component_joint_counts[i] as usize);
     }
 
     // Assign bodies to new islands

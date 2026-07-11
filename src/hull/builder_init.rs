@@ -21,10 +21,7 @@ fn build_bounds(vertices: &[Vec3]) -> Aabb {
     bounds
 }
 
-fn find_farthest_points_along_cardinal_axes(
-    tolerance: f32,
-    vertices: &[Vec3],
-) -> (i32, i32) {
+fn find_farthest_points_along_cardinal_axes(tolerance: f32, vertices: &[Vec3]) -> (i32, i32) {
     let mut index1 = NULL_INDEX;
     let mut index2 = NULL_INDEX;
 
@@ -189,8 +186,7 @@ impl HullBuilder {
     }
 
     pub fn build_initial_hull(&mut self, points: &[Vec3]) -> bool {
-        let (index1, mut index2) =
-            find_farthest_points_along_cardinal_axes(self.tolerance, points);
+        let (index1, mut index2) = find_farthest_points_along_cardinal_axes(self.tolerance, points);
         if index1 < 0 || index2 < 0 {
             return false;
         }
@@ -200,8 +196,7 @@ impl HullBuilder {
             return false;
         }
 
-        let index4 =
-            find_farthest_point_from_plane(index1, index2, index3, self.tolerance, points);
+        let index4 = find_farthest_point_from_plane(index1, index2, index3, self.tolerance, points);
         if index4 < 0 {
             return false;
         }

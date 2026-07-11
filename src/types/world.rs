@@ -97,7 +97,7 @@ impl Default for WorldDef {
     }
 }
 
-/// Result from 3World_CastRayClosest. (b3RayResult)
+/// Result from b3World_CastRayClosest. (b3RayResult)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RayResult {
     /// The shape hit.
@@ -141,7 +141,7 @@ impl Default for RayResult {
 
 /// Counters that give details of the simulation size. (b3Counters)
 ///
-/// yte_count, stack_used, rena_capacity, and 	ask_count are always
+/// byte_count, stack_used, arena_capacity, and task_count are always
 /// zero in this port: there is no global allocation tracker, no arena stack
 /// allocator, and no task system in the serial Rust implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

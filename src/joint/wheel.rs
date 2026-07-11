@@ -105,10 +105,16 @@ pub fn prepare_wheel_joint(world: &World, base: &mut JointSim, context: &StepCon
         joint.suspension_mass = if k > 0.0 { 1.0 / k } else { 0.0 };
     }
 
-    joint.suspension_softness =
-        make_soft(joint.suspension_hertz, joint.suspension_damping_ratio, context.h);
-    joint.steering_softness =
-        make_soft(joint.steering_hertz, joint.steering_damping_ratio, context.h);
+    joint.suspension_softness = make_soft(
+        joint.suspension_hertz,
+        joint.suspension_damping_ratio,
+        context.h,
+    );
+    joint.steering_softness = make_soft(
+        joint.steering_hertz,
+        joint.steering_damping_ratio,
+        context.h,
+    );
 
     {
         // Rotation axis is the z-axis of body A.
@@ -408,8 +414,7 @@ pub fn solve_wheel_joint(
         let mass_scale = joint.suspension_softness.mass_scale;
         let impulse_scale = joint.suspension_softness.impulse_scale;
 
-        let cdot =
-            dot(matrix_a.cx, sub(v_b, v_a)) + dot(s_bx, w_b) - dot(s_ax, w_a);
+        let cdot = dot(matrix_a.cx, sub(v_b, v_a)) + dot(s_bx, w_b) - dot(s_ax, w_a);
         let impulse = -mass_scale * joint.suspension_mass * (cdot + bias)
             - impulse_scale * joint.suspension_spring_impulse;
         joint.suspension_spring_impulse += impulse;
@@ -467,8 +472,8 @@ pub fn solve_wheel_joint(
 
                 let cdot = dot(steering_axis, sub(w_b, w_a));
                 let old_impulse = joint.lower_steering_impulse;
-                let mut impulse = -mass_scale * joint.steering_mass * (cdot + bias)
-                    - impulse_scale * old_impulse;
+                let mut impulse =
+                    -mass_scale * joint.steering_mass * (cdot + bias) - impulse_scale * old_impulse;
                 joint.lower_steering_impulse = max_float(old_impulse + impulse, 0.0);
                 impulse = joint.lower_steering_impulse - old_impulse;
 
@@ -498,8 +503,8 @@ pub fn solve_wheel_joint(
                 // sign flipped on cdot
                 let cdot = dot(steering_axis, sub(w_a, w_b));
                 let old_impulse = joint.upper_steering_impulse;
-                let mut impulse = -mass_scale * joint.steering_mass * (cdot + bias)
-                    - impulse_scale * old_impulse;
+                let mut impulse =
+                    -mass_scale * joint.steering_mass * (cdot + bias) - impulse_scale * old_impulse;
                 joint.upper_steering_impulse = max_float(old_impulse + impulse, 0.0);
                 impulse = joint.upper_steering_impulse - old_impulse;
 
@@ -527,8 +532,7 @@ pub fn solve_wheel_joint(
                 impulse_scale = constraint_softness.impulse_scale;
             }
 
-            let cdot =
-                dot(matrix_a.cx, sub(v_b, v_a)) + dot(s_bx, w_b) - dot(s_ax, w_a);
+            let cdot = dot(matrix_a.cx, sub(v_b, v_a)) + dot(s_bx, w_b) - dot(s_ax, w_a);
             let mut impulse = -mass_scale * joint.suspension_mass * (cdot + bias)
                 - impulse_scale * joint.lower_suspension_impulse;
             let old_impulse = joint.lower_suspension_impulse;
@@ -565,8 +569,7 @@ pub fn solve_wheel_joint(
             }
 
             // sign flipped on cdot
-            let cdot =
-                dot(matrix_a.cx, sub(v_a, v_b)) + dot(s_ax, w_a) - dot(s_bx, w_b);
+            let cdot = dot(matrix_a.cx, sub(v_a, v_b)) + dot(s_ax, w_a) - dot(s_bx, w_b);
             let mut impulse = -mass_scale * joint.suspension_mass * (cdot + bias)
                 - impulse_scale * joint.upper_suspension_impulse;
             let old_impulse = joint.upper_suspension_impulse;
@@ -698,10 +701,7 @@ pub fn solve_wheel_joint(
             impulse_scale = constraint_softness.impulse_scale;
         }
 
-        let v_rel = sub(
-            sub(add(v_b, cross(w_b, r_b)), v_a),
-            cross(w_a, add(r_a, d)),
-        );
+        let v_rel = sub(sub(add(v_b, cross(w_b, r_b)), v_a), cross(w_a, add(r_a, d)));
         let cdot = Vec2 {
             x: dot(perp_y, v_rel),
             y: dot(perp_z, v_rel),

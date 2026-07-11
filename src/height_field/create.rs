@@ -154,41 +154,59 @@ fn compute_convexity_flags(hf: &mut HeightFieldData, heights: &[f32]) {
 
             // triangle 0 : 11, 21, 12
             let vs0 = [
-                mul(scale, Vec3 {
-                    x: x1,
-                    y: height11,
-                    z: z1,
-                }),
-                mul(scale, Vec3 {
-                    x: x1,
-                    y: height21,
-                    z: z2,
-                }),
-                mul(scale, Vec3 {
-                    x: x2,
-                    y: height12,
-                    z: z1,
-                }),
+                mul(
+                    scale,
+                    Vec3 {
+                        x: x1,
+                        y: height11,
+                        z: z1,
+                    },
+                ),
+                mul(
+                    scale,
+                    Vec3 {
+                        x: x1,
+                        y: height21,
+                        z: z2,
+                    },
+                ),
+                mul(
+                    scale,
+                    Vec3 {
+                        x: x2,
+                        y: height12,
+                        z: z1,
+                    },
+                ),
             ];
             let plane1 = make_plane_from_points(vs0[0], vs0[1], vs0[2]);
 
             // triangle 1 : 22, 12, 21
             let vs1 = [
-                mul(scale, Vec3 {
-                    x: x2,
-                    y: height22,
-                    z: z2,
-                }),
-                mul(scale, Vec3 {
-                    x: x2,
-                    y: height12,
-                    z: z1,
-                }),
-                mul(scale, Vec3 {
-                    x: x1,
-                    y: height21,
-                    z: z2,
-                }),
+                mul(
+                    scale,
+                    Vec3 {
+                        x: x2,
+                        y: height22,
+                        z: z2,
+                    },
+                ),
+                mul(
+                    scale,
+                    Vec3 {
+                        x: x2,
+                        y: height12,
+                        z: z1,
+                    },
+                ),
+                mul(
+                    scale,
+                    Vec3 {
+                        x: x1,
+                        y: height21,
+                        z: z2,
+                    },
+                ),
             ];
             let plane2 = make_plane_from_points(vs1[0], vs1[1], vs1[2]);
 
@@ -232,21 +250,30 @@ fn compute_convexity_flags(hf: &mut HeightFieldData, heights: &[f32]) {
                 let z2 = (r + 1) as f32;
 
                 let vs = [
-                    mul(scale, Vec3 {
-                        x: x2,
-                        y: h22,
-                        z: z2,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x2,
-                        y: h12,
-                        z: z1,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x1,
-                        y: h21,
-                        z: z2,
-                    }),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x2,
+                            y: h22,
+                            z: z2,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x2,
+                            y: h12,
+                            z: z1,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x1,
+                            y: h21,
+                            z: z2,
+                        },
+                    ),
                 ];
 
                 let n = normalize(cross(sub(vs[1], vs[0]), sub(vs[2], vs[0])));
@@ -286,21 +313,30 @@ fn compute_convexity_flags(hf: &mut HeightFieldData, heights: &[f32]) {
                 let z2 = (r + 1) as f32;
 
                 let vs = [
-                    mul(scale, Vec3 {
-                        x: x1,
-                        y: h11,
-                        z: z1,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x1,
-                        y: h21,
-                        z: z2,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x2,
-                        y: h12,
-                        z: z1,
-                    }),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x1,
+                            y: h11,
+                            z: z1,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x1,
+                            y: h21,
+                            z: z2,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x2,
+                            y: h12,
+                            z: z1,
+                        },
+                    ),
                 ];
 
                 let n = normalize(cross(sub(vs[1], vs[0]), sub(vs[2], vs[0])));
@@ -343,21 +379,30 @@ fn compute_convexity_flags(hf: &mut HeightFieldData, heights: &[f32]) {
                 let z2 = (r + 1) as f32;
 
                 let vs = [
-                    mul(scale, Vec3 {
-                        x: x2,
-                        y: h22,
-                        z: z2,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x2,
-                        y: h12,
-                        z: z1,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x1,
-                        y: h21,
-                        z: z2,
-                    }),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x2,
+                            y: h22,
+                            z: z2,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x2,
+                            y: h12,
+                            z: z1,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x1,
+                            y: h21,
+                            z: z2,
+                        },
+                    ),
                 ];
 
                 let n = normalize(cross(sub(vs[1], vs[0]), sub(vs[2], vs[0])));
@@ -398,21 +443,30 @@ fn compute_convexity_flags(hf: &mut HeightFieldData, heights: &[f32]) {
                 let z2 = (r + 1) as f32;
 
                 let vs = [
-                    mul(scale, Vec3 {
-                        x: x1,
-                        y: h11,
-                        z: z1,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x1,
-                        y: h21,
-                        z: z2,
-                    }),
-                    mul(scale, Vec3 {
-                        x: x2,
-                        y: h12,
-                        z: z1,
-                    }),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x1,
+                            y: h11,
+                            z: z1,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x1,
+                            y: h21,
+                            z: z2,
+                        },
+                    ),
+                    mul(
+                        scale,
+                        Vec3 {
+                            x: x2,
+                            y: h12,
+                            z: z1,
+                        },
+                    ),
                 ];
 
                 let n = normalize(cross(sub(vs[1], vs[0]), sub(vs[2], vs[0])));

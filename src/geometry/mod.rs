@@ -14,8 +14,8 @@
 //! SPDX-License-Identifier: MIT
 
 mod capsule;
-pub(crate) mod types;
 mod sphere;
+pub(crate) mod types;
 
 pub use capsule::{
     collide_mover_and_capsule, compute_capsule_aabb, compute_capsule_mass,
@@ -26,8 +26,8 @@ pub use sphere::{
     overlap_sphere, ray_cast_hollow_sphere, ray_cast_sphere, shape_cast_sphere,
 };
 pub use types::{
-    Capsule, CollisionPlane, MassData, PlaneResult, PlaneSolverResult, RayCastInput,
-    ShapeCastInput, ShapeExtent, ShapeType, Sphere, SurfaceMaterial, default_surface_material,
+    default_surface_material, Capsule, CollisionPlane, MassData, PlaneResult, PlaneSolverResult,
+    RayCastInput, ShapeCastInput, ShapeExtent, ShapeType, Sphere, SurfaceMaterial,
     SURFACE_MATERIAL_SIZE,
 };
 

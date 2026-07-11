@@ -11,9 +11,9 @@ use crate::distance::SimplexCache;
 use crate::geometry::ShapeType;
 use crate::id::ShapeId;
 use crate::manifold::{
-    collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule, collide_hull_and_sphere,
-    collide_hulls, collide_spheres, make_feature_id, LocalManifold, Manifold, ManifoldPoint,
-    SatCache,
+    collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
+    collide_hull_and_sphere, collide_hulls, collide_spheres, make_feature_id, LocalManifold,
+    Manifold, ManifoldPoint, SatCache,
 };
 use crate::math_functions::{
     add, inv_mul_world_transforms, make_matrix_from_quat, max_float, mul_mv, mul_world_transforms,
@@ -269,15 +269,8 @@ fn update_convex_contact(
     xf_b: WorldTransform,
     flip: bool,
 ) -> bool {
-    let touching = compute_convex_manifold(
-        world,
-        worker_index,
-        contact_id,
-        geom_a,
-        xf_a,
-        geom_b,
-        xf_b,
-    );
+    let touching =
+        compute_convex_manifold(world, worker_index, contact_id, geom_a, xf_a, geom_b, xf_b);
 
     if !touching {
         debug_assert!(world.contacts[contact_id as usize].manifolds.is_empty());
@@ -298,7 +291,9 @@ fn update_convex_contact(
     let material_a = shape_a.get_material(0);
     let material_b = shape_b.get_material(0);
 
-    let friction_cb = world.friction_callback.unwrap_or(crate::world::default_friction_callback);
+    let friction_cb = world
+        .friction_callback
+        .unwrap_or(crate::world::default_friction_callback);
     let restitution_cb = world
         .restitution_callback
         .unwrap_or(crate::world::default_restitution_callback);

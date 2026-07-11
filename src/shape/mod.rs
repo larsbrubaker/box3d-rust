@@ -38,7 +38,10 @@ pub enum ShapeGeometry {
     /// Shared hull from the world hull database. (C: `const b3HullData* hull`)
     Hull(Rc<HullData>),
     /// Mesh data plus per-instance scale (C: `b3Mesh { data*, scale }`).
-    Mesh { data: MeshData, scale: Vec3 },
+    Mesh {
+        data: MeshData,
+        scale: Vec3,
+    },
     HeightField(HeightFieldData),
     Compound(CompoundData),
 }
@@ -248,4 +251,3 @@ mod query;
 pub use api::*;
 pub use dispatch::*;
 pub use query::*;
-

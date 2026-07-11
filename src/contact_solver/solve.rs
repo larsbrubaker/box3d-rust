@@ -7,8 +7,8 @@ use super::ContactConstraint;
 use crate::body::{body_flags, BodyState, IDENTITY_BODY_STATE};
 use crate::core::NULL_INDEX;
 use crate::math_functions::{
-    add, blend2, clamp_float, cross, dot, dot2, max_float, mul_add, mul_mv, mul_mv2, mul_sub, mul_sv,
-    neg, rotate_vector, sub, sub2, Vec2,
+    add, blend2, clamp_float, cross, dot, dot2, max_float, mul_add, mul_mv, mul_mv2, mul_sub,
+    mul_sv, neg, rotate_vector, sub, sub2, Vec2,
 };
 use crate::solver::StepContext;
 
@@ -90,9 +90,8 @@ pub fn solve_contacts(
                 let vr_b = add(v_b, cross(w_b, r_b));
                 let vn = dot(sub(vr_b, vr_a), normal);
 
-                let mut delta_impulse =
-                    -cp.normal_mass * (mass_scale * vn + velocity_bias)
-                        - impulse_scale * cp.normal_impulse;
+                let mut delta_impulse = -cp.normal_mass * (mass_scale * vn + velocity_bias)
+                    - impulse_scale * cp.normal_impulse;
 
                 let new_impulse = max_float(cp.normal_impulse + delta_impulse, 0.0);
                 delta_impulse = new_impulse - cp.normal_impulse;
@@ -125,30 +124,21 @@ pub fn solve_contacts(
                     clamp_float(old_impulse + delta_impulse, -max_impulse, max_impulse);
                 delta_impulse = constraint.twist_impulse - old_impulse;
 
-                w_a = sub(
-                    w_a,
-                    mul_mv(i_a, mul_sv(delta_impulse, constraint.normal)),
-                );
-                w_b = add(
-                    w_b,
-                    mul_mv(i_b, mul_sv(delta_impulse, constraint.normal)),
-                );
+                w_a = sub(w_a, mul_mv(i_a, mul_sv(delta_impulse, constraint.normal)));
+                w_b = add(w_b, mul_mv(i_b, mul_sv(delta_impulse, constraint.normal)));
             }
 
             // Rolling resistance
             if rolling_resistance > 0.0 {
-                let mut delta_impulse =
-                    neg(mul_mv(contact_constraint.rolling_mass, sub(w_b, w_a)));
+                let mut delta_impulse = neg(mul_mv(contact_constraint.rolling_mass, sub(w_b, w_a)));
                 let old_impulse = constraint.rolling_impulse;
                 constraint.rolling_impulse = add(old_impulse, delta_impulse);
 
                 let max_impulse = rolling_resistance * total_normal_impulse;
                 let mag_sqr = dot(constraint.rolling_impulse, constraint.rolling_impulse);
                 if mag_sqr > max_impulse * max_impulse + f32::EPSILON {
-                    constraint.rolling_impulse = mul_sv(
-                        max_impulse / mag_sqr.sqrt(),
-                        constraint.rolling_impulse,
-                    );
+                    constraint.rolling_impulse =
+                        mul_sv(max_impulse / mag_sqr.sqrt(), constraint.rolling_impulse);
                 }
 
                 delta_impulse = sub(constraint.rolling_impulse, old_impulse);

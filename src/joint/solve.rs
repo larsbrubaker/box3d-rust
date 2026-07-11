@@ -177,5 +177,8 @@ pub fn get_joint_reaction(world: &World, sim: &JointSim, inv_time_step: f32) -> 
         JointType::Filter => {}
     }
 
-    (linear_impulse * inv_time_step, angular_impulse * inv_time_step)
+    (
+        linear_impulse * inv_time_step,
+        angular_impulse * inv_time_step,
+    )
 }

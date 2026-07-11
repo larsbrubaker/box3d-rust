@@ -111,8 +111,7 @@ pub fn prepare_one_contact(
 
             let rn_a = cross(r_a, normal);
             let rn_b = cross(r_b, normal);
-            let k_normal =
-                m_a + m_b + dot(rn_a, mul_mv(i_a, rn_a)) + dot(rn_b, mul_mv(i_b, rn_b));
+            let k_normal = m_a + m_b + dot(rn_a, mul_mv(i_a, rn_a)) + dot(rn_b, mul_mv(i_b, rn_b));
             cp.normal_mass = if k_normal > 0.0 { 1.0 / k_normal } else { 0.0 };
 
             let vr_a = add(v_a, cross(w_a, r_a));
@@ -132,8 +131,7 @@ pub fn prepare_one_contact(
         mc.origin_b = center_b;
 
         for point_index in 0..point_count as usize {
-            mc.points[point_index].lever_arm =
-                distance(mc.points[point_index].r_a, center_a);
+            mc.points[point_index].lever_arm = distance(mc.points[point_index].r_a, center_a);
         }
 
         let rt_a1 = cross(center_a, tangent1);
@@ -143,14 +141,8 @@ pub fn prepare_one_contact(
 
         {
             let mut k = MAT2_ZERO;
-            k.cx.x = m_a
-                + m_b
-                + dot(rt_a1, mul_mv(i_a, rt_a1))
-                + dot(rt_b1, mul_mv(i_b, rt_b1));
-            k.cy.y = m_a
-                + m_b
-                + dot(rt_a2, mul_mv(i_a, rt_a2))
-                + dot(rt_b2, mul_mv(i_b, rt_b2));
+            k.cx.x = m_a + m_b + dot(rt_a1, mul_mv(i_a, rt_a1)) + dot(rt_b1, mul_mv(i_b, rt_b1));
+            k.cy.y = m_a + m_b + dot(rt_a2, mul_mv(i_a, rt_a2)) + dot(rt_b2, mul_mv(i_b, rt_b2));
             k.cx.y = dot(rt_a1, mul_mv(i_a, rt_a2)) + dot(rt_b1, mul_mv(i_b, rt_b2));
             k.cy.x = k.cx.y;
 

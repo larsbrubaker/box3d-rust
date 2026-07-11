@@ -89,11 +89,7 @@ fn solve_joints_then_contacts(
     }
 }
 
-fn maybe_flag_joint_reaction(
-    world: &mut World,
-    joint: &crate::joint::JointSim,
-    inv_h: f32,
-) {
+fn maybe_flag_joint_reaction(world: &mut World, joint: &crate::joint::JointSim, inv_h: f32) {
     if !(joint.force_threshold < f32::MAX || joint.torque_threshold < f32::MAX) {
         return;
     }
@@ -170,8 +166,9 @@ pub fn solve(world: &mut World, context: &StepContext) {
     }
 
     // Prepare contact constraints for every color (convex + mesh → Mesh kernels).
-    let mut color_constraints: Vec<Vec<ContactConstraint>> =
-        (0..GRAPH_COLOR_COUNT as usize).map(|_| Vec::new()).collect();
+    let mut color_constraints: Vec<Vec<ContactConstraint>> = (0..GRAPH_COLOR_COUNT as usize)
+        .map(|_| Vec::new())
+        .collect();
 
     for color_index in 0..GRAPH_COLOR_COUNT as usize {
         let convex_ids = world.constraint_graph.colors[color_index]
@@ -366,8 +363,7 @@ pub fn solve(world: &mut World, context: &StepContext) {
                             let mp_approach_speed = -mp.normal_velocity;
 
                             // Need to check total impulse because the point may be speculative and not colliding
-                            if mp_approach_speed > approach_speed && mp.total_normal_impulse > 0.0
-                            {
+                            if mp_approach_speed > approach_speed && mp.total_normal_impulse > 0.0 {
                                 approach_speed = mp_approach_speed;
                                 point = offset_pos(mid_center, lerp(mp.anchor_a, mp.anchor_b, 0.5));
                                 normal = manifold.normal;
@@ -466,7 +462,8 @@ pub fn solve(world: &mut World, context: &StepContext) {
 
         let dynamic_tree = BodyType::Dynamic as usize;
         for &sim_index in &bullet_bodies {
-            let bullet_sim = &mut world.solver_sets[AWAKE_SET as usize].body_sims[sim_index as usize];
+            let bullet_sim =
+                &mut world.solver_sets[AWAKE_SET as usize].body_sims[sim_index as usize];
             if (bullet_sim.flags & body_flags::ENLARGE_BOUNDS) == 0 {
                 continue;
             }

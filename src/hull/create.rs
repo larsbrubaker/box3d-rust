@@ -5,9 +5,8 @@ use super::types::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE,
 use super::validate::is_valid_hull;
 use crate::core::{hash, non_zero_hash, HASH_INIT};
 use crate::math_functions::{
-    add, align_up8, clamp_int, cos, cross, length, min, max, mul_sv, plane_separation,
-    scalar_triple_product, sin, steiner, sub, sub_mm, mul_sm, compute_cos_sin, Vec3, VEC3_ZERO,
-    PI,
+    add, align_up8, clamp_int, compute_cos_sin, cos, cross, length, max, min, mul_sm, mul_sv,
+    plane_separation, scalar_triple_product, sin, steiner, sub, sub_mm, Vec3, PI, VEC3_ZERO,
 };
 
 fn update_hull_bounds(hull: &mut HullData) {
@@ -217,7 +216,8 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
     let face_offset = byte_count as i32;
     byte_count += align_up8(face_count as usize * core::mem::size_of::<HullFace>());
     let plane_offset = byte_count as i32;
-    byte_count += align_up8(face_count as usize * core::mem::size_of::<crate::math_functions::Plane>());
+    byte_count +=
+        align_up8(face_count as usize * core::mem::size_of::<crate::math_functions::Plane>());
 
     let mut hull = HullData {
         version: HULL_VERSION,
@@ -270,7 +270,8 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
 
     for index in 0..face_count as usize {
         let face = temp_faces[index];
-        hull.faces[index].edge = builder.edges[builder.faces[face as usize].edge as usize].final_index as u8;
+        hull.faces[index].edge =
+            builder.edges[builder.faces[face as usize].edge as usize].final_index as u8;
         hull.planes[index] = builder.faces[face as usize].plane;
     }
 

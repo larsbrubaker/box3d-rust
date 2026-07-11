@@ -40,3 +40,25 @@ double-precision = []
 [dependencies]
 
 [dev-dependencies]
+
+# Port-idiomatic style: allow Clippy lints that conflict with faithful C-shaped code.
+[workspace.lints.clippy]
+needless_range_loop = "allow"
+int_plus_one = "allow"
+excessive_precision = "allow"
+approx_constant = "allow"
+too_many_arguments = "allow"
+manual_range_contains = "allow"
+field_reassign_with_default = "allow"
+needless_late_init = "allow"
+if_same_then_else = "allow"
+collapsible_if = "allow"
+assertions_on_constants = "allow"
+reserve_after_initialization = "allow"
+unnecessary_unwrap = "allow"
+mem_replace_with_default = "allow"
+len_zero = "allow"
+
+[lints]
+workspace = true
+

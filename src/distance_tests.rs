@@ -6,9 +6,7 @@ use crate::distance::{
     make_proxy, shape_cast, shape_distance, time_of_impact, DistanceInput, ShapeCastPairInput,
     SimplexCache, Sweep, ToiInput, ToiState,
 };
-use crate::math_functions::{
-    segment_distance, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
-};
+use crate::math_functions::{segment_distance, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO};
 
 fn ensure_small(value: f32, tolerance: f32) {
     // Matches the C ENSURE_SMALL macro, which is inclusive: pass when

@@ -135,7 +135,8 @@ pub fn add_contact_to_graph(world: &mut crate::world::World, contact_id: i32) {
         }
     }
 
-    let is_mesh = (world.contacts[contact_id as usize].flags & contact_flags::SIM_MESH_CONTACT) != 0;
+    let is_mesh =
+        (world.contacts[contact_id as usize].flags & contact_flags::SIM_MESH_CONTACT) != 0;
     let is_scalar = is_mesh || color_index == OVERFLOW_INDEX;
     let local_index = if is_scalar {
         world.constraint_graph.colors[color_index as usize]
@@ -347,9 +348,7 @@ pub fn remove_contact_from_graph(
             debug_assert!(moved.set_index == crate::solver_set::AWAKE_SET);
             debug_assert!(moved.color_index == color_index);
             debug_assert!(moved.local_index == moved_index);
-            debug_assert!(
-                (moved.flags & crate::contact::contact_flags::SIM_MESH_CONTACT) == 0
-            );
+            debug_assert!((moved.flags & crate::contact::contact_flags::SIM_MESH_CONTACT) == 0);
             moved.local_index = local_index;
         }
     }

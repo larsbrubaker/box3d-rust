@@ -224,8 +224,7 @@ fn file_roundtrip() {
         assert_eq!(get_height_field_material_indices(&loaded)[i], materials[i]);
     }
 
-    let quantum =
-        (def.global_maximum_height - def.global_minimum_height) / (u16::MAX as f32);
+    let quantum = (def.global_maximum_height - def.global_minimum_height) / (u16::MAX as f32);
     for i in 0..(def.count_x * def.count_z) as usize {
         let recovered = loaded.min_height
             + loaded.height_scale * (get_height_field_compressed_heights(&loaded)[i] as f32);
@@ -238,12 +237,7 @@ fn file_roundtrip() {
 #[test]
 fn shape_cast_vertical_straddle() {
     let heights = [0.0f32; 9];
-    let materials = [
-        0u8,
-        HEIGHT_FIELD_HOLE,
-        HEIGHT_FIELD_HOLE,
-        HEIGHT_FIELD_HOLE,
-    ];
+    let materials = [0u8, HEIGHT_FIELD_HOLE, HEIGHT_FIELD_HOLE, HEIGHT_FIELD_HOLE];
 
     let def = HeightFieldDef {
         heights: heights.to_vec(),
@@ -373,7 +367,11 @@ fn shape_cast_brute_force() {
     let mut failures = 0;
     for xi in 0..5 {
         for zi in 0..5 {
-            let origin = v(1.0 + 4.0 * (xi as f32) + 0.05, 4.0, 1.0 + 4.0 * (zi as f32) + 0.05);
+            let origin = v(
+                1.0 + 4.0 * (xi as f32) + 0.05,
+                4.0,
+                1.0 + 4.0 * (zi as f32) + 0.05,
+            );
 
             for delta in &deltas {
                 for &radius in &radii {
@@ -472,7 +470,11 @@ fn ray_cast_brute_force() {
     let mut failures = 0;
     for xi in 0..5 {
         for zi in 0..5 {
-            let origin = v(1.0 + 4.0 * (xi as f32) + 0.05, 4.0, 1.0 + 4.0 * (zi as f32) + 0.05);
+            let origin = v(
+                1.0 + 4.0 * (xi as f32) + 0.05,
+                4.0,
+                1.0 + 4.0 * (zi as f32) + 0.05,
+            );
 
             for delta in &deltas {
                 let input = RayCastInput {

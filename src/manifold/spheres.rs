@@ -53,10 +53,7 @@ pub fn collide_spheres(
     let point = mul_sv(
         0.5,
         mul_sub(
-            add(
-                mul_add(center1, sphere_a.radius, normal),
-                center2,
-            ),
+            add(mul_add(center1, sphere_a.radius, normal), center2),
             sphere_b.radius,
             normal,
         ),
@@ -117,10 +114,7 @@ pub fn collide_capsule_and_sphere(
     let point = mul_sv(
         0.5,
         mul_add(
-            add(
-                mul_sub(center, sphere_b.radius, normal),
-                closest_point,
-            ),
+            add(mul_sub(center, sphere_b.radius, normal), closest_point),
             capsule_a.radius,
             normal,
         ),

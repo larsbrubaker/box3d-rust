@@ -7,8 +7,9 @@ use super::simplex::{
 };
 use super::types::{DistanceInput, DistanceOutput, ShapeProxy, Simplex, SimplexCache};
 use crate::math_functions::{
-    add, blend2, blend3, cross, distance, dot, is_normalized, length_squared, make_matrix_from_quat,
-    max_float, mul_mv, mul_sv, neg, normalize, sub, transpose, Vec3, VEC3_ZERO,
+    add, blend2, blend3, cross, distance, dot, is_normalized, length_squared,
+    make_matrix_from_quat, max_float, mul_mv, mul_sv, neg, normalize, sub, transpose, Vec3,
+    VEC3_ZERO,
 };
 
 const MAX_SIMPLEX_VERTICES: i32 = 4;

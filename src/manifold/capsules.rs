@@ -11,8 +11,8 @@ use crate::constants::{linear_slop, min_capsule_length, speculative_distance};
 use crate::geometry::Capsule;
 use crate::math_functions::{
     add, cross, distance, dot, get_length_and_normalize, length_squared, mul_add, mul_sub, mul_sv,
-    neg, normalize, point_to_segment_distance, segment_distance, sub,
-    transform_point, Plane, Transform,
+    neg, normalize, point_to_segment_distance, segment_distance, sub, transform_point, Plane,
+    Transform,
 };
 
 /// Collide two capsules. (b3CollideCapsules)

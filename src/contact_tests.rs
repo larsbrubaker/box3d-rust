@@ -50,7 +50,10 @@ fn create_destroy_contact_links_bodies() {
     let id_b = shape_b.index1 - 1;
     create_contact(&mut world, id_a, id_b, 0);
 
-    assert_eq!(world.solver_sets[AWAKE_SET as usize].contact_indices.len(), 1);
+    assert_eq!(
+        world.solver_sets[AWAKE_SET as usize].contact_indices.len(),
+        1
+    );
     assert_eq!(world.bodies[body_a.index1 as usize - 1].contact_count, 1);
     assert_eq!(world.bodies[body_b.index1 as usize - 1].contact_count, 1);
     assert!(world
@@ -61,7 +64,9 @@ fn create_destroy_contact_links_bodies() {
     let contact_id = world.solver_sets[AWAKE_SET as usize].contact_indices[0];
     destroy_contact(&mut world, contact_id, false);
 
-    assert!(world.solver_sets[AWAKE_SET as usize].contact_indices.is_empty());
+    assert!(world.solver_sets[AWAKE_SET as usize]
+        .contact_indices
+        .is_empty());
     assert_eq!(world.bodies[body_a.index1 as usize - 1].contact_count, 0);
     assert_eq!(world.bodies[body_b.index1 as usize - 1].contact_count, 0);
     assert!(!world
@@ -103,7 +108,10 @@ fn update_pairs_creates_contact_for_overlap() {
     // Shape create with invoke_contact_creation buffered moves; update pairs.
     update_broad_phase_pairs(&mut world);
 
-    assert_eq!(world.solver_sets[AWAKE_SET as usize].contact_indices.len(), 1);
+    assert_eq!(
+        world.solver_sets[AWAKE_SET as usize].contact_indices.len(),
+        1
+    );
     assert!(world.broad_phase.move_array.is_empty());
 
     // Destroying the ball shape removes the contact.
@@ -117,7 +125,9 @@ fn update_pairs_creates_contact_for_overlap() {
         generation: world.shapes[shape_id as usize].generation,
     };
     destroy_shape(&mut world, shape, true);
-    assert!(world.solver_sets[AWAKE_SET as usize].contact_indices.is_empty());
+    assert!(world.solver_sets[AWAKE_SET as usize]
+        .contact_indices
+        .is_empty());
 }
 
 #[test]

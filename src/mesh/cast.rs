@@ -8,9 +8,9 @@ use crate::core::NULL_INDEX;
 use crate::distance::{make_proxy, shape_cast, CastOutput, ShapeCastPairInput};
 use crate::geometry::{RayCastInput, ShapeCastInput};
 use crate::math_functions::{
-    aabb_center, aabb_extents, aabb_transform, abs, add, cross, get_by_index, intersect_ray_triangle,
-    make_aabb, max, min, mul, mul_sv, neg, normalize, sub, test_bounds_overlap,
-    test_bounds_ray_overlap, Aabb, Transform, Vec3, QUAT_IDENTITY, VEC3_ZERO,
+    aabb_center, aabb_extents, aabb_transform, abs, add, cross, get_by_index,
+    intersect_ray_triangle, make_aabb, max, min, mul, mul_sv, neg, normalize, sub,
+    test_bounds_overlap, test_bounds_ray_overlap, Aabb, Transform, Vec3, QUAT_IDENTITY, VEC3_ZERO,
 };
 
 /// Compute the AABB of a mesh. (b3ComputeMeshAABB)
@@ -48,10 +48,7 @@ pub fn ray_cast_mesh(mesh: &Mesh<'_>, input: &RayCastInput) -> CastOutput {
 
     let inv_scaled_ray_start = mul(inv_scale, ray_start);
     let inv_scaled_ray_delta = mul(inv_scale, ray_delta);
-    let mut inv_scaled_ray_end = add(
-        inv_scaled_ray_start,
-        mul_sv(lambda, inv_scaled_ray_delta),
-    );
+    let mut inv_scaled_ray_end = add(inv_scaled_ray_start, mul_sv(lambda, inv_scaled_ray_delta));
     let mut inv_scaled_ray_min = min(inv_scaled_ray_start, inv_scaled_ray_end);
     let mut inv_scaled_ray_max = max(inv_scaled_ray_start, inv_scaled_ray_end);
 
@@ -108,7 +105,8 @@ pub fn ray_cast_mesh(mesh: &Mesh<'_>, input: &RayCastInput) -> CastOutput {
                         best_output.point = add(input.origin, mul_sv(alpha, input.translation));
                         best_output.fraction = alpha;
                         best_output.triangle_index = triangle_index;
-                        best_output.material_index = material_indices[triangle_index as usize] as i32;
+                        best_output.material_index =
+                            material_indices[triangle_index as usize] as i32;
                         best_output.hit = true;
 
                         lambda = alpha;
@@ -181,10 +179,7 @@ pub fn shape_cast_mesh(mesh: &Mesh<'_>, input: &ShapeCastInput) -> CastOutput {
 
     let inv_scaled_ray_start = mul(inv_scale, ray_start);
     let inv_scaled_ray_delta = mul(inv_scale, ray_delta);
-    let mut inv_scaled_ray_end = add(
-        inv_scaled_ray_start,
-        mul_sv(lambda, inv_scaled_ray_delta),
-    );
+    let mut inv_scaled_ray_end = add(inv_scaled_ray_start, mul_sv(lambda, inv_scaled_ray_delta));
     let mut inv_scaled_ray_min = min(inv_scaled_ray_start, inv_scaled_ray_end);
     let mut inv_scaled_ray_max = max(inv_scaled_ray_start, inv_scaled_ray_end);
     let inv_scaled_shape_extent = mul(abs_inv_scale, shape_extent);
@@ -236,11 +231,8 @@ pub fn shape_cast_mesh(mesh: &Mesh<'_>, input: &ShapeCastInput) -> CastOutput {
 
                     if test_bounds_overlap(triangle_min, triangle_max, ray_min, ray_max) {
                         let origin = vertex1;
-                        let triangle_vertices = [
-                            VEC3_ZERO,
-                            sub(vertex2, origin),
-                            sub(vertex3, origin),
-                        ];
+                        let triangle_vertices =
+                            [VEC3_ZERO, sub(vertex2, origin), sub(vertex3, origin)];
                         let shifted_origin = Transform {
                             p: neg(origin),
                             q: QUAT_IDENTITY,

@@ -12,24 +12,22 @@ use crate::constants::MAX_SHAPE_CAST_POINTS;
 use crate::distance::{CastOutput, ShapeProxy};
 use crate::geometry::{
     collide_mover_and_capsule, collide_mover_and_sphere, overlap_capsule, overlap_sphere,
-    ray_cast_capsule, ray_cast_sphere, shape_cast_capsule, shape_cast_sphere, Capsule,
-    PlaneResult, RayCastInput, ShapeCastInput,
+    ray_cast_capsule, ray_cast_sphere, shape_cast_capsule, shape_cast_sphere, Capsule, PlaneResult,
+    RayCastInput, ShapeCastInput,
 };
 use crate::height_field::{
     collide_mover_and_height_field, overlap_height_field, ray_cast_height_field,
     shape_cast_height_field,
 };
 use crate::hull::{
-    collide_mover_and_hull, compute_hull_projected_area, overlap_hull,
-    ray_cast_hull, shape_cast_hull,
+    collide_mover_and_hull, compute_hull_projected_area, overlap_hull, ray_cast_hull,
+    shape_cast_hull,
 };
 use crate::math_functions::{
     cross, inv_rotate_vector, inv_transform_point, length, min_int, rotate_vector, sub,
     transform_point, Transform, Vec3, PI,
 };
-use crate::mesh::{
-    collide_mover_and_mesh, overlap_mesh, ray_cast_mesh, shape_cast_mesh, Mesh,
-};
+use crate::mesh::{collide_mover_and_mesh, overlap_mesh, ray_cast_mesh, shape_cast_mesh, Mesh};
 
 /// Projected area of a shape onto a plane with the given normal.
 /// Used by explosions. (b3GetShapeProjectedArea)
@@ -49,14 +47,9 @@ pub fn get_shape_projected_area(shape: &Shape, plane_normal: Vec3) -> f32 {
     }
 }
 
-
 /// Ray cast a shape in world (or relative) space. Transforms the ray into
 /// local space, dispatches, then transforms the hit back. (b3RayCastShape)
-pub fn ray_cast_shape(
-    shape: &Shape,
-    transform: Transform,
-    input: &RayCastInput,
-) -> CastOutput {
+pub fn ray_cast_shape(shape: &Shape, transform: Transform, input: &RayCastInput) -> CastOutput {
     let local_input = RayCastInput {
         origin: inv_transform_point(transform, input.origin),
         translation: inv_rotate_vector(transform.q, input.translation),
@@ -83,16 +76,11 @@ pub fn ray_cast_shape(
 }
 
 /// Shape cast a shape in world (or relative) space. (b3ShapeCastShape)
-pub fn shape_cast_shape(
-    shape: &Shape,
-    transform: Transform,
-    input: &ShapeCastInput,
-) -> CastOutput {
+pub fn shape_cast_shape(shape: &Shape, transform: Transform, input: &ShapeCastInput) -> CastOutput {
     let mut local_points = [Vec3::default(); MAX_SHAPE_CAST_POINTS];
     let count = min_int(input.proxy.count, MAX_SHAPE_CAST_POINTS as i32);
     for i in 0..count {
-        local_points[i as usize] =
-            inv_transform_point(transform, input.proxy.points[i as usize]);
+        local_points[i as usize] = inv_transform_point(transform, input.proxy.points[i as usize]);
     }
 
     let mut local_input = *input;

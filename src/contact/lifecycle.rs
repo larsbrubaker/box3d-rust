@@ -119,15 +119,15 @@ pub fn create_contact(world: &mut World, shape_id_a: i32, shape_id_b: i32, child
     }
 
     if (world.bodies[body_id_a as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
-        && (world.bodies[body_id_b as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING)
-            != 0
+        && (world.bodies[body_id_b as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
     {
         world.contacts[contact_id as usize].flags |= contact_flags::RECYCLE;
     }
 
     if type_a == ShapeType::Mesh || type_a == ShapeType::Height {
         world.contacts[contact_id as usize].flags |= contact_flags::SIM_MESH_CONTACT;
-        world.contacts[contact_id as usize].geometry = ContactGeometry::Mesh(MeshContact::default());
+        world.contacts[contact_id as usize].geometry =
+            ContactGeometry::Mesh(MeshContact::default());
     } else if type_a == ShapeType::Compound {
         use crate::compound::{get_compound_child, ChildGeometry};
         let ShapeGeometry::Compound(compound) = &world.shapes[shape_id_a as usize].geometry else {
@@ -211,8 +211,12 @@ pub fn create_contact(world: &mut World, shape_id_a: i32, shape_id_b: i32, child
     let radius_b = shape_radius(world, shape_id_b);
     let max_radius = max_float(radius_a, radius_b);
 
-    let rolling_a = world.shapes[shape_id_a as usize].get_material(0).rolling_resistance;
-    let rolling_b = world.shapes[shape_id_b as usize].get_material(0).rolling_resistance;
+    let rolling_a = world.shapes[shape_id_a as usize]
+        .get_material(0)
+        .rolling_resistance;
+    let rolling_b = world.shapes[shape_id_b as usize]
+        .get_material(0)
+        .rolling_resistance;
     world.contacts[contact_id as usize].rolling_resistance =
         max_float(rolling_a, rolling_b) * max_radius;
 

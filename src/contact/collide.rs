@@ -21,8 +21,8 @@ use crate::id::{ContactId, ShapeId};
 use crate::island::{link_contact, unlink_contact};
 use crate::math_functions::{
     aabb_overlaps, abs, conjugate, distance_squared, dot, dot_quat, inv_mul_quat,
-    inv_mul_world_transforms, length_squared, make_matrix_from_quat, max, min_float, min_int, mul_mv,
-    mul_quat, sub, sub_pos, Vec3,
+    inv_mul_world_transforms, length_squared, make_matrix_from_quat, max, min_float, min_int,
+    mul_mv, mul_quat, sub, sub_pos, Vec3,
 };
 use crate::solver_set::{AWAKE_SET, STATIC_SET};
 use crate::types::BodyType;
@@ -117,8 +117,8 @@ fn collide_task(world: &mut World, contact_indices: &[i32], worker_index: i32) {
         let sim_b = world.solver_sets[set_b as usize].body_sims[local_b as usize];
         let transform_a = sim_a.transform;
         let transform_b = sim_b.transform;
-        let is_fast = (sim_a.flags & body_flags::IS_FAST) != 0
-            || (sim_b.flags & body_flags::IS_FAST) != 0;
+        let is_fast =
+            (sim_a.flags & body_flags::IS_FAST) != 0 || (sim_b.flags & body_flags::IS_FAST) != 0;
 
         {
             let contact = &mut world.contacts[contact_index as usize];
@@ -183,11 +183,11 @@ fn collide_task(world: &mut World, contact_indices: &[i32], worker_index: i32) {
 
                     let manifold_count = contact.manifold_count();
                     for manifold_index in 0..manifold_count as usize {
-                        let normal = world.contacts[contact_index as usize].manifolds[manifold_index]
-                            .normal;
-                        let point_count =
-                            world.contacts[contact_index as usize].manifolds[manifold_index]
-                                .point_count;
+                        let normal =
+                            world.contacts[contact_index as usize].manifolds[manifold_index].normal;
+                        let point_count = world.contacts[contact_index as usize].manifolds
+                            [manifold_index]
+                            .point_count;
                         for point_index in 0..point_count as usize {
                             let mp = &mut world.contacts[contact_index as usize].manifolds
                                 [manifold_index]
@@ -394,7 +394,8 @@ pub fn collide(world: &mut World, dt: f32) {
                 world.contacts[contact_id as usize].flags &= !contact_flags::SIM_STOPPED_TOUCHING;
                 world.contacts[contact_id as usize].flags &= !contact_flags::TOUCHING;
 
-                if (world.contacts[contact_id as usize].flags & contact_flags::ENABLE_CONTACT_EVENTS)
+                if (world.contacts[contact_id as usize].flags
+                    & contact_flags::ENABLE_CONTACT_EVENTS)
                     != 0
                 {
                     world.contact_end_events[end_event_array_index as usize].push(
@@ -412,14 +413,19 @@ pub fn collide(world: &mut World, dt: f32) {
                 let local_index = world.contacts[contact_id as usize].local_index;
                 let body_id_a = world.contacts[contact_id as usize].edges[0].body_id;
                 let body_id_b = world.contacts[contact_id as usize].edges[1].body_id;
-                let is_mesh =
-                    (world.contacts[contact_id as usize].flags & contact_flags::SIM_MESH_CONTACT)
-                        != 0;
+                let is_mesh = (world.contacts[contact_id as usize].flags
+                    & contact_flags::SIM_MESH_CONTACT)
+                    != 0;
 
                 unlink_contact(world, contact_id);
                 add_non_touching_contact(world, contact_id);
                 remove_contact_from_graph(
-                    world, body_id_a, body_id_b, color_index, local_index, is_mesh,
+                    world,
+                    body_id_a,
+                    body_id_b,
+                    color_index,
+                    local_index,
+                    is_mesh,
                 );
             }
 

@@ -13,9 +13,9 @@ use crate::hull::{
     find_hull_support_vertex, get_hull_edges, get_hull_planes, get_hull_points, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, arbitrary_perp, cross, dot, invert_transform, length_squared, make_matrix_from_quat,
-    max_float, min_float, mul_mv, mul_sv, mul_sub, neg, plane_separation, transform_plane,
-    transform_point, Transform,
+    abs_float, add, arbitrary_perp, cross, dot, invert_transform, length_squared,
+    make_matrix_from_quat, max_float, min_float, mul_mv, mul_sub, mul_sv, neg, plane_separation,
+    transform_plane, transform_point, Transform,
 };
 
 /// Face directions for hull vs capsule. (static b3QueryFaceDirectionHullAndCapsule)

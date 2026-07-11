@@ -11,7 +11,7 @@ use super::types::{
     INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3, MESH_DATA_SIZE,
     MESH_NODE_SIZE, MESH_TRIANGLE_SIZE, MESH_VERSION,
 };
-use crate::core::{hash, non_zero_hash, NULL_INDEX, HASH_INIT};
+use crate::core::{hash, non_zero_hash, HASH_INIT, NULL_INDEX};
 use crate::math_functions::{
     align_up8, cross, dot, max_int, min_int, normalize, signed_volume, sub, Vec3,
 };

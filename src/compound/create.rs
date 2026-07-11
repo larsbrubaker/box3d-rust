@@ -17,8 +17,8 @@ use crate::geometry::{
     compute_capsule_aabb, compute_sphere_aabb, SurfaceMaterial, SURFACE_MATERIAL_SIZE,
 };
 use crate::hull::{compare_hull_data, compute_hull_aabb, HullData};
-use crate::mesh::{compute_mesh_aabb, MeshData};
 use crate::math_functions::TRANSFORM_IDENTITY;
+use crate::mesh::{compute_mesh_aabb, MeshData};
 
 struct SharedHull {
     hull: HullData,
@@ -99,8 +99,7 @@ pub fn create_compound(def: &CompoundDef<'_>) -> Option<CompoundData> {
         material_capacity += mesh.materials.len() as i32;
     }
 
-    let mut materials: Vec<SurfaceMaterial> =
-        Vec::with_capacity(material_capacity.max(0) as usize);
+    let mut materials: Vec<SurfaceMaterial> = Vec::with_capacity(material_capacity.max(0) as usize);
 
     for (i, capsule_def) in def.capsules.iter().enumerate() {
         capsule_instances[i].capsule = capsule_def.capsule;

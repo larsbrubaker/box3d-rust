@@ -1,6 +1,4 @@
-use super::{
-    box_hull, capsule, check_initial_overlap, ensure_small, ray_capsule, sphere, v,
-};
+use super::{box_hull, capsule, check_initial_overlap, ensure_small, ray_capsule, sphere, v};
 use crate::geometry::{
     ray_cast_capsule, ray_cast_hull, ray_cast_sphere, Capsule, RayCastInput, Sphere,
 };

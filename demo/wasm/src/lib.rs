@@ -4,8 +4,8 @@
 use wasm_bindgen::prelude::*;
 
 mod geometry_demo;
-mod hull_demo;
 mod height_field_demo;
+mod hull_demo;
 mod manifold_demo;
 mod mesh_demo;
 mod sim_demo;

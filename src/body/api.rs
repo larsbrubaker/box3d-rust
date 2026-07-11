@@ -15,7 +15,7 @@ use crate::core::NULL_INDEX;
 use crate::geometry::{Capsule, MassData, PlaneResult};
 use crate::id::{BodyId, ShapeId};
 use crate::math_functions::{
-    add, cross, det, invert_t, inv_rotate_vector, inv_transform_world_point, is_valid_float,
+    add, cross, det, inv_rotate_vector, inv_transform_world_point, invert_t, is_valid_float,
     is_valid_matrix3, is_valid_vec3, length_squared, make_matrix_from_quat, mul_mm, rotate_vector,
     sub, sub_pos, to_relative_transform, transform_world_point, transpose, Matrix3, Pos, Vec3,
     WorldTransform, MAT3_ZERO, VEC3_ZERO,
@@ -562,7 +562,10 @@ pub fn body_get_local_point_velocity(world: &World, body_id: BodyId, local_point
     };
     let state = &world.solver_sets[AWAKE_SET as usize].body_states[local_index as usize];
     let body_sim = get_body_sim(world, body_index);
-    let r = rotate_vector(body_sim.transform.q, sub(local_point, body_sim.local_center));
+    let r = rotate_vector(
+        body_sim.transform.q,
+        sub(local_point, body_sim.local_center),
+    );
     add(state.linear_velocity, cross(state.angular_velocity, r))
 }
 

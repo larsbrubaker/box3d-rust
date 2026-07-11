@@ -537,4 +537,3 @@ impl HullBuilder {
         );
     }
 }
-
