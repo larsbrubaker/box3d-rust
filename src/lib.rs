@@ -13,6 +13,7 @@ pub mod bitset;
 pub mod constants;
 pub mod core;
 pub mod distance;
+pub mod dynamic_tree;
 pub mod geometry;
 pub mod height_field;
 pub mod hull;
@@ -41,6 +42,9 @@ mod bitset_tests;
 
 #[cfg(test)]
 mod distance_tests;
+
+#[cfg(test)]
+mod dynamic_tree_tests;
 
 #[cfg(test)]
 mod geometry_tests;
