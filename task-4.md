@@ -3,27 +3,17 @@
 **Remaining work only; delete items as they complete and delete this file when
 the track is done (also remove its row from todo.md).**
 
-Two related gaps were: mesh/height-field/compound `create_*_shape` (now
-ported) and the remaining `b3Shape_*` (~50 fns) / `b3Body_*` public API
-surface. Collision geometry itself is fully ported; shape-attach for the
-three static-ish types is done — filter/material/query APIs and most body
-mutators remain.
+**Done on main (do not re-port):** mesh / height-field / compound `create_*_shape`,
+`TestCompoundHitEvents`, `TestOverflowColorPile`, body damping / gravity scale /
+`EnableSleep` (+ flag-sync tests), `b3Body_SetMotionLocks` / bullet API.
 
-Mostly independent of the solver-touching tracks; small overlap with task-3
-on sensor-related shape API.
+Collision geometry is fully ported. Remaining work is the public mutator /
+query surface and one mesh-drop world test.
 
-## Shape creation (shape.c)
+## Shape creation leftovers
 
-- [x] `create_mesh_shape` (mesh data + per-instance scale, multi-material)
-- [x] `create_height_field_shape`
-- [x] `create_compound_shape`
-- [x] Port `TestCompoundHitEvents` from `test_world.c` — the compound branch
-      of `Shape::get_shape_user_material_id` is already ported and waiting;
-      this test makes it reachable
-- [ ] Port `TestMeshDrop` from `test_world.c` (need mesh shape create;
-      exercise continuous collision / mesh contact stability)
-- [x] Port `TestOverflowColorPile` from `test_world.c`
-      (exercise the overflow color path)
+- [ ] Port `TestMeshDrop` from `test_world.c` (mesh shape create is ready;
+      exercises continuous collision / mesh contact stability until sleep)
 
 ## b3Shape_* API (shape.c)
 
@@ -36,17 +26,14 @@ on sensor-related shape API.
 
 ## b3Body_* API (body.c)
 
-- [ ] `SetType` (dynamic/kinematic/static transitions — this is the main
-      consumer of `transfer_body` in `src/solver_set.rs`; drop its
+- [ ] `SetType` (dynamic/kinematic/static transitions — main consumer of
+      `transfer_body` in `src/solver_set.rs`; drop its
       `#[allow(dead_code)] // bring-up:` note when reachable)
 - [ ] `Enable` / `Disable` (disabled-set transfers, proxy destroy/create)
 - [ ] `SetTransform` (teleport with contact refresh), `SetAwake`
 - [ ] Forces/impulses: ApplyForce/Torque/LinearImpulse/AngularImpulse
       (center + point variants, wake semantics)
-- [x] Damping, gravity scale, sleep threshold, `EnableSleep` get/set —
-      port `EnableSleepFlagSyncTest` and `EnableSleepNoopUnlockTest`
-      (the no-op unlock regression) from `test_world.c`
-- [ ] Motion locks get/set (`b3Body_SetMotionLocks`)
+- [ ] Motion locks **get** (`b3Body_GetMotionLocks`) — set already landed
 - [ ] Name get/set (NameCache), user data, world getters (velocity at point,
       local/world point and vector transforms)
 

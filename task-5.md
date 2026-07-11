@@ -1,10 +1,10 @@
-# Task 5 — World queries, casts, explosion, world API
+# Task 5 — Deferred world/body query tests
 
 **Remaining work only; delete items as they complete and delete this file when
 the track is done (also remove its row from todo.md).**
 
-Core world query/cast/explode/get-set API is ported. Remaining items need
-body/shape API from task-4 (or are registry-only).
+Core world query/cast/explode/get-set API and character mover are on main.
+Everything below is deferred until task-4 body/shape APIs land.
 
 ## Deferred tests (need task-4)
 
