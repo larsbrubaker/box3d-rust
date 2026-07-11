@@ -63,3 +63,113 @@ pub fn scalar_triple_product(a: Vec3, b: Vec3, c: Vec3) -> f32 {
     };
     a.x * d.x + a.y * d.y + a.z * d.z
 }
+
+/// √3. (math_internal.h: B3_SQRT3)
+pub const SQRT3: f32 = 1.732050808;
+
+/// Empty AABB (inverted bounds). (math_internal.h: B3_BOUNDS3_EMPTY)
+pub const BOUNDS3_EMPTY: Aabb = Aabb {
+    lower_bound: Vec3 {
+        x: f32::MAX,
+        y: f32::MAX,
+        z: f32::MAX,
+    },
+    upper_bound: Vec3 {
+        x: -f32::MAX,
+        y: -f32::MAX,
+        z: -f32::MAX,
+    },
+};
+
+/// Align `x` up to a multiple of 8. (math_internal.h: b3AlignUp8)
+pub fn align_up8(x: usize) -> usize {
+    (x + 7) & !7
+}
+
+/// Index of the largest component. (math_internal.h: b3MaxElementIndex)
+pub fn max_element_index(v: Vec3) -> i32 {
+    if v.x < v.y {
+        if v.y < v.z {
+            2
+        } else {
+            1
+        }
+    } else if v.x < v.z {
+        2
+    } else {
+        0
+    }
+}
+
+/// Diagonal matrix. (math_internal.h: b3MakeDiagonalMatrix)
+pub fn make_diagonal_matrix(a: f32, b: f32, c: f32) -> Matrix3 {
+    Matrix3 {
+        cx: Vec3 {
+            x: a,
+            y: 0.0,
+            z: 0.0,
+        },
+        cy: Vec3 {
+            x: 0.0,
+            y: b,
+            z: 0.0,
+        },
+        cz: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: c,
+        },
+    }
+}
+
+/// Plane through `point` with given `normal`. (math_internal.h: b3MakePlaneFromNormalAndPoint)
+pub fn make_plane_from_normal_and_point(normal: Vec3, point: Vec3) -> Plane {
+    Plane {
+        normal,
+        offset: dot(normal, point),
+    }
+}
+
+/// Plane through three points. (math_internal.h: b3MakePlaneFromPoints)
+pub fn make_plane_from_points(point1: Vec3, point2: Vec3, point3: Vec3) -> Plane {
+    let mut plane = Plane {
+        normal: cross(sub(point2, point1), sub(point3, point1)),
+        offset: 0.0,
+    };
+    plane.normal = normalize(plane.normal);
+    plane.offset = dot(plane.normal, point1);
+    plane
+}
+
+/// Transform a plane by a rigid transform. (math_internal.h: b3TransformPlane)
+pub fn transform_plane(transform: Transform, plane: Plane) -> Plane {
+    let normal = rotate_vector(transform.q, plane.normal);
+    Plane {
+        normal,
+        offset: plane.offset + dot(normal, transform.p),
+    }
+}
+
+/// Signed separation of a point from a plane. (math_internal.h: b3PlaneSeparation)
+pub fn plane_separation(plane: Plane, point: Vec3) -> f32 {
+    dot(plane.normal, point) - plane.offset
+}
+
+/// Rotate a central inertia tensor by a quaternion. (math_internal.h: b3RotateInertia)
+pub fn rotate_inertia(q: Quat, central_inertia: Matrix3) -> Matrix3 {
+    let rotation_matrix = make_matrix_from_quat(q);
+    mul_mm(
+        rotation_matrix,
+        mul_mm(central_inertia, transpose(rotation_matrix)),
+    )
+}
+
+/// Box inertia about the center for an AABB from `min` to `max`.
+/// (math_functions.c: b3BoxInertia)
+pub fn box_inertia(mass: f32, min: Vec3, max: Vec3) -> Matrix3 {
+    let delta = sub(max, min);
+    let ixx = mass * (delta.y * delta.y + delta.z * delta.z) / 12.0;
+    let iyy = mass * (delta.x * delta.x + delta.z * delta.z) / 12.0;
+    let izz = mass * (delta.x * delta.x + delta.y * delta.y) / 12.0;
+    make_diagonal_matrix(ixx, iyy, izz)
+}

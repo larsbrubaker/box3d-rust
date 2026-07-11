@@ -100,6 +100,53 @@ pub fn lower_power_of_2_exponent(x: i32) -> i32 {
     31 - clz
 }
 
+// ---------------------------------------------------------------------------
+// Content hash (base.h / timer.c). Word-oriented djb2 over 8-byte little-endian
+// chunks — not the byte-wise recurrence used by Box2D.
+// ---------------------------------------------------------------------------
+
+/// Initial value for [`hash`]. (base.h: B3_HASH_INIT)
+pub const HASH_INIT: u32 = 5381;
+
+/// Hash `data` into `hash` (djb2-style, 8-byte little-endian words then bytes).
+/// (timer.c: b3Hash)
+pub fn hash(hash: u32, data: &[u8]) -> u32 {
+    let mut result = hash;
+    let mut i = 0;
+    let count = data.len();
+
+    while i + 8 <= count {
+        // Little-endian load; matches memcpy of uint64_t on LE hosts (and the
+        // explicit byte-swap path on BE in the C source).
+        let word = u64::from_le_bytes(data[i..i + 8].try_into().unwrap());
+        result = result.wrapping_shl(5).wrapping_add(result).wrapping_add(word as u32);
+        result = result
+            .wrapping_shl(5)
+            .wrapping_add(result)
+            .wrapping_add((word >> 32) as u32);
+        i += 8;
+    }
+
+    while i < count {
+        result = result
+            .wrapping_shl(5)
+            .wrapping_add(result)
+            .wrapping_add(data[i] as u32);
+        i += 1;
+    }
+
+    result
+}
+
+/// Geometry content hashes reserve zero to mean unhashed. (core.h: b3NonZeroHash)
+pub fn non_zero_hash(hash: u32) -> u32 {
+    if hash != 0 {
+        hash
+    } else {
+        1
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
