@@ -97,6 +97,46 @@ impl Default for WorldDef {
     }
 }
 
+/// World-space cast output from a single-shape ray cast. (b3WorldCastOutput)
+///
+/// In single precision this matches [`crate::distance::CastOutput`] field-wise
+/// except `point` is [`Pos`] (an alias of [`Vec3`]). With `double-precision`,
+/// `point` stays a world [`Pos`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WorldCastOutput {
+    /// The surface normal at the hit point.
+    pub normal: Vec3,
+    /// The surface hit point in world space.
+    pub point: crate::math_functions::Pos,
+    /// The fraction of the input translation at collision.
+    pub fraction: f32,
+    /// The number of iterations used.
+    pub iterations: i32,
+    /// The index of the mesh or height field triangle hit.
+    pub triangle_index: i32,
+    /// The index of the compound child shape.
+    pub child_index: i32,
+    /// The material index. May be -1 for null.
+    pub material_index: i32,
+    /// Did the cast hit?
+    pub hit: bool,
+}
+
+impl Default for WorldCastOutput {
+    fn default() -> Self {
+        WorldCastOutput {
+            normal: crate::math_functions::VEC3_ZERO,
+            point: crate::math_functions::POS_ZERO,
+            fraction: 0.0,
+            iterations: 0,
+            triangle_index: crate::core::NULL_INDEX,
+            child_index: 0,
+            material_index: 0,
+            hit: false,
+        }
+    }
+}
+
 /// Result from b3World_CastRayClosest. (b3RayResult)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RayResult {

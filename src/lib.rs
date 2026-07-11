@@ -56,6 +56,7 @@ pub use types::{
     default_wheel_joint_def, default_world_def, BodyDef, BodyType, Capacity, Counters,
     DistanceJointDef, ExplosionDef, Filter, FilterJointDef, JointDef, MotionLocks, MotorJointDef,
     ParallelJointDef, PrismaticJointDef, QueryFilter, RayResult, RevoluteJointDef, ShapeDef,
+    WorldCastOutput,
     SphericalJointDef, WeldJointDef, WheelJointDef, WorldDef, BODY_TYPE_COUNT,
 };
 

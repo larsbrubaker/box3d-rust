@@ -258,13 +258,17 @@ pub fn mesh_geometry(data: MeshData) -> ShapeGeometry {
     }
 }
 
+mod accessors;
 mod api;
 mod dispatch;
+mod geometry_set;
 pub(crate) mod lifecycle;
 mod mutators;
 mod query;
 
+pub use accessors::*;
 pub use api::*;
 pub use dispatch::*;
+pub use geometry_set::*;
 pub use mutators::*;
 pub use query::*;

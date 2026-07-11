@@ -16,7 +16,12 @@ use crate::world::World;
 
 /// Destroy contacts on a shape and refresh its broad-phase proxy.
 /// (static b3ResetProxy)
-fn reset_proxy(world: &mut World, shape_index: i32, wake_bodies: bool, destroy_proxy: bool) {
+pub(crate) fn reset_proxy(
+    world: &mut World,
+    shape_index: i32,
+    wake_bodies: bool,
+    destroy_proxy: bool,
+) {
     let body_id = world.shapes[shape_index as usize].body_id;
     let shape_id = world.shapes[shape_index as usize].id;
 

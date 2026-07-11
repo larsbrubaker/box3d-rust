@@ -24,7 +24,7 @@ use crate::world::World;
 
 /// AABB margin for the broad phase fat AABB, limited by shape size.
 /// (static b3ComputeShapeMargin)
-pub(crate) fn compute_shape_margin(shape: &Shape) -> f32 {
+pub fn compute_shape_margin(shape: &Shape) -> f32 {
     let margin = match &shape.geometry {
         ShapeGeometry::Sphere(sphere) => sphere.radius,
         ShapeGeometry::Capsule(capsule) => {
@@ -72,7 +72,17 @@ pub(crate) fn create_shape_internal(
         (body.id, body.set_index, body.type_, body.head_shape_id)
     };
 
-    let name_id = world.names.add_name(&def.name);
+    // Truncate like b3StrCpy into B3_SHAPE_NAME_LENGTH (+ NameCache in Rust).
+    let truncated = if def.name.len() > crate::constants::SHAPE_NAME_LENGTH {
+        let mut end = crate::constants::SHAPE_NAME_LENGTH;
+        while end > 0 && !def.name.is_char_boundary(end) {
+            end -= 1;
+        }
+        &def.name[..end]
+    } else {
+        def.name.as_str()
+    };
+    let name_id = world.names.add_name(truncated);
 
     {
         let shape = &mut world.shapes[shape_id as usize];
@@ -377,13 +387,22 @@ pub fn shape_get_hull(world: &World, shape_id: ShapeId) -> Option<&HullData> {
     let index = get_shape(world, shape_id);
     match &world.shapes[index as usize].geometry {
         ShapeGeometry::Hull(hull) => Some(hull.as_ref()),
-        _ => None,
+        _ => {
+            debug_assert!(false, "shape is not a hull");
+            None
+        }
     }
 }
 
-/// Free hull-database and material allocations for a shape.
-/// (b3DestroyShapeAllocations)
-fn destroy_shape_allocations(world: &mut World, shape_index: i32) {
+/// Release hull-database ownership when geometry is about to change.
+/// Does not clear materials. (b3DestroyShapeAllocationForShapeChange)
+pub(crate) fn destroy_shape_allocation_for_shape_change(world: &mut World, shape_index: i32) {
+    if !matches!(
+        world.shapes[shape_index as usize].geometry,
+        ShapeGeometry::Hull(_)
+    ) {
+        return;
+    }
     let geometry = std::mem::replace(
         &mut world.shapes[shape_index as usize].geometry,
         ShapeGeometry::default(),
@@ -391,7 +410,12 @@ fn destroy_shape_allocations(world: &mut World, shape_index: i32) {
     if let ShapeGeometry::Hull(rc) = &geometry {
         world.hull_database.release(rc);
     }
-    drop(geometry);
+}
+
+/// Free hull-database and material allocations for a shape.
+/// (b3DestroyShapeAllocations)
+fn destroy_shape_allocations(world: &mut World, shape_index: i32) {
+    destroy_shape_allocation_for_shape_change(world, shape_index);
     world.shapes[shape_index as usize].materials.clear();
 }
 

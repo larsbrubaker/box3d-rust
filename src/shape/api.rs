@@ -8,3 +8,5 @@ pub use super::lifecycle::{
     create_mesh_shape, create_sphere_shape, destroy_shape, get_shape, shape_get_hull,
     shape_is_valid,
 };
+
+// Accessors / geometry_set are re-exported from mod.rs.
