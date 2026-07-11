@@ -10,6 +10,7 @@
 
 pub mod aabb;
 pub mod bitset;
+pub mod broad_phase;
 pub mod compound;
 pub mod constants;
 pub mod core;
@@ -24,12 +25,16 @@ pub mod manifold;
 pub mod math_functions;
 pub mod mesh;
 pub mod table;
+pub mod types;
 
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
 pub use math_functions::{
     Aabb, CosSin, Matrix3, Plane, Pos, Quat, SegmentDistanceResult, Transform, Triangle, Vec2, Vec3,
     WorldTransform, MAT3_IDENTITY, MAT3_ZERO, PI, POS_ZERO, QUAT_IDENTITY, TRANSFORM_IDENTITY,
     VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z, VEC3_ONE, VEC3_ZERO, WORLD_TRANSFORM_IDENTITY,
+};
+pub use types::{
+    BodyDef, BodyType, Capacity, Filter, MotionLocks, QueryFilter, WorldDef, BODY_TYPE_COUNT,
 };
 
 /// Crate version, exposed so demos and downstream tools can report the exact port build.
@@ -40,6 +45,9 @@ mod aabb_tests;
 
 #[cfg(test)]
 mod bitset_tests;
+
+#[cfg(test)]
+mod broad_phase_tests;
 
 #[cfg(test)]
 mod compound_tests;

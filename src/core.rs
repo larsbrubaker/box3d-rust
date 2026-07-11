@@ -14,6 +14,9 @@ use core::sync::atomic::{AtomicU32, Ordering};
 /// Used to indicate an unset or invalid index value. (base.h: B3_NULL_INDEX)
 pub const NULL_INDEX: i32 = -1;
 
+/// Use to validate definitions. (core.h: B3_SECRET_COOKIE)
+pub const SECRET_COOKIE: i32 = 1152023;
+
 // The length-unit scale is a single global that the user sets once at startup.
 // C stores it as a plain `static float`; we store the bit pattern in an atomic
 // so the global is sound under Rust's threading rules. The observable value is
