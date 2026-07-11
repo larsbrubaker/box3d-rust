@@ -1,5 +1,11 @@
-// Port of the shape data model and filter predicates from
-// box3d-cpp-reference/src/shape.h. Logic from shape.c lands in later slices.
+// Port of the shape module from box3d-cpp-reference/src/shape.h + shape.c.
+//
+// Split to satisfy the 800-line file limit:
+// - dispatch.rs  — per-shape-type dispatch (AABBs, mass, centroid, proxy)
+// - lifecycle.rs — shape creation (margin, create_shape_internal, typed wrappers)
+// - api.rs       — public create re-exports
+//
+// This file holds the data model and filter predicates.
 //
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
@@ -183,3 +189,11 @@ pub fn mesh_geometry(data: MeshData) -> ShapeGeometry {
         scale: VEC3_ONE,
     }
 }
+
+mod api;
+mod dispatch;
+mod lifecycle;
+
+pub use api::*;
+pub use dispatch::*;
+

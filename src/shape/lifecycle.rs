@@ -1,0 +1,278 @@
+// Shape creation from shape.c.
+//
+// SPDX-FileCopyrightText: 2025 Erin Catto
+// SPDX-License-Identifier: MIT
+
+use super::{create_shape_proxy, get_shape_centroid, shape_flags, Shape, ShapeGeometry};
+use crate::constants::{linear_slop, max_aabb_margin, AABB_MARGIN_FRACTION, MAX_SHAPES};
+use crate::core::{NULL_INDEX, SECRET_COOKIE};
+use crate::geometry::{Capsule, Sphere};
+use crate::hull::{get_hull_points, HullData};
+use crate::id::{ShapeId, NULL_SHAPE_ID};
+use crate::math_functions::{
+    distance, distance_squared, is_valid_float, lerp, min_float, Aabb, WorldTransform, VEC3_ZERO,
+};
+use crate::solver_set::DISABLED_SET;
+use crate::types::{BodyType, ShapeDef};
+use crate::geometry::ShapeType;
+use crate::world::World;
+
+/// AABB margin for the broad phase fat AABB, limited by shape size.
+/// (static b3ComputeShapeMargin)
+pub(crate) fn compute_shape_margin(shape: &Shape) -> f32 {
+    let margin = match &shape.geometry {
+        ShapeGeometry::Sphere(sphere) => sphere.radius,
+        ShapeGeometry::Capsule(capsule) => {
+            0.5 * distance(capsule.center2, capsule.center1) + capsule.radius
+        }
+        ShapeGeometry::Hull(hull) => {
+            let points = get_hull_points(hull);
+            let mut max_extent_sqr = 0.0f32;
+            for point in points {
+                let dist_sqr = distance_squared(*point, hull.center);
+                max_extent_sqr = crate::math_functions::max_float(max_extent_sqr, dist_sqr);
+            }
+            max_extent_sqr.sqrt()
+        }
+        ShapeGeometry::Mesh { .. }
+        | ShapeGeometry::HeightField(_)
+        | ShapeGeometry::Compound(_) => {
+            // Static-only shapes: return the cap so incidental use is generous.
+            return max_aabb_margin();
+        }
+    };
+
+    min_float(max_aabb_margin(), AABB_MARGIN_FRACTION * margin)
+}
+
+/// Create a shape on a body. Returns the raw shape id, or NULL_INDEX on failure.
+/// (static b3CreateShapeInternal)
+pub(crate) fn create_shape_internal(
+    world: &mut World,
+    body_index: i32,
+    body_transform: WorldTransform,
+    def: &ShapeDef,
+    geometry: ShapeGeometry,
+) -> i32 {
+    let shape_type = geometry.shape_type();
+
+    let shape_id = world.shape_id_pool.alloc_id();
+
+    if shape_id == world.shapes.len() as i32 {
+        world.shapes.push(Shape::default());
+    } else {
+        debug_assert!(world.shapes[shape_id as usize].id == NULL_INDEX);
+    }
+
+    let (body_raw_id, body_set_index, body_type, head_shape_id) = {
+        let body = &world.bodies[body_index as usize];
+        (body.id, body.set_index, body.type_, body.head_shape_id)
+    };
+
+    let name_id = world.names.add_name(&def.name);
+
+    {
+        let shape = &mut world.shapes[shape_id as usize];
+        shape.geometry = geometry;
+
+        shape.id = shape_id;
+        shape.body_id = body_raw_id;
+        shape.density = def.density;
+        shape.explosion_scale = def.explosion_scale;
+        shape.filter = def.filter;
+        shape.user_data = def.user_data;
+        shape.user_shape = 0;
+        shape.flags = 0;
+        if def.enable_sensor_events {
+            shape.flags |= shape_flags::ENABLE_SENSOR_EVENTS;
+        }
+        if def.enable_contact_events {
+            shape.flags |= shape_flags::ENABLE_CONTACT_EVENTS;
+        }
+        if def.enable_custom_filtering {
+            shape.flags |= shape_flags::ENABLE_CUSTOM_FILTERING;
+        }
+        if def.enable_hit_events {
+            shape.flags |= shape_flags::ENABLE_HIT_EVENTS;
+        }
+        if def.enable_pre_solve_events {
+            shape.flags |= shape_flags::ENABLE_PRE_SOLVE_EVENTS;
+        }
+        shape.proxy_key = NULL_INDEX;
+        shape.local_centroid = get_shape_centroid(shape);
+        shape.aabb_margin = compute_shape_margin(shape);
+        shape.aabb = Aabb {
+            lower_bound: VEC3_ZERO,
+            upper_bound: VEC3_ZERO,
+        };
+        shape.fat_aabb = Aabb {
+            lower_bound: VEC3_ZERO,
+            upper_bound: VEC3_ZERO,
+        };
+        shape.name_id = name_id;
+        shape.generation = shape.generation.wrapping_add(1);
+
+        if shape_type == ShapeType::Compound {
+            // Compounds copy materials from the geometry; handled when compound create lands.
+        } else if def.materials.len() > 1 {
+            shape.materials = def.materials.clone();
+            shape.material = def.base_material;
+        } else if def.materials.len() == 1 {
+            shape.material = def.materials[0];
+            shape.materials.clear();
+        } else {
+            shape.material = def.base_material;
+            shape.materials.clear();
+        }
+    }
+
+    if body_set_index != DISABLED_SET {
+        let force_pair_creation =
+            def.invoke_contact_creation && shape_type != ShapeType::Compound;
+        let (shapes, broad_phase) = (&mut world.shapes, &mut world.broad_phase);
+        create_shape_proxy(
+            &mut shapes[shape_id as usize],
+            broad_phase,
+            body_type,
+            body_transform,
+            force_pair_creation,
+        );
+    }
+
+    // Add to shape doubly linked list
+    if head_shape_id != NULL_INDEX {
+        world.shapes[head_shape_id as usize].prev_shape_id = shape_id;
+    }
+
+    world.shapes[shape_id as usize].prev_shape_id = NULL_INDEX;
+    world.shapes[shape_id as usize].next_shape_id = head_shape_id;
+    world.bodies[body_index as usize].head_shape_id = shape_id;
+    world.bodies[body_index as usize].shape_count += 1;
+
+    if def.is_sensor {
+        world.shapes[shape_id as usize].sensor_index = world.sensors.len() as i32;
+        world.sensors.push(crate::sensor::Sensor::new(shape_id));
+    } else {
+        world.shapes[shape_id as usize].sensor_index = NULL_INDEX;
+    }
+
+    world.validate_solver_sets();
+
+    shape_id
+}
+
+/// (static b3CreateShape)
+fn create_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    geometry: ShapeGeometry,
+) -> ShapeId {
+    use crate::body::{
+        body_flags, get_body_full_id, get_body_transform_quick, sync_body_flags,
+        update_body_mass_data,
+    };
+
+    debug_assert!(def.internal_value == SECRET_COOKIE);
+    debug_assert!(is_valid_float(def.density) && def.density >= 0.0);
+    debug_assert!(
+        is_valid_float(def.base_material.friction) && def.base_material.friction >= 0.0
+    );
+    debug_assert!(
+        is_valid_float(def.base_material.restitution) && def.base_material.restitution >= 0.0
+    );
+
+    debug_assert!(!world.locked);
+    if world.locked {
+        return NULL_SHAPE_ID;
+    }
+
+    if world.shapes.len() as i32 == MAX_SHAPES && world.shape_id_pool.free_array.is_empty() {
+        debug_assert!(false);
+        return NULL_SHAPE_ID;
+    }
+
+    let body_index = get_body_full_id(world, body_id);
+    let shape_type = geometry.shape_type();
+
+    if world.bodies[body_index as usize].type_ != BodyType::Static
+        && (shape_type == ShapeType::Compound || shape_type == ShapeType::Height)
+    {
+        // Compound and height shapes must be on static bodies.
+        return NULL_SHAPE_ID;
+    }
+
+    world.locked = true;
+
+    let body_transform = get_body_transform_quick(world, &world.bodies[body_index as usize]);
+
+    let shape_id = create_shape_internal(world, body_index, body_transform, def, geometry);
+
+    if shape_id == NULL_INDEX {
+        world.locked = false;
+        return NULL_SHAPE_ID;
+    }
+
+    if def.update_body_mass {
+        update_body_mass_data(world, body_index);
+    } else if world.bodies[body_index as usize].flags & body_flags::DIRTY_MASS == 0 {
+        world.bodies[body_index as usize].flags |= body_flags::DIRTY_MASS;
+        sync_body_flags(world, body_index);
+    }
+
+    world.validate_solver_sets();
+
+    let id = ShapeId {
+        index1: shape_id + 1,
+        world0: body_id.world0,
+        generation: world.shapes[shape_id as usize].generation,
+    };
+
+    world.locked = false;
+
+    id
+}
+
+/// (b3CreateSphereShape)
+pub fn create_sphere_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    sphere: &Sphere,
+) -> ShapeId {
+    create_shape(world, body_id, def, ShapeGeometry::Sphere(*sphere))
+}
+
+/// (b3CreateCapsuleShape)
+pub fn create_capsule_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    capsule: &Capsule,
+) -> ShapeId {
+    let length_sqr = distance_squared(capsule.center1, capsule.center2);
+    if length_sqr <= linear_slop() * linear_slop() {
+        let sphere = Sphere {
+            center: lerp(capsule.center1, capsule.center2, 0.5),
+            radius: capsule.radius,
+        };
+        create_shape(world, body_id, def, ShapeGeometry::Sphere(sphere))
+    } else {
+        create_shape(world, body_id, def, ShapeGeometry::Capsule(*capsule))
+    }
+}
+
+/// Resolve a ShapeId to the shape index. (b3GetShape)
+#[allow(dead_code)]
+pub fn get_shape(world: &World, shape_id: ShapeId) -> i32 {
+    let id = shape_id.index1 - 1;
+    let shape = &world.shapes[id as usize];
+    debug_assert!(shape.id == id && shape.generation == shape_id.generation);
+    id
+}
+
+/// Owned hull geometry helper for future hull-database create.
+#[allow(dead_code)]
+pub(crate) fn hull_geometry(hull: HullData) -> ShapeGeometry {
+    ShapeGeometry::Hull(hull)
+}

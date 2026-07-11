@@ -48,7 +48,9 @@ pub use math_functions::{
     WORLD_TRANSFORM_IDENTITY,
 };
 pub use types::{
-    BodyDef, BodyType, Capacity, Filter, MotionLocks, QueryFilter, WorldDef, BODY_TYPE_COUNT,
+    default_body_def, default_filter, default_query_filter, default_shape_def, default_world_def,
+    BodyDef, BodyType, Capacity, Filter, MotionLocks, QueryFilter, ShapeDef, WorldDef,
+    BODY_TYPE_COUNT,
 };
 
 /// Crate version, exposed so demos and downstream tools can report the exact port build.

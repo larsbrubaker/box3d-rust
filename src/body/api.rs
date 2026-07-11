@@ -7,8 +7,8 @@ use super::lifecycle::{
     get_body_full_id, get_body_sim_mut, get_body_state_index, get_body_transform_quick,
     sync_body_flags, wake_body,
 };
-use super::{body_flags, BodySim};
-use crate::constants::huge;
+use super::mass::update_body_extents_from_shapes;
+use super::body_flags;
 use crate::geometry::MassData;
 use crate::id::BodyId;
 use crate::math_functions::{
@@ -147,13 +147,7 @@ pub fn body_set_mass_data(world: &mut World, body_id: BodyId, mass_data: MassDat
     }
 
     // Update extents using supplied mass center.
-    // Shape extent walk lands with the shape create slice; empty list until then.
-    {
-        let sim = get_body_sim_mut(world, body_index);
-        sim.min_extent = huge();
-        sim.max_extent = VEC3_ZERO;
-    }
-    debug_assert!(world.bodies[body_index as usize].head_shape_id == crate::core::NULL_INDEX);
+    update_body_extents_from_shapes(world, body_index, mass_data.center);
 }
 
 /// (b3Body_GetLinearVelocity)
@@ -239,12 +233,4 @@ pub fn body_set_angular_velocity(world: &mut World, body_id: BodyId, angular_vel
 pub fn body_get_position(world: &World, body_id: BodyId) -> Pos {
     let body_index = get_body_full_id(world, body_id);
     get_body_transform_quick(world, &world.bodies[body_index as usize]).p
-}
-
-/// Helper used by mass tests / internals to read BodySim.
-#[allow(dead_code)]
-pub(crate) fn body_sim(world: &World, body_id: BodyId) -> &BodySim {
-    let body_index = get_body_full_id(world, body_id);
-    let body = &world.bodies[body_index as usize];
-    &world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize]
 }

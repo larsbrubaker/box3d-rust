@@ -10,11 +10,13 @@ use crate::distance::{
     make_proxy, shape_cast, shape_distance, CastOutput, DistanceInput, ShapeCastPairInput,
     ShapeProxy, SimplexCache,
 };
-use crate::geometry::types::{Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput};
+use crate::geometry::types::{
+    Capsule, MassData, PlaneResult, RayCastInput, ShapeCastInput, ShapeExtent,
+};
 use crate::hull::types::{get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
-    aabb_transform, aabb_union, add, dot, inv_mul_transforms, mul_sm, mul_sv, Aabb, Plane, Transform,
-    TRANSFORM_IDENTITY,
+    aabb_transform, aabb_union, abs, add, dot, inv_mul_transforms, max, mul_sm, mul_sv, sub, Aabb,
+    Plane, Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
 
 /// Compute mass properties of a hull. (b3ComputeHullMass)
@@ -25,6 +27,21 @@ pub fn compute_hull_mass(shape: &HullData, density: f32) -> MassData {
         // Inertia about the center of mass
         inertia: mul_sm(density, shape.central_inertia),
     }
+}
+
+/// Compute the extent of a hull relative to an origin. (b3ComputeHullExtent)
+pub fn compute_hull_extent(hull: &HullData, origin: Vec3) -> ShapeExtent {
+    let points = get_hull_points(hull);
+
+    let mut extent = ShapeExtent {
+        min_extent: hull.inner_radius,
+        max_extent: VEC3_ZERO,
+    };
+    for point in points {
+        extent.max_extent = max(extent.max_extent, abs(sub(*point, origin)));
+    }
+
+    extent
 }
 
 /// Compute the AABB of a hull. (b3ComputeHullAABB)

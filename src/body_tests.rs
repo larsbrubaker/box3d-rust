@@ -1,22 +1,20 @@
 //! Body lifecycle and SetMassData tests ported from
-//! box3d-cpp-reference/test/test_body.c (shape-free subset) plus create/destroy
-//! coverage for the bring-up path.
-//!
-//! Sphere-mass / deferred-extent tests need shape create and land with that slice.
+//! box3d-cpp-reference/test/test_body.c, including shape-driven mass tests.
 
 use crate::body::{
-    body_flags, body_get_angular_velocity, body_get_inverse_mass, body_get_linear_velocity,
-    body_get_local_center, body_get_local_rotational_inertia, body_get_mass, body_get_mass_data,
-    body_get_world_center, body_get_world_inverse_rotational_inertia, body_is_valid,
-    body_set_angular_velocity, body_set_linear_velocity, body_set_mass_data, create_body,
-    destroy_body,
+    body_apply_mass_from_shapes, body_flags, body_get_angular_velocity, body_get_inverse_mass,
+    body_get_linear_velocity, body_get_local_center, body_get_local_rotational_inertia,
+    body_get_mass, body_get_mass_data, body_get_world_center,
+    body_get_world_inverse_rotational_inertia, body_is_valid, body_set_angular_velocity,
+    body_set_linear_velocity, body_set_mass_data, body_sim, create_body, destroy_body,
 };
-use crate::geometry::MassData;
+use crate::geometry::{MassData, Sphere};
 use crate::math_functions::{
     make_quat_from_axis_angle, Matrix3, Pos, Vec3, MAT3_ZERO, PI, VEC3_AXIS_Z, VEC3_ZERO,
 };
+use crate::shape::create_sphere_shape;
 use crate::solver_set::{AWAKE_SET, STATIC_SET};
-use crate::types::{default_body_def, default_world_def, BodyType};
+use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::World;
 
 fn diag_inertia() -> Matrix3 {
@@ -309,4 +307,180 @@ fn set_mass_data_consistent_velocity() {
     assert!((w.x - omega.x).abs() < 1e-6);
     assert!((w.y - omega.y).abs() < 1e-6);
     assert!((w.z - omega.z).abs() < 1e-6);
+}
+
+/// Helper matching C `SphereBodyMass`.
+fn sphere_body_mass(centers: &[Vec3], radius: f32, density: f32) -> MassData {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body_id = create_body(&mut world, &body_def);
+
+    let mut shape_def = default_shape_def();
+    shape_def.density = density;
+
+    for center in centers {
+        let sphere = Sphere {
+            center: *center,
+            radius,
+        };
+        create_sphere_shape(&mut world, body_id, &shape_def, &sphere);
+    }
+
+    body_apply_mass_from_shapes(&mut world, body_id);
+    body_get_mass_data(&world, body_id)
+}
+
+/// One sphere far from the body origin. (FarSingleSphereMass)
+#[test]
+fn far_single_sphere_mass() {
+    let radius = 0.5f32;
+    let density = 1.0f32;
+    let center = Vec3 {
+        x: 100.0,
+        y: -50.0,
+        z: 75.0,
+    };
+    let md = sphere_body_mass(&[center], radius, density);
+
+    let mass = density * (4.0 / 3.0) * PI * radius * radius * radius;
+    let central = 0.4 * mass * radius * radius;
+
+    assert!((md.mass - mass).abs() < 1e-4);
+
+    assert!((md.center.x - center.x).abs() < 1e-3);
+    assert!((md.center.y - center.y).abs() < 1e-3);
+    assert!((md.center.z - center.z).abs() < 1e-3);
+
+    assert!((md.inertia.cx.x - central).abs() < 1e-3);
+    assert!((md.inertia.cy.y - central).abs() < 1e-3);
+    assert!((md.inertia.cz.z - central).abs() < 1e-3);
+
+    assert!(md.inertia.cy.x.abs() < 1e-3);
+    assert!(md.inertia.cz.x.abs() < 1e-3);
+    assert!(md.inertia.cz.y.abs() < 1e-3);
+}
+
+/// Eight equal spheres on the corners of a far cube. (FarCubeSphereMass)
+#[test]
+fn far_cube_sphere_mass() {
+    let radius = 0.5f32;
+    let density = 1.0f32;
+    let h = 1.0f32;
+    let p = Vec3 {
+        x: 100.0,
+        y: 100.0,
+        z: 100.0,
+    };
+
+    let mut centers = Vec::new();
+    for sx in [-1i32, 1] {
+        for sy in [-1i32, 1] {
+            for sz in [-1i32, 1] {
+                centers.push(Vec3 {
+                    x: p.x + sx as f32 * h,
+                    y: p.y + sy as f32 * h,
+                    z: p.z + sz as f32 * h,
+                });
+            }
+        }
+    }
+
+    let md = sphere_body_mass(&centers, radius, density);
+
+    let mass = density * (4.0 / 3.0) * PI * radius * radius * radius;
+    let total_mass = 8.0 * mass;
+    let diag = 8.0 * 0.4 * mass * radius * radius + 16.0 * mass * h * h;
+
+    assert!((md.mass - total_mass).abs() < 1e-3);
+
+    assert!((md.center.x - p.x).abs() < 1e-2);
+    assert!((md.center.y - p.y).abs() < 1e-2);
+    assert!((md.center.z - p.z).abs() < 1e-2);
+
+    assert!((md.inertia.cx.x - diag).abs() < 1e-2);
+    assert!((md.inertia.cy.y - diag).abs() < 1e-2);
+    assert!((md.inertia.cz.z - diag).abs() < 1e-2);
+
+    assert!(md.inertia.cy.x.abs() < 1e-2);
+    assert!(md.inertia.cz.x.abs() < 1e-2);
+    assert!(md.inertia.cz.y.abs() < 1e-2);
+}
+
+/// Deferred mass update tracks dirty flag and extents. (DeferredMassExtents)
+#[test]
+fn deferred_mass_extents() {
+    use crate::constants::huge;
+
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    shape_def.update_body_mass = false;
+
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+
+    let apply_id = create_body(&mut world, &body_def);
+    create_sphere_shape(&mut world, apply_id, &shape_def, &sphere);
+
+    {
+        let body = &world.bodies[apply_id.index1 as usize - 1];
+        assert!((body.flags & body_flags::DIRTY_MASS) != 0);
+        let sim = body_sim(&world, apply_id);
+        assert_eq!(sim.min_extent, huge());
+    }
+
+    body_apply_mass_from_shapes(&mut world, apply_id);
+    {
+        let body = &world.bodies[apply_id.index1 as usize - 1];
+        assert_eq!(body.flags & body_flags::DIRTY_MASS, 0);
+        let sim = body_sim(&world, apply_id);
+        assert!(sim.min_extent < huge());
+    }
+
+    let mass_id = create_body(&mut world, &body_def);
+    create_sphere_shape(&mut world, mass_id, &shape_def, &sphere);
+
+    {
+        let body = &world.bodies[mass_id.index1 as usize - 1];
+        assert!((body.flags & body_flags::DIRTY_MASS) != 0);
+    }
+
+    let inertia = Matrix3 {
+        cx: Vec3 {
+            x: 0.2,
+            y: 0.0,
+            z: 0.0,
+        },
+        cy: Vec3 {
+            x: 0.0,
+            y: 0.2,
+            z: 0.0,
+        },
+        cz: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.2,
+        },
+    };
+    let mass_data = MassData {
+        mass: 2.0,
+        center: VEC3_ZERO,
+        inertia,
+    };
+    body_set_mass_data(&mut world, mass_id, mass_data);
+
+    {
+        let body = &world.bodies[mass_id.index1 as usize - 1];
+        assert_eq!(body.flags & body_flags::DIRTY_MASS, 0);
+        let sim = body_sim(&world, mass_id);
+        assert!(sim.min_extent < huge());
+    }
 }

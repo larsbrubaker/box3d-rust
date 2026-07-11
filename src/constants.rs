@@ -112,3 +112,7 @@ pub fn min_capsule_length() -> f32 {
 pub fn max_aabb_margin() -> f32 {
     0.05 * get_length_units_per_meter()
 }
+
+/// Fraction of shape size used for the AABB movement margin.
+/// (B3_AABB_MARGIN_FRACTION)
+pub const AABB_MARGIN_FRACTION: f32 = 0.125;

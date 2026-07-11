@@ -5,8 +5,10 @@
 
 mod api;
 mod lifecycle;
+mod mass;
 mod types;
 
 pub use api::*;
 pub use lifecycle::*;
+pub use mass::*;
 pub use types::*;
