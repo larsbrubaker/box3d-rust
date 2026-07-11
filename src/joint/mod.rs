@@ -20,6 +20,8 @@ mod prismatic;
 mod revolute;
 mod spherical;
 mod weld;
+mod wheel;
+mod wheel_api;
 
 pub use distance::*;
 pub use lifecycle::*;
@@ -30,6 +32,8 @@ pub use prismatic::*;
 pub use revolute::*;
 pub use spherical::*;
 pub use weld::*;
+pub use wheel::*;
+pub use wheel_api::*;
 
 /// Joint type enumeration. (types.h: b3JointType)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -726,6 +730,21 @@ impl JointSim {
         match &mut self.union_ {
             JointUnion::Spherical(joint) => joint,
             _ => unreachable!("joint union is not a spherical joint"),
+        }
+    }
+
+    /// (C: &base->wheelJoint)
+    pub fn wheel(&self) -> &WheelJoint {
+        match &self.union_ {
+            JointUnion::Wheel(joint) => joint,
+            _ => unreachable!("joint union is not a wheel joint"),
+        }
+    }
+
+    pub fn wheel_mut(&mut self) -> &mut WheelJoint {
+        match &mut self.union_ {
+            JointUnion::Wheel(joint) => joint,
+            _ => unreachable!("joint union is not a wheel joint"),
         }
     }
 }

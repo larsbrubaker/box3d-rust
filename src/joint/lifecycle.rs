@@ -29,7 +29,7 @@ use crate::solver_set::{
 };
 use crate::types::{
     BodyType, DistanceJointDef, FilterJointDef, JointDef, MotorJointDef, ParallelJointDef,
-    PrismaticJointDef, RevoluteJointDef, SphericalJointDef, WeldJointDef,
+    PrismaticJointDef, RevoluteJointDef, SphericalJointDef, WeldJointDef, WheelJointDef,
 };
 use crate::world::World;
 
@@ -495,6 +495,41 @@ pub fn create_prismatic_joint(world: &mut World, def: &PrismaticJointDef) -> Joi
     joint.enable_spring = def.enable_spring;
     joint.enable_limit = def.enable_limit;
     joint.enable_motor = def.enable_motor;
+
+    make_joint_id(world, joint_id)
+}
+
+/// (b3CreateWheelJoint)
+pub fn create_wheel_joint(world: &mut World, def: &WheelJointDef) -> JointId {
+    debug_assert!(def.base.internal_value == crate::core::SECRET_COOKIE);
+    debug_assert!(def.lower_suspension_limit <= def.upper_suspension_limit);
+    debug_assert!(!world.locked);
+    if world.locked {
+        return crate::id::NULL_JOINT_ID;
+    }
+
+    let joint_id = create_joint(world, &def.base, JointType::Wheel);
+
+    let joint_sim = get_joint_sim(world, joint_id);
+    let joint = joint_sim.wheel_mut();
+    *joint = super::WheelJoint::default();
+    joint.enable_suspension_spring = def.enable_suspension_spring;
+    joint.suspension_hertz = def.suspension_hertz;
+    joint.suspension_damping_ratio = def.suspension_damping_ratio;
+    joint.enable_suspension_limit = def.enable_suspension_limit;
+    joint.lower_suspension_limit = def.lower_suspension_limit;
+    joint.upper_suspension_limit = def.upper_suspension_limit;
+    joint.enable_spin_motor = def.enable_spin_motor;
+    joint.max_spin_torque = def.max_spin_torque;
+    joint.spin_speed = def.spin_speed;
+    joint.enable_steering = def.enable_steering;
+    joint.steering_hertz = def.steering_hertz;
+    joint.steering_damping_ratio = def.steering_damping_ratio;
+    joint.target_steering_angle = def.target_steering_angle;
+    joint.max_steering_torque = def.max_steering_torque;
+    joint.enable_steering_limit = def.enable_steering_limit;
+    joint.lower_steering_limit = def.lower_steering_limit;
+    joint.upper_steering_limit = def.upper_steering_limit;
 
     make_joint_id(world, joint_id)
 }
