@@ -12,6 +12,7 @@ pub mod bitset;
 pub mod constants;
 pub mod core;
 pub mod id;
+pub mod id_pool;
 pub mod math_functions;
 
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
