@@ -8,10 +8,10 @@ the track is done (also remove its row from todo.md).**
 `EnableSleep` (+ flag-sync tests), motion locks set/get, bullet API, name /
 user data, local/world point/vector + point velocity, ApplyForce/Torque/
 Impulse variants, `SetTransform`, `SetAwake` / `IsAwake` / `IsEnabled` /
-`GetType`.
+`GetType`, `SetType` / `Enable` / `Disable`.
 
-Collision geometry is fully ported. Remaining work is shape mutators, body
-type/enable transfers, and one mesh-drop world test.
+Collision geometry is fully ported. Remaining work is shape mutators and one
+mesh-drop world test.
 
 ## Shape creation leftovers
 
@@ -26,13 +26,6 @@ type/enable transfers, and one mesh-drop world test.
 - [ ] Geometry get/set (SetSphere/SetCapsule/SetHull/… with proxy rebuild)
 - [ ] Ray cast / point test / closest point against a single shape
 - [ ] AABB getters, user data, density (with mass update)
-
-## b3Body_* API (body.c)
-
-- [ ] `SetType` (dynamic/kinematic/static transitions — main consumer of
-      `transfer_body` in `src/solver_set.rs`; drop its
-      `#[allow(dead_code)] // bring-up:` note when reachable)
-- [ ] `Enable` / `Disable` (disabled-set transfers, proxy destroy/create)
 
 ## Tests
 

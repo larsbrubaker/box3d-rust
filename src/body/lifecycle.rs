@@ -116,7 +116,8 @@ pub fn should_bodies_collide(world: &World, body_id_a: i32, body_id_b: i32) -> b
         let edge_index = joint_key & 1;
         let other_edge_index = edge_index ^ 1;
         let joint = &world.joints[joint_id as usize];
-        if !joint.collide_connected && joint.edges[other_edge_index as usize].body_id == other_body_id
+        if !joint.collide_connected
+            && joint.edges[other_edge_index as usize].body_id == other_body_id
         {
             return false;
         }
@@ -386,6 +387,19 @@ pub fn create_body(world: &mut World, def: &crate::types::BodyDef) -> BodyId {
     id
 }
 
+/// Destroy all contacts attached to a body. (static b3DestroyBodyContacts)
+pub(crate) fn destroy_body_contacts(world: &mut World, body_index: i32, wake_bodies: bool) {
+    let mut edge_key = world.bodies[body_index as usize].head_contact_key;
+    while edge_key != NULL_INDEX {
+        let contact_id = edge_key >> 1;
+        let edge_index = edge_key & 1;
+        edge_key = world.contacts[contact_id as usize].edges[edge_index as usize].next_key;
+        crate::contact::destroy_contact(world, contact_id, wake_bodies);
+    }
+
+    world.validate_solver_sets();
+}
+
 /// Destroy a rigid body. (b3DestroyBody)
 pub fn destroy_body(world: &mut World, body_id: BodyId) {
     debug_assert!(!world.locked);
@@ -411,15 +425,7 @@ pub fn destroy_body(world: &mut World, body_id: BodyId) {
         crate::joint::destroy_joint_internal(world, joint_id, wake_bodies);
     }
 
-    // Destroy all contacts attached to this body.
-    let mut contact_key = world.bodies[body_index as usize].head_contact_key;
-    while contact_key != NULL_INDEX {
-        let contact_id = contact_key >> 1;
-        let edge_index = contact_key & 1;
-        let next_key = world.contacts[contact_id as usize].edges[edge_index as usize].next_key;
-        crate::contact::destroy_contact(world, contact_id, true);
-        contact_key = next_key;
-    }
+    destroy_body_contacts(world, body_index, wake_bodies);
 
     // Destroy the attached shapes and their broad-phase proxies.
     let mut shape_id = world.bodies[body_index as usize].head_shape_id;

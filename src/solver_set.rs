@@ -642,7 +642,6 @@ pub fn merge_solver_sets(world: &mut World, set_id1: i32, set_id2: i32) {
 }
 
 /// Move a body sim between solver sets. (b3TransferBody)
-#[allow(dead_code)] // bring-up: reachable once body enable/disable and type changes land
 pub fn transfer_body(world: &mut World, target_set_index: i32, source_set_index: i32, body_id: i32) {
     use crate::body::{body_flags, IDENTITY_BODY_STATE};
 
@@ -695,7 +694,6 @@ pub fn transfer_body(world: &mut World, target_set_index: i32, source_set_index:
 }
 
 /// Move a joint sim between solver sets or the constraint graph. (b3TransferJoint)
-#[allow(dead_code)] // bring-up: reachable once joint lifecycle lands
 pub fn transfer_joint(
     world: &mut World,
     target_set_index: i32,

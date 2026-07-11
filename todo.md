@@ -16,7 +16,7 @@ core world queries landed with task-5. What remains:
 
 | File | Track | Status |
 |---|---|---|
-| [task-4.md](task-4.md) | Shape/Body public API + `TestMeshDrop` | Partial — mesh/HF/compound create, damping/sleep, motion locks, name/user data, point/vector queries, Apply*/SetTransform/SetAwake landed; remaining: `SetType`/`Enable`/`Disable`, most `b3Shape_*`, `TestMeshDrop`, body/shape test remainders |
+| [task-4.md](task-4.md) | Shape/Body public API + `TestMeshDrop` | Partial — mesh/HF/compound create, damping/sleep, motion locks, name/user data, point/vector queries, Apply*/SetTransform/SetAwake/`SetType`/`Enable`/`Disable` landed; remaining: most `b3Shape_*`, `TestMeshDrop`, body/shape test remainders |
 | [task-5.md](task-5.md) | Deferred world/body query tests | Deferred — needs task-4 body/shape APIs (`SetHull`, body-level cast/overlap, contact-recycling flag) |
 
 ## Determinism gate (after task-4 leftovers)
