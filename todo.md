@@ -13,13 +13,12 @@ bring-up rules apply to everything below.
 
 | File | Track | Depends on |
 |---|---|---|
-| [task-5.md](task-5.md) | Deferred world/body query tests | task-4 (`SetHull`, body-level queries) — shape SetHull landed |
 | [task-6.md](task-6.md) | Mesh & height-field narrow phase (`mesh_contact.c`) — **critical path**: bodies currently fall through meshes | — |
 | [task-7.md](task-7.md) | Determinism gate + large world | scene helpers startable now; final hash needs task-6 |
 
-task-4 is complete on `agent/task-4-shapes`. task-6 doesn't overlap
-(`src/contact/update.rs`) and can run on a separate machine. task-7's
-scene-helper work is independent of both.
+task-5 (deferred world/body query tests) is complete on `agent/task-5-queries`.
+task-6 doesn't overlap (`src/contact/update.rs`) and can run on a separate
+machine. task-7's scene-helper work is independent of both.
 
 ## Recording, replay, and snapshots
 

@@ -5,11 +5,12 @@
 use crate::body::{
     body_apply_force, body_apply_force_to_center, body_apply_linear_impulse,
     body_apply_linear_impulse_to_center, body_apply_torque, body_disable, body_enable,
-    body_get_local_point, body_get_local_point_velocity, body_get_local_vector, body_get_mass,
-    body_get_motion_locks, body_get_name, body_get_type, body_get_user_data, body_get_world_point,
-    body_get_world_point_velocity, body_get_world_vector, body_is_awake, body_is_enabled,
-    body_set_awake, body_set_motion_locks, body_set_name, body_set_transform, body_set_type,
-    body_set_user_data, body_sim, create_body, get_body_full_id,
+    body_enable_contact_recycling, body_get_local_point, body_get_local_point_velocity,
+    body_get_local_vector, body_get_mass, body_get_motion_locks, body_get_name, body_get_type,
+    body_get_user_data, body_get_world_point, body_get_world_point_velocity, body_get_world_vector,
+    body_is_awake, body_is_contact_recycling_enabled, body_is_enabled, body_set_awake,
+    body_set_motion_locks, body_set_name, body_set_transform, body_set_type, body_set_user_data,
+    body_sim, create_body, get_body_full_id,
 };
 use crate::geometry::Sphere;
 use crate::math_functions::{
@@ -390,4 +391,31 @@ fn disable_transfers_attached_joint() {
     body_enable(&mut world, body);
     assert_eq!(world.joints[joint_index as usize].set_index, AWAKE_SET);
     assert!(world.joints[joint_index as usize].island_id != NULL_INDEX);
+}
+
+/// Contact-recycling flag get/set and per-def opt-out. (EnableContactRecyclingTest)
+#[test]
+fn enable_contact_recycling() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+
+    // Default is enabled
+    let body_a = create_body(&mut world, &body_def);
+    assert!(body_is_contact_recycling_enabled(&world, body_a));
+
+    body_enable_contact_recycling(&mut world, body_a, false);
+    assert!(!body_is_contact_recycling_enabled(&world, body_a));
+
+    body_enable_contact_recycling(&mut world, body_a, true);
+    assert!(body_is_contact_recycling_enabled(&world, body_a));
+
+    // Per-def opt-out at creation
+    body_def.enable_contact_recycling = false;
+    let body_b = create_body(&mut world, &body_def);
+    assert!(!body_is_contact_recycling_enabled(&world, body_b));
+
+    // Stepping after toggling must not trip the flag-sync validator
+    world.step(1.0 / 60.0, 4);
 }

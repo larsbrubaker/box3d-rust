@@ -1,5 +1,5 @@
 //! Hull / mesh / height-field / compound shape create/destroy tests.
-//! Ported from box3d-cpp-reference/test/test_world.c (TestHullDatabase subset + shape attach).
+//! Ported from box3d-cpp-reference/test/test_world.c (TestHullDatabase + shape attach).
 
 use crate::body::{create_body, destroy_body};
 use crate::compound::{create_compound, CompoundDef, CompoundHullDef};
@@ -11,7 +11,7 @@ use crate::math_functions::{Transform, Vec3, QUAT_IDENTITY, VEC3_ONE, VEC3_ZERO}
 use crate::mesh::create_box_mesh;
 use crate::shape::{
     create_compound_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
-    destroy_shape, shape_get_hull, shape_is_valid, ShapeGeometry,
+    destroy_shape, shape_get_hull, shape_is_valid, shape_set_hull, ShapeGeometry,
 };
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::World;
@@ -49,6 +49,23 @@ fn hull_database_sharing() {
     destroy_shape(&mut world, shape_c, true);
     assert!(!shape_is_valid(&world, shape_c));
 
+    // Setting a shape's hull to its own sole shared copy must not free it mid update.
+    let box3 = make_box_hull(0.3, 0.3, 0.3);
+    let body_d = create_body(&mut world, &body_def);
+    let shape_d = create_hull_shape(&mut world, body_d, &shape_def, &box3.base);
+    let got_d = shape_get_hull(&world, shape_d).unwrap() as *const _;
+    {
+        let shared_rc = match &world.shapes[(shape_d.index1 - 1) as usize].geometry {
+            ShapeGeometry::Hull(rc) => Rc::clone(rc),
+            _ => panic!("expected hull"),
+        };
+        shape_set_hull(&mut world, shape_d, shared_rc.as_ref());
+        let still_d = shape_get_hull(&world, shape_d).unwrap() as *const _;
+        assert_eq!(still_d, got_d);
+        // Drop the temporary Rc so destroy_shape's release sees strong_count == 2.
+    }
+    destroy_shape(&mut world, shape_d, true);
+
     destroy_shape(&mut world, shape_a, true);
     let ptr_still_b = shape_get_hull(&world, shape_b).unwrap() as *const _;
     assert_eq!(ptr_still_b, ptr_b);
@@ -57,11 +74,11 @@ fn hull_database_sharing() {
     destroy_shape(&mut world, shape_b, true);
     assert!(world.hull_database.is_empty());
 
-    let body_d = create_body(&mut world, &body_def);
-    let shape_d = create_hull_shape(&mut world, body_d, &shape_def, &box_hull.base);
-    assert!(shape_is_valid(&world, shape_d));
-    destroy_body(&mut world, body_d);
-    assert!(!shape_is_valid(&world, shape_d));
+    let body_e = create_body(&mut world, &body_def);
+    let shape_e = create_hull_shape(&mut world, body_e, &shape_def, &box_hull.base);
+    assert!(shape_is_valid(&world, shape_e));
+    destroy_body(&mut world, body_e);
+    assert!(!shape_is_valid(&world, shape_e));
     assert!(world.hull_database.is_empty());
 }
 

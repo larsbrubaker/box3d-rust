@@ -76,6 +76,9 @@ mod body_tests;
 mod body_api_tests;
 
 #[cfg(test)]
+mod body_query_tests;
+
+#[cfg(test)]
 mod broad_phase_tests;
 
 #[cfg(test)]
