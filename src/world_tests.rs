@@ -73,6 +73,184 @@ fn step_collide_marks_overlapping_contact_touching() {
     assert!(found_touching);
 }
 
+/// A settled body falls asleep: its island moves to a sleeping solver set,
+/// touching contacts leave the constraint graph, and the move event reports
+/// fell_asleep. (b3TrySleepIsland via the sleep pass in b3Solve)
+#[test]
+fn body_falls_asleep_after_settling() {
+    use crate::body::is_body_awake;
+    use crate::solver_set::FIRST_SLEEPING_SET;
+
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let ground_hull = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_hull.base);
+
+    let mut box_def = default_body_def();
+    box_def.type_ = BodyType::Dynamic;
+    box_def.position = Pos {
+        x: 0.0 as _,
+        y: 1.05 as _,
+        z: 0.0 as _,
+    };
+    let box_id = create_body(&mut world, &box_def);
+    let cube = make_cube_hull(0.5);
+    let mut cube_shape = default_shape_def();
+    cube_shape.density = 1.0;
+    create_hull_shape(&mut world, box_id, &cube_shape, &cube.base);
+
+    let box_index = crate::body::get_body_full_id(&world, box_id);
+
+    let mut sleep_step = NULL_INDEX;
+    for step in 0..300 {
+        world.step(1.0 / 60.0, 4);
+        if !is_body_awake(&world, box_index) {
+            sleep_step = step;
+            break;
+        }
+    }
+
+    assert!(sleep_step != NULL_INDEX, "body never fell asleep");
+
+    // The island moved to a sleeping solver set.
+    let set_index = world.bodies[box_index as usize].set_index;
+    assert!(set_index >= FIRST_SLEEPING_SET);
+    assert_eq!(world.solver_sets[AWAKE_SET as usize].body_sims.len(), 0);
+    assert_eq!(world.solver_sets[AWAKE_SET as usize].island_sims.len(), 0);
+
+    // Touching contacts moved out of the constraint graph into the sleeping set.
+    let sleep_set = &world.solver_sets[set_index as usize];
+    assert!(!sleep_set.contact_indices.is_empty());
+    for &contact_id in &sleep_set.contact_indices {
+        let contact = &world.contacts[contact_id as usize];
+        assert_eq!(contact.set_index, set_index);
+        assert_eq!(contact.color_index, NULL_INDEX);
+        assert!((contact.flags & contact_flags::TOUCHING) != 0);
+    }
+    for color in &world.constraint_graph.colors {
+        assert!(color.convex_contacts.is_empty());
+        assert!(color.contacts.is_empty());
+    }
+
+    // The sleep step reported the fell_asleep move event.
+    assert!(world.body_move_events.iter().any(|e| e.fell_asleep));
+}
+
+/// A new touching contact wakes a sleeping island; the woken contacts return
+/// to the constraint graph and the island can fall back asleep afterwards.
+/// (b3WakeSolverSet via b3LinkContact)
+#[test]
+fn sleeping_body_wakes_on_new_touching_contact() {
+    use crate::body::is_body_awake;
+
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let ground_hull = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_hull.base);
+
+    let mut box_def = default_body_def();
+    box_def.type_ = BodyType::Dynamic;
+    box_def.position = Pos {
+        x: 0.0 as _,
+        y: 1.05 as _,
+        z: 0.0 as _,
+    };
+    let first_id = create_body(&mut world, &box_def);
+    let cube = make_cube_hull(0.5);
+    let mut cube_shape = default_shape_def();
+    cube_shape.density = 1.0;
+    create_hull_shape(&mut world, first_id, &cube_shape, &cube.base);
+
+    let first_index = crate::body::get_body_full_id(&world, first_id);
+
+    let mut asleep = false;
+    for _ in 0..300 {
+        world.step(1.0 / 60.0, 4);
+        if !is_body_awake(&world, first_index) {
+            asleep = true;
+            break;
+        }
+    }
+    assert!(asleep, "first body never fell asleep");
+
+    // Drop a second box onto the sleeping one.
+    box_def.position = Pos {
+        x: 0.0 as _,
+        y: 3.0 as _,
+        z: 0.0 as _,
+    };
+    let second_id = create_body(&mut world, &box_def);
+    create_hull_shape(&mut world, second_id, &cube_shape, &cube.base);
+    let second_index = crate::body::get_body_full_id(&world, second_id);
+
+    let mut woke = false;
+    for _ in 0..300 {
+        world.step(1.0 / 60.0, 4);
+        if is_body_awake(&world, first_index) {
+            woke = true;
+            break;
+        }
+    }
+    assert!(woke, "sleeping body never woke from the new contact");
+
+    // Both boxes settle back to sleep in the same island.
+    let mut both_asleep = false;
+    for _ in 0..600 {
+        world.step(1.0 / 60.0, 4);
+        if !is_body_awake(&world, first_index) && !is_body_awake(&world, second_index) {
+            both_asleep = true;
+            break;
+        }
+    }
+    assert!(both_asleep, "stack never settled back to sleep");
+    assert_eq!(
+        world.bodies[first_index as usize].set_index,
+        world.bodies[second_index as usize].set_index
+    );
+}
+
+/// Sleep disabled keeps a settled body awake. (world.enable_sleep == false)
+#[test]
+fn sleep_disabled_keeps_body_awake() {
+    use crate::body::is_body_awake;
+
+    let mut world_def = default_world_def();
+    world_def.enable_sleep = false;
+    let mut world = World::new(&world_def);
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let ground_hull = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_hull.base);
+
+    let mut box_def = default_body_def();
+    box_def.type_ = BodyType::Dynamic;
+    box_def.position = Pos {
+        x: 0.0 as _,
+        y: 1.05 as _,
+        z: 0.0 as _,
+    };
+    let box_id = create_body(&mut world, &box_def);
+    let cube = make_cube_hull(0.5);
+    let mut cube_shape = default_shape_def();
+    cube_shape.density = 1.0;
+    create_hull_shape(&mut world, box_id, &cube_shape, &cube.base);
+
+    let box_index = crate::body::get_body_full_id(&world, box_id);
+
+    for _ in 0..120 {
+        world.step(1.0 / 60.0, 4);
+        assert!(is_body_awake(&world, box_index));
+    }
+}
+
 /// (HelloWorld)
 #[test]
 fn hello_world() {

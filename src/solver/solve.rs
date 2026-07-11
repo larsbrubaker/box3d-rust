@@ -1,5 +1,6 @@
 //! Serial solve driver from solver.c: prepare → sub-step loop → restitution →
-//! store → finalize → broad-phase enlarge. Joints are not yet wired.
+//! store → finalize → broad-phase enlarge → island sleep. Joints and island
+//! splitting are not yet wired.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -18,7 +19,7 @@ use crate::events::BodyMoveEvent;
 use crate::id::BodyId;
 use crate::math_functions::WORLD_TRANSFORM_IDENTITY;
 use crate::shape::shape_flags;
-use crate::solver_set::AWAKE_SET;
+use crate::solver_set::{try_sleep_island, AWAKE_SET};
 use crate::world::World;
 
 /// Solve with graph coloring. (b3Solve — serial)
@@ -217,5 +218,51 @@ pub fn solve(world: &mut World, context: &StepContext) {
         }
 
         world.broad_phase.validate();
+    }
+
+    // Island sleeping
+    // This must be done last because putting islands to sleep invalidates the enlarged body bits.
+    if world.enable_sleep {
+        // Collect split island candidate for the next time step. No need to split if sleeping is disabled.
+        debug_assert!(world.split_island_id == NULL_INDEX);
+        let mut split_sleep_timer = 0.0f32;
+        {
+            let task_context = &world.task_contexts[0];
+            if task_context.split_island_id != NULL_INDEX
+                && task_context.split_sleep_time >= split_sleep_timer
+            {
+                debug_assert!(task_context.split_sleep_time > 0.0);
+
+                // Tie breaking for determinism. Largest island id wins. C needs this
+                // due to work stealing across workers; kept for the serial port so a
+                // multi-worker build later cannot change the outcome.
+                let tied_but_smaller = task_context.split_sleep_time == split_sleep_timer
+                    && task_context.split_island_id < world.split_island_id;
+                if !tied_but_smaller {
+                    world.split_island_id = task_context.split_island_id;
+                    split_sleep_timer = task_context.split_sleep_time;
+                }
+            }
+        }
+        let _ = split_sleep_timer;
+
+        // Need to process in reverse because this moves islands to sleeping solver sets.
+        let count = world.solver_sets[AWAKE_SET as usize].island_sims.len();
+        for island_index in (0..count).rev() {
+            if world.task_contexts[0]
+                .awake_island_bit_set
+                .get_bit(island_index as u32)
+            {
+                // this island is still awake
+                continue;
+            }
+
+            let island_id =
+                world.solver_sets[AWAKE_SET as usize].island_sims[island_index].island_id;
+
+            try_sleep_island(world, island_id);
+        }
+
+        world.validate_solver_sets();
     }
 }

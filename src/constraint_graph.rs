@@ -180,6 +180,135 @@ pub fn add_contact_to_graph(world: &mut crate::world::World, contact_id: i32) {
     }
 }
 
+/// Pick a graph color for a joint between the two bodies. (b3AssignJointColor)
+///
+/// C compiles the coloring away when B3_FORCE_OVERFLOW is set; the reference
+/// pins it to 0, so the coloring always runs.
+fn assign_joint_color(
+    graph: &mut ConstraintGraph,
+    body_id_a: i32,
+    body_id_b: i32,
+    type_a: crate::types::BodyType,
+    type_b: crate::types::BodyType,
+) -> i32 {
+    use crate::types::BodyType;
+
+    debug_assert!(type_a == BodyType::Dynamic || type_b == BodyType::Dynamic);
+
+    if type_a == BodyType::Dynamic && type_b == BodyType::Dynamic {
+        // Dynamic constraint colors cannot encroach on colors reserved for static constraints
+        for i in 0..DYNAMIC_COLOR_COUNT {
+            let color = &graph.colors[i as usize];
+            if color.body_set.get_bit(body_id_a as u32) || color.body_set.get_bit(body_id_b as u32)
+            {
+                continue;
+            }
+
+            let color = &mut graph.colors[i as usize];
+            color.body_set.set_bit_grow(body_id_a as u32);
+            color.body_set.set_bit_grow(body_id_b as u32);
+            return i;
+        }
+    } else if type_a == BodyType::Dynamic {
+        // Static constraint colors build from the end to get higher priority than dyn-dyn constraints
+        for i in (1..OVERFLOW_INDEX).rev() {
+            let color = &graph.colors[i as usize];
+            if color.body_set.get_bit(body_id_a as u32) {
+                continue;
+            }
+
+            graph.colors[i as usize]
+                .body_set
+                .set_bit_grow(body_id_a as u32);
+            return i;
+        }
+    } else if type_b == BodyType::Dynamic {
+        // Static constraint colors build from the end to get higher priority than dyn-dyn constraints
+        for i in (1..OVERFLOW_INDEX).rev() {
+            let color = &graph.colors[i as usize];
+            if color.body_set.get_bit(body_id_b as u32) {
+                continue;
+            }
+
+            graph.colors[i as usize]
+                .body_set
+                .set_bit_grow(body_id_b as u32);
+            return i;
+        }
+    }
+
+    OVERFLOW_INDEX
+}
+
+/// Allocate a zeroed joint sim slot in the graph for the joint and set the
+/// joint's color/local indices. Returns (color_index, local_index).
+/// (b3CreateJointInGraph — C returns the sim pointer; the caller writes it)
+pub fn create_joint_in_graph(world: &mut crate::world::World, joint_id: i32) -> (i32, i32) {
+    let body_id_a = world.joints[joint_id as usize].edges[0].body_id;
+    let body_id_b = world.joints[joint_id as usize].edges[1].body_id;
+    let type_a = world.bodies[body_id_a as usize].type_;
+    let type_b = world.bodies[body_id_b as usize].type_;
+
+    let color_index = assign_joint_color(
+        &mut world.constraint_graph,
+        body_id_a,
+        body_id_b,
+        type_a,
+        type_b,
+    );
+
+    let color = &mut world.constraint_graph.colors[color_index as usize];
+    let local_index = color.joint_sims.len() as i32;
+    color.joint_sims.push(crate::joint::JointSim::default());
+
+    let joint = &mut world.joints[joint_id as usize];
+    joint.color_index = color_index;
+    joint.local_index = local_index;
+    (color_index, local_index)
+}
+
+/// (b3AddJointToGraph)
+pub fn add_joint_to_graph(
+    world: &mut crate::world::World,
+    joint_sim: crate::joint::JointSim,
+    joint_id: i32,
+) {
+    let (color_index, local_index) = create_joint_in_graph(world, joint_id);
+    world.constraint_graph.colors[color_index as usize].joint_sims[local_index as usize] =
+        joint_sim;
+}
+
+/// (b3RemoveJointFromGraph)
+pub fn remove_joint_from_graph(
+    world: &mut crate::world::World,
+    body_id_a: i32,
+    body_id_b: i32,
+    color_index: i32,
+    local_index: i32,
+) {
+    debug_assert!(0 <= color_index && color_index < GRAPH_COLOR_COUNT);
+
+    if color_index != OVERFLOW_INDEX {
+        // May clear static bodies, no effect
+        let color = &mut world.constraint_graph.colors[color_index as usize];
+        color.body_set.clear_bit(body_id_a as u32);
+        color.body_set.clear_bit(body_id_b as u32);
+    }
+
+    let color = &mut world.constraint_graph.colors[color_index as usize];
+    let moved_index = color.joint_sims.len() as i32 - 1;
+    color.joint_sims.swap_remove(local_index as usize);
+    if moved_index != local_index {
+        // Fix moved joint
+        let moved_id = color.joint_sims[local_index as usize].joint_id;
+        let moved_joint = &mut world.joints[moved_id as usize];
+        debug_assert!(moved_joint.set_index == crate::solver_set::AWAKE_SET);
+        debug_assert!(moved_joint.color_index == color_index);
+        debug_assert!(moved_joint.local_index == moved_index);
+        moved_joint.local_index = local_index;
+    }
+}
+
 /// (b3RemoveContactFromGraph)
 pub fn remove_contact_from_graph(
     world: &mut crate::world::World,
