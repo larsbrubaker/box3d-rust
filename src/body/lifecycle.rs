@@ -66,12 +66,13 @@ pub fn get_body_transform(world: &World, body_index: i32) -> WorldTransform {
 }
 
 /// (b3GetBodySim)
-pub fn get_body_sim<'a>(world: &'a World, body: &Body) -> &'a BodySim {
+pub fn get_body_sim(world: &World, body_index: i32) -> &BodySim {
+    let body = &world.bodies[body_index as usize];
     &world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize]
 }
 
 /// (b3GetBodySim) mutable
-pub fn get_body_sim_mut<'a>(world: &'a mut World, body_index: i32) -> &'a mut BodySim {
+pub fn get_body_sim_mut(world: &mut World, body_index: i32) -> &mut BodySim {
     let set_index = world.bodies[body_index as usize].set_index;
     let local_index = world.bodies[body_index as usize].local_index;
     &mut world.solver_sets[set_index as usize].body_sims[local_index as usize]
