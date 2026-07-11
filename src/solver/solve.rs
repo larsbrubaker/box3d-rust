@@ -6,8 +6,11 @@
 //! SPDX-License-Identifier: MIT
 #![allow(clippy::needless_range_loop)]
 
+use super::continuous::solve_continuous;
 use super::integrate::{finalize_bodies, integrate_positions, integrate_velocities};
 use super::StepContext;
+use crate::body::body_flags;
+use crate::broad_phase::{proxy_id, proxy_type};
 use crate::constants::{GRAPH_COLOR_COUNT, RELAX_ITERATIONS, SOLVER_ITERATIONS};
 use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::contact_solver::{
@@ -21,6 +24,7 @@ use crate::id::BodyId;
 use crate::math_functions::WORLD_TRANSFORM_IDENTITY;
 use crate::shape::shape_flags;
 use crate::solver_set::{try_sleep_island, AWAKE_SET};
+use crate::types::BodyType;
 use crate::world::World;
 
 /// Solve with graph coloring. (b3Solve — serial)
@@ -179,7 +183,8 @@ pub fn solve(world: &mut World, context: &StepContext) {
         world.task_contexts[0].has_hit_events = has_hit;
     }
 
-    // Finalize bodies
+    // Finalize bodies (CCD for non-bullets; bullets queued)
+    let mut bullet_bodies: Vec<i32> = Vec::with_capacity(awake_body_count);
     {
         let awake_island_count = world.solver_sets[AWAKE_SET as usize].island_sims.len();
         let task_context = &mut world.task_contexts[0];
@@ -194,7 +199,7 @@ pub fn solve(world: &mut World, context: &StepContext) {
         task_context.split_sleep_time = 0.0;
     }
 
-    finalize_bodies(world, context);
+    finalize_bodies(world, context, &mut bullet_bodies);
 
     // Report hit events flagged during store impulses. C runs this after the
     // constraint solve completes; joint events precede it once joints land.
@@ -294,6 +299,7 @@ pub fn solve(world: &mut World, context: &StepContext) {
     }
 
     // Enlarge broad-phase proxies for shapes whose fat AABB grew.
+    // Fast bullets only buffer moves here — final AABB comes from the bullet pass.
     {
         world.broad_phase.validate_no_enlarged();
 
@@ -304,17 +310,29 @@ pub fn solve(world: &mut World, context: &StepContext) {
                 let ctz = word.trailing_zeros();
                 let body_sim_index = (64 * k + ctz) as usize;
 
-                let body_id = world.solver_sets[AWAKE_SET as usize].body_sims[body_sim_index].body_id;
-
+                let body_sim = world.solver_sets[AWAKE_SET as usize].body_sims[body_sim_index];
+                let body_id = body_sim.body_id;
                 let mut shape_id = world.bodies[body_id as usize].head_shape_id;
-                while shape_id != NULL_INDEX {
-                    if (world.shapes[shape_id as usize].flags & shape_flags::ENLARGED_AABB) != 0 {
+
+                if (body_sim.flags & (body_flags::IS_BULLET | body_flags::IS_FAST))
+                    == (body_flags::IS_BULLET | body_flags::IS_FAST)
+                {
+                    while shape_id != NULL_INDEX {
                         let proxy_key = world.shapes[shape_id as usize].proxy_key;
-                        let fat_aabb = world.shapes[shape_id as usize].fat_aabb;
-                        world.broad_phase.enlarge_proxy(proxy_key, fat_aabb);
-                        world.shapes[shape_id as usize].flags &= !shape_flags::ENLARGED_AABB;
+                        world.broad_phase.buffer_move(proxy_key);
+                        shape_id = world.shapes[shape_id as usize].next_shape_id;
                     }
-                    shape_id = world.shapes[shape_id as usize].next_shape_id;
+                } else {
+                    while shape_id != NULL_INDEX {
+                        if (world.shapes[shape_id as usize].flags & shape_flags::ENLARGED_AABB) != 0
+                        {
+                            let proxy_key = world.shapes[shape_id as usize].proxy_key;
+                            let fat_aabb = world.shapes[shape_id as usize].fat_aabb;
+                            world.broad_phase.enlarge_proxy(proxy_key, fat_aabb);
+                            world.shapes[shape_id as usize].flags &= !shape_flags::ENLARGED_AABB;
+                        }
+                        shape_id = world.shapes[shape_id as usize].next_shape_id;
+                    }
                 }
 
                 word &= word - 1;
@@ -322,6 +340,44 @@ pub fn solve(world: &mut World, context: &StepContext) {
         }
 
         world.broad_phase.validate();
+    }
+
+    // Bullet continuous pass, then serial enlarge of bullet proxies.
+    if !bullet_bodies.is_empty() {
+        for &sim_index in &bullet_bodies {
+            solve_continuous(world, sim_index);
+        }
+
+        let dynamic_tree = BodyType::Dynamic as usize;
+        for &sim_index in &bullet_bodies {
+            let bullet_sim = &mut world.solver_sets[AWAKE_SET as usize].body_sims[sim_index as usize];
+            if (bullet_sim.flags & body_flags::ENLARGE_BOUNDS) == 0 {
+                continue;
+            }
+            bullet_sim.flags &= !body_flags::ENLARGE_BOUNDS;
+            let body_id = bullet_sim.body_id;
+
+            let mut shape_id = world.bodies[body_id as usize].head_shape_id;
+            while shape_id != NULL_INDEX {
+                if (world.shapes[shape_id as usize].flags & shape_flags::ENLARGED_AABB) == 0 {
+                    shape_id = world.shapes[shape_id as usize].next_shape_id;
+                    continue;
+                }
+                world.shapes[shape_id as usize].flags &= !shape_flags::ENLARGED_AABB;
+
+                let proxy_key = world.shapes[shape_id as usize].proxy_key;
+                let proxy_id_ = proxy_id(proxy_key);
+                debug_assert!(proxy_type(proxy_key) == BodyType::Dynamic);
+                debug_assert!(
+                    world.broad_phase.moved_proxies[dynamic_tree].get_bit(proxy_id_ as u32)
+                );
+
+                let fat_aabb = world.shapes[shape_id as usize].fat_aabb;
+                world.broad_phase.trees[dynamic_tree].enlarge_proxy(proxy_id_, fat_aabb);
+
+                shape_id = world.shapes[shape_id as usize].next_shape_id;
+            }
+        }
     }
 
     // Island sleeping

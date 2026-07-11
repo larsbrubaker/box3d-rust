@@ -1,10 +1,10 @@
 //! Body integration and finalization from solver.c.
 //! Serial loops over the whole awake body range (one worker, one block).
-//! CCD is skipped in this bring-up slice — bodies always take the safe advance.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use super::continuous::solve_continuous;
 use super::StepContext;
 use crate::body::body_flags;
 use crate::constants::{speculative_distance, MAX_ROTATION, TIME_TO_SLEEP};
@@ -19,6 +19,7 @@ use crate::math_functions::{
 };
 use crate::shape::shape_flags;
 use crate::solver_set::AWAKE_SET;
+use crate::types::BodyType;
 use crate::world::World;
 
 /// Integrate velocities, apply damping, and gyroscopic torque.
@@ -169,10 +170,15 @@ pub(super) fn integrate_positions(world: &mut World, context: &StepContext) {
     }
 }
 
-/// Finalize awake bodies after the constraint solve. Skips CCD — always takes
-/// the safe advance path. (b3FinalizeBodiesTask core without CCD)
-pub(super) fn finalize_bodies(world: &mut World, context: &StepContext) {
+/// Finalize awake bodies after the constraint solve, including fast-body / bullet
+/// detection for continuous collision. (b3FinalizeBodiesTask)
+pub(super) fn finalize_bodies(
+    world: &mut World,
+    context: &StepContext,
+    bullet_bodies: &mut Vec<i32>,
+) {
     let enable_sleep = world.enable_sleep;
+    let enable_continuous = world.enable_continuous;
     let time_step = context.dt;
     let inv_time_step = context.inv_dt;
     let world_id = world.world_id;
@@ -249,19 +255,43 @@ pub(super) fn finalize_bodies(world: &mut World, context: &StepContext) {
         sim.flags &= !body_flags::BODY_TRANSIENT_FLAGS;
         state.flags &= !body_flags::BODY_TRANSIENT_FLAGS;
 
-        // Skip CCD: always safe to advance.
-        sim.center0 = sim.center;
-        sim.rotation0 = sim.transform.q;
-
         let body_flags_now = world.bodies[body_id as usize].flags;
         let sleep_threshold = world.bodies[body_id as usize].sleep_threshold;
+        let body_type = world.bodies[body_id as usize].type_;
 
         if !enable_sleep
             || (body_flags_now & body_flags::ENABLE_SLEEP) == 0
             || sleep_velocity > sleep_threshold
         {
             world.bodies[body_id as usize].sleep_time = 0.0;
+
+            let safety_factor = 0.5;
+            let max_motion = max_float(max_delta_position, max_velocity * time_step);
+            if body_type == BodyType::Dynamic
+                && enable_continuous
+                && max_motion > safety_factor * sim.min_extent
+            {
+                // Retained for debug draw; also drives AABB handling below.
+                sim.flags |= body_flags::IS_FAST;
+
+                world.solver_sets[AWAKE_SET as usize].body_states[sim_index] = state;
+                world.solver_sets[AWAKE_SET as usize].body_sims[sim_index] = sim;
+
+                if (sim.flags & body_flags::IS_BULLET) != 0 {
+                    bullet_bodies.push(sim_index as i32);
+                } else {
+                    solve_continuous(world, sim_index as i32);
+                }
+
+                sim = world.solver_sets[AWAKE_SET as usize].body_sims[sim_index];
+                state = world.solver_sets[AWAKE_SET as usize].body_states[sim_index];
+            } else {
+                sim.center0 = sim.center;
+                sim.rotation0 = sim.transform.q;
+            }
         } else {
+            sim.center0 = sim.center;
+            sim.rotation0 = sim.transform.q;
             world.bodies[body_id as usize].sleep_time += time_step;
         }
 
@@ -296,31 +326,43 @@ pub(super) fn finalize_bodies(world: &mut World, context: &StepContext) {
 
         let sim_now = world.solver_sets[AWAKE_SET as usize].body_sims[sim_index];
         let transform = sim_now.transform;
+        let is_fast = (sim_now.flags & body_flags::IS_FAST) != 0;
         let mut shape_id = world.bodies[body_id as usize].head_shape_id;
         while shape_id != NULL_INDEX {
-            let aabb =
-                crate::shape::compute_fat_shape_aabb(&world.shapes[shape_id as usize], transform, speculative);
-            let shape = &mut world.shapes[shape_id as usize];
-            shape.aabb = aabb;
-
-            debug_assert!((shape.flags & shape_flags::ENLARGED_AABB) == 0);
-
-            if !aabb_contains(shape.fat_aabb, aabb) {
-                let margin = shape.aabb_margin;
-                let aabb_margin = Vec3 {
-                    x: margin,
-                    y: margin,
-                    z: margin,
-                };
-                shape.fat_aabb = crate::math_functions::Aabb {
-                    lower_bound: sub(aabb.lower_bound, aabb_margin),
-                    upper_bound: add(aabb.upper_bound, aabb_margin),
-                };
-                shape.flags |= shape_flags::ENLARGED_AABB;
-
+            if is_fast {
+                // Fast non-bullet AABBs already updated in solve_continuous;
+                // fast bullets update later. Always mark enlarged for move buffer.
                 world.task_contexts[0]
                     .enlarged_sim_bit_set
                     .set_bit(sim_index as u32);
+            } else {
+                let aabb = crate::shape::compute_fat_shape_aabb(
+                    &world.shapes[shape_id as usize],
+                    transform,
+                    speculative,
+                );
+                let shape = &mut world.shapes[shape_id as usize];
+                shape.aabb = aabb;
+
+                debug_assert!((shape.flags & shape_flags::ENLARGED_AABB) == 0);
+
+                if !aabb_contains(shape.fat_aabb, aabb) {
+                    let margin = shape.aabb_margin;
+                    let aabb_margin = Vec3 {
+                        x: margin,
+                        y: margin,
+                        z: margin,
+                    };
+                    shape.fat_aabb = crate::math_functions::Aabb {
+                        lower_bound: sub(aabb.lower_bound, aabb_margin),
+                        upper_bound: add(aabb.upper_bound, aabb_margin),
+                    };
+                    shape.flags |= shape_flags::ENLARGED_AABB;
+
+                    world.task_contexts[0]
+                        .enlarged_sim_bit_set
+                        .set_bit(sim_index as u32);
+                }
             }
 
             shape_id = world.shapes[shape_id as usize].next_shape_id;

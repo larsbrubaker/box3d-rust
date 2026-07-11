@@ -8,6 +8,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+mod continuous;
 mod integrate;
 mod solve;
 

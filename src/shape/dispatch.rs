@@ -17,7 +17,7 @@ use crate::height_field::compute_height_field_aabb;
 use crate::hull::{compute_hull_aabb, compute_hull_extent, compute_hull_mass};
 use crate::math_functions::{
     aabb_center, abs, add, lerp, max, min_float, sub, Aabb, Transform, Vec3, WorldTransform,
-    TRANSFORM_IDENTITY,
+    TRANSFORM_IDENTITY, VEC3_ZERO,
 };
 use crate::mesh::compute_mesh_aabb;
 use crate::types::BodyType;
@@ -158,6 +158,69 @@ pub fn compute_shape_mass(shape: &Shape) -> MassData {
         ShapeGeometry::Sphere(sphere) => compute_sphere_mass(sphere, shape.density),
         _ => MassData::default(),
     }
+}
+
+/// Convex shape proxy for distance / TOI. Mesh, height, and compound need
+/// their own query paths. (b3MakeShapeProxy)
+pub fn make_shape_proxy(shape: &Shape) -> crate::distance::ShapeProxy {
+    use crate::distance::make_proxy;
+    use crate::hull::get_hull_points;
+
+    match &shape.geometry {
+        ShapeGeometry::Capsule(capsule) => {
+            make_proxy(&[capsule.center1, capsule.center2], capsule.radius)
+        }
+        ShapeGeometry::Sphere(sphere) => make_proxy(&[sphere.center], sphere.radius),
+        ShapeGeometry::Hull(hull) => make_proxy(get_hull_points(hull), 0.0),
+        _ => {
+            debug_assert!(false, "make_shape_proxy is for convex shapes only");
+            make_proxy(&[VEC3_ZERO], 0.0)
+        }
+    }
+}
+
+/// Time of impact between two shapes along sweeps. Convex vs convex uses GJK
+/// TOI; mesh/height/compound targets are handled later (return no-hit until
+/// those query paths land). (b3ShapeTimeOfImpact)
+pub fn shape_time_of_impact(
+    shape_a: &Shape,
+    shape_b: &Shape,
+    sweep_a: &crate::distance::Sweep,
+    sweep_b: &crate::distance::Sweep,
+    max_fraction: f32,
+) -> crate::distance::ToiOutput {
+    use crate::distance::{time_of_impact, ToiInput, ToiOutput, ToiState};
+    use crate::geometry::ShapeType;
+
+    let type_a = shape_a.shape_type();
+    if type_a == ShapeType::Compound
+        || type_a == ShapeType::Height
+        || type_a == ShapeType::Mesh
+    {
+        // Mesh/height/compound CCD against the fast shape is a separate port
+        // (b3MeshTimeOfImpactFcn / b3CompoundTimeOfImpactFcn). Convex walls
+        // cover the continuous tests in this track.
+        return ToiOutput {
+            state: ToiState::Separated,
+            fraction: 1.0,
+            ..ToiOutput::default()
+        };
+    }
+
+    debug_assert!(
+        shape_b.shape_type() != ShapeType::Compound
+            && shape_b.shape_type() != ShapeType::Mesh
+            && shape_b.shape_type() != ShapeType::Height
+    );
+
+    let input = ToiInput {
+        proxy_a: make_shape_proxy(shape_a),
+        proxy_b: make_shape_proxy(shape_b),
+        sweep_a: *sweep_a,
+        sweep_b: *sweep_b,
+        max_fraction,
+    };
+    time_of_impact(&input)
 }
 
 /// (b3ComputeShapeExtent)
