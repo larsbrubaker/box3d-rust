@@ -1,18 +1,19 @@
-// Mesh — box/grid mesh with ray cast and AABB.
+// Mesh — box/grid mesh with ray cast and AABB (Three.js BufferGeometry).
 
 import { createButtonGroup, createInfoBox, createReadout, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { demoPage, runLoop } from "./common.ts";
 import {
-  OrbitCamera,
-  demoPage,
-  drawAxes,
-  drawDot,
-  drawSegment,
-  drawWireBox,
-  drawWireEdges,
-  fitCanvas,
-  runLoop,
-} from "./common.ts";
+  COLORS,
+  DemoScene,
+  makeAxes,
+  makeDot,
+  makeSegment,
+  makeTriangleMesh,
+  makeWireBox,
+  makeWireEdges,
+  trianglesFromWireframe,
+} from "../three-scene.ts";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
@@ -33,7 +34,7 @@ export function init(container: HTMLElement) {
   controls.appendChild(
     createInfoBox(
       "Switch between a box mesh and a flat grid. Hits report triangle index from the " +
-        "ported mesh BVH ray cast.",
+        "ported mesh BVH ray cast. Geometry is a Three.js BufferGeometry built from wasm triangles.",
     ),
   );
   controls.appendChild(
@@ -47,30 +48,39 @@ export function init(container: HTMLElement) {
         stats = v === "grid" ? wasm.mesh_build_grid() : wasm.mesh_build_box();
         wire = wasm.mesh_wireframe();
         aabb = wasm.mesh_aabb();
+        rebuildMesh();
       },
     ),
   );
   const readout = createReadout();
   controls.appendChild(readout);
 
-  const cam = new OrbitCamera();
-  cam.distance = 10;
-  cam.scale = 55;
-  const detach = cam.attachDrag(canvas);
-  const ctx = canvas.getContext("2d")!;
+  const demo = new DemoScene(canvas, { distance: 11 });
+
+  function rebuildMesh() {
+    demo.clearContent();
+    demo.content.add(makeAxes(1.5));
+    const positions = trianglesFromWireframe(wire);
+    demo.content.add(makeTriangleMesh(positions, COLORS.accent, 0.55));
+    demo.content.add(makeWireEdges(wire, COLORS.accent));
+    demo.content.add(
+      makeWireBox(
+        (aabb[0]! + aabb[3]!) / 2,
+        (aabb[1]! + aabb[4]!) / 2,
+        (aabb[2]! + aabb[5]!) / 2,
+        (aabb[3]! - aabb[0]!) / 2,
+        (aabb[4]! - aabb[1]!) / 2,
+        (aabb[5]! - aabb[2]!) / 2,
+        COLORS.muted,
+      ),
+    );
+  }
+
+  rebuildMesh();
   const start = performance.now();
 
   const stop = runLoop(() => {
-    fitCanvas(canvas);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawAxes(ctx, cam, canvas);
-    drawWireEdges(ctx, cam, canvas, wire, "#2563eb");
-    drawWireBox(
-      ctx, cam, canvas,
-      (aabb[0] + aabb[3]) / 2, (aabb[1] + aabb[4]) / 2, (aabb[2] + aabb[5]) / 2,
-      (aabb[3] - aabb[0]) / 2, (aabb[4] - aabb[1]) / 2, (aabb[5] - aabb[2]) / 2,
-      "#8b92a0",
-    );
+    demo.clearDynamic();
 
     const t = (performance.now() - start) / 1000;
     const ox = Math.cos(t * 0.8) * 4;
@@ -80,11 +90,17 @@ export function init(container: HTMLElement) {
     const ty = -6;
     const tz = -oz * 1.5;
     const hit = wasm.mesh_ray_cast(ox, oy, oz, tx, ty, tz);
-    const frac = hit[0] === 1.0 ? hit[1] : 1.0;
-    drawSegment(ctx, cam, canvas, [ox, oy, oz], [ox + tx * frac, oy + ty * frac, oz + tz * frac], "#15803d", 2);
-    drawDot(ctx, cam, canvas, [ox, oy, oz], "#15803d", 4);
+    const frac = hit[0] === 1.0 ? hit[1]! : 1.0;
+    demo.dynamic.add(
+      makeSegment(
+        [ox, oy, oz],
+        [ox + tx * frac, oy + ty * frac, oz + tz * frac],
+        COLORS.good,
+      ),
+    );
+    demo.dynamic.add(makeDot([ox, oy, oz], COLORS.good, 0.1));
     if (hit[0] === 1.0) {
-      drawDot(ctx, cam, canvas, [hit[2], hit[3], hit[4]], "#dc2626", 6);
+      demo.dynamic.add(makeDot([hit[2]!, hit[3]!, hit[4]!], COLORS.hit, 0.1));
     }
 
     updateReadout(readout, [
@@ -93,10 +109,12 @@ export function init(container: HTMLElement) {
       { label: "Hit", value: hit[0] === 1.0 ? "yes" : "no" },
       { label: "Triangle", value: hit[0] === 1.0 ? String(hit[8]) : "—" },
     ]);
+
+    demo.render();
   }, readout);
 
   return () => {
     stop();
-    detach();
+    demo.dispose();
   };
 }

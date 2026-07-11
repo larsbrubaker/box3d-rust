@@ -1,0 +1,342 @@
+// Shared Three.js scene helper for demo SPA routes.
+
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+export const COLORS = {
+  accent: 0x2563eb,
+  hit: 0xdc2626,
+  good: 0x15803d,
+  shape: 0x5a6170,
+  muted: 0x8b92a0,
+  bg: 0xf0f2f5,
+} as const;
+
+const _yUp = new THREE.Vector3(0, 1, 0);
+const _tmp = new THREE.Vector3();
+const _tmp2 = new THREE.Vector3();
+
+export class DemoScene {
+  readonly scene: THREE.Scene;
+  readonly camera: THREE.PerspectiveCamera;
+  readonly renderer: THREE.WebGLRenderer;
+  readonly controls: OrbitControls;
+  /** Cleared each frame for dynamic overlays (rays, hits, contacts). */
+  readonly dynamic: THREE.Group;
+  /** Persistent content (shapes that change infrequently). */
+  readonly content: THREE.Group;
+
+  private readonly canvas: HTMLCanvasElement;
+  private readonly ro: ResizeObserver;
+  private disposed = false;
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    opts: {
+      target?: [number, number, number];
+      distance?: number;
+      fov?: number;
+    } = {},
+  ) {
+    this.canvas = canvas;
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(COLORS.bg);
+
+    this.camera = new THREE.PerspectiveCamera(opts.fov ?? 45, 1, 0.05, 200);
+    const dist = opts.distance ?? 12;
+    this.camera.position.set(dist * 0.55, dist * 0.35, dist * 0.75);
+
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.target.set(...(opts.target ?? [0, 0, 0]));
+    this.controls.update();
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    const key = new THREE.DirectionalLight(0xffffff, 0.85);
+    key.position.set(4, 8, 5);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+    fill.position.set(-3, 2, -4);
+    this.scene.add(ambient, key, fill);
+
+    this.content = new THREE.Group();
+    this.dynamic = new THREE.Group();
+    this.scene.add(this.content, this.dynamic);
+
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(canvas.parentElement ?? canvas);
+    this.resize();
+  }
+
+  resize() {
+    if (this.disposed) return;
+    const parent = this.canvas.parentElement ?? this.canvas;
+    const w = Math.max(1, Math.round(parent.clientWidth));
+    const h = Math.max(1, Math.round(parent.clientHeight));
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h, false);
+  }
+
+  clearGroup(group: THREE.Group) {
+    while (group.children.length > 0) {
+      const obj = group.children[0]!;
+      group.remove(obj);
+      disposeObject(obj);
+    }
+  }
+
+  clearContent() {
+    this.clearGroup(this.content);
+  }
+
+  clearDynamic() {
+    this.clearGroup(this.dynamic);
+  }
+
+  render() {
+    if (this.disposed) return;
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.ro.disconnect();
+    this.controls.dispose();
+    this.clearContent();
+    this.clearDynamic();
+    this.scene.traverse((obj) => {
+      if (obj !== this.content && obj !== this.dynamic) disposeObject(obj);
+    });
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+  }
+}
+
+function disposeObject(obj: THREE.Object3D) {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    const mat = mesh.material;
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+    else if (mat) mat.dispose();
+  });
+}
+
+export function makeAxes(len = 1.5): THREE.AxesHelper {
+  return new THREE.AxesHelper(len);
+}
+
+export function solidMat(color: number, opacity = 0.85): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color,
+    transparent: opacity < 1,
+    opacity,
+    roughness: 0.55,
+    metalness: 0.05,
+    side: THREE.DoubleSide,
+  });
+}
+
+export function lineMat(color: number, opacity = 1): THREE.LineBasicMaterial {
+  return new THREE.LineBasicMaterial({
+    color,
+    transparent: opacity < 1,
+    opacity,
+    depthTest: true,
+  });
+}
+
+export function makeSphere(
+  cx: number,
+  cy: number,
+  cz: number,
+  r: number,
+  color: number,
+  opacity = 0.75,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(r, 24, 16),
+    solidMat(color, opacity),
+  );
+  mesh.position.set(cx, cy, cz);
+  return mesh;
+}
+
+/** Capsule between two centers (sphere ends included in length). */
+export function makeCapsule(
+  c1: [number, number, number],
+  c2: [number, number, number],
+  radius: number,
+  color: number,
+  opacity = 0.75,
+): THREE.Mesh {
+  const a = _tmp.set(c1[0], c1[1], c1[2]);
+  const b = _tmp2.set(c2[0], c2[1], c2[2]);
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  const cyl = Math.max(1e-4, len);
+  const mesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(radius, cyl, 6, 12),
+    solidMat(color, opacity),
+  );
+  mesh.position.copy(a).add(b).multiplyScalar(0.5);
+  if (len > 1e-6) {
+    mesh.quaternion.setFromUnitVectors(_yUp, dir.normalize());
+  }
+  return mesh;
+}
+
+export function makeWireBox(
+  cx: number,
+  cy: number,
+  cz: number,
+  hx: number,
+  hy: number,
+  hz: number,
+  color: number,
+): THREE.LineSegments {
+  const geo = new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2);
+  const edges = new THREE.EdgesGeometry(geo);
+  geo.dispose();
+  const lines = new THREE.LineSegments(edges, lineMat(color));
+  lines.position.set(cx, cy, cz);
+  return lines;
+}
+
+export function makeSolidBox(
+  cx: number,
+  cy: number,
+  cz: number,
+  hx: number,
+  hy: number,
+  hz: number,
+  color: number,
+  opacity = 0.35,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2),
+    solidMat(color, opacity),
+  );
+  mesh.position.set(cx, cy, cz);
+  return mesh;
+}
+
+export function makeWireEdges(
+  edges: ArrayLike<number>,
+  color: number,
+  offset = 0,
+): THREE.LineSegments {
+  const positions: number[] = [];
+  for (let i = offset; i + 5 < edges.length; i += 6) {
+    positions.push(
+      edges[i]!,
+      edges[i + 1]!,
+      edges[i + 2]!,
+      edges[i + 3]!,
+      edges[i + 4]!,
+      edges[i + 5]!,
+    );
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  return new THREE.LineSegments(geo, lineMat(color));
+}
+
+/** Reconstruct triangle vertex positions from wireframe edge triplets (3 edges × 6 floats). */
+export function trianglesFromWireframe(wire: ArrayLike<number>): Float32Array {
+  const out: number[] = [];
+  for (let i = 0; i + 17 < wire.length; i += 18) {
+    out.push(wire[i]!, wire[i + 1]!, wire[i + 2]!);
+    out.push(wire[i + 3]!, wire[i + 4]!, wire[i + 5]!);
+    out.push(wire[i + 9]!, wire[i + 10]!, wire[i + 11]!);
+  }
+  return new Float32Array(out);
+}
+
+export function makeTriangleMesh(
+  positions: Float32Array,
+  color: number,
+  opacity = 0.8,
+  wireframe = false,
+): THREE.Mesh {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  const mat = solidMat(color, opacity);
+  mat.wireframe = wireframe;
+  return new THREE.Mesh(geo, mat);
+}
+
+export function makeDot(
+  p: [number, number, number],
+  color: number,
+  r = 0.08,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(r, 12, 8),
+    new THREE.MeshBasicMaterial({ color }),
+  );
+  mesh.position.set(p[0], p[1], p[2]);
+  return mesh;
+}
+
+export function makeSegment(
+  a: [number, number, number],
+  b: [number, number, number],
+  color: number,
+): THREE.Line {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(a[0], a[1], a[2]),
+    new THREE.Vector3(b[0], b[1], b[2]),
+  ]);
+  return new THREE.Line(geo, lineMat(color));
+}
+
+export function makeArrow(
+  from: [number, number, number],
+  dir: [number, number, number],
+  length: number,
+  color: number,
+): THREE.ArrowHelper {
+  const d = new THREE.Vector3(dir[0], dir[1], dir[2]);
+  if (d.lengthSq() < 1e-12) d.set(0, 1, 0);
+  else d.normalize();
+  return new THREE.ArrowHelper(
+    d,
+    new THREE.Vector3(from[0], from[1], from[2]),
+    length,
+    color,
+    length * 0.28,
+    length * 0.16,
+  );
+}
+
+export function makeDashedSegment(
+  a: [number, number, number],
+  b: [number, number, number],
+  color: number,
+): THREE.Line {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(a[0], a[1], a[2]),
+    new THREE.Vector3(b[0], b[1], b[2]),
+  ]);
+  const mat = new THREE.LineDashedMaterial({
+    color,
+    dashSize: 0.12,
+    gapSize: 0.08,
+  });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  return line;
+}

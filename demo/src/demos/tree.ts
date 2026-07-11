@@ -1,15 +1,15 @@
-// Dynamic Tree — AABB proxies and query visualization.
+// Dynamic Tree — AABB proxies and query visualization (Three.js).
 
 import { createInfoBox, createReadout, createSlider, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { demoPage, runLoop } from "./common.ts";
 import {
-  OrbitCamera,
-  demoPage,
-  drawAxes,
-  drawWireBox,
-  fitCanvas,
-  runLoop,
-} from "./common.ts";
+  COLORS,
+  DemoScene,
+  makeAxes,
+  makeSolidBox,
+  makeWireBox,
+} from "../three-scene.ts";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
@@ -41,17 +41,13 @@ export function init(container: HTMLElement) {
   const readout = createReadout();
   controls.appendChild(readout);
 
-  const cam = new OrbitCamera();
-  cam.distance = 14;
-  cam.scale = 40;
-  const detach = cam.attachDrag(canvas);
-  const ctx = canvas.getContext("2d")!;
+  const demo = new DemoScene(canvas, { distance: 16 });
   const start = performance.now();
 
   const stop = runLoop(() => {
-    fitCanvas(canvas);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawAxes(ctx, cam, canvas);
+    demo.clearContent();
+    demo.clearDynamic();
+    demo.content.add(makeAxes(1.5));
 
     const t = (performance.now() - start) / 1000;
     const qx = Math.cos(t * 0.6) * 2.5;
@@ -62,42 +58,47 @@ export function init(container: HTMLElement) {
     const aabbs = wasm.tree_proxy_aabbs();
     const query = wasm.tree_query(qx, qy, qz, qh);
     const hitSet = new Set<number>();
-    for (let i = 3; i < query.length; i++) hitSet.add(query[i]);
+    for (let i = 3; i < query.length; i++) hitSet.add(query[i]!);
 
-    const n = aabbs[0];
+    const n = aabbs[0]!;
     for (let i = 0; i < n; i++) {
       const o = 1 + i * 6;
-      const lx = aabbs[o];
-      const ly = aabbs[o + 1];
-      const lz = aabbs[o + 2];
-      const ux = aabbs[o + 3];
-      const uy = aabbs[o + 4];
-      const uz = aabbs[o + 5];
-      // Proxy ids are creation order 0..n-1 in our demo
-      const color = hitSet.has(i) ? "#15803d" : "#8b92a0";
-      drawWireBox(
-        ctx, cam, canvas,
-        (lx + ux) / 2, (ly + uy) / 2, (lz + uz) / 2,
-        (ux - lx) / 2, (uy - ly) / 2, (uz - lz) / 2,
-        color,
-      );
+      const lx = aabbs[o]!;
+      const ly = aabbs[o + 1]!;
+      const lz = aabbs[o + 2]!;
+      const ux = aabbs[o + 3]!;
+      const uy = aabbs[o + 4]!;
+      const uz = aabbs[o + 5]!;
+      const cx = (lx + ux) / 2;
+      const cy = (ly + uy) / 2;
+      const cz = (lz + uz) / 2;
+      const hx = (ux - lx) / 2;
+      const hy = (uy - ly) / 2;
+      const hz = (uz - lz) / 2;
+      const hit = hitSet.has(i);
+      const color = hit ? COLORS.good : COLORS.muted;
+      demo.content.add(makeSolidBox(cx, cy, cz, hx, hy, hz, color, hit ? 0.35 : 0.15));
+      demo.content.add(makeWireBox(cx, cy, cz, hx, hy, hz, color));
     }
 
-    drawWireBox(ctx, cam, canvas, qx, qy, qz, qh, qh, qh, "#2563eb");
+    demo.dynamic.add(makeSolidBox(qx, qy, qz, qh, qh, qh, COLORS.accent, 0.2));
+    demo.dynamic.add(makeWireBox(qx, qy, qz, qh, qh, qh, COLORS.accent));
 
     const metrics = wasm.tree_metrics();
     updateReadout(readout, [
       { label: "Proxies", value: String(metrics[0]) },
       { label: "Tree height", value: String(metrics[1]) },
-      { label: "Area ratio", value: metrics[2].toFixed(3) },
+      { label: "Area ratio", value: metrics[2]!.toFixed(3) },
       { label: "Query hits", value: String(query[0]) },
       { label: "Node visits", value: String(query[1]) },
       { label: "Leaf visits", value: String(query[2]) },
     ]);
+
+    demo.render();
   }, readout);
 
   return () => {
     stop();
-    detach();
+    demo.dispose();
   };
 }

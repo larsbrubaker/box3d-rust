@@ -1,15 +1,15 @@
-// Hull — create_hull / make_box_hull wireframes.
+// Hull — create_hull / make_box_hull wireframes (Three.js).
 
 import { createButtonGroup, createInfoBox, createReadout, createSlider, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { demoPage, runLoop } from "./common.ts";
 import {
-  OrbitCamera,
-  demoPage,
-  drawAxes,
-  drawWireEdges,
-  fitCanvas,
-  runLoop,
-} from "./common.ts";
+  COLORS,
+  DemoScene,
+  makeAxes,
+  makeSolidBox,
+  makeWireEdges,
+} from "../three-scene.ts";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
@@ -31,7 +31,7 @@ export function init(container: HTMLElement) {
   controls.appendChild(
     createInfoBox(
       "Box hulls use the embedded <code>b3BoxHull</code> template. The pyramid/prism mode " +
-        "feeds a ring of points plus poles into quickhull.",
+        "feeds a ring of points plus poles into quickhull. Solid fill + wireframe edges.",
     ),
   );
   controls.appendChild(
@@ -53,20 +53,16 @@ export function init(container: HTMLElement) {
   const readout = createReadout();
   controls.appendChild(readout);
 
-  const cam = new OrbitCamera();
-  cam.distance = 8;
-  cam.scale = 70;
-  const detach = cam.attachDrag(canvas);
-  const ctx = canvas.getContext("2d")!;
+  const demo = new DemoScene(canvas, { distance: 9 });
 
   const stop = runLoop(() => {
-    fitCanvas(canvas);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawAxes(ctx, cam, canvas);
+    demo.clearContent();
+    demo.content.add(makeAxes(1.5));
 
     if (mode === "box") {
       const edges = wasm.box_hull_edges(hx, hy, hz);
-      drawWireEdges(ctx, cam, canvas, edges, "#2563eb");
+      demo.content.add(makeSolidBox(0, 0, 0, hx, hy, hz, COLORS.accent, 0.35));
+      demo.content.add(makeWireEdges(edges, COLORS.accent));
       updateReadout(readout, [
         { label: "API", value: "b3MakeBoxHull" },
         { label: "Edges", value: String(edges.length / 6) },
@@ -74,7 +70,7 @@ export function init(container: HTMLElement) {
       ]);
     } else {
       const data = wasm.create_hull_demo(sides, Math.max(hx, hz), hy);
-      drawWireEdges(ctx, cam, canvas, data, "#15803d", 3);
+      demo.content.add(makeWireEdges(data, COLORS.good, 3));
       updateReadout(readout, [
         { label: "API", value: "b3CreateHull" },
         { label: "Vertices", value: String(data[0]) },
@@ -82,10 +78,12 @@ export function init(container: HTMLElement) {
         { label: "Half-edges", value: String(data[2]) },
       ]);
     }
+
+    demo.render();
   }, readout);
 
   return () => {
     stop();
-    detach();
+    demo.dispose();
   };
 }

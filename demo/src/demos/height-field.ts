@@ -1,17 +1,19 @@
-// Height Field — wave HF with ray cast.
+// Height Field — wave HF mesh surface with ray cast (Three.js).
 
 import { createInfoBox, createReadout, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { demoPage, runLoop } from "./common.ts";
 import {
-  OrbitCamera,
-  demoPage,
-  drawAxes,
-  drawDot,
-  drawSegment,
-  drawWireEdges,
-  fitCanvas,
-  runLoop,
-} from "./common.ts";
+  COLORS,
+  DemoScene,
+  makeArrow,
+  makeAxes,
+  makeDot,
+  makeSegment,
+  makeTriangleMesh,
+  makeWireEdges,
+  trianglesFromWireframe,
+} from "../three-scene.ts";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
@@ -27,31 +29,29 @@ export function init(container: HTMLElement) {
 
   const triCount = wasm.hf_build_wave();
   const wire = wasm.hf_wireframe();
+  const positions = trianglesFromWireframe(wire);
 
   controls.appendChild(
     createInfoBox(
-      `Wave height field with ${triCount} triangles. The sweeping ray reports hit fraction, ` +
-        "point, normal, and triangle index — all from Rust wasm.",
+      `Wave height field with ${triCount} triangles rendered as a Three.js mesh. The sweeping ` +
+        "ray reports hit fraction, point, normal, and triangle index — all from Rust wasm.",
     ),
   );
   const readout = createReadout();
   controls.appendChild(readout);
 
-  const cam = new OrbitCamera();
-  cam.yaw = 0.9;
-  cam.pitch = 0.55;
-  cam.distance = 14;
-  cam.scale = 28;
-  cam.target = [4, 0, 4];
-  const detach = cam.attachDrag(canvas);
-  const ctx = canvas.getContext("2d")!;
+  const demo = new DemoScene(canvas, {
+    target: [4, 0, 4],
+    distance: 16,
+  });
+  demo.content.add(makeAxes(2));
+  demo.content.add(makeTriangleMesh(positions, COLORS.shape, 0.7));
+  demo.content.add(makeWireEdges(wire, COLORS.muted));
+
   const start = performance.now();
 
   const stop = runLoop(() => {
-    fitCanvas(canvas);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawAxes(ctx, cam, canvas, 2);
-    drawWireEdges(ctx, cam, canvas, wire, "#5a6170", 0);
+    demo.clearDynamic();
 
     const t = (performance.now() - start) / 1000;
     const ox = 4 + Math.cos(t * 0.7) * 5;
@@ -61,30 +61,39 @@ export function init(container: HTMLElement) {
     const ty = -12;
     const tz = 0;
     const hit = wasm.hf_ray_cast(ox, oy, oz, tx, ty, tz);
-    const frac = hit[0] === 1.0 ? hit[1] : 1.0;
-    drawSegment(ctx, cam, canvas, [ox, oy, oz], [ox + tx * frac, oy + ty * frac, oz + tz * frac], "#2563eb", 2);
-    drawDot(ctx, cam, canvas, [ox, oy, oz], "#2563eb", 4);
+    const frac = hit[0] === 1.0 ? hit[1]! : 1.0;
+    demo.dynamic.add(
+      makeSegment(
+        [ox, oy, oz],
+        [ox + tx * frac, oy + ty * frac, oz + tz * frac],
+        COLORS.accent,
+      ),
+    );
+    demo.dynamic.add(makeDot([ox, oy, oz], COLORS.accent, 0.1));
     if (hit[0] === 1.0) {
-      drawDot(ctx, cam, canvas, [hit[2], hit[3], hit[4]], "#dc2626", 6);
-      drawSegment(
-        ctx, cam, canvas,
-        [hit[2], hit[3], hit[4]],
-        [hit[2] + hit[5], hit[3] + hit[6], hit[4] + hit[7]],
-        "#dc2626",
-        2,
+      demo.dynamic.add(makeDot([hit[2]!, hit[3]!, hit[4]!], COLORS.hit, 0.1));
+      demo.dynamic.add(
+        makeArrow(
+          [hit[2]!, hit[3]!, hit[4]!],
+          [hit[5]!, hit[6]!, hit[7]!],
+          1.0,
+          COLORS.hit,
+        ),
       );
     }
 
     updateReadout(readout, [
       { label: "Triangles", value: String(triCount) },
       { label: "Hit", value: hit[0] === 1.0 ? "yes" : "no" },
-      { label: "Fraction", value: hit[1].toFixed(4) },
+      { label: "Fraction", value: hit[1]!.toFixed(4) },
       { label: "Triangle", value: hit[0] === 1.0 ? String(hit[8]) : "—" },
     ]);
+
+    demo.render();
   }, readout);
 
   return () => {
     stop();
-    detach();
+    demo.dispose();
   };
 }
