@@ -99,6 +99,9 @@ mod math_functions_tests;
 mod mesh_tests;
 
 #[cfg(test)]
+mod shape_tests;
+
+#[cfg(test)]
 mod table_tests;
 
 #[cfg(test)]

@@ -3,7 +3,9 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
-use super::{create_shape_proxy, get_shape_centroid, shape_flags, Shape, ShapeGeometry};
+use super::{
+    create_shape_proxy, destroy_shape_proxy, get_shape_centroid, shape_flags, Shape, ShapeGeometry,
+};
 use crate::constants::{linear_slop, max_aabb_margin, AABB_MARGIN_FRACTION, MAX_SHAPES};
 use crate::core::{NULL_INDEX, SECRET_COOKIE};
 use crate::geometry::{Capsule, Sphere};
@@ -262,8 +264,20 @@ pub fn create_capsule_shape(
     }
 }
 
+/// (b3CreateHullShape)
+pub fn create_hull_shape(
+    world: &mut World,
+    body_id: crate::id::BodyId,
+    def: &ShapeDef,
+    hull: &HullData,
+) -> ShapeId {
+    debug_assert!(crate::hull::is_valid_hull(hull));
+    debug_assert!(hull.hash != 0);
+    let shared = world.hull_database.add(hull);
+    create_shape(world, body_id, def, ShapeGeometry::Hull(shared))
+}
+
 /// Resolve a ShapeId to the shape index. (b3GetShape)
-#[allow(dead_code)]
 pub fn get_shape(world: &World, shape_id: ShapeId) -> i32 {
     let id = shape_id.index1 - 1;
     let shape = &world.shapes[id as usize];
@@ -271,8 +285,148 @@ pub fn get_shape(world: &World, shape_id: ShapeId) -> i32 {
     id
 }
 
-/// Owned hull geometry helper for future hull-database create.
-#[allow(dead_code)]
-pub(crate) fn hull_geometry(hull: HullData) -> ShapeGeometry {
-    ShapeGeometry::Hull(hull)
+/// Shape identifier validation. (b3Shape_IsValid)
+pub fn shape_is_valid(world: &World, id: ShapeId) -> bool {
+    if id.index1 < 1 || (world.shapes.len() as i32) < id.index1 {
+        return false;
+    }
+    let shape = &world.shapes[(id.index1 - 1) as usize];
+    if shape.id == NULL_INDEX {
+        return false;
+    }
+    shape.generation == id.generation
+}
+
+/// (b3Shape_GetHull) — returns None for non-hull shapes.
+pub fn shape_get_hull(world: &World, shape_id: ShapeId) -> Option<&HullData> {
+    let index = get_shape(world, shape_id);
+    match &world.shapes[index as usize].geometry {
+        ShapeGeometry::Hull(hull) => Some(hull.as_ref()),
+        _ => None,
+    }
+}
+
+/// Free hull-database and material allocations for a shape.
+/// (b3DestroyShapeAllocations)
+fn destroy_shape_allocations(world: &mut World, shape_index: i32) {
+    let geometry = std::mem::replace(
+        &mut world.shapes[shape_index as usize].geometry,
+        ShapeGeometry::default(),
+    );
+    if let ShapeGeometry::Hull(rc) = &geometry {
+        world.hull_database.release(rc);
+    }
+    drop(geometry);
+    world.shapes[shape_index as usize].materials.clear();
+}
+
+/// Destroy a shape on a body. (static b3DestroyShapeInternal)
+pub(crate) fn destroy_shape_internal(
+    world: &mut World,
+    shape_index: i32,
+    body_index: i32,
+    wake_bodies: bool,
+) {
+    let _ = wake_bodies; // contact destroy uses this; contacts land next
+
+    let (prev_shape_id, next_shape_id, sensor_index, generation) = {
+        let shape = &world.shapes[shape_index as usize];
+        (
+            shape.prev_shape_id,
+            shape.next_shape_id,
+            shape.sensor_index,
+            shape.generation,
+        )
+    };
+
+    // Remove the shape from the body's doubly linked list.
+    if prev_shape_id != NULL_INDEX {
+        world.shapes[prev_shape_id as usize].next_shape_id = next_shape_id;
+    }
+    if next_shape_id != NULL_INDEX {
+        world.shapes[next_shape_id as usize].prev_shape_id = prev_shape_id;
+    }
+    if shape_index == world.bodies[body_index as usize].head_shape_id {
+        world.bodies[body_index as usize].head_shape_id = next_shape_id;
+    }
+    world.bodies[body_index as usize].shape_count -= 1;
+
+    // Remove from broad-phase.
+    {
+        let (shapes, broad_phase) = (&mut world.shapes, &mut world.broad_phase);
+        destroy_shape_proxy(&mut shapes[shape_index as usize], broad_phase);
+    }
+
+    // Destroy contacts associated with the shape (empty until contact create).
+    let mut contact_key = world.bodies[body_index as usize].head_contact_key;
+    while contact_key != NULL_INDEX {
+        let contact_id = contact_key >> 1;
+        let edge_index = contact_key & 1;
+        let contact = &world.contacts[contact_id as usize];
+        contact_key = contact.edges[edge_index as usize].next_key;
+        debug_assert!(
+            contact.shape_id_a != shape_index && contact.shape_id_b != shape_index,
+            "contact destroy not yet ported; no contacts should reference shapes"
+        );
+    }
+
+    if sensor_index != NULL_INDEX {
+        let world_id = world.world_id;
+        let overlaps: Vec<_> = world.sensors[sensor_index as usize].overlaps2.clone();
+        for visitor in overlaps {
+            world.sensor_end_events[world.end_event_array_index as usize].push(
+                crate::events::SensorEndTouchEvent {
+                    sensor_shape_id: ShapeId {
+                        index1: shape_index + 1,
+                        world0: world_id,
+                        generation,
+                    },
+                    visitor_shape_id: ShapeId {
+                        index1: visitor.shape_id + 1,
+                        world0: world_id,
+                        generation: visitor.generation,
+                    },
+                },
+            );
+        }
+
+        world.sensors[sensor_index as usize].hits.clear();
+        world.sensors[sensor_index as usize].overlaps1.clear();
+        world.sensors[sensor_index as usize].overlaps2.clear();
+
+        let last = world.sensors.len() as i32 - 1;
+        world.sensors.swap_remove(sensor_index as usize);
+        if sensor_index < last {
+            let moved_shape_id = world.sensors[sensor_index as usize].shape_id;
+            world.shapes[moved_shape_id as usize].sensor_index = sensor_index;
+        }
+    }
+
+    destroy_shape_allocations(world, shape_index);
+
+    world.shape_id_pool.free_id(shape_index);
+    world.shapes[shape_index as usize].id = NULL_INDEX;
+
+    world.validate_solver_sets();
+}
+
+/// Destroy a shape. (b3DestroyShape)
+pub fn destroy_shape(world: &mut World, shape_id: ShapeId, update_body_mass: bool) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    world.locked = true;
+
+    let shape_index = get_shape(world, shape_id);
+    let body_index = world.shapes[shape_index as usize].body_id;
+
+    destroy_shape_internal(world, shape_index, body_index, true);
+
+    if update_body_mass {
+        crate::body::update_body_mass_data(world, body_index);
+    }
+
+    world.locked = false;
 }

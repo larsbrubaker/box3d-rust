@@ -374,10 +374,18 @@ pub fn destroy_body(world: &mut World, body_id: BodyId) {
 
     let body_index = get_body_full_id(world, body_id);
 
-    // Attachment lists are empty until joint/contact/shape create lands.
+    // Attachment lists: joints empty until joint create; contacts empty until
+    // contact create; shapes are destroyed here like C's b3DestroyBody.
     debug_assert!(world.bodies[body_index as usize].head_joint_key == NULL_INDEX);
     debug_assert!(world.bodies[body_index as usize].head_contact_key == NULL_INDEX);
-    debug_assert!(world.bodies[body_index as usize].head_shape_id == NULL_INDEX);
+
+    // Destroy the attached shapes and their broad-phase proxies.
+    let mut shape_id = world.bodies[body_index as usize].head_shape_id;
+    while shape_id != NULL_INDEX {
+        let next = world.shapes[shape_id as usize].next_shape_id;
+        crate::shape::lifecycle::destroy_shape_internal(world, shape_id, body_index, true);
+        shape_id = next;
+    }
 
     remove_body_from_island(world, body_index);
 

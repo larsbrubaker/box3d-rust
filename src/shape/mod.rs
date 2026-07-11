@@ -18,6 +18,7 @@ use crate::hull::HullData;
 use crate::math_functions::{Aabb, Vec3, BOUNDS3_EMPTY, VEC3_ONE, VEC3_ZERO};
 use crate::mesh::MeshData;
 use crate::types::{Filter, QueryFilter};
+use std::rc::Rc;
 
 /// Shape flag bits. (enum b3ShapeFlags)
 pub mod shape_flags {
@@ -34,8 +35,8 @@ pub mod shape_flags {
 pub enum ShapeGeometry {
     Capsule(Capsule),
     Sphere(Sphere),
-    /// Owned hull data. World hull-database sharing lands with shape create.
-    Hull(HullData),
+    /// Shared hull from the world hull database. (C: `const b3HullData* hull`)
+    Hull(Rc<HullData>),
     /// Mesh data plus per-instance scale (C: `b3Mesh { data*, scale }`).
     Mesh { data: MeshData, scale: Vec3 },
     HeightField(HeightFieldData),
@@ -192,7 +193,7 @@ pub fn mesh_geometry(data: MeshData) -> ShapeGeometry {
 
 mod api;
 mod dispatch;
-mod lifecycle;
+pub(crate) mod lifecycle;
 
 pub use api::*;
 pub use dispatch::*;

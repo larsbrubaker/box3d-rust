@@ -12,8 +12,8 @@
 //   a pooled allocator can return later if profiling warrants it.
 // - Scheduler/task-system fields are deferred with the single-threaded port;
 //   worker_count is kept and clamped like C.
-// - b3Recording and hull database land with their slices; placeholders omit
-//   opaque C pointers that have no Rust type yet.
+// - b3Recording lands with its slice; placeholders omit opaque C pointers.
+// - Hull database is a content-keyed Rc store (verstable map in C).
 // - Pre-solve and custom-filter callbacks keep the C shape as Option<fn> with
 //   a u64 context.
 //
@@ -30,6 +30,7 @@ use crate::events::{
     BodyMoveEvent, ContactBeginTouchEvent, ContactEndTouchEvent, ContactHitEvent, JointEvent,
     SensorBeginTouchEvent, SensorEndTouchEvent,
 };
+use crate::hull::HullDatabase;
 use crate::id::ShapeId;
 use crate::id_pool::IdPool;
 use crate::island::Island;
@@ -167,6 +168,9 @@ pub struct World {
     /// Sparse array of shapes.
     pub shapes: Vec<Shape>,
 
+    /// Content-keyed shared hull store. (world->hullDatabase)
+    pub hull_database: HullDatabase,
+
     /// Name cache for shape and body names.
     pub names: NameCache,
 
@@ -275,7 +279,7 @@ impl World {
     /// Differences from C, all documented in the module header: there is no
     /// global world registry (the returned World is owned; `world_id` stays 0
     /// unless the embedder assigns one), no arena stack / manifold block
-    /// allocator / hull database yet, and the serial task path is always used
+    /// allocator yet, and the serial task path is always used
     /// (worker_count = 1 with one task context), which is the C fallback when
     /// no task system is supplied.
     pub fn new(def: &crate::types::WorldDef) -> World {
@@ -351,6 +355,7 @@ impl World {
             islands: Vec::with_capacity(max_int(16, def.capacity.dynamic_body_count) as usize),
             shape_id_pool: IdPool::new(),
             shapes: Vec::with_capacity(shape_capacity),
+            hull_database: HullDatabase::new(),
             names: NameCache::new(),
             sensors: Vec::with_capacity(4),
             // Serial fallback: one worker context. (b3CreateWorkerContexts)

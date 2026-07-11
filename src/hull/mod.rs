@@ -9,6 +9,7 @@ mod builder_init;
 mod builder_ops;
 mod builder_pool;
 mod create;
+mod database;
 mod identity;
 mod queries;
 mod types;
@@ -16,6 +17,7 @@ mod validate;
 
 pub use box_hull::*;
 pub use create::*;
+pub use database::*;
 pub use identity::*;
 pub use queries::*;
 pub use types::*;
