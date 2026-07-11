@@ -120,6 +120,9 @@ mod mover_tests;
 mod shape_tests;
 
 #[cfg(test)]
+mod shape_api_tests;
+
+#[cfg(test)]
 mod table_tests;
 
 #[cfg(test)]

@@ -8,20 +8,22 @@ the track is done (also remove its row from todo.md).**
 `EnableSleep` (+ flag-sync tests), motion locks set/get, bullet API, name /
 user data, local/world point/vector + point velocity, ApplyForce/Torque/
 Impulse variants, `SetTransform`, `SetAwake` / `IsAwake` / `IsEnabled` /
-`GetType`, `SetType` / `Enable` / `Disable`.
+`GetType`, `SetType` / `Enable` / `Disable`, shape filter get/set (proxy +
+contact refresh), material get/set (base + per-index friction/restitution/rolling).
 
-Collision geometry is fully ported. Remaining work is shape mutators and one
-mesh-drop world test.
+Collision geometry and body/shape filter+material mutators are ported. Remaining:
+shape enable/geometry/query APIs, mesh narrow-phase (needed by TestMeshDrop),
+and test remainders.
 
-## Shape creation leftovers
+## Mesh narrow-phase (blocks TestMeshDrop)
 
-- [ ] Port `TestMeshDrop` from `test_world.c` (mesh shape create is ready;
-      exercises continuous collision / mesh contact stability until sleep)
+- [ ] Port `mesh_contact.c` (mesh/height narrow-phase in `update_contact`;
+      contacts currently clear manifolds — bodies fall through meshes)
+- [ ] Port `TestMeshDrop` from `test_world.c` (needs mesh_contact; exercises
+      mesh contact stability until sleep)
 
 ## b3Shape_* API (shape.c)
 
-- [ ] Filter get/set (with proxy + contact refresh on change)
-- [ ] Material get/set (base + per-index), friction/restitution/rolling
 - [ ] Enable flags: sensor events, contact events, hit events, pre-solve
 - [ ] Geometry get/set (SetSphere/SetCapsule/SetHull/… with proxy rebuild)
 - [ ] Ray cast / point test / closest point against a single shape

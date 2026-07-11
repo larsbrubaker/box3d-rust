@@ -3,6 +3,7 @@
 // Split to satisfy the 800-line file limit:
 // - dispatch.rs  — per-shape-type dispatch (AABBs, mass, centroid, proxy)
 // - lifecycle.rs — shape creation (margin, create_shape_internal, typed wrappers)
+// - mutators.rs  — filter / material public getters and setters
 // - api.rs       — public create re-exports
 //
 // This file holds the data model and filter predicates.
@@ -141,6 +142,20 @@ impl Shape {
         &mats[index as usize]
     }
 
+    /// Mutable materials slice. (b3GetShapeMaterials writable)
+    pub fn shape_materials_mut(&mut self) -> &mut [SurfaceMaterial] {
+        if self.materials.is_empty() {
+            core::slice::from_mut(&mut self.material)
+        } else {
+            &mut self.materials
+        }
+    }
+
+    /// Mutable material at index.
+    pub fn get_material_mut(&mut self, index: i32) -> &mut SurfaceMaterial {
+        &mut self.shape_materials_mut()[index as usize]
+    }
+
     /// User material id for a child/triangle of this shape.
     /// (b3GetShapeUserMaterialId)
     ///
@@ -246,8 +261,10 @@ pub fn mesh_geometry(data: MeshData) -> ShapeGeometry {
 mod api;
 mod dispatch;
 pub(crate) mod lifecycle;
+mod mutators;
 mod query;
 
 pub use api::*;
 pub use dispatch::*;
+pub use mutators::*;
 pub use query::*;
