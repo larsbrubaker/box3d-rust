@@ -230,6 +230,8 @@ impl Default for ContactSpec {
 }
 
 mod lifecycle;
+mod update;
 
 pub use lifecycle::*;
+pub use update::*;
 

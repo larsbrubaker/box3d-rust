@@ -207,3 +207,88 @@ fn link_and_graph_dyn_static_contact() {
     assert!(!color.convex_contacts.contains(&contact_id));
     assert!(!color.contacts.iter().any(|s| s.contact_id == contact_id));
 }
+
+#[test]
+fn update_contact_spheres_touching_and_separated() {
+    use crate::contact::update_contact;
+    use crate::math_functions::{WorldTransform, POS_ZERO, QUAT_IDENTITY};
+
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body_a = create_body(&mut world, &body_def);
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: 0.5 as _,
+        z: 0.0 as _,
+    };
+    let body_b = create_body(&mut world, &body_def);
+
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    shape_def.invoke_contact_creation = false;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    let shape_a = create_sphere_shape(&mut world, body_a, &shape_def, &sphere);
+    let shape_b = create_sphere_shape(&mut world, body_b, &shape_def, &sphere);
+
+    create_contact(&mut world, shape_a.index1 - 1, shape_b.index1 - 1, 0);
+    let contact_id = world.solver_sets[AWAKE_SET as usize].contact_indices[0];
+
+    let xf_a = WorldTransform {
+        p: POS_ZERO,
+        q: QUAT_IDENTITY,
+    };
+    let xf_b = WorldTransform {
+        p: Pos {
+            x: 0.0 as _,
+            y: 0.5 as _,
+            z: 0.0 as _,
+        },
+        q: QUAT_IDENTITY,
+    };
+
+    let touching = update_contact(
+        &mut world,
+        0,
+        contact_id,
+        shape_a.index1 - 1,
+        VEC3_ZERO,
+        xf_a,
+        shape_b.index1 - 1,
+        VEC3_ZERO,
+        xf_b,
+        false,
+    );
+    assert!(touching);
+    assert!((world.contacts[contact_id as usize].flags & contact_flags::SIM_TOUCHING) != 0);
+    assert_eq!(world.contacts[contact_id as usize].manifold_count(), 1);
+    assert!(world.contacts[contact_id as usize].manifolds[0].point_count >= 1);
+
+    let xf_far = WorldTransform {
+        p: Pos {
+            x: 0.0 as _,
+            y: 5.0 as _,
+            z: 0.0 as _,
+        },
+        q: QUAT_IDENTITY,
+    };
+    let touching = update_contact(
+        &mut world,
+        0,
+        contact_id,
+        shape_a.index1 - 1,
+        VEC3_ZERO,
+        xf_a,
+        shape_b.index1 - 1,
+        VEC3_ZERO,
+        xf_far,
+        false,
+    );
+    assert!(!touching);
+    assert!((world.contacts[contact_id as usize].flags & contact_flags::SIM_TOUCHING) == 0);
+    assert!(world.contacts[contact_id as usize].manifolds.is_empty());
+}
