@@ -29,7 +29,7 @@ use crate::solver_set::{
 };
 use crate::types::{
     BodyType, DistanceJointDef, FilterJointDef, JointDef, MotorJointDef, ParallelJointDef,
-    PrismaticJointDef, RevoluteJointDef, WeldJointDef,
+    PrismaticJointDef, RevoluteJointDef, SphericalJointDef, WeldJointDef,
 };
 use crate::world::World;
 
@@ -376,6 +376,41 @@ pub fn create_parallel_joint(world: &mut World, def: &ParallelJointDef) -> Joint
     joint.hertz = def.hertz;
     joint.damping_ratio = def.damping_ratio;
     joint.max_torque = def.max_torque;
+
+    make_joint_id(world, joint_id)
+}
+
+/// (b3CreateSphericalJoint)
+pub fn create_spherical_joint(world: &mut World, def: &SphericalJointDef) -> JointId {
+    debug_assert!(def.base.internal_value == crate::core::SECRET_COOKIE);
+    debug_assert!((0.0..=0.99 * PI).contains(&def.cone_angle));
+    debug_assert!(crate::math_functions::is_valid_quat(def.target_rotation));
+    debug_assert!(!world.locked);
+    if world.locked {
+        return crate::id::NULL_JOINT_ID;
+    }
+
+    let joint_id = create_joint(world, &def.base, JointType::Spherical);
+
+    let joint_sim = get_joint_sim(world, joint_id);
+    let joint = joint_sim.spherical_mut();
+    *joint = super::SphericalJoint::default();
+    joint.hertz = def.hertz;
+    joint.damping_ratio = def.damping_ratio;
+    joint.target_rotation = def.target_rotation;
+    joint.cone_angle = clamp_float(def.cone_angle, 0.0, 0.5 * PI);
+
+    let lower_angle = min_float(def.lower_twist_angle, def.upper_twist_angle);
+    let upper_angle = max_float(def.lower_twist_angle, def.upper_twist_angle);
+    joint.lower_twist_angle = clamp_float(lower_angle, -0.99 * PI, 0.99 * PI);
+    joint.upper_twist_angle = clamp_float(upper_angle, -0.99 * PI, 0.99 * PI);
+
+    joint.max_motor_torque = def.max_motor_torque;
+    joint.motor_velocity = def.motor_velocity;
+    joint.enable_spring = def.enable_spring;
+    joint.enable_cone_limit = def.enable_cone_limit;
+    joint.enable_twist_limit = def.enable_twist_limit;
+    joint.enable_motor = def.enable_motor;
 
     make_joint_id(world, joint_id)
 }

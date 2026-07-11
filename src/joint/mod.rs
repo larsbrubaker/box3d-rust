@@ -18,6 +18,7 @@ mod parallel;
 mod plumbing;
 mod prismatic;
 mod revolute;
+mod spherical;
 mod weld;
 
 pub use distance::*;
@@ -27,6 +28,7 @@ pub use parallel::*;
 pub use plumbing::*;
 pub use prismatic::*;
 pub use revolute::*;
+pub use spherical::*;
 pub use weld::*;
 
 /// Joint type enumeration. (types.h: b3JointType)
@@ -709,6 +711,21 @@ impl JointSim {
         match &mut self.union_ {
             JointUnion::Motor(joint) => joint,
             _ => unreachable!("joint union is not a motor joint"),
+        }
+    }
+
+    /// (C: &base->sphericalJoint)
+    pub fn spherical(&self) -> &SphericalJoint {
+        match &self.union_ {
+            JointUnion::Spherical(joint) => joint,
+            _ => unreachable!("joint union is not a spherical joint"),
+        }
+    }
+
+    pub fn spherical_mut(&mut self) -> &mut SphericalJoint {
+        match &mut self.union_ {
+            JointUnion::Spherical(joint) => joint,
+            _ => unreachable!("joint union is not a spherical joint"),
         }
     }
 }
