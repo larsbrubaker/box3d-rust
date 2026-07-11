@@ -414,4 +414,18 @@ impl World {
             in_use: true,
         }
     }
+
+    /// (b3World_EnableContinuous)
+    pub fn enable_continuous(&mut self, flag: bool) {
+        debug_assert!(!self.locked);
+        if self.locked {
+            return;
+        }
+        self.enable_continuous = flag;
+    }
+
+    /// (b3World_IsContinuousEnabled)
+    pub fn is_continuous_enabled(&self) -> bool {
+        self.enable_continuous
+    }
 }

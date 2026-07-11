@@ -234,3 +234,120 @@ pub fn body_get_position(world: &World, body_id: BodyId) -> Pos {
     let body_index = get_body_full_id(world, body_id);
     get_body_transform_quick(world, &world.bodies[body_index as usize]).p
 }
+
+/// (b3Body_GetTransform)
+pub fn body_get_transform(world: &World, body_id: BodyId) -> crate::math_functions::WorldTransform {
+    let body_index = get_body_full_id(world, body_id);
+    get_body_transform_quick(world, &world.bodies[body_index as usize])
+}
+
+/// (b3Body_SetBullet)
+pub fn body_set_bullet(world: &mut World, body_id: BodyId, flag: bool) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    let new_flag = if flag { body_flags::IS_BULLET } else { 0 };
+    let body_index = get_body_full_id(world, body_id);
+    if (world.bodies[body_index as usize].flags & body_flags::IS_BULLET) == new_flag {
+        return;
+    }
+
+    world.bodies[body_index as usize].flags &= !body_flags::IS_BULLET;
+    world.bodies[body_index as usize].flags |= new_flag;
+    sync_body_flags(world, body_index);
+}
+
+/// (b3Body_IsBullet)
+pub fn body_is_bullet(world: &World, body_id: BodyId) -> bool {
+    let body_index = get_body_full_id(world, body_id);
+    (world.bodies[body_index as usize].flags & body_flags::IS_BULLET) != 0
+}
+
+/// (b3Body_SetMotionLocks)
+pub fn body_set_motion_locks(
+    world: &mut World,
+    body_id: BodyId,
+    locks: crate::types::MotionLocks,
+) {
+    use super::mass::update_body_mass_data;
+
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    let mut new_locks = 0u32;
+    new_locks |= if locks.linear_x {
+        body_flags::LOCK_LINEAR_X
+    } else {
+        0
+    };
+    new_locks |= if locks.linear_y {
+        body_flags::LOCK_LINEAR_Y
+    } else {
+        0
+    };
+    new_locks |= if locks.linear_z {
+        body_flags::LOCK_LINEAR_Z
+    } else {
+        0
+    };
+    new_locks |= if locks.angular_x {
+        body_flags::LOCK_ANGULAR_X
+    } else {
+        0
+    };
+    new_locks |= if locks.angular_y {
+        body_flags::LOCK_ANGULAR_Y
+    } else {
+        0
+    };
+    new_locks |= if locks.angular_z {
+        body_flags::LOCK_ANGULAR_Z
+    } else {
+        0
+    };
+
+    let body_index = get_body_full_id(world, body_id);
+    if (world.bodies[body_index as usize].flags & body_flags::ALL_LOCKS) == new_locks {
+        return;
+    }
+
+    let fixed_rotation1 = (world.bodies[body_index as usize].flags & body_flags::FIXED_ROTATION)
+        == body_flags::FIXED_ROTATION;
+    let fixed_rotation2 = (new_locks & body_flags::FIXED_ROTATION) == body_flags::FIXED_ROTATION;
+
+    world.bodies[body_index as usize].flags &= !body_flags::ALL_LOCKS;
+    world.bodies[body_index as usize].flags |= new_locks;
+
+    sync_body_flags(world, body_index);
+
+    if let Some(local_index) = get_body_state_index(world, body_index) {
+        let state = &mut world.solver_sets[AWAKE_SET as usize].body_states[local_index as usize];
+        if locks.linear_x {
+            state.linear_velocity.x = 0.0;
+        }
+        if locks.linear_y {
+            state.linear_velocity.y = 0.0;
+        }
+        if locks.linear_z {
+            state.linear_velocity.z = 0.0;
+        }
+        if locks.angular_x {
+            state.angular_velocity.x = 0.0;
+        }
+        if locks.angular_y {
+            state.angular_velocity.y = 0.0;
+        }
+        if locks.angular_z {
+            state.angular_velocity.z = 0.0;
+        }
+    }
+
+    if fixed_rotation1 != fixed_rotation2 {
+        update_body_mass_data(world, body_index);
+    }
+}
+

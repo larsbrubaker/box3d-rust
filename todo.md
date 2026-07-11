@@ -18,16 +18,15 @@ row here.
 | File | Track | Depends on |
 |---|---|---|
 | [task-1.md](task-1.md) | Joints (lifecycle, 8 joint types, solver stages, events) | — |
-| [task-2.md](task-2.md) | Continuous collision / bullets (CCD) | — |
 | [task-3.md](task-3.md) | Sensors (overlap sweep, events, hit reporting) | — |
 | [task-4.md](task-4.md) | Remaining shape creates + b3Shape_*/b3Body_* API surface | — |
 | [task-5.md](task-5.md) | World queries, casts, explosion, world API surface | — |
 | [task-6.md](task-6.md) | Character mover | task-5 (cast/overlap machinery) |
 
-Merge-conflict warning: task-1, task-2, and task-3 all add passes to
-`src/solver/solve.rs` (joint stages, bullet pass, sensor-hits report) and
-task-1/task-2 both touch `src/solver/integrate.rs`. Land whichever finishes
-first and rebase the others.
+Merge-conflict warning: task-1 and task-3 add passes to `src/solver/solve.rs`
+(joint stages, sensor-hits report) and task-1 touches `src/solver/integrate.rs`.
+Task-2 (CCD/bullets) is done on `agent/task-2-ccd` — rebase remaining tracks
+onto it after merge.
 
 ## Determinism gate (after the parallel tracks)
 
@@ -59,6 +58,6 @@ Mirror the C `samples/` categories as features land (WebGL, `demo/`,
 
 - [ ] Joint samples (hinge chain, ragdoll-style) — after task-1
 - [ ] Sensor samples — after task-3
-- [ ] Bullet/CCD samples — after task-2
+- [ ] Bullet/CCD samples — CCD landed on agent/task-2-ccd
 - [ ] Query/raycast visualizer — after task-5
 - [ ] Character mover playground — after task-6
