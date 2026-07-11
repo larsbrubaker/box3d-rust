@@ -1,6 +1,12 @@
 // Geometry Queries — 3D ray casts and GJK closest points (Three.js).
 
-import { createInfoBox, createReadout, updateReadout } from "../controls.ts";
+import * as THREE from "three";
+import {
+  createInfoBox,
+  createReadout,
+  createSlider,
+  updateReadout,
+} from "../controls.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
 import {
@@ -17,23 +23,41 @@ import {
   makeWireBox,
 } from "../three-scene.ts";
 
+const SHAPE_NAMES = ["Sphere", "Capsule", "Hull", "AABB"] as const;
+
 export function init(container: HTMLElement) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Geometry Queries",
-    "A ray tracks the cursor and is cast against a sphere, capsule, box hull, and AABB via " +
+    "A camera ray follows the cursor and is cast against a sphere, capsule, box hull, and AABB via " +
       "the ported <code>b3RayCast*</code> functions. The green probe reports GJK closest " +
       "points from <code>b3ShapeDistance</code>.",
-    "Drag to orbit · move to aim the ray",
+    "Drag to orbit · move cursor to aim · click to lock aim",
     wasm.version(),
   );
 
   controls.appendChild(
     createInfoBox(
-      "Red markers are ray hits with surface normals. The dashed green line is the closest-point " +
-        "witness between the probe sphere and the scene sphere.",
+      "The ray originates at the camera and passes through the cursor (NDC → world). " +
+        "Orbit with drag; aim with move or click. Red markers are wasm ray hits with " +
+        "surface normals. The dashed green line is the closest-point witness between the " +
+        "probe sphere and the scene sphere.",
     ),
+  );
+
+  let rayLength = 40;
+  let probeAlong = 8;
+  let aimLocked = false;
+  controls.appendChild(
+    createSlider("Ray length", 5, 80, rayLength, 1, (v) => {
+      rayLength = v;
+    }),
+  );
+  controls.appendChild(
+    createSlider("GJK probe along ray", 1, 40, probeAlong, 0.5, (v) => {
+      probeAlong = v;
+    }),
   );
   const readout = createReadout();
   controls.appendChild(readout);
@@ -75,45 +99,112 @@ export function init(container: HTMLElement) {
     ),
   );
 
-  let aim: [number, number, number] = [2, 0.5, 2];
-  canvas.addEventListener("pointermove", (e) => {
-    if (e.buttons) return;
+  // Screen-space aim (NDC). Reprojected each frame so orbit keeps the ray
+  // aimed at the same pixel until the cursor moves again.
+  let ndcX = 0;
+  let ndcY = 0;
+  const pointerDown = { x: 0, y: 0, moved: false };
+  const ndc = new THREE.Vector2();
+  const raycaster = new THREE.Raycaster();
+
+  function setNdcFromEvent(e: PointerEvent) {
     const rect = canvas.getBoundingClientRect();
-    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const ny = 1 - ((e.clientY - rect.top) / rect.height) * 2;
-    aim = [nx * 4, ny * 3, 2.5];
-  });
+    if (rect.width <= 0 || rect.height <= 0) return;
+    ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    ndcY = 1 - ((e.clientY - rect.top) / rect.height) * 2;
+  }
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (e.buttons) {
+      const dx = e.clientX - pointerDown.x;
+      const dy = e.clientY - pointerDown.y;
+      if (dx * dx + dy * dy > 16) pointerDown.moved = true;
+      return;
+    }
+    if (aimLocked) return;
+    setNdcFromEvent(e);
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    pointerDown.x = e.clientX;
+    pointerDown.y = e.clientY;
+    pointerDown.moved = false;
+  };
+
+  const onPointerUp = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    if (pointerDown.moved) return;
+    // Click: aim through this pixel and lock until unlock click / Escape.
+    setNdcFromEvent(e);
+    aimLocked = !aimLocked;
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") aimLocked = false;
+  };
+
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("keydown", onKeyDown);
 
   const stop = runLoop(() => {
     demo.clearDynamic();
 
-    const origin: [number, number, number] = [-5, 1, 0];
-    const dx = aim[0] - origin[0];
-    const dy = aim[1] - origin[1];
-    const dz = aim[2] - origin[2];
-    const len = Math.hypot(dx, dy, dz) || 1;
-    const tx = (dx / len) * 14;
-    const ty = (dy / len) * 14;
-    const tz = (dz / len) * 14;
+    ndc.set(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, demo.camera);
+    const originVec = raycaster.ray.origin;
+    const dir = raycaster.ray.direction;
+    const origin: [number, number, number] = [originVec.x, originVec.y, originVec.z];
+    const tx = dir.x * rayLength;
+    const ty = dir.y * rayLength;
+    const tz = dir.z * rayLength;
 
     const results = wasm.ray_cast_scene(origin[0], origin[1], origin[2], tx, ty, tz);
     let nearest = 1.0;
     let hitCount = 0;
+    let nearestHit: {
+      name: string;
+      fraction: number;
+      point: [number, number, number];
+      normal: [number, number, number];
+    } | null = null;
+
     for (let i = 0; i < 4; i++) {
-      if (results[8 * i] === 1.0) {
-        hitCount++;
-        nearest = Math.min(nearest, results[8 * i + 1]!);
+      if (results[8 * i] !== 1.0) continue;
+      hitCount++;
+      const fraction = results[8 * i + 1]!;
+      if (fraction < nearest) {
+        nearest = fraction;
+        nearestHit = {
+          name: SHAPE_NAMES[i]!,
+          fraction,
+          point: [results[8 * i + 2]!, results[8 * i + 3]!, results[8 * i + 4]!],
+          normal: [results[8 * i + 5]!, results[8 * i + 6]!, results[8 * i + 7]!],
+        };
       }
     }
 
+    const endFrac = nearest < 1.0 ? nearest : 1.0;
     demo.dynamic.add(
       makeSegment(
         origin,
-        [origin[0] + tx * nearest, origin[1] + ty * nearest, origin[2] + tz * nearest],
+        [origin[0] + tx * endFrac, origin[1] + ty * endFrac, origin[2] + tz * endFrac],
         COLORS.accent,
       ),
     );
-    demo.dynamic.add(makeDot(origin, COLORS.accent, 0.1));
+    // Faint remainder past nearest hit so the full cast length stays visible.
+    if (nearest < 1.0) {
+      demo.dynamic.add(
+        makeSegment(
+          [origin[0] + tx * nearest, origin[1] + ty * nearest, origin[2] + tz * nearest],
+          [origin[0] + tx, origin[1] + ty, origin[2] + tz],
+          COLORS.muted,
+        ),
+      );
+    }
+    demo.dynamic.add(makeDot(origin, COLORS.accent, 0.08));
 
     for (let i = 0; i < 4; i++) {
       if (results[8 * i] !== 1.0) continue;
@@ -127,8 +218,14 @@ export function init(container: HTMLElement) {
       demo.dynamic.add(makeArrow([hx, hy, hz], [nx, ny, nz], 0.6, COLORS.hit));
     }
 
-    const cp = wasm.closest_points(aim[0], aim[1], aim[2]);
-    demo.dynamic.add(makeSphere(aim[0], aim[1], aim[2], 0.15, COLORS.good, 0.7));
+    const probeT = Math.min(probeAlong, rayLength);
+    const probe: [number, number, number] = [
+      origin[0] + dir.x * probeT,
+      origin[1] + dir.y * probeT,
+      origin[2] + dir.z * probeT,
+    ];
+    const cp = wasm.closest_points(probe[0], probe[1], probe[2]);
+    demo.dynamic.add(makeSphere(probe[0], probe[1], probe[2], 0.15, COLORS.good, 0.7));
     if (cp[6]! >= 0) {
       demo.dynamic.add(
         makeDashedSegment(
@@ -141,18 +238,48 @@ export function init(container: HTMLElement) {
       demo.dynamic.add(makeDot([cp[3]!, cp[4]!, cp[5]!], COLORS.good, 0.07));
     }
 
-    updateReadout(readout, [
+    const entries: { label: string; value: string }[] = [
+      { label: "Aim", value: aimLocked ? "locked (click/Esc)" : "follow cursor" },
       { label: "Ray hits", value: `${hitCount}/4` },
-      { label: "Nearest fraction", value: nearest.toFixed(4) },
+      {
+        label: "Nearest",
+        value: nearestHit
+          ? `${nearestHit.name} @ t=${nearestHit.fraction.toFixed(4)}`
+          : "—",
+      },
+    ];
+    if (nearestHit) {
+      entries.push({
+        label: "Hit point",
+        value: nearestHit.point.map((v) => v.toFixed(3)).join(", "),
+      });
+      entries.push({
+        label: "Hit normal",
+        value: nearestHit.normal.map((v) => v.toFixed(3)).join(", "),
+      });
+    }
+    for (let i = 0; i < 4; i++) {
+      const hit = results[8 * i] === 1.0;
+      entries.push({
+        label: SHAPE_NAMES[i]!,
+        value: hit ? `hit t=${results[8 * i + 1]!.toFixed(4)}` : "miss",
+      });
+    }
+    entries.push(
       { label: "b3ShapeDistance", value: `${cp[6]!.toFixed(4)} m` },
       { label: "GJK iterations", value: String(cp[7]) },
-    ]);
+    );
+    updateReadout(readout, entries);
 
     demo.render();
   }, readout);
 
   return () => {
     stop();
+    canvas.removeEventListener("pointermove", onPointerMove);
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("keydown", onKeyDown);
     demo.dispose();
   };
 }
