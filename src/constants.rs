@@ -47,3 +47,15 @@ pub const CHILD_MASK: u64 = (MAX_CHILD_SHAPES as u64) - 1;
 
 const _: () = assert!(2 * SHAPE_POWER + CHILD_POWER == 64);
 const _: () = assert!(CHILD_POWER > 8);
+
+/// A small length used as a collision and constraint tolerance. Usually it is
+/// chosen to be numerically significant, but visually insignificant. In meters.
+/// @warning modifying this can have a significant impact on stability
+/// (B3_LINEAR_SLOP)
+pub fn linear_slop() -> f32 {
+    0.005 * get_length_units_per_meter()
+}
+
+/// The maximum number of points to use for shape cast proxies (swept point cloud).
+/// (B3_MAX_SHAPE_CAST_POINTS)
+pub const MAX_SHAPE_CAST_POINTS: usize = 64;

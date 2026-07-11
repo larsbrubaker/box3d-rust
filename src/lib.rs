@@ -12,6 +12,7 @@ pub mod aabb;
 pub mod bitset;
 pub mod constants;
 pub mod core;
+pub mod distance;
 pub mod id;
 pub mod id_pool;
 pub mod math_functions;
@@ -32,6 +33,9 @@ mod aabb_tests;
 
 #[cfg(test)]
 mod bitset_tests;
+
+#[cfg(test)]
+mod distance_tests;
 
 #[cfg(test)]
 mod id_tests;

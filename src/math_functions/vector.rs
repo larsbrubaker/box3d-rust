@@ -194,6 +194,15 @@ pub fn blend2(s: f32, a: Vec3, t: f32, b: Vec3) -> Vec3 {
     }
 }
 
+/// Blend three vectors: s * a + t * b + u * c. (math_internal.h: b3Blend3)
+pub fn blend3(s: f32, a: Vec3, t: f32, b: Vec3, u: f32, c: Vec3) -> Vec3 {
+    Vec3 {
+        x: s * a.x + t * b.x + u * c.x,
+        y: s * a.y + t * b.y + u * c.y,
+        z: s * a.z + t * b.z + u * c.z,
+    }
+}
+
 /// Component-wise absolute value.
 pub fn abs(a: Vec3) -> Vec3 {
     Vec3 {
