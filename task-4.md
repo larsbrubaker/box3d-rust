@@ -5,10 +5,13 @@ the track is done (also remove its row from todo.md).**
 
 **Done on main (do not re-port):** mesh / height-field / compound `create_*_shape`,
 `TestCompoundHitEvents`, `TestOverflowColorPile`, body damping / gravity scale /
-`EnableSleep` (+ flag-sync tests), `b3Body_SetMotionLocks` / bullet API.
+`EnableSleep` (+ flag-sync tests), motion locks set/get, bullet API, name /
+user data, local/world point/vector + point velocity, ApplyForce/Torque/
+Impulse variants, `SetTransform`, `SetAwake` / `IsAwake` / `IsEnabled` /
+`GetType`.
 
-Collision geometry is fully ported. Remaining work is the public mutator /
-query surface and one mesh-drop world test.
+Collision geometry is fully ported. Remaining work is shape mutators, body
+type/enable transfers, and one mesh-drop world test.
 
 ## Shape creation leftovers
 
@@ -30,12 +33,6 @@ query surface and one mesh-drop world test.
       `transfer_body` in `src/solver_set.rs`; drop its
       `#[allow(dead_code)] // bring-up:` note when reachable)
 - [ ] `Enable` / `Disable` (disabled-set transfers, proxy destroy/create)
-- [ ] `SetTransform` (teleport with contact refresh), `SetAwake`
-- [ ] Forces/impulses: ApplyForce/Torque/LinearImpulse/AngularImpulse
-      (center + point variants, wake semantics)
-- [ ] Motion locks **get** (`b3Body_GetMotionLocks`) — set already landed
-- [ ] Name get/set (NameCache), user data, world getters (velocity at point,
-      local/world point and vector transforms)
 
 ## Tests
 

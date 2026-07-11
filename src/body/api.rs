@@ -3,24 +3,26 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
+use super::body_flags;
 use super::lifecycle::{
-    get_body_full_id, get_body_sim_mut, get_body_state_index, get_body_transform_quick,
-    sync_body_flags, wake_body,
+    get_body_full_id, get_body_sim, get_body_sim_mut, get_body_state_index,
+    get_body_transform_quick, sync_body_flags, wake_body,
 };
 use super::mass::update_body_extents_from_shapes;
-use super::body_flags;
 use super::types::BodyPlaneResult;
+use crate::constants::{BODY_NAME_LENGTH, NULL_NAME};
 use crate::core::NULL_INDEX;
 use crate::geometry::{Capsule, MassData, PlaneResult};
 use crate::id::{BodyId, ShapeId};
 use crate::math_functions::{
-    add, cross, det, invert_t, is_valid_float, is_valid_matrix3, is_valid_vec3, length_squared,
-    make_matrix_from_quat, mul_mm, sub_pos, to_relative_transform, transform_world_point,
-    transpose, Matrix3, Pos, Vec3, WorldTransform, MAT3_ZERO, VEC3_ZERO,
+    add, cross, det, invert_t, inv_rotate_vector, inv_transform_world_point, is_valid_float,
+    is_valid_matrix3, is_valid_vec3, length_squared, make_matrix_from_quat, mul_mm, rotate_vector,
+    sub, sub_pos, to_relative_transform, transform_world_point, transpose, Matrix3, Pos, Vec3,
+    WorldTransform, MAT3_ZERO, VEC3_ZERO,
 };
 use crate::shape::{collide_mover, should_query_collide, ShapeGeometry};
-use crate::solver_set::AWAKE_SET;
-use crate::types::{BodyType, QueryFilter};
+use crate::solver_set::{AWAKE_SET, DISABLED_SET};
+use crate::types::{BodyType, MotionLocks, QueryFilter};
 use crate::world::World;
 
 /// (b3Body_GetMass)
@@ -371,11 +373,7 @@ pub fn body_is_bullet(world: &World, body_id: BodyId) -> bool {
 }
 
 /// (b3Body_SetMotionLocks)
-pub fn body_set_motion_locks(
-    world: &mut World,
-    body_id: BodyId,
-    locks: crate::types::MotionLocks,
-) {
+pub fn body_set_motion_locks(world: &mut World, body_id: BodyId, locks: crate::types::MotionLocks) {
     use super::mass::update_body_mass_data;
 
     debug_assert!(!world.locked);
@@ -456,6 +454,130 @@ pub fn body_set_motion_locks(
     }
 }
 
+/// (b3Body_GetMotionLocks)
+pub fn body_get_motion_locks(world: &World, body_id: BodyId) -> MotionLocks {
+    let body_index = get_body_full_id(world, body_id);
+    let flags = world.bodies[body_index as usize].flags;
+    MotionLocks {
+        linear_x: (flags & body_flags::LOCK_LINEAR_X) != 0,
+        linear_y: (flags & body_flags::LOCK_LINEAR_Y) != 0,
+        linear_z: (flags & body_flags::LOCK_LINEAR_Z) != 0,
+        angular_x: (flags & body_flags::LOCK_ANGULAR_X) != 0,
+        angular_y: (flags & body_flags::LOCK_ANGULAR_Y) != 0,
+        angular_z: (flags & body_flags::LOCK_ANGULAR_Z) != 0,
+    }
+}
+
+/// (b3Body_GetType)
+pub fn body_get_type(world: &World, body_id: BodyId) -> BodyType {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].type_
+}
+
+/// (b3Body_IsAwake)
+pub fn body_is_awake(world: &World, body_id: BodyId) -> bool {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].set_index == AWAKE_SET
+}
+
+/// (b3Body_IsEnabled)
+pub fn body_is_enabled(world: &World, body_id: BodyId) -> bool {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].set_index != DISABLED_SET
+}
+
+/// Set the body name (truncated to [`BODY_NAME_LENGTH`]). Uses the world name
+/// cache rather than C's fixed char buffer. (b3Body_SetName)
+pub fn body_set_name(world: &mut World, body_id: BodyId, name: &str) {
+    let truncated = if name.len() > BODY_NAME_LENGTH {
+        // Truncate on UTF-8 char boundary at or before the C byte limit.
+        let mut end = BODY_NAME_LENGTH;
+        while end > 0 && !name.is_char_boundary(end) {
+            end -= 1;
+        }
+        &name[..end]
+    } else {
+        name
+    };
+    let name_id = world.names.add_name(truncated);
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].name_id = name_id;
+}
+
+/// (b3Body_GetName)
+pub fn body_get_name(world: &World, body_id: BodyId) -> &str {
+    let body_index = get_body_full_id(world, body_id);
+    let name_id = world.bodies[body_index as usize].name_id;
+    if name_id == NULL_NAME {
+        return "";
+    }
+    world.names.find_name(name_id).unwrap_or("")
+}
+
+/// (b3Body_SetUserData) — Rust stores `u64` instead of `void*`.
+pub fn body_set_user_data(world: &mut World, body_id: BodyId, user_data: u64) {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].user_data = user_data;
+}
+
+/// (b3Body_GetUserData)
+pub fn body_get_user_data(world: &World, body_id: BodyId) -> u64 {
+    let body_index = get_body_full_id(world, body_id);
+    world.bodies[body_index as usize].user_data
+}
+
+/// (b3Body_GetLocalPoint)
+pub fn body_get_local_point(world: &World, body_id: BodyId, world_point: Pos) -> Vec3 {
+    let body_index = get_body_full_id(world, body_id);
+    let transform = get_body_transform_quick(world, &world.bodies[body_index as usize]);
+    inv_transform_world_point(transform, world_point)
+}
+
+/// (b3Body_GetWorldPoint)
+pub fn body_get_world_point(world: &World, body_id: BodyId, local_point: Vec3) -> Pos {
+    let body_index = get_body_full_id(world, body_id);
+    let transform = get_body_transform_quick(world, &world.bodies[body_index as usize]);
+    transform_world_point(transform, local_point)
+}
+
+/// (b3Body_GetLocalVector)
+pub fn body_get_local_vector(world: &World, body_id: BodyId, world_vector: Vec3) -> Vec3 {
+    let body_index = get_body_full_id(world, body_id);
+    let transform = get_body_transform_quick(world, &world.bodies[body_index as usize]);
+    inv_rotate_vector(transform.q, world_vector)
+}
+
+/// (b3Body_GetWorldVector)
+pub fn body_get_world_vector(world: &World, body_id: BodyId, local_vector: Vec3) -> Vec3 {
+    let body_index = get_body_full_id(world, body_id);
+    let transform = get_body_transform_quick(world, &world.bodies[body_index as usize]);
+    rotate_vector(transform.q, local_vector)
+}
+
+/// (b3Body_GetLocalPointVelocity)
+pub fn body_get_local_point_velocity(world: &World, body_id: BodyId, local_point: Vec3) -> Vec3 {
+    let body_index = get_body_full_id(world, body_id);
+    let Some(local_index) = get_body_state_index(world, body_index) else {
+        return VEC3_ZERO;
+    };
+    let state = &world.solver_sets[AWAKE_SET as usize].body_states[local_index as usize];
+    let body_sim = get_body_sim(world, body_index);
+    let r = rotate_vector(body_sim.transform.q, sub(local_point, body_sim.local_center));
+    add(state.linear_velocity, cross(state.angular_velocity, r))
+}
+
+/// (b3Body_GetWorldPointVelocity)
+pub fn body_get_world_point_velocity(world: &World, body_id: BodyId, world_point: Pos) -> Vec3 {
+    let body_index = get_body_full_id(world, body_id);
+    let Some(local_index) = get_body_state_index(world, body_index) else {
+        return VEC3_ZERO;
+    };
+    let state = &world.solver_sets[AWAKE_SET as usize].body_states[local_index as usize];
+    let body_sim = get_body_sim(world, body_index);
+    let r = sub_pos(world_point, body_sim.center);
+    add(state.linear_velocity, cross(state.angular_velocity, r))
+}
+
 /// Collide a capsule mover against a single body's sphere/capsule/hull shapes.
 /// (b3Body_CollideMover)
 pub fn body_collide_mover(
@@ -517,4 +639,3 @@ pub fn body_collide_mover(
 
     result_count
 }
-

@@ -4,11 +4,13 @@
 // SPDX-License-Identifier: MIT
 
 mod api;
+mod forces;
 mod lifecycle;
 mod mass;
 mod types;
 
 pub use api::*;
+pub use forces::*;
 pub use lifecycle::*;
 pub use mass::*;
 pub use types::*;
