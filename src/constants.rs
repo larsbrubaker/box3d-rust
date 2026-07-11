@@ -26,3 +26,24 @@ pub fn huge() -> f32 {
 pub fn huge() -> f32 {
     1.0e5 * get_length_units_per_meter()
 }
+
+/// Bit width reserved for a shape index in [`crate::table::shape_pair_key`]. (B3_SHAPE_POWER)
+pub const SHAPE_POWER: u32 = 22;
+
+/// Bit width reserved for a child index in the pair key. (B3_CHILD_POWER)
+pub const CHILD_POWER: u32 = 64 - 2 * SHAPE_POWER;
+
+/// Maximum number of shapes. (B3_MAX_SHAPES)
+pub const MAX_SHAPES: i32 = 1 << SHAPE_POWER;
+
+/// Maximum number of child shapes. (B3_MAX_CHILD_SHAPES)
+pub const MAX_CHILD_SHAPES: i32 = 1 << CHILD_POWER;
+
+/// Mask for a shape index packed into a pair key. (B3_SHAPE_MASK)
+pub const SHAPE_MASK: u64 = (MAX_SHAPES as u64) - 1;
+
+/// Mask for a child index packed into a pair key. (B3_CHILD_MASK)
+pub const CHILD_MASK: u64 = (MAX_CHILD_SHAPES as u64) - 1;
+
+const _: () = assert!(2 * SHAPE_POWER + CHILD_POWER == 64);
+const _: () = assert!(CHILD_POWER > 8);

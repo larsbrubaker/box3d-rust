@@ -14,6 +14,7 @@ pub mod core;
 pub mod id;
 pub mod id_pool;
 pub mod math_functions;
+pub mod table;
 
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
 pub use math_functions::{
@@ -33,6 +34,9 @@ mod id_tests;
 
 #[cfg(test)]
 mod math_functions_tests;
+
+#[cfg(test)]
+mod table_tests;
 
 #[cfg(test)]
 mod tests {
