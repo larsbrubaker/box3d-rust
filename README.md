@@ -38,7 +38,8 @@ suite.
 | Collision: aabb, distance (GJK/TOI) | ✅ | ✅ (test_collision AABB + test_distance.c) |
 | Collision: hull, geometry, manifolds, mesh, height_field, compound, dynamic_tree | ✅ | ✅ (test_hull/shape/compound/height_field + authored) |
 | Broad phase: proxy ops, move buffer (pair update deferred to world) | ✅ | ✅ (authored proxy tests) |
-| Dynamics: body/shape/contact lifecycles, constraint graph, solver sets, islands | ⬜ | ⬜ (test_body.c) |
+| Dynamics: body create/destroy + SetMassData (shape attach next) | 🟨 | ✅ (test_body SetMassData + lifecycle) |
+| Dynamics: shape attach, contact/joint lifecycles, constraint graph, solver sets, islands | ⬜ | ⬜ (test_body sphere mass / test_world) |
 | Joints: distance, motor, prismatic, revolute, spherical, weld, wheel | ⬜ | ⬜ (test_joint.c) |
 | Solver: contact solver + step pipeline, sensors, sleeping, continuous | ⬜ | ⬜ (test_world.c) |
 | World API: queries, casts, character movers | ⬜ | ⬜ (test_body_query/mover.c) |

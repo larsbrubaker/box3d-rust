@@ -1,5 +1,4 @@
 // Port of the body data model from box3d-cpp-reference/src/body.h.
-// Logic from body.c lands in later C-file slices.
 //
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT

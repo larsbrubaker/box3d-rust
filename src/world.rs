@@ -406,4 +406,50 @@ impl World {
             in_use: true,
         }
     }
+
+    /// Debug validation of solver set bookkeeping. (b3ValidateSolverSets)
+    ///
+    /// C gates this behind B3_VALIDATE; here it always runs and asserts in
+    /// debug. Contact/joint set checks widen as those slices land.
+    pub fn validate_solver_sets(&self) {
+        use crate::core::NULL_INDEX;
+        use crate::solver_set::AWAKE_SET;
+
+        let mut active_body_count = 0;
+        for (set_index, set) in self.solver_sets.iter().enumerate() {
+            if set.set_index == NULL_INDEX {
+                debug_assert!(set.body_sims.is_empty());
+                debug_assert!(set.body_states.is_empty());
+                debug_assert!(set.island_sims.is_empty());
+                continue;
+            }
+
+            debug_assert!(set.set_index == set_index as i32);
+
+            if set_index == AWAKE_SET as usize {
+                debug_assert!(set.body_sims.len() == set.body_states.len());
+            } else {
+                debug_assert!(set.body_states.is_empty());
+            }
+
+            for (local_index, sim) in set.body_sims.iter().enumerate() {
+                let body = &self.bodies[sim.body_id as usize];
+                debug_assert!(body.set_index == set_index as i32);
+                debug_assert!(body.local_index == local_index as i32);
+                debug_assert!(body.id == sim.body_id);
+                let _ = (body, local_index);
+            }
+            active_body_count += set.body_sims.len() as i32;
+
+            for (local_index, island_sim) in set.island_sims.iter().enumerate() {
+                let island = &self.islands[island_sim.island_id as usize];
+                debug_assert!(island.set_index == set_index as i32);
+                debug_assert!(island.local_index == local_index as i32);
+                let _ = (island, local_index);
+            }
+        }
+
+        debug_assert!(active_body_count == self.body_id_pool.id_count());
+        let _ = active_body_count;
+    }
 }
