@@ -32,7 +32,7 @@ suite.
 | Area | Ported | Tests |
 |---|---|---|
 | Foundation: math_functions (Vec3/Quat/Matrix3), core/constants | ✅ | ✅ (test_math.c) |
-| Foundation: id, bitset, id_pool, table, container | ⬜ | ⬜ (test_id/bitset/table/container.c) |
+| Foundation: id, bitset, id_pool, table (container → Vec) | ✅ | ✅ (test_id/bitset/table.c) |
 | Collision: aabb, distance (GJK/TOI), hull, dynamic_tree | ⬜ | ⬜ (test_collision/distance/hull.c) |
 | Shapes: sphere, capsule, box, convex hull, compound, mesh, height field | ⬜ | ⬜ (test_shape/compound/height_field.c) |
 | Manifolds: convex, mesh contact, triangle | ⬜ | ⬜ |

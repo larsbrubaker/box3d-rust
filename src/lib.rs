@@ -8,6 +8,7 @@
 //! Porting has just begun — modules land whole, in dependency order, together with their
 //! portion of the upstream C test suite. See the repository README for live status.
 
+pub mod aabb;
 pub mod bitset;
 pub mod constants;
 pub mod core;
@@ -25,6 +26,9 @@ pub use math_functions::{
 
 /// Crate version, exposed so demos and downstream tools can report the exact port build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod aabb_tests;
 
 #[cfg(test)]
 mod bitset_tests;
