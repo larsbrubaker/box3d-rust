@@ -460,4 +460,67 @@ impl World {
         debug_assert!(active_body_count == self.body_id_pool.id_count());
         let _ = active_body_count;
     }
+
+    /// Advance the world simulation by one time step. (b3World_Step)
+    ///
+    /// Pairs phase is live. Collide/solve/sleep land in follow-on commits;
+    /// an empty world (no bodies / no moves) is a full no-op after pair update.
+    pub fn step(&mut self, time_step: f32, sub_step_count: i32) {
+        use crate::broad_phase::update_broad_phase_pairs;
+        use crate::math_functions::{is_valid_float, max_int};
+
+        debug_assert!(is_valid_float(time_step) && time_step >= 0.0);
+        debug_assert!(!self.locked);
+        if self.locked {
+            return;
+        }
+
+        self.locked = true;
+
+        self.body_move_events.clear();
+        self.sensor_begin_events.clear();
+        self.contact_begin_events.clear();
+        self.contact_hit_events.clear();
+        self.joint_events.clear();
+        self.profile = Profile::default();
+
+        {
+            let c = &mut self.max_capacity;
+            c.static_shape_count = max_int(
+                c.static_shape_count,
+                self.broad_phase.trees[crate::types::BodyType::Static as usize].proxy_count(),
+            );
+            c.dynamic_shape_count = max_int(
+                c.dynamic_shape_count,
+                self.broad_phase.trees[crate::types::BodyType::Dynamic as usize].proxy_count(),
+            );
+            let static_body_count =
+                self.solver_sets[crate::solver_set::STATIC_SET as usize]
+                    .body_sims
+                    .len() as i32;
+            c.static_body_count = max_int(c.static_body_count, static_body_count);
+            let total_body_count = self.body_id_pool.id_count();
+            c.dynamic_body_count =
+                max_int(c.dynamic_body_count, total_body_count - static_body_count);
+            c.contact_count = max_int(c.contact_count, self.contact_id_pool.id_count());
+        }
+
+        update_broad_phase_pairs(self);
+
+        let sub_steps = max_int(1, sub_step_count);
+        if time_step > 0.0 {
+            self.inv_dt = 1.0 / time_step;
+            self.inv_h = sub_steps as f32 * self.inv_dt;
+        } else {
+            self.inv_dt = 0.0;
+            self.inv_h = 0.0;
+        }
+
+        // Collide / solve / sleep deferred — pairs-only skeleton until those
+        // slices land. Empty worlds and non-overlapping scenes are correct.
+
+        self.step_index = self.step_index.wrapping_add(1);
+        self.validate_solver_sets();
+        self.locked = false;
+    }
 }

@@ -108,6 +108,9 @@ mod shape_tests;
 mod table_tests;
 
 #[cfg(test)]
+mod world_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
