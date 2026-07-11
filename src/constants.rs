@@ -91,6 +91,17 @@ pub fn speculative_distance() -> f32 {
     4.0 * linear_slop()
 }
 
+/// Rest offset for mesh contact to reduce ghost collisions. Must be at least
+/// [`linear_slop`] and less than [`speculative_distance`]. (B3_MESH_REST_OFFSET)
+pub fn mesh_rest_offset() -> f32 {
+    1.0 * linear_slop()
+}
+
+/// Default contact recycling distance. (B3_CONTACT_RECYCLE_DISTANCE)
+pub fn contact_recycle_distance() -> f32 {
+    10.0 * linear_slop()
+}
+
 /// Minimum capsule segment length. (B3_MIN_CAPSULE_LENGTH)
 pub fn min_capsule_length() -> f32 {
     linear_slop()

@@ -268,3 +268,142 @@ pub fn default_restitution_callback(
 ) -> f32 {
     crate::math_functions::max_float(restitution_a, restitution_b)
 }
+
+impl World {
+    /// Create a world. (b3CreateWorld)
+    ///
+    /// Differences from C, all documented in the module header: there is no
+    /// global world registry (the returned World is owned; `world_id` stays 0
+    /// unless the embedder assigns one), no arena stack / manifold block
+    /// allocator / hull database yet, and the serial task path is always used
+    /// (worker_count = 1 with one task context), which is the C fallback when
+    /// no task system is supplied.
+    pub fn new(def: &crate::types::WorldDef) -> World {
+        use crate::constants::{
+            contact_recycle_distance, linear_slop, mesh_rest_offset, speculative_distance,
+        };
+        use crate::core::{NULL_INDEX, SECRET_COOKIE};
+        use crate::math_functions::max_int;
+        use crate::solver_set::{AWAKE_SET, DISABLED_SET, STATIC_SET};
+
+        debug_assert!(def.internal_value == SECRET_COOKIE);
+        debug_assert!(linear_slop() <= mesh_rest_offset());
+        debug_assert!(mesh_rest_offset() < speculative_distance());
+
+        let body_capacity = max_int(
+            16,
+            def.capacity.static_body_count + def.capacity.dynamic_body_count,
+        ) as usize;
+        let shape_capacity = max_int(
+            16,
+            def.capacity.static_shape_count + def.capacity.dynamic_shape_count,
+        ) as usize;
+        let contact_capacity = max_int(16, def.capacity.contact_count) as usize;
+
+        let mut solver_set_id_pool = IdPool::new();
+        let mut solver_sets: Vec<SolverSet> = Vec::with_capacity(8);
+
+        // add empty static, disabled, and awake body sets
+        // static set
+        let mut set = SolverSet {
+            set_index: solver_set_id_pool.alloc_id(),
+            ..Default::default()
+        };
+        set.body_sims
+            .reserve(max_int(16, def.capacity.static_body_count) as usize);
+        solver_sets.push(set);
+        debug_assert!(solver_sets[STATIC_SET as usize].set_index == STATIC_SET);
+
+        // disabled set
+        solver_sets.push(SolverSet {
+            set_index: solver_set_id_pool.alloc_id(),
+            ..Default::default()
+        });
+        debug_assert!(solver_sets[DISABLED_SET as usize].set_index == DISABLED_SET);
+
+        // awake set
+        let mut awake = SolverSet {
+            set_index: solver_set_id_pool.alloc_id(),
+            ..Default::default()
+        };
+        awake
+            .body_sims
+            .reserve(max_int(16, def.capacity.dynamic_body_count) as usize);
+        awake
+            .body_states
+            .reserve(max_int(16, def.capacity.dynamic_body_count) as usize);
+        awake.contact_indices.reserve(contact_capacity);
+        solver_sets.push(awake);
+        debug_assert!(solver_sets[AWAKE_SET as usize].set_index == AWAKE_SET);
+
+        World {
+            broad_phase: BroadPhase::new(&def.capacity),
+            constraint_graph: ConstraintGraph::new(16),
+            body_id_pool: IdPool::new(),
+            bodies: Vec::with_capacity(body_capacity),
+            solver_set_id_pool,
+            solver_sets,
+            joint_id_pool: IdPool::new(),
+            joints: Vec::with_capacity(16),
+            contact_id_pool: IdPool::new(),
+            contacts: Vec::with_capacity(contact_capacity),
+            island_id_pool: IdPool::new(),
+            islands: Vec::with_capacity(max_int(16, def.capacity.dynamic_body_count) as usize),
+            shape_id_pool: IdPool::new(),
+            shapes: Vec::with_capacity(shape_capacity),
+            names: NameCache::new(),
+            sensors: Vec::with_capacity(4),
+            // Serial fallback: one worker context. (b3CreateWorkerContexts)
+            task_contexts: vec![TaskContext::default()],
+            sensor_task_contexts: vec![SensorTaskContext::default()],
+            body_move_events: Vec::with_capacity(4),
+            sensor_begin_events: Vec::with_capacity(4),
+            contact_begin_events: Vec::with_capacity(4),
+            sensor_end_events: [Vec::with_capacity(4), Vec::with_capacity(4)],
+            contact_end_events: [Vec::with_capacity(4), Vec::with_capacity(4)],
+            end_event_array_index: 0,
+            contact_hit_events: Vec::with_capacity(4),
+            joint_events: Vec::with_capacity(4),
+            debug_body_set: BitSet::new(256),
+            debug_joint_set: BitSet::new(256),
+            debug_contact_set: BitSet::new(256),
+            debug_island_set: BitSet::new(256),
+            step_index: 0,
+            split_island_id: NULL_INDEX,
+            gravity: def.gravity,
+            hit_event_threshold: def.hit_event_threshold,
+            restitution_threshold: def.restitution_threshold,
+            max_linear_speed: def.maximum_linear_speed,
+            contact_speed: def.contact_speed,
+            contact_hertz: def.contact_hertz,
+            contact_damping_ratio: def.contact_damping_ratio,
+            contact_recycle_distance: contact_recycle_distance(),
+            friction_callback: Some(def.friction_callback.unwrap_or(default_friction_callback)),
+            restitution_callback: Some(
+                def.restitution_callback
+                    .unwrap_or(default_restitution_callback),
+            ),
+            generation: 0,
+            profile: Profile::default(),
+            sat_call_count: 0,
+            sat_cache_hit_count: 0,
+            manifold_counts: [0; CONTACT_MANIFOLD_COUNT_BUCKETS],
+            max_capacity: def.capacity,
+            pre_solve_fcn: None,
+            pre_solve_context: 0,
+            custom_filter_fcn: None,
+            custom_filter_context: 0,
+            worker_count: 1,
+            user_data: def.user_data,
+            inv_h: 0.0,
+            inv_dt: 0.0,
+            world_id: 0,
+            enable_sleep: def.enable_sleep,
+            locked: false,
+            enable_warm_starting: true,
+            enable_continuous: def.enable_continuous,
+            enable_speculative: true,
+            in_use: true,
+        }
+    }
+}
