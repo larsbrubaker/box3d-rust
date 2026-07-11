@@ -22,7 +22,6 @@ row here.
 | [task-3.md](task-3.md) | Sensors (overlap sweep, events, hit reporting) | — |
 | [task-4.md](task-4.md) | Remaining shape creates + b3Shape_*/b3Body_* API surface | — |
 | [task-5.md](task-5.md) | World queries, casts, explosion, world API surface | — |
-| [task-6.md](task-6.md) | Character mover | task-5 (cast/overlap machinery) |
 
 Merge-conflict warning: task-1, task-2, and task-3 all add passes to
 `src/solver/solve.rs` (joint stages, bullet pass, sensor-hits report) and
@@ -61,4 +60,4 @@ Mirror the C `samples/` categories as features land (WebGL, `demo/`,
 - [ ] Sensor samples — after task-3
 - [ ] Bullet/CCD samples — after task-2
 - [ ] Query/raycast visualizer — after task-5
-- [ ] Character mover playground — after task-6
+- [ ] Character mover playground — mover API landed; sample still TODO

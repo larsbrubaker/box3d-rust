@@ -31,6 +31,7 @@ pub mod joint;
 pub mod manifold;
 pub mod math_functions;
 pub mod mesh;
+pub mod mover;
 pub mod name_cache;
 pub mod sensor;
 pub mod shape;
@@ -105,6 +106,9 @@ mod math_functions_tests;
 
 #[cfg(test)]
 mod mesh_tests;
+
+#[cfg(test)]
+mod mover_tests;
 
 #[cfg(test)]
 mod shape_tests;

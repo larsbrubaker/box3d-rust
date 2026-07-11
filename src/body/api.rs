@@ -9,15 +9,18 @@ use super::lifecycle::{
 };
 use super::mass::update_body_extents_from_shapes;
 use super::body_flags;
-use crate::geometry::MassData;
-use crate::id::BodyId;
+use super::types::BodyPlaneResult;
+use crate::core::NULL_INDEX;
+use crate::geometry::{Capsule, MassData, PlaneResult};
+use crate::id::{BodyId, ShapeId};
 use crate::math_functions::{
     add, cross, det, invert_t, is_valid_float, is_valid_matrix3, is_valid_vec3, length_squared,
-    make_matrix_from_quat, mul_mm, sub_pos, transform_world_point, transpose, Matrix3, Pos, Vec3,
-    MAT3_ZERO, VEC3_ZERO,
+    make_matrix_from_quat, mul_mm, sub_pos, to_relative_transform, transform_world_point,
+    transpose, Matrix3, Pos, Vec3, WorldTransform, MAT3_ZERO, VEC3_ZERO,
 };
+use crate::shape::{collide_mover, should_query_collide, ShapeGeometry};
 use crate::solver_set::AWAKE_SET;
-use crate::types::BodyType;
+use crate::types::{BodyType, QueryFilter};
 use crate::world::World;
 
 /// (b3Body_GetMass)
@@ -233,4 +236,66 @@ pub fn body_set_angular_velocity(world: &mut World, body_id: BodyId, angular_vel
 pub fn body_get_position(world: &World, body_id: BodyId) -> Pos {
     let body_index = get_body_full_id(world, body_id);
     get_body_transform_quick(world, &world.bodies[body_index as usize]).p
+}
+
+/// Collide a capsule mover against a single body's sphere/capsule/hull shapes.
+/// (b3Body_CollideMover)
+pub fn body_collide_mover(
+    world: &World,
+    body_id: BodyId,
+    body_planes: &mut [BodyPlaneResult],
+    origin: Pos,
+    mover: &Capsule,
+    filter: &QueryFilter,
+    body_transform: WorldTransform,
+) -> i32 {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return 0;
+    }
+
+    let plane_capacity = body_planes.len() as i32;
+    if plane_capacity == 0 {
+        return 0;
+    }
+
+    let mut result_count = 0i32;
+    let body_index = get_body_full_id(world, body_id);
+    let transform = to_relative_transform(body_transform, origin);
+
+    let mut shape_id = world.bodies[body_index as usize].head_shape_id;
+    while shape_id != NULL_INDEX {
+        let shape = &world.shapes[shape_id as usize];
+        shape_id = shape.next_shape_id;
+
+        if !should_query_collide(&shape.filter, filter) {
+            continue;
+        }
+
+        match &shape.geometry {
+            ShapeGeometry::Sphere(_) | ShapeGeometry::Capsule(_) | ShapeGeometry::Hull(_) => {}
+            _ => continue,
+        }
+
+        let mut plane = PlaneResult::default();
+        let count = collide_mover(std::slice::from_mut(&mut plane), shape, transform, mover);
+
+        if count > 0 {
+            let id = ShapeId {
+                index1: shape.id + 1,
+                world0: body_id.world0,
+                generation: shape.generation,
+            };
+            body_planes[result_count as usize] = BodyPlaneResult {
+                shape_id: id,
+                result: plane,
+            };
+            result_count += 1;
+            if result_count == plane_capacity {
+                return result_count;
+            }
+        }
+    }
+
+    result_count
 }

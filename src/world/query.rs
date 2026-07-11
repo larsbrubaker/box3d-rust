@@ -8,15 +8,17 @@
 
 use super::World;
 use crate::body::get_body_transform_quick;
-use crate::distance::ShapeProxy;
+use crate::distance::{make_proxy, ShapeProxy};
 use crate::dynamic_tree::{BoxCastInput, TreeStats};
-use crate::geometry::{RayCastInput, ShapeCastInput};
+use crate::geometry::{Capsule, PlaneResult, RayCastInput, ShapeCastInput};
 use crate::id::ShapeId;
 use crate::math_functions::{
-    clamp_int, is_valid_aabb, is_valid_position, is_valid_vec3, make_aabb, offset_aabb, offset_pos,
-    to_relative_transform, to_vec3, Aabb, Pos, Vec3, VEC3_ZERO,
+    add, clamp_int, is_valid_aabb, is_valid_position, is_valid_vec3, make_aabb, max, min,
+    offset_aabb, offset_pos, sub, to_relative_transform, to_vec3, Aabb, Pos, Vec3, VEC3_ZERO,
 };
-use crate::shape::{overlap_shape, ray_cast_shape, shape_cast_shape, should_query_collide, Shape};
+use crate::shape::{
+    collide_mover, overlap_shape, ray_cast_shape, shape_cast_shape, should_query_collide, Shape,
+};
 use crate::types::{QueryFilter, RayResult, BODY_TYPE_COUNT};
 
 /// Make a user-facing shape id for a shape. Queries hand these to callbacks.
@@ -384,4 +386,154 @@ pub fn world_cast_shape(
     }
 
     tree_stats
+}
+
+/// Collide a capsule mover with the world, gathering collision planes via callback.
+/// The callback receives `(shape_id, planes)` and returns `false` to stop.
+/// (b3World_CollideMover + static TreeCollideCallback)
+pub fn world_collide_mover(
+    world: &World,
+    origin: Pos,
+    mover: &Capsule,
+    filter: &QueryFilter,
+    mut fcn: impl FnMut(ShapeId, &[PlaneResult]) -> bool,
+) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    debug_assert!(is_valid_position(origin));
+
+    let r = Vec3 {
+        x: mover.radius,
+        y: mover.radius,
+        z: mover.radius,
+    };
+
+    // Relative box lifted to world float with outward rounding, conservative for the tree
+    let rel_box = Aabb {
+        lower_bound: sub(min(mover.center1, mover.center2), r),
+        upper_bound: add(max(mover.center1, mover.center2), r),
+    };
+    let aabb = offset_aabb(rel_box, origin);
+
+    for i in 0..BODY_TYPE_COUNT {
+        world
+            .broad_phase
+            .trees[i]
+            .query(aabb, filter.mask_bits, false, |_, user_data| {
+                let shape_id = user_data as i32;
+                let shape = &world.shapes[shape_id as usize];
+
+                if !should_query_collide(&shape.filter, filter) {
+                    return true;
+                }
+
+                // Re-center on the query origin, the mover and the resulting planes are origin relative
+                let body = &world.bodies[shape.body_id as usize];
+                let transform =
+                    to_relative_transform(get_body_transform_quick(world, body), origin);
+
+                let mut buffer = [PlaneResult::default(); 64];
+                let count = collide_mover(&mut buffer, shape, transform, mover);
+
+                if count > 0 {
+                    let id = query_shape_id(world, shape);
+                    return fcn(id, &buffer[..count as usize]);
+                }
+
+                true
+            });
+    }
+}
+
+/// Cast a capsule mover through the world. Returns the earliest hit fraction in
+/// `[0, 1]`. Overlapping shapes (fraction == 0) are ignored. An optional filter
+/// callback can reject individual shapes. (b3World_CastMover + static MoverCastCallback)
+pub fn world_cast_mover(
+    world: &World,
+    origin: Pos,
+    mover: &Capsule,
+    translation: Vec3,
+    filter: &QueryFilter,
+    mut filter_fcn: Option<&mut dyn FnMut(ShapeId) -> bool>,
+) -> f32 {
+    debug_assert!(is_valid_position(origin));
+    debug_assert!(is_valid_vec3(translation));
+
+    debug_assert!(!world.locked);
+    if world.locked {
+        return 1.0;
+    }
+
+    let cast_input = ShapeCastInput {
+        proxy: make_proxy(&[mover.center1, mover.center2], mover.radius),
+        translation,
+        max_fraction: 1.0,
+        can_encroach: mover.radius > 0.0,
+    };
+
+    let mut fraction = 1.0f32;
+
+    // Bound the capsule in origin relative space then lift to a conservative world float box
+    let centers = [mover.center1, mover.center2];
+    let mut tree_input = BoxCastInput {
+        box_: offset_aabb(make_aabb(&centers, mover.radius), origin),
+        translation,
+        max_fraction: 1.0,
+    };
+
+    for i in 0..BODY_TYPE_COUNT {
+        world.broad_phase.trees[i].box_cast(
+            &tree_input,
+            filter.mask_bits,
+            false,
+            |box_input, _, user_data| {
+                let shape_id = user_data as i32;
+                let shape = &world.shapes[shape_id as usize];
+
+                if !should_query_collide(&shape.filter, filter) {
+                    return fraction;
+                }
+
+                if let Some(ref mut fcn) = filter_fcn {
+                    let id = ShapeId {
+                        index1: shape_id + 1,
+                        world0: world.world_id,
+                        generation: shape.generation,
+                    };
+                    if !fcn(id) {
+                        return fraction;
+                    }
+                }
+
+                // Rebuild from the origin relative input, taking only the advancing fraction from the tree
+                let mut local_input = cast_input;
+                local_input.max_fraction = box_input.max_fraction;
+
+                // Re-center on the query origin so the per-shape cast stays in float precision far from the origin
+                let body = &world.bodies[shape.body_id as usize];
+                let transform =
+                    to_relative_transform(get_body_transform_quick(world, body), origin);
+
+                let output = shape_cast_shape(shape, transform, &local_input);
+                if output.fraction == 0.0 {
+                    // Ignore overlapping shapes
+                    return fraction;
+                }
+
+                fraction = output.fraction;
+                output.fraction
+            },
+        );
+
+        if fraction == 0.0 {
+            break;
+        }
+
+        tree_input.max_fraction = fraction;
+    }
+
+    fraction
 }
