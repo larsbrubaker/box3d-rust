@@ -8,6 +8,7 @@ mod hull_demo;
 mod height_field_demo;
 mod manifold_demo;
 mod mesh_demo;
+mod sim_demo;
 mod tree_demo;
 
 use box3d_rust::math_functions as m;

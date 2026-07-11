@@ -7,9 +7,9 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Tree", blurb: "Dynamic AABB tree broad-phase", route: "tree" },
   { name: "Collision", blurb: "Hulls, height fields, casting", route: "hull" },
   { name: "Compound", blurb: "Compound shapes (port in progress)", route: undefined },
-  { name: "Bodies", blurb: "Body types, sleeping, user data" },
+  { name: "Bodies", blurb: "Body types, sleeping, user data", route: "bodies" },
   { name: "Shapes", blurb: "Spheres, capsules, hulls, chains" },
-  { name: "Stacking", blurb: "Pyramids, towers, and piles" },
+  { name: "Stacking", blurb: "Pyramids, towers, and piles", route: "stacking" },
   { name: "Joints", blurb: "Revolute, prismatic, spherical, weld…" },
   { name: "Continuous", blurb: "Fast bodies without tunneling" },
   { name: "Events", blurb: "Contacts, sensors, hit events" },
@@ -46,7 +46,7 @@ export function init(container: HTMLElement) {
         <p>
           Each category of the upstream Box3D <code>samples</code> app becomes an interactive
           browser demo as its module lands. <strong>${live} collision-layer demos are LIVE</strong>
-          now — dynamics samples flip live once world/body/solver land.
+          now — dynamics samples flip live as world/body/solver land.
         </p>
       </div>
       <div class="feature-grid">${cards}</div>

@@ -34,6 +34,12 @@ export interface Box3dWasm {
   tree_proxy_aabbs(): Float32Array;
   tree_query(cx: number, cy: number, cz: number, h: number): Float32Array;
   tree_metrics(): Float32Array;
+
+  sim_reset_bodies(): number;
+  sim_reset_stacking(count: number): number;
+  sim_step(dt: number, sub_steps: number): number;
+  sim_body_poses(): Float32Array;
+  sim_body_count(): number;
 }
 
 let wasmModule: Box3dWasm | null = null;

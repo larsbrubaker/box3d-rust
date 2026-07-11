@@ -11,6 +11,8 @@ const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
   "height-field": () => import("./demos/height-field.ts"),
   mesh: () => import("./demos/mesh.ts"),
   tree: () => import("./demos/tree.ts"),
+  bodies: () => import("./demos/bodies.ts"),
+  stacking: () => import("./demos/stacking.ts"),
   roadmap: () => import("./demos/roadmap.ts"),
 };
 
@@ -72,7 +74,7 @@ function renderHome(container: HTMLElement) {
       </div>
 
       <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">
-        Live now <span class="badge-live">7 demos</span>
+        Live now <span class="badge-live">9 demos</span>
       </h2>
       <div class="feature-grid">
         <a href="#/math" class="feature-card">
@@ -117,6 +119,18 @@ function renderHome(container: HTMLElement) {
           <h3>Dynamic Tree</h3>
           <p>Broad-phase AABB tree: insert proxies, watch query hits and metrics.</p>
         </a>
+        <a href="#/bodies" class="feature-card">
+          <span class="card-icon">&#9632;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Bodies</h3>
+          <p>Live <code>World::step</code> with gravity, collide, and contact solve.</p>
+        </a>
+        <a href="#/stacking" class="feature-card">
+          <span class="card-icon">&#8801;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Stacking</h3>
+          <p>Vertical box stack from the scalar solver — settle under gravity.</p>
+        </a>
         <a href="#/roadmap" class="feature-card">
           <span class="card-icon">&#9776;</span>
           <h3>Demo Roadmap</h3>
@@ -129,9 +143,9 @@ function renderHome(container: HTMLElement) {
         <p>
           This is a module-by-module Rust port of
           <a href="https://github.com/erincatto/box3d" target="_blank">Box3D</a> by Erin Catto,
-          with the C test suite ported alongside each module. The collision layer
-          (math, AABB, GJK/TOI, hulls, geometry, manifolds, mesh, height field, dynamic tree)
-          is already running here. Full rigid-body simulation demos arrive once world/body/solver land —
+          with the C test suite ported alongside each module. Collision and a first dynamics slice
+          (world step, collide, scalar contact solve) run here. Joints, sleep polish, and more
+          samples continue to land —
           the same path our finished
           <a href="https://larsbrubaker.github.io/box2d-rust/" target="_blank">box2d-rust</a> demos took.
         </p>
@@ -145,7 +159,7 @@ function renderHome(container: HTMLElement) {
             <div class="stat-label">Port version</div>
           </div>
           <div class="stat">
-            <div class="stat-value">7</div>
+            <div class="stat-value">9</div>
             <div class="stat-label">Live demos</div>
           </div>
           <div class="stat">
