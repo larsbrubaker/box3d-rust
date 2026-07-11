@@ -97,6 +97,10 @@ pub fn mesh_rest_offset() -> f32 {
     1.0 * linear_slop()
 }
 
+/// Angular distance threshold for contact recycling (cos² of half-angle).
+/// (B3_CONTACT_RECYCLE_ANGULAR_DISTANCE)
+pub const CONTACT_RECYCLE_ANGULAR_DISTANCE: f32 = 0.99240388;
+
 /// Default contact recycling distance. (B3_CONTACT_RECYCLE_DISTANCE)
 pub fn contact_recycle_distance() -> f32 {
     10.0 * linear_slop()

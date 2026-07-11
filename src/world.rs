@@ -505,6 +505,7 @@ impl World {
         update_broad_phase_pairs(self);
 
         let sub_steps = max_int(1, sub_step_count);
+        let dt = time_step;
         if time_step > 0.0 {
             self.inv_dt = 1.0 / time_step;
             self.inv_h = sub_steps as f32 * self.inv_dt;
@@ -513,8 +514,10 @@ impl World {
             self.inv_h = 0.0;
         }
 
-        // Collide / solve / sleep deferred — pairs-only skeleton until those
-        // slices land. Empty worlds and non-overlapping scenes are correct.
+        crate::contact::collide(self, dt);
+
+        // Solve / sleep deferred — collide + pairs are live; empty and
+        // overlapping-but-unsolved scenes advance contact state correctly.
 
         self.step_index = self.step_index.wrapping_add(1);
         self.validate_solver_sets();

@@ -229,9 +229,11 @@ impl Default for ContactSpec {
     }
 }
 
+mod collide;
 mod lifecycle;
 mod update;
 
+pub use collide::*;
 pub use lifecycle::*;
 pub use update::*;
 
