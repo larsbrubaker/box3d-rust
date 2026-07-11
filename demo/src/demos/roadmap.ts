@@ -1,0 +1,55 @@
+// Demo Roadmap — upstream sample categories with LIVE / PLANNED badges.
+
+const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
+  { name: "Geometry", blurb: "Rays, GJK distance, shape queries", route: "geometry" },
+  { name: "Manifold", blurb: "Contact points and normals", route: "manifolds" },
+  { name: "Mesh", blurb: "Triangle meshes, casts, AABB", route: "mesh" },
+  { name: "Tree", blurb: "Dynamic AABB tree broad-phase", route: "tree" },
+  { name: "Collision", blurb: "Hulls, height fields, casting", route: "hull" },
+  { name: "Compound", blurb: "Compound shapes (port in progress)", route: undefined },
+  { name: "Bodies", blurb: "Body types, sleeping, user data" },
+  { name: "Shapes", blurb: "Spheres, capsules, hulls, chains" },
+  { name: "Stacking", blurb: "Pyramids, towers, and piles" },
+  { name: "Joints", blurb: "Revolute, prismatic, spherical, weld…" },
+  { name: "Continuous", blurb: "Fast bodies without tunneling" },
+  { name: "Events", blurb: "Contacts, sensors, hit events" },
+  { name: "Character", blurb: "Movers and platforming" },
+  { name: "World", blurb: "Gravity, explosions, large worlds" },
+  { name: "Determinism", blurb: "Cross-platform reproducibility", route: "math" },
+  { name: "Robustness", blurb: "Degenerate input, overlap recovery" },
+  { name: "Benchmark", blurb: "Performance stress scenes" },
+  { name: "Ragdoll", blurb: "Articulated bodies" },
+  { name: "Issues", blurb: "Regression / bug-repro scenes" },
+];
+
+export function init(container: HTMLElement) {
+  const live = CATEGORIES.filter((c) => c.route).length;
+  const cards = CATEGORIES.map((cat) => {
+    if (cat.route) {
+      return `
+        <a href="#/${cat.route}" class="feature-card">
+          <h3>${cat.name} <span class="badge-live">LIVE</span></h3>
+          <p>${cat.blurb}</p>
+        </a>`;
+    }
+    return `
+      <div class="feature-card" style="opacity:0.65;cursor:default;">
+        <h3>${cat.name} <span class="badge-planned">PLANNED</span></h3>
+        <p>${cat.blurb}</p>
+      </div>`;
+  }).join("");
+
+  container.innerHTML = `
+    <div class="home-page">
+      <div class="hero">
+        <h1>Demo <span>Roadmap</span></h1>
+        <p>
+          Each category of the upstream Box3D <code>samples</code> app becomes an interactive
+          browser demo as its module lands. <strong>${live} collision-layer demos are LIVE</strong>
+          now — dynamics samples flip live once world/body/solver land.
+        </p>
+      </div>
+      <div class="feature-grid">${cards}</div>
+    </div>
+  `;
+}

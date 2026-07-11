@@ -7,34 +7,59 @@
   <link rel="stylesheet" href="./styles/main.css">
 </head>
 <body>
-  <main class="hero">
-    <div class="cube-grid" aria-hidden="true">
-      <div class="cube c1"></div>
-      <div class="cube c2"></div>
-      <div class="cube c3"></div>
+  <button id="menu-toggle" class="menu-toggle" aria-label="Toggle navigation">
+    <span></span><span></span><span></span>
+  </button>
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <h1 class="logo">Box3D<span class="logo-accent">.rs</span></h1>
+      <p class="tagline">Interactive 3D Physics Demos</p>
     </div>
-    <h1 class="logo">Box3D<span class="logo-accent">.rs</span></h1>
-    <p class="tagline">A pure Rust port of Erin Catto's Box3D — 3D physics for games</p>
+    <ul class="nav-list">
+      <li><a href="#/" class="nav-link active" data-route="home">
+        <span class="nav-icon">&#9670;</span> Home
+      </a></li>
+      <li class="nav-section">Collision Layer</li>
+      <li><a href="#/math" class="nav-link" data-route="math">
+        <span class="nav-icon">&#9881;</span> Deterministic Math
+      </a></li>
+      <li><a href="#/geometry" class="nav-link" data-route="geometry">
+        <span class="nav-icon">&#10140;</span> Geometry Queries
+      </a></li>
+      <li><a href="#/manifolds" class="nav-link" data-route="manifolds">
+        <span class="nav-icon">&#9649;</span> Contact Manifolds
+      </a></li>
+      <li><a href="#/hull" class="nav-link" data-route="hull">
+        <span class="nav-icon">&#11042;</span> Hull
+      </a></li>
+      <li><a href="#/height-field" class="nav-link" data-route="height-field">
+        <span class="nav-icon">&#8776;</span> Height Field
+      </a></li>
+      <li><a href="#/mesh" class="nav-link" data-route="mesh">
+        <span class="nav-icon">&#9638;</span> Mesh
+      </a></li>
+      <li><a href="#/tree" class="nav-link" data-route="tree">
+        <span class="nav-icon">&#9752;</span> Dynamic Tree
+      </a></li>
+      <li class="nav-section">About</li>
+      <li><a href="#/roadmap" class="nav-link" data-route="roadmap">
+        <span class="nav-icon">&#9776;</span> Demo Roadmap
+      </a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <p><a href="https://github.com/larsbrubaker/box3d-rust" target="_blank">Source on GitHub</a></p>
+      <p>Rust port of <a href="https://github.com/erincatto/box3d" target="_blank">Box3D</a></p>
+      <p><a href="https://larsbrubaker.github.io/box2d-rust/" target="_blank">box2d-rust demos</a></p>
+      <p class="license">MIT License</p>
+    </div>
+  </nav>
 
-    <p class="status-line">
-      <span class="badge" id="wasm-status">loading wasm…</span>
-      <span class="badge badge-dim" id="port-version"></span>
-    </p>
-
-    <p class="blurb">
-      The port has just begun. This page runs the current WebAssembly build of the port —
-      as modules land (deterministic math, GJK distance, hulls, manifolds, the dynamic
-      tree, then the full rigid-body solver), interactive 3D samples mirroring the
-      upstream <code>samples</code> app will appear here, just as they did for our
-      completed <a href="https://larsbrubaker.github.io/box2d-rust/">box2d-rust</a> port.
-    </p>
-
-    <p class="links">
-      <a class="button" href="https://github.com/larsbrubaker/box3d-rust">GitHub</a>
-      <a class="button" href="https://crates.io/crates/box3d-rust">crates.io</a>
-      <a class="button button-dim" href="https://github.com/erincatto/box3d">Upstream Box3D</a>
-    </p>
+  <main id="main-content">
+    <!-- Content dynamically injected by router -->
   </main>
+
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>

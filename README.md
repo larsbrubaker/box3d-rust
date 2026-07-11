@@ -6,7 +6,7 @@ engine for games — exact behavioral match, including cross-platform determinis
 [![crates.io](https://img.shields.io/crates/v/box3d-rust.svg)](https://crates.io/crates/box3d-rust)
 [![docs.rs](https://docs.rs/box3d-rust/badge.svg)](https://docs.rs/box3d-rust)
 [![License](https://img.shields.io/badge/License-MIT-lightblue.svg)](LICENSE)
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Status_Page-blue)](https://larsbrubaker.github.io/box3d-rust/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Interactive-blue)](https://larsbrubaker.github.io/box3d-rust/)
 
 ## Demo Site
 
@@ -14,9 +14,11 @@ engine for games — exact behavioral match, including cross-platform determinis
 
 [![box3d-rust demo](readme_hero.jpg)](https://larsbrubaker.github.io/box3d-rust/)
 
-The demo site will mirror the upstream `samples` app via WebAssembly, exactly like our
-finished [box2d-rust](https://github.com/larsbrubaker/box2d-rust) port did for Box2D.
-Until the collision layer lands it is a status page running the current wasm build.
+The demo site mirrors the upstream `samples` app via WebAssembly — same light SPA shell as
+our finished [box2d-rust](https://github.com/larsbrubaker/box2d-rust) demos. Collision-layer
+demos are live now (deterministic math, geometry queries, contact manifolds, hull, height
+field, mesh, dynamic tree). Full rigid-body simulation samples arrive once world/body/solver
+land.
 
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of
 > Rust graphics and geometry libraries by Lars Brubaker.
