@@ -15,12 +15,10 @@ bring-up rules apply to everything below.
 |---|---|---|
 | [task-4.md](task-4.md) | Remaining `b3Shape_*` API + shape/body test remainders | — |
 | [task-5.md](task-5.md) | Deferred world/body query tests | task-4 (`SetHull`, body-level queries) |
-| [task-6.md](task-6.md) | Mesh & height-field narrow phase (`mesh_contact.c`) — **critical path**: bodies currently fall through meshes | — |
 | [task-7.md](task-7.md) | Determinism gate + large world | scene helpers startable now; final hash needs task-6 |
 
-task-4 and task-6 don't overlap in files (API layer vs `src/contact/update.rs`)
-and can run on separate machines. task-7's scene-helper work is independent of
-both.
+task-4's API work is independent of the finished mesh-contact path.
+task-7's scene-helper work is independent of both.
 
 ## Recording, replay, and snapshots
 
@@ -48,4 +46,4 @@ physics for all of these exists now except the mesh scenes:
 - [ ] Bullet/CCD sample
 - [ ] Query/raycast visualizer
 - [ ] Character mover playground
-- [ ] Mesh/height-field terrain scene — after task-6
+- [ ] Mesh/height-field terrain scene
