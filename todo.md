@@ -9,12 +9,19 @@ Read `CLAUDE.md` first: the pinned C reference is `box3d-cpp-reference/`
 (never upstream), ports must match C behavior exactly, and the dynamics-core
 bring-up rules apply to everything below.
 
-**Milestone note (context, not a task): the determinism gate passed — the
-falling-ragdoll scene matches the C scalar reference bit-for-bit in both
-precision modes. Everything below is completeness, not core physics.**
+**Milestone note (context, not a task): the port is functionally complete and
+bit-exact with the C scalar reference in both precision modes. Everything
+below is quality, presentation, and release work — not core physics.**
 
-Tasks 8–11 (API completeness, recording/replay/snapshots, debug draw, and
-demo samples) are done. Remaining work is polish and release readiness.
+## Parallel tracks
+
+| File | Track | Depends on |
+|---|---|---|
+| [task-12.md](task-12.md) | Demo excellence: interaction layer (mouse drag, pause/step), visual quality (shadows, colorization), sample-category coverage, site polish | — |
+
+The C samples app has ~90 samples with mouse-drag, pause/single-step, tuning
+panels, and debug overlays; our 17 demos play like a viewer, not a playground.
+task-12 is the whole gap, ordered so the shared interaction layer lands first.
 
 ## Benchmarks
 
