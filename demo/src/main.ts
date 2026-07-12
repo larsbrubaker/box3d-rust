@@ -13,6 +13,11 @@ const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
   tree: () => import("./demos/tree.ts"),
   bodies: () => import("./demos/bodies.ts"),
   stacking: () => import("./demos/stacking.ts"),
+  ragdolls: () => import("./demos/ragdolls.ts"),
+  joints: () => import("./demos/joints.ts"),
+  continuous: () => import("./demos/continuous.ts"),
+  sensors: () => import("./demos/sensors.ts"),
+  queries: () => import("./demos/queries.ts"),
   roadmap: () => import("./demos/roadmap.ts"),
 };
 
@@ -74,7 +79,7 @@ function renderHome(container: HTMLElement) {
       </div>
 
       <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">
-        Live now <span class="badge-live">9 demos</span>
+        Live now <span class="badge-live">14 demos</span>
       </h2>
       <div class="feature-grid">
         <a href="#/math" class="feature-card">
@@ -131,6 +136,36 @@ function renderHome(container: HTMLElement) {
           <h3>Stacking</h3>
           <p>Vertical box stack from the scalar solver — settle under gravity.</p>
         </a>
+        <a href="#/ragdolls" class="feature-card">
+          <span class="card-icon">&#9823;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Ragdolls</h3>
+          <p>Capsule-bone humans with spherical/revolute joints — determinism soak in the browser.</p>
+        </a>
+        <a href="#/joints" class="feature-card">
+          <span class="card-icon">&#9878;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Joints</h3>
+          <p>Ball-and-chain and a revolute hinge with motor on/off.</p>
+        </a>
+        <a href="#/continuous" class="feature-card">
+          <span class="card-icon">&#9889;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Continuous</h3>
+          <p>Bullet vs thin wall — toggle CCD and watch tunneling.</p>
+        </a>
+        <a href="#/sensors" class="feature-card">
+          <span class="card-icon">&#9673;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Sensors</h3>
+          <p>Begin/end touch events as spheres fall through a sensor volume.</p>
+        </a>
+        <a href="#/queries" class="feature-card">
+          <span class="card-icon">&#9678;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Queries</h3>
+          <p>Animated closest ray cast with hit point and normal.</p>
+        </a>
         <a href="#/roadmap" class="feature-card">
           <span class="card-icon">&#9776;</span>
           <h3>Demo Roadmap</h3>
@@ -143,10 +178,9 @@ function renderHome(container: HTMLElement) {
         <p>
           This is a module-by-module Rust port of
           <a href="https://github.com/erincatto/box3d" target="_blank">Box3D</a> by Erin Catto,
-          with the C test suite ported alongside each module. Collision and a first dynamics slice
-          (world step, collide, scalar contact solve) run here. Joints, sleep polish, and more
-          samples continue to land —
-          the same path our finished
+          with the C test suite ported alongside each module. Dynamics samples — ragdolls, joints,
+          continuous collision, sensors, and queries — run here in wasm, following the same path
+          our finished
           <a href="https://larsbrubaker.github.io/box2d-rust/" target="_blank">box2d-rust</a> demos took.
         </p>
         <p style="margin-top: 12px">
@@ -159,7 +193,7 @@ function renderHome(container: HTMLElement) {
             <div class="stat-label">Port version</div>
           </div>
           <div class="stat">
-            <div class="stat-value">9</div>
+            <div class="stat-value">14</div>
             <div class="stat-label">Live demos</div>
           </div>
           <div class="stat">

@@ -3,13 +3,19 @@
 
 use wasm_bindgen::prelude::*;
 
+mod continuous_demo;
 mod geometry_demo;
 mod height_field_demo;
 mod hull_demo;
+mod joint_demo;
 mod manifold_demo;
 mod mesh_demo;
+mod query_demo;
+mod ragdoll_demo;
+mod sensor_demo;
 mod sim_demo;
 mod tree_demo;
+mod vis;
 
 use box3d_rust::math_functions as m;
 

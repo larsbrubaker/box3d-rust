@@ -1,0 +1,194 @@
+// Shared mesh sync for dynamics demos using the 15-float pose stride.
+
+import * as THREE from "three";
+import { COLORS } from "../three-scene.ts";
+
+export const POSE_STRIDE = 15;
+export const KIND_BOX = 0;
+export const KIND_SPHERE = 1;
+export const KIND_CAPSULE = 2;
+
+const _quat = new THREE.Quaternion();
+const _c1 = new THREE.Vector3();
+const _c2 = new THREE.Vector3();
+const _mid = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _yUp = new THREE.Vector3(0, 1, 0);
+
+export type MeshPool = {
+  meshes: THREE.Object3D[];
+  boxGeo: THREE.BoxGeometry;
+  sphereGeo: THREE.SphereGeometry;
+  groundMat: THREE.MeshStandardMaterial;
+  dynamicMat: THREE.MeshStandardMaterial;
+  sensorMat: THREE.MeshStandardMaterial;
+  boneMats: THREE.MeshStandardMaterial[];
+};
+
+export function createMeshPool(): MeshPool {
+  const boneColors = [0x4a90d9, 0x2f6fad, 0xe8c39e, 0xd4a574, 0x3db8a0, 0xc45c5c];
+  return {
+    meshes: [],
+    boxGeo: new THREE.BoxGeometry(2, 2, 2),
+    sphereGeo: new THREE.SphereGeometry(1, 20, 14),
+    groundMat: new THREE.MeshStandardMaterial({
+      color: 0x9aa3b2,
+      roughness: 0.92,
+      metalness: 0.05,
+    }),
+    dynamicMat: new THREE.MeshStandardMaterial({
+      color: COLORS.accent,
+      roughness: 0.42,
+      metalness: 0.12,
+    }),
+    sensorMat: new THREE.MeshStandardMaterial({
+      color: 0x22c55e,
+      transparent: true,
+      opacity: 0.35,
+      roughness: 0.4,
+      metalness: 0.05,
+      depthWrite: false,
+    }),
+    boneMats: boneColors.map(
+      (c) =>
+        new THREE.MeshStandardMaterial({
+          color: c,
+          roughness: 0.45,
+          metalness: 0.1,
+        }),
+    ),
+  };
+}
+
+export function disposeMeshPool(pool: MeshPool) {
+  pool.boxGeo.dispose();
+  pool.sphereGeo.dispose();
+  pool.groundMat.dispose();
+  pool.dynamicMat.dispose();
+  pool.sensorMat.dispose();
+  for (const m of pool.boneMats) m.dispose();
+  for (const mesh of pool.meshes) {
+    mesh.traverse((child) => {
+      const m = child as THREE.Mesh;
+      if (m.geometry && m.geometry !== pool.boxGeo && m.geometry !== pool.sphereGeo) {
+        m.geometry.dispose();
+      }
+    });
+  }
+  pool.meshes.length = 0;
+}
+
+function materialFor(
+  pool: MeshPool,
+  index: number,
+  kind: number,
+  sensorIndex: number | null,
+): THREE.Material {
+  if (sensorIndex !== null && index === sensorIndex) return pool.sensorMat;
+  if (index === 0 && kind === KIND_BOX) return pool.groundMat;
+  if (kind === KIND_CAPSULE) {
+    return pool.boneMats[index % pool.boneMats.length]!;
+  }
+  return pool.dynamicMat;
+}
+
+function makeCapsuleMesh(radius: number, length: number, mat: THREE.Material): THREE.Mesh {
+  const cyl = Math.max(1e-4, length);
+  return new THREE.Mesh(new THREE.CapsuleGeometry(radius, cyl, 4, 10), mat);
+}
+
+export function syncMeshesFromPoses(
+  content: THREE.Group,
+  pool: MeshPool,
+  poses: ArrayLike<number>,
+  opts: { sensorIndex?: number | null } = {},
+) {
+  const n = Math.floor(poses.length / POSE_STRIDE);
+  const sensorIndex = opts.sensorIndex ?? null;
+
+  while (pool.meshes.length > n) {
+    const m = pool.meshes.pop()!;
+    content.remove(m);
+    m.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry && mesh.geometry !== pool.boxGeo && mesh.geometry !== pool.sphereGeo) {
+        mesh.geometry.dispose();
+      }
+    });
+  }
+
+  for (let i = 0; i < n; i++) {
+    const o = i * POSE_STRIDE;
+    const kind = poses[o + 14]!;
+    const mat = materialFor(pool, i, kind, sensorIndex);
+    let obj = pool.meshes[i];
+
+    if (kind === KIND_CAPSULE) {
+      const c1x = poses[o + 7]!;
+      const c1y = poses[o + 8]!;
+      const c1z = poses[o + 9]!;
+      const c2x = poses[o + 10]!;
+      const c2y = poses[o + 11]!;
+      const c2z = poses[o + 12]!;
+      const radius = poses[o + 13]!;
+      _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+      const bx = poses[o]!;
+      const by = poses[o + 1]!;
+      const bz = poses[o + 2]!;
+      _c1.set(c1x, c1y, c1z).applyQuaternion(_quat).add(_mid.set(bx, by, bz));
+      _c2.set(c2x, c2y, c2z).applyQuaternion(_quat).add(_mid.set(bx, by, bz));
+      _dir.subVectors(_c2, _c1);
+      const len = _dir.length();
+
+      if (!obj || (obj as THREE.Mesh).geometry?.type !== "CapsuleGeometry") {
+        if (obj) content.remove(obj);
+        obj = makeCapsuleMesh(radius, len, mat);
+        content.add(obj);
+        pool.meshes[i] = obj;
+      } else {
+        const mesh = obj as THREE.Mesh;
+        const geo = mesh.geometry as THREE.CapsuleGeometry;
+        // Rebuild if radius/length changed substantially
+        const params = geo.parameters;
+        if (Math.abs(params.radius - radius) > 1e-4 || Math.abs(params.length - Math.max(1e-4, len)) > 1e-3) {
+          geo.dispose();
+          mesh.geometry = new THREE.CapsuleGeometry(radius, Math.max(1e-4, len), 4, 10);
+        }
+        mesh.material = mat;
+      }
+
+      obj.position.copy(_c1).add(_c2).multiplyScalar(0.5);
+      if (len > 1e-6) {
+        obj.quaternion.setFromUnitVectors(_yUp, _dir.normalize());
+      }
+    } else if (kind === KIND_SPHERE) {
+      const radius = poses[o + 7]!;
+      if (!obj || (obj as THREE.Mesh).geometry !== pool.sphereGeo) {
+        if (obj) content.remove(obj);
+        obj = new THREE.Mesh(pool.sphereGeo, mat);
+        content.add(obj);
+        pool.meshes[i] = obj;
+      } else {
+        (obj as THREE.Mesh).material = mat;
+      }
+      obj.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
+      _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+      obj.quaternion.copy(_quat);
+      obj.scale.setScalar(radius);
+    } else {
+      // box
+      if (!obj || (obj as THREE.Mesh).geometry !== pool.boxGeo) {
+        if (obj) content.remove(obj);
+        obj = new THREE.Mesh(pool.boxGeo, mat);
+        content.add(obj);
+        pool.meshes[i] = obj;
+      } else {
+        (obj as THREE.Mesh).material = mat;
+      }
+      obj.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
+      _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+      obj.quaternion.copy(_quat);
+      obj.scale.set(poses[o + 7]!, poses[o + 8]!, poses[o + 9]!);
+    }
+  }
+}

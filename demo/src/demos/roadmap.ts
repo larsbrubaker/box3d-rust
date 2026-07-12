@@ -6,19 +6,19 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Mesh", blurb: "Triangle meshes, casts, AABB", route: "mesh" },
   { name: "Tree", blurb: "Dynamic AABB tree broad-phase", route: "tree" },
   { name: "Collision", blurb: "Hulls, height fields, casting", route: "hull" },
-  { name: "Compound", blurb: "Compound shapes (port in progress)", route: undefined },
+  { name: "Compound", blurb: "Compound shapes (extend Bodies/Stacking)", route: "bodies" },
   { name: "Bodies", blurb: "Body types, sleeping, user data", route: "bodies" },
-  { name: "Shapes", blurb: "Spheres, capsules, hulls, chains" },
+  { name: "Shapes", blurb: "Spheres, capsules, hulls", route: "bodies" },
   { name: "Stacking", blurb: "Pyramids, towers, and piles", route: "stacking" },
-  { name: "Joints", blurb: "Revolute, prismatic, spherical, weld…" },
-  { name: "Continuous", blurb: "Fast bodies without tunneling" },
-  { name: "Events", blurb: "Contacts, sensors, hit events" },
+  { name: "Joints", blurb: "Revolute, spherical, motor hinge", route: "joints" },
+  { name: "Continuous", blurb: "Fast bodies without tunneling", route: "continuous" },
+  { name: "Events", blurb: "Contacts, sensors, hit events", route: "sensors" },
   { name: "Character", blurb: "Movers and platforming" },
-  { name: "World", blurb: "Gravity, explosions, large worlds" },
+  { name: "World", blurb: "Queries, gravity, large worlds", route: "queries" },
   { name: "Determinism", blurb: "Cross-platform reproducibility", route: "math" },
   { name: "Robustness", blurb: "Degenerate input, overlap recovery" },
   { name: "Benchmark", blurb: "Performance stress scenes" },
-  { name: "Ragdoll", blurb: "Articulated bodies" },
+  { name: "Ragdoll", blurb: "Articulated bodies", route: "ragdolls" },
   { name: "Issues", blurb: "Regression / bug-repro scenes" },
 ];
 
@@ -45,8 +45,8 @@ export function init(container: HTMLElement) {
         <h1>Demo <span>Roadmap</span></h1>
         <p>
           Each category of the upstream Box3D <code>samples</code> app becomes an interactive
-          browser demo as its module lands. <strong>${live} collision-layer demos are LIVE</strong>
-          now — dynamics samples flip live as world/body/solver land.
+          browser demo as its module lands. <strong>${live} sample categories are LIVE</strong>
+          — including ragdolls, joints, continuous collision, sensors, and queries.
         </p>
       </div>
       <div class="feature-grid">${cards}</div>
