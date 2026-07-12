@@ -40,6 +40,36 @@ export interface Box3dWasm {
   sim_step(dt: number, sub_steps: number): number;
   sim_body_poses(): Float32Array;
   sim_body_count(): number;
+
+  ragdoll_reset(count: number): number;
+  ragdoll_set_joint_params(friction: number, hertz: number, damping: number): void;
+  ragdoll_step(dt: number, sub_steps: number): number;
+  ragdoll_poses(): Float32Array;
+  ragdoll_body_count(): number;
+
+  joint_reset_chain(link_count: number): number;
+  joint_reset_hinge(): number;
+  joint_set_motor(enabled: boolean, speed: number, torque: number): void;
+  joint_step(dt: number, sub_steps: number): number;
+  joint_poses(): Float32Array;
+  joint_body_count(): number;
+
+  continuous_reset(continuous: boolean): number;
+  continuous_set_enabled(continuous: boolean): void;
+  continuous_is_enabled(): boolean;
+  continuous_step(dt: number, sub_steps: number): number;
+  continuous_poses(): Float32Array;
+  continuous_status(): Float32Array;
+
+  sensor_reset(): number;
+  sensor_step(dt: number, sub_steps: number): number;
+  sensor_poses(): Float32Array;
+  sensor_event_stats(): Float32Array;
+
+  query_reset(): number;
+  query_step(dt: number, sub_steps: number): number;
+  query_poses(): Float32Array;
+  query_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
 }
 
 let wasmModule: Box3dWasm | null = null;
