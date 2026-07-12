@@ -36,8 +36,6 @@ The crate is functionally complete. `0.1.0` is published on crates.io
 
 - [ ] Rustdoc pass over the public API (module docs on the main entry points,
       doc examples for World/body/shape/joint creation)
-- [ ] Decide the idiomatic-API question: ship the C-mirror API as-is for 0.1
-      (like box2d-rust) or add a thin ergonomic layer — record the decision
 
 ## Upstream tracking (recurring)
 

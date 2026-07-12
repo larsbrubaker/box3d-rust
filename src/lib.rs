@@ -5,6 +5,12 @@
 //! `box3d-cpp-reference/` submodule: same algorithms, same `f32` arithmetic, same edge
 //! cases, including Box3D's hand-rolled cross-platform-deterministic trigonometry.
 //!
+//! # API style
+//!
+//! For 0.1 the public API is a direct C-mirror (same shapes, defs, and call patterns as
+//! Box3D / box2d-rust), not a Rust-ergonomic wrapper. A thin ergonomic layer may be
+//! considered after 0.1 if downstream users ask for one.
+//!
 //! Enable the `double-precision` feature to mirror upstream `BOX3D_DOUBLE_PRECISION`
 //! (large-world mode). See the repository README for status and a quick-start.
 
