@@ -188,10 +188,7 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
                 scale.z = -scale.z;
             }
 
-            buildings.push(BuildingInstance {
-                transform,
-                scale,
-            });
+            buildings.push(BuildingInstance { transform, scale });
             mesh_defs.push(CompoundMeshDef {
                 mesh_data: &building_mesh,
                 transform,

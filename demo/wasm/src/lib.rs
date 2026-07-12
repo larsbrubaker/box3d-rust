@@ -14,16 +14,16 @@ mod joint_drive;
 mod joint_gear;
 mod manifold_demo;
 mod mesh_demo;
+mod obj_loader;
 mod query_demo;
 mod ragdoll_demo;
 mod sensor_demo;
 mod sim_compound;
 mod sim_continuous;
 mod sim_demo;
-mod obj_loader;
-mod village;
 mod terrain_demo;
 mod tree_demo;
+mod village;
 mod vis;
 
 use box3d_rust::math_functions as m;
