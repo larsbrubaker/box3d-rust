@@ -197,7 +197,12 @@ impl<'a> SnapReader<'a> {
         if !self.ok {
             return;
         }
-        if self.cursor.checked_add(need).map(|e| e > self.data.len()).unwrap_or(true) {
+        if self
+            .cursor
+            .checked_add(need)
+            .map(|e| e > self.data.len())
+            .unwrap_or(true)
+        {
             self.ok = false;
         }
     }

@@ -203,8 +203,8 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
         return None;
     }
     let height_count = (column_count as usize).checked_mul(row_count as usize)?;
-    let cell_count = ((column_count - 1).max(0) as usize)
-        .checked_mul((row_count - 1).max(0) as usize)?;
+    let cell_count =
+        ((column_count - 1).max(0) as usize).checked_mul((row_count - 1).max(0) as usize)?;
 
     let hoff = heights_offset as usize;
     if hoff + height_count * 2 > bytes.len() {

@@ -333,8 +333,7 @@ pub fn body_set_target_transform(
 
     // Early out if the body is asleep already and the desired movement is small
     if world.bodies[body_index as usize].set_index != AWAKE_SET {
-        let max_velocity =
-            length(linear_velocity) + length(mul(angular_velocity, sim_max_extent));
+        let max_velocity = length(linear_velocity) + length(mul(angular_velocity, sim_max_extent));
 
         // Return if velocity would be sleepy
         if max_velocity < world.bodies[body_index as usize].sleep_threshold {

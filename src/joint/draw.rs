@@ -470,7 +470,7 @@ fn draw_wheel_joint(
         );
     } else {
         draw.draw_segment(
-            offset_pos(frame_a.p, mul_sv(-1.0 * scale, matrix_a.cx)),
+            offset_pos(frame_a.p, mul_sv(-scale, matrix_a.cx)),
             offset_pos(frame_a.p, mul_sv(1.0 * scale, matrix_a.cx)),
             HexColor::GRAY,
         );

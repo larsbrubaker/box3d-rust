@@ -5,6 +5,7 @@
 
 use crate::bitset::BitSet;
 use crate::body::{Body, BodySim, BodyState};
+use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::contact::{
     contact_flags, Contact, ContactCache, ContactEdge, ContactGeometry, ContactSpec, ConvexContact,
     MeshContact, TriangleCache,
@@ -18,7 +19,6 @@ use crate::hull::convert_bytes_to_hull;
 use crate::id_pool::IdPool;
 use crate::island::{ContactLink, JointLink};
 use crate::manifold::{Manifold, ManifoldPoint, SatCache};
-use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::math_functions::Aabb;
 use crate::mesh::convert_bytes_to_mesh;
 use crate::recording::buffer::{RecBuffer, SnapReader};
@@ -109,7 +109,8 @@ pub fn ser_hash_set(buf: &mut RecBuffer, hs: &HashSet) {
 pub fn des_hash_set(r: &mut SnapReader<'_>) -> HashSet {
     let cap = r.u32();
     let cnt = r.u32();
-    let valid = r.check_count(cap as i32, 16, 16) && (cap == 0 || (cap & (cap - 1)) == 0) && cnt <= cap;
+    let valid =
+        r.check_count(cap as i32, 16, 16) && (cap == 0 || (cap & (cap - 1)) == 0) && cnt <= cap;
     if r.ok && !valid && (cap != 0 || cnt != 0) {
         r.ok = false;
     }
@@ -434,9 +435,7 @@ pub fn des_solver_set(r: &mut SnapReader<'_>) -> SolverSet {
     let n = r.i32();
     let mut island_sims = Vec::with_capacity(n.max(0) as usize);
     for _ in 0..n.max(0) {
-        island_sims.push(crate::island::IslandSim {
-            island_id: r.i32(),
-        });
+        island_sims.push(crate::island::IslandSim { island_id: r.i32() });
     }
     SolverSet {
         body_sims,
@@ -1013,7 +1012,11 @@ fn des_contact_scalars(r: &mut SnapReader<'_>) -> Contact {
     }
 }
 
-pub fn ser_graph_color(buf: &mut RecBuffer, color: &crate::constraint_graph::GraphColor, is_overflow: bool) {
+pub fn ser_graph_color(
+    buf: &mut RecBuffer,
+    color: &crate::constraint_graph::GraphColor,
+    is_overflow: bool,
+) {
     if !is_overflow {
         ser_bit_set(buf, &color.body_set);
     }
@@ -1030,7 +1033,10 @@ pub fn ser_graph_color(buf: &mut RecBuffer, color: &crate::constraint_graph::Gra
     }
 }
 
-pub fn des_graph_color(r: &mut SnapReader<'_>, is_overflow: bool) -> crate::constraint_graph::GraphColor {
+pub fn des_graph_color(
+    r: &mut SnapReader<'_>,
+    is_overflow: bool,
+) -> crate::constraint_graph::GraphColor {
     let body_set = if !is_overflow {
         des_bit_set(r)
     } else {

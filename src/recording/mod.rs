@@ -14,9 +14,7 @@ pub mod snapshot;
 
 pub use buffer::{RecBuffer, SnapReader};
 pub use hash::{fnv_mix_position, hash_world_state, SNAP_FNV_INIT, SNAP_FNV_PRIME};
-pub use registry::{
-    hash64_blob, GeometryEntry, GeometryKind, GeometryRegistry, RegistrySlot,
-};
+pub use registry::{hash64_blob, GeometryEntry, GeometryKind, GeometryRegistry, RegistrySlot};
 pub use snapshot::{
     clone_world_via_snapshot, compute_layout_hash, deserialize_into_shell, serialize_world,
     SNAP_FLAG_DOUBLE_PRECISION, SNAP_FLAG_VALIDATION, SNAP_LAYOUT_VERSION, SNAP_MAGIC,

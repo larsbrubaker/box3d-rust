@@ -47,7 +47,7 @@ const GRAPH_COLORS: [HexColor; GRAPH_COLOR_COUNT as usize] = [
     HexColor::BLACK,
 ];
 
-fn body_name<'a>(names: &'a NameCache, name_id: u32) -> &'a str {
+fn body_name(names: &NameCache, name_id: u32) -> &str {
     if name_id == crate::constants::NULL_NAME {
         ""
     } else {

@@ -4,11 +4,11 @@ use crate::vis::{pos, push_poses, VisBody};
 use box3d_rust::body::create_body;
 use box3d_rust::core::NULL_INDEX;
 use box3d_rust::geometry::Capsule;
+use box3d_rust::hull::make_box_hull;
 use box3d_rust::human::{
     create_human, destroy_human, human_set_joint_damping_ratio, human_set_joint_friction_torque,
     human_set_joint_spring_hertz, Human, BONE_COUNT,
 };
-use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::Vec3;
 use box3d_rust::shape::{create_hull_shape, ShapeGeometry};
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};

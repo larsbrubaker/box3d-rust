@@ -165,14 +165,11 @@ pub fn shape_apply_wind(
                     let v3 = mul_mv(matrix, local_point3);
 
                     // Triangle center
-                    let triangle_local_center = mul_sv(
-                        0.333333,
-                        add(local_point1, add(local_point2, local_point3)),
-                    );
+                    let triangle_local_center =
+                        mul_sv(0.333333, add(local_point1, add(local_point2, local_point3)));
 
                     // Lever arm from center of mass to triangle center in world space
-                    let lever =
-                        mul_mv(matrix, sub(triangle_local_center, local_center_of_mass));
+                    let lever = mul_mv(matrix, sub(triangle_local_center, local_center_of_mass));
 
                     // Velocity of the triangle center in world space
                     let center_velocity = add(linear_velocity, cross(angular_velocity, lever));
@@ -183,8 +180,7 @@ pub fn shape_apply_wind(
 
                     // Check for back-side
                     if dot(normal, direction) < -f32::EPSILON {
-                        let projected_area =
-                            -0.5 * dot(cross(sub(v2, v1), sub(v3, v1)), direction);
+                        let projected_area = -0.5 * dot(cross(sub(v2, v1), sub(v3, v1)), direction);
                         debug_assert!(projected_area >= -f32::EPSILON);
 
                         let lift_direction = cross(cross(normal, direction), direction);

@@ -14,7 +14,7 @@ use crate::constants::{GRAPH_COLOR_COUNT, MAX_WORKERS};
 use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
 use crate::events::{BodyMoveEvent, ContactEvents, JointEvent, SensorEvents};
 use crate::math_functions::{
-    add, aabb_union, clamp_float, clamp_int, cross, inv_transform_world_point, is_valid_float,
+    aabb_union, add, clamp_float, clamp_int, cross, inv_transform_world_point, is_valid_float,
     is_valid_position, length_squared, max_int, mul_add, mul_mv, mul_sv, normalize, offset_aabb,
     rotate_vector, sub, Aabb, Pos, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
 };

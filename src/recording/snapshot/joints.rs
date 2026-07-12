@@ -1,19 +1,37 @@
 //! JointSim field-by-field snapshot ser/de.
 use crate::joint::{
-    DistanceJoint, Joint, JointEdge, JointSim, JointType, JointUnion, MotorJoint,
-    ParallelJoint, PrismaticJoint, RevoluteJoint, SphericalJoint, WeldJoint, WheelJoint,
+    DistanceJoint, Joint, JointEdge, JointSim, JointType, JointUnion, MotorJoint, ParallelJoint,
+    PrismaticJoint, RevoluteJoint, SphericalJoint, WeldJoint, WheelJoint,
 };
 use crate::math_functions::Vec2;
 use crate::recording::buffer::{RecBuffer, SnapReader};
 use crate::solver::Softness;
 
 impl RecBuffer {
-    pub fn append_vec2(&mut self, v: Vec2) { self.append_f32(v.x); self.append_f32(v.y); }
-    pub fn append_softness(&mut self, v: Softness) { self.append_f32(v.bias_rate); self.append_f32(v.mass_scale); self.append_f32(v.impulse_scale); }
+    pub fn append_vec2(&mut self, v: Vec2) {
+        self.append_f32(v.x);
+        self.append_f32(v.y);
+    }
+    pub fn append_softness(&mut self, v: Softness) {
+        self.append_f32(v.bias_rate);
+        self.append_f32(v.mass_scale);
+        self.append_f32(v.impulse_scale);
+    }
 }
 impl SnapReader<'_> {
-    pub fn vec2(&mut self) -> Vec2 { Vec2 { x: self.f32(), y: self.f32() } }
-    pub fn softness(&mut self) -> Softness { Softness { bias_rate: self.f32(), mass_scale: self.f32(), impulse_scale: self.f32() } }
+    pub fn vec2(&mut self) -> Vec2 {
+        Vec2 {
+            x: self.f32(),
+            y: self.f32(),
+        }
+    }
+    pub fn softness(&mut self) -> Softness {
+        Softness {
+            bias_rate: self.f32(),
+            mass_scale: self.f32(),
+            impulse_scale: self.f32(),
+        }
+    }
 }
 
 pub fn ser_joint(buf: &mut RecBuffer, j: &Joint) {
@@ -21,7 +39,11 @@ pub fn ser_joint(buf: &mut RecBuffer, j: &Joint) {
     buf.append_i32(j.set_index);
     buf.append_i32(j.color_index);
     buf.append_i32(j.local_index);
-    for e in &j.edges { buf.append_i32(e.body_id); buf.append_i32(e.prev_key); buf.append_i32(e.next_key); }
+    for e in &j.edges {
+        buf.append_i32(e.body_id);
+        buf.append_i32(e.prev_key);
+        buf.append_i32(e.next_key);
+    }
     buf.append_i32(j.joint_id);
     buf.append_i32(j.island_id);
     buf.append_i32(j.island_index);
@@ -39,8 +61,16 @@ pub fn des_joint(r: &mut SnapReader<'_>) -> Joint {
         color_index: r.i32(),
         local_index: r.i32(),
         edges: [
-            JointEdge { body_id: r.i32(), prev_key: r.i32(), next_key: r.i32() },
-            JointEdge { body_id: r.i32(), prev_key: r.i32(), next_key: r.i32() },
+            JointEdge {
+                body_id: r.i32(),
+                prev_key: r.i32(),
+                next_key: r.i32(),
+            },
+            JointEdge {
+                body_id: r.i32(),
+                prev_key: r.i32(),
+                next_key: r.i32(),
+            },
         ],
         joint_id: r.i32(),
         island_id: r.i32(),
@@ -306,9 +336,15 @@ pub fn des_joint_sim(r: &mut SnapReader<'_>) -> JointSim {
     let body_id_b = r.i32();
     let type_i = r.i32();
     let type_ = match type_i {
-        0 => JointType::Parallel, 1 => JointType::Distance, 2 => JointType::Filter,
-        3 => JointType::Motor, 4 => JointType::Prismatic, 5 => JointType::Revolute,
-        6 => JointType::Spherical, 7 => JointType::Weld, _ => JointType::Wheel,
+        0 => JointType::Parallel,
+        1 => JointType::Distance,
+        2 => JointType::Filter,
+        3 => JointType::Motor,
+        4 => JointType::Prismatic,
+        5 => JointType::Revolute,
+        6 => JointType::Spherical,
+        7 => JointType::Weld,
+        _ => JointType::Wheel,
     };
     let local_frame_a = r.transform();
     let local_frame_b = r.transform();
@@ -533,7 +569,23 @@ pub fn des_joint_sim(r: &mut SnapReader<'_>) -> JointSim {
         }),
         _ => JointUnion::Filter,
     };
-    JointSim { joint_id, body_id_a, body_id_b, type_, local_frame_a, local_frame_b,
-        inv_mass_a, inv_mass_b, inv_i_a, inv_i_b, constraint_hertz, constraint_damping_ratio,
-        constraint_softness, force_threshold, torque_threshold, fixed_rotation, union_ }
+    JointSim {
+        joint_id,
+        body_id_a,
+        body_id_b,
+        type_,
+        local_frame_a,
+        local_frame_b,
+        inv_mass_a,
+        inv_mass_b,
+        inv_i_a,
+        inv_i_b,
+        constraint_hertz,
+        constraint_damping_ratio,
+        constraint_softness,
+        force_threshold,
+        torque_threshold,
+        fixed_rotation,
+        union_,
+    }
 }

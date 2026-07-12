@@ -131,10 +131,5 @@ pub fn continuous_poses() -> Vec<f32> {
 /// `[bullet_x, continuous_flag]` — readout helpers.
 #[wasm_bindgen]
 pub fn continuous_status() -> Vec<f32> {
-    with_state(|state| {
-        vec![
-            state.bullet_x,
-            if state.continuous { 1.0 } else { 0.0 },
-        ]
-    })
+    with_state(|state| vec![state.bullet_x, if state.continuous { 1.0 } else { 0.0 }])
 }

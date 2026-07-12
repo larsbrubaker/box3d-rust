@@ -74,11 +74,7 @@ pub fn body_get_contact_capacity(world: &World, body_id: BodyId) -> i32 {
 
 /// Touching contact data for a body, at most `capacity` entries.
 /// (b3Body_GetContactData)
-pub fn body_get_contact_data(
-    world: &World,
-    body_id: BodyId,
-    capacity: usize,
-) -> Vec<ContactData> {
+pub fn body_get_contact_data(world: &World, body_id: BodyId, capacity: usize) -> Vec<ContactData> {
     debug_assert!(!world.locked);
     if world.locked {
         return Vec::new();

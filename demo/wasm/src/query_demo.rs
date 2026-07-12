@@ -108,14 +108,7 @@ pub fn query_poses() -> Vec<f32> {
 /// Closest ray cast. Returns
 /// `[hit, px, py, pz, nx, ny, nz, fraction]` (hit is 1/0).
 #[wasm_bindgen]
-pub fn query_ray_cast(
-    ox: f32,
-    oy: f32,
-    oz: f32,
-    tx: f32,
-    ty: f32,
-    tz: f32,
-) -> Vec<f32> {
+pub fn query_ray_cast(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     with_state(|state| {
         let origin = pos(ox, oy, oz);
         let translation = Vec3 {

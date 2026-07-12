@@ -52,11 +52,7 @@ pub fn compute_layout_hash() -> u32 {
 
 /// Serialize the live world into `buf`, interning shape geometry into `registry`.
 /// Returns the byte count written. (b3SerializeWorld)
-pub fn serialize_world(
-    world: &World,
-    buf: &mut RecBuffer,
-    registry: &mut GeometryRegistry,
-) -> i32 {
+pub fn serialize_world(world: &World, buf: &mut RecBuffer, registry: &mut GeometryRegistry) -> i32 {
     let start = buf.size();
 
     buf.append_u32(SNAP_MAGIC);
@@ -288,8 +284,7 @@ pub fn deserialize_into_shell(
     world.broad_phase.pair_set = des_hash_set(&mut r);
 
     for c in 0..GRAPH_COLOR_COUNT as usize {
-        world.constraint_graph.colors[c] =
-            des_graph_color(&mut r, c == OVERFLOW_INDEX as usize);
+        world.constraint_graph.colors[c] = des_graph_color(&mut r, c == OVERFLOW_INDEX as usize);
     }
 
     r.ok

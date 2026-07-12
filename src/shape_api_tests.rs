@@ -563,8 +563,5 @@ fn sensor_data_accessors() {
     assert_eq!(visitors.len(), 1);
     assert_eq!(visitors[0], visitor_shape);
     assert!(shape_is_valid(&world, visitors[0]));
-    assert_eq!(
-        shape_get_sensor_overlaps(&world, sensor_shape, 8),
-        visitors
-    );
+    assert_eq!(shape_get_sensor_overlaps(&world, sensor_shape, 8), visitors);
 }
