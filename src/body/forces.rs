@@ -9,12 +9,15 @@ use crate::core::NULL_INDEX;
 use crate::id::BodyId;
 use crate::island::split_island;
 use crate::math_functions::{
-    aabb_contains, add, cross, inv_rotate_vector, is_valid_position, is_valid_quat, is_valid_vec3,
-    length_squared, make_matrix_from_quat, mul_add, mul_mm, mul_mv, mul_sv, normalize,
-    rotate_vector, sub_pos, transform_world_point, transpose, Aabb, Pos, Quat, Vec3,
+    aabb_contains, add, conjugate, cross, dot_quat, inv_rotate_vector, is_valid_position,
+    is_valid_quat, is_valid_vec3, is_valid_world_transform, length, length_squared,
+    make_matrix_from_quat, mul, mul_add, mul_mm, mul_mv, mul_quat, mul_sv, negate_quat, normalize,
+    rotate_vector, sub, sub_pos, transform_world_point, transpose, Aabb, Pos, Quat, Vec3,
+    WorldTransform,
 };
 use crate::shape::compute_fat_shape_aabb;
-use crate::solver_set::{try_sleep_island, AWAKE_SET, FIRST_SLEEPING_SET};
+use crate::solver_set::{try_sleep_island, AWAKE_SET, DISABLED_SET, FIRST_SLEEPING_SET};
+use crate::types::BodyType;
 use crate::world::World;
 
 /// (b3Body_ApplyForce)
@@ -263,4 +266,89 @@ pub fn body_set_awake(world: &mut World, body_id: BodyId, awake: bool) {
     }
 
     world.locked = false;
+}
+
+/// Set a kinematic/dynamic body velocity so it reaches `target` in `time_step`.
+/// (b3Body_SetTargetTransform)
+pub fn body_set_target_transform(
+    world: &mut World,
+    body_id: BodyId,
+    target: WorldTransform,
+    time_step: f32,
+    wake: bool,
+) {
+    debug_assert!(is_valid_world_transform(target));
+
+    let body_index = get_body_full_id(world, body_id);
+
+    {
+        let body = &world.bodies[body_index as usize];
+        if body.set_index == DISABLED_SET {
+            return;
+        }
+
+        if body.type_ == BodyType::Static || time_step <= 0.0 {
+            return;
+        }
+
+        if body.set_index != AWAKE_SET && !wake {
+            return;
+        }
+    }
+
+    let (sim_local_center, sim_center, sim_q, sim_max_extent) = {
+        let body = &world.bodies[body_index as usize];
+        let sim = &world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize];
+        (
+            sim.local_center,
+            sim.center,
+            sim.transform.q,
+            sim.max_extent,
+        )
+    };
+
+    // Compute linear velocity. The center difference is taken in world precision then demoted.
+    let center2 = transform_world_point(target, sim_local_center);
+    let inv_time_step = 1.0 / time_step;
+    let linear_velocity = mul_sv(inv_time_step, sub_pos(center2, sim_center));
+
+    // Compute angular velocity:
+    // q' = 0.5 * w * q
+    // <~> ( q2 - q1 ) / dt =  0.5 * w * q1
+    // <=> w = 2 * ( q2 - q1 ) * Conjugate( q1 ) / dt
+    let q1 = sim_q;
+    let mut q2 = target.q;
+
+    // Use the shortest arc quaternion
+    if dot_quat(q1, q2) < 0.0 {
+        q2 = negate_quat(q2);
+    }
+
+    let dq = Quat {
+        v: sub(q2.v, q1.v),
+        s: q2.s - q1.s,
+    };
+    let omega = mul_quat(dq, conjugate(q1));
+    let angular_velocity = mul_sv(2.0 * inv_time_step, omega.v);
+
+    // Early out if the body is asleep already and the desired movement is small
+    if world.bodies[body_index as usize].set_index != AWAKE_SET {
+        let max_velocity =
+            length(linear_velocity) + length(mul(angular_velocity, sim_max_extent));
+
+        // Return if velocity would be sleepy
+        if max_velocity < world.bodies[body_index as usize].sleep_threshold {
+            return;
+        }
+
+        // Must wake for state to exist
+        wake_body_with_lock(world, body_index);
+    }
+
+    debug_assert!(world.bodies[body_index as usize].set_index == AWAKE_SET);
+
+    let local_index = world.bodies[body_index as usize].local_index;
+    let state = &mut world.solver_sets[AWAKE_SET as usize].body_states[local_index as usize];
+    state.linear_velocity = linear_velocity;
+    state.angular_velocity = angular_velocity;
 }

@@ -1,8 +1,8 @@
 //! World API and query tests from test_world.c plus query acceptance coverage.
 //!
-//! Not ported: TestWorldRecycle (global world registry), TestSetWorkerCount
-//! (task system). Body-level casts live in body_query_tests; TestHullDatabase
-//! SetHull path is covered in shape_tests / shape_api_tests.
+//! Not ported: TestWorldRecycle (global world registry). Body-level casts live
+//! in body_query_tests; TestHullDatabase SetHull path is covered in
+//! shape_tests / shape_api_tests.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -310,4 +310,109 @@ fn world_queries() {
         },
     );
     assert!(shape_hit);
+}
+
+/// (test_world.c TestSetWorkerCount) — serial port stores/clamps the count.
+#[test]
+fn test_set_worker_count() {
+    use crate::constants::MAX_WORKERS;
+
+    let mut world = World::new(&default_world_def());
+    assert_eq!(world_get_worker_count(&world), 1);
+
+    world_set_worker_count(&mut world, 4);
+    assert_eq!(world_get_worker_count(&world), 4);
+    assert_eq!(world.task_contexts.len(), 4);
+    assert_eq!(world.sensor_task_contexts.len(), 4);
+
+    world_set_worker_count(&mut world, 4);
+    assert_eq!(world_get_worker_count(&world), 4);
+
+    world_set_worker_count(&mut world, 0);
+    assert_eq!(world_get_worker_count(&world), 1);
+
+    world_set_worker_count(&mut world, -5);
+    assert_eq!(world_get_worker_count(&world), 1);
+
+    world_set_worker_count(&mut world, MAX_WORKERS + 10);
+    assert_eq!(world_get_worker_count(&world), MAX_WORKERS);
+    assert_eq!(world.task_contexts.len(), MAX_WORKERS as usize);
+
+    // Keep a body around so stepping with a non-1 stored count still works.
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    create_sphere_shape(
+        &mut world,
+        body,
+        &shape_def,
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        },
+    );
+    world.step(1.0 / 60.0, 1);
+}
+
+/// (b3World_GetBounds)
+#[test]
+fn test_world_get_bounds() {
+    let mut world = World::new(&default_world_def());
+    let empty = world_get_bounds(&world);
+    assert_eq!(empty.lower_bound, VEC3_ZERO);
+    assert_eq!(empty.upper_bound, VEC3_ZERO);
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: 2.0 as _,
+        z: 0.0 as _,
+    };
+    let body = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    create_sphere_shape(
+        &mut world,
+        body,
+        &shape_def,
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        },
+    );
+
+    let bounds = world_get_bounds(&world);
+    assert!(bounds.lower_bound.y < 2.0);
+    assert!(bounds.upper_bound.y > 2.0);
+}
+
+/// Dump helpers write files without panicking. (b3World_DumpShapeBounds /
+/// b3World_DumpAwake)
+#[test]
+fn test_world_dump_helpers() {
+    let mut world = World::new(&default_world_def());
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    create_sphere_shape(
+        &mut world,
+        body,
+        &shape_def,
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        },
+    );
+    world.step(1.0 / 60.0, 1);
+
+    world_dump_shape_bounds(&world, BodyType::Dynamic);
+    world_dump_awake(&world);
+
+    let _ = std::fs::remove_file("box3d_bounds.txt");
+    let _ = std::fs::remove_file("box3d_dump.inl");
 }

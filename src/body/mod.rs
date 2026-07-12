@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
+mod access;
 mod api;
 mod forces;
 mod lifecycle;
@@ -11,6 +12,7 @@ mod query;
 mod set_type;
 mod types;
 
+pub use access::*;
 pub use api::*;
 pub use forces::*;
 pub use lifecycle::*;

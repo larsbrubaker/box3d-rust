@@ -4,16 +4,18 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::dispatch::make_shape_proxy;
+use super::dispatch::{compute_shape_mass, make_shape_proxy};
 use super::lifecycle::get_shape;
 use super::query::ray_cast_shape;
 use super::shape_flags;
 use crate::body::{get_body_transform, get_body_transform_quick, make_body_id};
 use crate::constants::{NULL_NAME, SHAPE_NAME_LENGTH};
+use crate::contact::contact_flags;
 use crate::core::NULL_INDEX;
 use crate::distance::{shape_distance, DistanceInput, ShapeProxy, SimplexCache};
-use crate::geometry::{RayCastInput, ShapeType};
-use crate::id::{BodyId, ShapeId, WorldId};
+use crate::events::ContactData;
+use crate::geometry::{MassData, RayCastInput, ShapeType};
+use crate::id::{BodyId, ContactId, ShapeId, WorldId};
 use crate::math_functions::{
     inv_mul_transforms, is_valid_float, is_valid_position, is_valid_vec3, offset_pos,
     to_relative_transform, transform_point, Aabb, Pos, Vec3, POS_ZERO, TRANSFORM_IDENTITY,
@@ -251,4 +253,140 @@ pub fn shape_get_closest_point(world: &World, shape_id: ShapeId, target: Vec3) -
 
     // Witness point comes back in frame A; lift it back to the query frame.
     transform_point(transform, output.point_a)
+}
+
+/// Conservative contact capacity for a non-sensor shape. (b3Shape_GetContactCapacity)
+pub fn shape_get_contact_capacity(world: &World, shape_id: ShapeId) -> i32 {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return 0;
+    }
+
+    let shape_index = get_shape(world, shape_id);
+    let shape = &world.shapes[shape_index as usize];
+    if shape.sensor_index != NULL_INDEX {
+        return 0;
+    }
+
+    // Conservative and fast
+    world.bodies[shape.body_id as usize].contact_count
+}
+
+/// Touching contact data involving this shape. (b3Shape_GetContactData)
+pub fn shape_get_contact_data(
+    world: &World,
+    shape_id: ShapeId,
+    capacity: usize,
+) -> Vec<ContactData> {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return Vec::new();
+    }
+
+    let shape_index = get_shape(world, shape_id);
+    let shape = &world.shapes[shape_index as usize];
+    if shape.sensor_index != NULL_INDEX {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    let mut contact_key = world.bodies[shape.body_id as usize].head_contact_key;
+    while contact_key != NULL_INDEX && out.len() < capacity {
+        let contact_id = contact_key >> 1;
+        let edge_index = contact_key & 1;
+
+        let contact = &world.contacts[contact_id as usize];
+        contact_key = contact.edges[edge_index as usize].next_key;
+
+        // Does contact involve this shape and is it touching?
+        if (contact.shape_id_a == shape_index || contact.shape_id_b == shape_index)
+            && (contact.flags & contact_flags::TOUCHING) != 0
+        {
+            let shape_a = &world.shapes[contact.shape_id_a as usize];
+            let shape_b = &world.shapes[contact.shape_id_b as usize];
+
+            out.push(ContactData {
+                contact_id: ContactId {
+                    index1: contact.contact_id + 1,
+                    world0: shape_id.world0,
+                    padding: 0,
+                    generation: contact.generation,
+                },
+                shape_id_a: ShapeId {
+                    index1: shape_a.id + 1,
+                    world0: shape_id.world0,
+                    generation: shape_a.generation,
+                },
+                shape_id_b: ShapeId {
+                    index1: shape_b.id + 1,
+                    world0: shape_id.world0,
+                    generation: shape_b.generation,
+                },
+                manifolds: contact.manifolds.clone(),
+            });
+        }
+    }
+
+    debug_assert!(out.len() <= capacity);
+    out
+}
+
+/// Capacity required for [`shape_get_sensor_data`] / sensor overlaps.
+/// Returns 0 if the shape is not a sensor. (b3Shape_GetSensorCapacity)
+pub fn shape_get_sensor_capacity(world: &World, shape_id: ShapeId) -> i32 {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return 0;
+    }
+
+    let shape_index = get_shape(world, shape_id);
+    let shape = &world.shapes[shape_index as usize];
+    if shape.sensor_index == NULL_INDEX {
+        return 0;
+    }
+
+    world.sensors[shape.sensor_index as usize].overlaps2.len() as i32
+}
+
+/// Overlapped shapes for a sensor. Overlaps may contain destroyed shapes —
+/// use [`super::shape_is_valid`] to confirm each. (b3Shape_GetSensorData;
+/// docs also call this GetSensorOverlaps)
+pub fn shape_get_sensor_data(world: &World, shape_id: ShapeId, capacity: usize) -> Vec<ShapeId> {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return Vec::new();
+    }
+
+    let shape_index = get_shape(world, shape_id);
+    let shape = &world.shapes[shape_index as usize];
+    if shape.sensor_index == NULL_INDEX {
+        return Vec::new();
+    }
+
+    let sensor = &world.sensors[shape.sensor_index as usize];
+    let count = sensor.overlaps2.len().min(capacity);
+    sensor.overlaps2[..count]
+        .iter()
+        .map(|visitor| ShapeId {
+            index1: visitor.shape_id + 1,
+            world0: shape_id.world0,
+            generation: visitor.generation,
+        })
+        .collect()
+}
+
+/// Alias for [`shape_get_sensor_data`] matching the header doc name
+/// `b3Shape_GetSensorOverlaps`.
+pub fn shape_get_sensor_overlaps(
+    world: &World,
+    shape_id: ShapeId,
+    capacity: usize,
+) -> Vec<ShapeId> {
+    shape_get_sensor_data(world, shape_id, capacity)
+}
+
+/// Compute the mass data for a shape. (b3Shape_ComputeMassData)
+pub fn shape_compute_mass_data(world: &World, shape_id: ShapeId) -> MassData {
+    let shape_index = get_shape(world, shape_id);
+    compute_shape_mass(&world.shapes[shape_index as usize])
 }

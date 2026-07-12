@@ -7,21 +7,23 @@
 
 use super::{
     default_friction_callback, default_restitution_callback, CustomFilterFcn, PreSolveFcn, Profile,
-    World,
+    TaskContext, World,
 };
 use crate::body::{get_body_transform_quick, wake_body};
-use crate::constants::GRAPH_COLOR_COUNT;
+use crate::constants::{GRAPH_COLOR_COUNT, MAX_WORKERS};
 use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
 use crate::events::{BodyMoveEvent, ContactEvents, JointEvent, SensorEvents};
 use crate::math_functions::{
-    add, clamp_float, cross, inv_transform_world_point, is_valid_float, is_valid_position,
-    length_squared, max_int, mul_add, mul_mv, mul_sv, normalize, offset_aabb, rotate_vector, sub,
-    Aabb, Pos, Vec3, TRANSFORM_IDENTITY,
+    add, aabb_union, clamp_float, clamp_int, cross, inv_transform_world_point, is_valid_float,
+    is_valid_position, length_squared, max_int, mul_add, mul_mv, mul_sv, normalize, offset_aabb,
+    rotate_vector, sub, Aabb, Pos, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
+use crate::sensor::SensorTaskContext;
 use crate::shape::{get_shape_centroid, get_shape_projected_area, make_shape_proxy};
 use crate::solver_set::{wake_solver_set, AWAKE_SET, FIRST_SLEEPING_SET};
 use crate::types::{
     BodyType, Capacity, Counters, ExplosionDef, FrictionCallback, RestitutionCallback,
+    BODY_TYPE_COUNT,
 };
 
 /// World id validity. (b3World_IsValid)
@@ -527,4 +529,67 @@ fn explode_shape(
         state.angular_velocity,
         mul_mv(inv_inertia_world, cross(r, impulse)),
     );
+}
+
+/// Union of broad-phase tree root bounds. (b3World_GetBounds)
+pub fn world_get_bounds(world: &World) -> Aabb {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return Aabb {
+            lower_bound: VEC3_ZERO,
+            upper_bound: VEC3_ZERO,
+        };
+    }
+
+    let mut world_bounds = Aabb {
+        lower_bound: VEC3_ZERO,
+        upper_bound: VEC3_ZERO,
+    };
+    let mut have_bounds = false;
+
+    for i in 0..BODY_TYPE_COUNT {
+        let tree = &world.broad_phase.trees[i];
+        if tree.proxy_count() == 0 {
+            continue;
+        }
+
+        let bounds = tree.root_bounds();
+        if have_bounds {
+            world_bounds = aabb_union(world_bounds, bounds);
+        } else {
+            world_bounds = bounds;
+            have_bounds = true;
+        }
+    }
+
+    world_bounds
+}
+
+/// Set the stored worker count. Clamped to `[1, MAX_WORKERS]`. The serial port
+/// does not spawn threads but still resizes task contexts like C.
+/// (b3World_SetWorkerCount)
+pub fn world_set_worker_count(world: &mut World, count: i32) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    if count == world.worker_count {
+        return;
+    }
+
+    world.worker_count = clamp_int(count, 1, MAX_WORKERS);
+    // Serial equivalent of b3DestroyWorkerContexts + b3CreateWorkerContexts:
+    // resize and zero the per-worker scratch arrays.
+    world.task_contexts = vec![TaskContext::default(); world.worker_count as usize];
+    world.sensor_task_contexts = vec![SensorTaskContext::default(); world.worker_count as usize];
+}
+
+/// Get the stored worker count. (b3World_GetWorkerCount)
+pub fn world_get_worker_count(world: &World) -> i32 {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return 0;
+    }
+    world.worker_count
 }

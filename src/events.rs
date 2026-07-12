@@ -10,7 +10,23 @@
 // SPDX-License-Identifier: MIT
 
 use crate::id::{BodyId, ContactId, JointId, ShapeId};
+use crate::manifold::Manifold;
 use crate::math_functions::{Pos, Vec3, WorldTransform};
+
+/// The contact data for solid shape pairs. Manifolds are an owned snapshot of
+/// the contact's current manifolds (C exposes a transient pointer).
+/// (b3ContactData)
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContactData {
+    /// The contact id. May become orphaned; use contact_is_valid before other use.
+    pub contact_id: ContactId,
+    /// The first shape id.
+    pub shape_id_a: ShapeId,
+    /// The second shape id.
+    pub shape_id_b: ShapeId,
+    /// Contact manifolds (owned copy; C: const b3Manifold* + manifoldCount).
+    pub manifolds: Vec<Manifold>,
+}
 
 /// A begin-touch event is generated when a shape starts to overlap a sensor
 /// shape. (b3SensorBeginTouchEvent)

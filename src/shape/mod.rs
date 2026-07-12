@@ -267,6 +267,7 @@ pub(crate) mod lifecycle;
 mod mutators;
 mod query;
 mod toi;
+mod wind;
 
 pub use accessors::*;
 pub use api::*;
@@ -275,3 +276,4 @@ pub use geometry_set::*;
 pub use mutators::*;
 pub use query::*;
 pub use toi::*;
+pub use wind::*;

@@ -21,11 +21,13 @@
 // SPDX-License-Identifier: MIT
 
 mod api;
+mod dump;
 mod query;
 mod step;
 mod validate;
 
 pub use api::*;
+pub use dump::*;
 pub use query::*;
 
 use crate::bitset::BitSet;

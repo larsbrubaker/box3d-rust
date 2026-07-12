@@ -146,3 +146,8 @@ pub fn max_aabb_margin() -> f32 {
 /// Fraction of shape size used for the AABB movement margin.
 /// (B3_AABB_MARGIN_FRACTION)
 pub const AABB_MARGIN_FRACTION: f32 = 0.125;
+
+/// Maximum parallel workers. Used for fixed-size arrays and worker-count
+/// clamping. The serial port still stores and clamps to this limit.
+/// (B3_MAX_WORKERS)
+pub const MAX_WORKERS: i32 = 32;

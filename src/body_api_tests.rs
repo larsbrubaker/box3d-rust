@@ -308,6 +308,89 @@ fn set_type_rejects_compound_on_non_static() {
 }
 
 #[test]
+fn shape_joint_contact_introspection() {
+    use crate::body::{
+        body_compute_aabb, body_get_contact_capacity, body_get_contact_data, body_get_joint_count,
+        body_get_joints, body_get_shape_count, body_get_shapes, body_set_target_transform,
+    };
+    use crate::hull::make_box_hull;
+    use crate::joint::create_revolute_joint;
+    use crate::math_functions::{WorldTransform, QUAT_IDENTITY};
+    use crate::shape::create_hull_shape;
+    use crate::types::default_revolute_joint_def;
+
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let ground_box = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_box.base);
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = Pos {
+        x: 0.0 as _,
+        y: 2.0 as _,
+        z: 0.0 as _,
+    };
+    let body_id = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    let shape_id = create_hull_shape(&mut world, body_id, &shape_def, &box_hull.base);
+
+    assert_eq!(body_get_shape_count(&world, body_id), 1);
+    let shapes = body_get_shapes(&world, body_id, 8);
+    assert_eq!(shapes.len(), 1);
+    assert_eq!(shapes[0], shape_id);
+
+    let aabb = body_compute_aabb(&world, body_id);
+    assert!(aabb.lower_bound.y < 2.0);
+    assert!(aabb.upper_bound.y > 2.0);
+
+    let mut joint_def = default_revolute_joint_def();
+    joint_def.base.body_id_a = ground;
+    joint_def.base.body_id_b = body_id;
+    let joint_id = create_revolute_joint(&mut world, &joint_def);
+    assert_eq!(body_get_joint_count(&world, body_id), 1);
+    let joints = body_get_joints(&world, body_id, 8);
+    assert_eq!(joints.len(), 1);
+    assert_eq!(joints[0], joint_id);
+
+    for _ in 0..40 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let contact_capacity = body_get_contact_capacity(&world, body_id);
+    let contact_data = body_get_contact_data(&world, body_id, 8);
+    assert!(contact_data.len() as i32 <= contact_capacity);
+    // May or may not touch ground depending on joint; capacity is still valid.
+    assert!(contact_capacity >= 0);
+
+    // Kinematic target transform sets velocity toward the target.
+    let mut kin_def = default_body_def();
+    kin_def.type_ = BodyType::Kinematic;
+    kin_def.position = Pos {
+        x: 0.0 as _,
+        y: 5.0 as _,
+        z: 0.0 as _,
+    };
+    let kin = create_body(&mut world, &kin_def);
+    let target = WorldTransform {
+        p: Pos {
+            x: 1.0 as _,
+            y: 5.0 as _,
+            z: 0.0 as _,
+        },
+        q: QUAT_IDENTITY,
+    };
+    body_set_target_transform(&mut world, kin, target, 1.0 / 60.0, true);
+    let v = body_get_local_point_velocity(&world, kin, VEC3_ZERO);
+    assert!(v.x > 0.0, "target transform should induce +x velocity");
+}
+
+#[test]
 fn disable_enable_round_trip() {
     use crate::core::NULL_INDEX;
     use crate::solver_set::{AWAKE_SET, DISABLED_SET, STATIC_SET};

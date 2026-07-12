@@ -431,3 +431,140 @@ fn hull_set_shares_database_entry() {
     assert_eq!(got_a, got_b);
     assert_eq!(world.hull_database.len(), 1);
 }
+
+#[test]
+fn apply_wind_pushes_dynamic_sphere() {
+    use crate::body::body_get_linear_velocity;
+    use crate::shape::shape_apply_wind;
+
+    let mut world = World::new(&default_world_def());
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.gravity_scale = 0.0;
+    let body = create_body(&mut world, &body_def);
+
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    let shape = create_sphere_shape(&mut world, body, &shape_def, &sphere);
+
+    shape_apply_wind(
+        &mut world,
+        shape,
+        Vec3 {
+            x: 50.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        1.0,
+        0.0,
+        100.0,
+        true,
+    );
+    world.step(1.0 / 60.0, 4);
+    let velocity = body_get_linear_velocity(&world, body);
+    assert!(velocity.x > 0.0, "wind pushes the body along +x");
+}
+
+#[test]
+fn shape_contact_and_mass_introspection() {
+    use crate::shape::{
+        shape_compute_mass_data, shape_get_contact_capacity, shape_get_contact_data,
+    };
+
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let box_hull = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &box_hull.base);
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = crate::math_functions::Pos {
+        x: 0.0 as _,
+        y: 1.0 as _,
+        z: 0.0 as _,
+    };
+    let body = create_body(&mut world, &body_def);
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    let shape = create_sphere_shape(
+        &mut world,
+        body,
+        &shape_def,
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        },
+    );
+
+    let mass = shape_compute_mass_data(&world, shape);
+    assert!(mass.mass > 0.0);
+
+    for _ in 0..30 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let capacity = shape_get_contact_capacity(&world, shape);
+    let data = shape_get_contact_data(&world, shape, 8);
+    assert!(data.len() as i32 <= capacity);
+    assert!(!data.is_empty(), "resting sphere should touch ground");
+    assert!(!data[0].manifolds.is_empty());
+}
+
+#[test]
+fn sensor_data_accessors() {
+    use crate::shape::{
+        shape_get_contact_capacity, shape_get_sensor_capacity, shape_get_sensor_data,
+        shape_get_sensor_overlaps, shape_is_sensor, shape_is_valid,
+    };
+
+    let mut world_def = default_world_def();
+    world_def.gravity = VEC3_ZERO;
+    let mut world = World::new(&world_def);
+
+    let sensor_body = create_body(&mut world, &default_body_def());
+    let mut sensor_shape_def = default_shape_def();
+    sensor_shape_def.is_sensor = true;
+    sensor_shape_def.enable_sensor_events = true;
+    let box_hull = make_box_hull(1.0, 1.0, 1.0);
+    let sensor_shape =
+        create_hull_shape(&mut world, sensor_body, &sensor_shape_def, &box_hull.base);
+    assert!(shape_is_sensor(&world, sensor_shape));
+    assert_eq!(shape_get_contact_capacity(&world, sensor_shape), 0);
+
+    let mut visitor_def = default_body_def();
+    visitor_def.type_ = BodyType::Dynamic;
+    visitor_def.gravity_scale = 0.0;
+    visitor_def.position = crate::math_functions::Pos {
+        x: 0.5 as _,
+        y: 0.0 as _,
+        z: 0.0 as _,
+    };
+    let visitor_body = create_body(&mut world, &visitor_def);
+    let mut visitor_shape_def = default_shape_def();
+    visitor_shape_def.enable_sensor_events = true;
+    let visitor_shape = create_hull_shape(
+        &mut world,
+        visitor_body,
+        &visitor_shape_def,
+        &make_box_hull(0.25, 0.25, 0.25).base,
+    );
+
+    world.step(1.0 / 60.0, 4);
+
+    assert_eq!(shape_get_sensor_capacity(&world, sensor_shape), 1);
+    let visitors = shape_get_sensor_data(&world, sensor_shape, 8);
+    assert_eq!(visitors.len(), 1);
+    assert_eq!(visitors[0], visitor_shape);
+    assert!(shape_is_valid(&world, visitors[0]));
+    assert_eq!(
+        shape_get_sensor_overlaps(&world, sensor_shape, 8),
+        visitors
+    );
+}

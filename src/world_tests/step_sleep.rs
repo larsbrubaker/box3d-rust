@@ -24,6 +24,45 @@ fn empty_world() {
     assert_eq!(world.step_index, 60);
 }
 
+/// Create up to BODY_COUNT bodies then destroy them all while stepping.
+/// (DestroyAllBodiesWorld)
+#[test]
+fn destroy_all_bodies_world() {
+    const BODY_COUNT: usize = 10;
+
+    let mut world = World::new(&default_world_def());
+
+    let mut count = 0usize;
+    let mut creating = true;
+    let mut body_ids = [crate::id::NULL_BODY_ID; BODY_COUNT];
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let cube = make_cube_hull(0.5);
+
+    for _ in 0..(2 * BODY_COUNT + 10) {
+        if creating {
+            if count < BODY_COUNT {
+                body_ids[count] = create_body(&mut world, &body_def);
+                let shape_def = default_shape_def();
+                create_hull_shape(&mut world, body_ids[count], &shape_def, &cube.base);
+                count += 1;
+            } else {
+                creating = false;
+            }
+        } else if count > 0 {
+            crate::body::destroy_body(&mut world, body_ids[count - 1]);
+            body_ids[count - 1] = crate::id::NULL_BODY_ID;
+            count -= 1;
+        }
+
+        world.step(1.0 / 60.0, 3);
+    }
+
+    let counters = crate::world::world_get_counters(&world);
+    assert_eq!(counters.body_count, 0);
+}
+
 /// Collide pass promotes an overlapping non-touching contact into the graph.
 #[test]
 fn step_collide_marks_overlapping_contact_touching() {
