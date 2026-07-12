@@ -37,6 +37,7 @@ export interface Box3dWasm {
 
   sim_reset_bodies(): number;
   sim_reset_stacking(count: number): number;
+  sim_reset_single_box(): number;
   sim_step(dt: number, sub_steps: number): number;
   sim_body_poses(): Float32Array;
   sim_body_count(): number;
@@ -92,6 +93,22 @@ export interface Box3dWasm {
   sim_stop_recording(): Uint8Array;
   sim_is_recording(): boolean;
   sim_record_start_step(): number;
+
+  bench_reset_large_pyramid(base_count: number): number;
+  bench_reset_junkyard(): number;
+  bench_reset_trees(): number;
+  bench_step(dt: number, sub_steps: number): number;
+  bench_body_poses(): Float32Array;
+  bench_body_count(): number;
+  bench_mesh_wireframe(): Float32Array;
+  bench_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  bench_mouse_move(px: number, py: number, pz: number): void;
+  bench_mouse_up(): void;
+  bench_mouse_active(): boolean;
+  bench_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  bench_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  bench_counters(): Float32Array;
+  bench_debug_draw(flags: number): Float32Array;
 
   terrain_reset(mode: number): number;
   terrain_step(dt: number, sub_steps: number): number;

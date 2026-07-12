@@ -9,7 +9,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Compound", blurb: "Compound shapes under Bodies", route: "bodies" },
   { name: "Bodies", blurb: "Body types, sleeping, user data", route: "bodies" },
   { name: "Shapes", blurb: "Spheres, capsules, hulls", route: "bodies" },
-  { name: "Stacking", blurb: "Pyramids, towers, and piles", route: "stacking" },
+  { name: "Stacking", blurb: "Single Box, Box Stack, Pyramid2D, Sphere Stack", route: "stacking" },
   { name: "Joints", blurb: "Revolute, spherical, motor hinge", route: "joints" },
   { name: "Continuous", blurb: "Fast bodies without tunneling", route: "continuous" },
   { name: "Events", blurb: "Contacts, sensors, hit events", route: "sensors" },
@@ -17,7 +17,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "World", blurb: "Queries, gravity, large worlds", route: "queries" },
   { name: "Determinism", blurb: "Cross-platform reproducibility", route: "math" },
   { name: "Robustness", blurb: "Degenerate input, overlap recovery" },
-  { name: "Benchmark", blurb: "Performance stress scenes" },
+  { name: "Benchmark", blurb: "Large Pyramid, Junkyard, Falling Trees", route: "benchmark" },
   { name: "Ragdoll", blurb: "Articulated bodies", route: "ragdolls" },
   { name: "Issues", blurb: "Regression / bug-repro scenes" },
 ];
