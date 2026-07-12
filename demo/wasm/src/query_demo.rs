@@ -1,24 +1,100 @@
-//! Interactive raycast query demo.
+//! Collision / Cast World - faithful port of `sample_collision.cpp` CastWorld.
 
-use crate::vis::{pos, push_poses, sphere, VisBody};
-use box3d_rust::body::create_body;
-use box3d_rust::hull::make_box_hull;
-use box3d_rust::math_functions::Vec3;
-use box3d_rust::shape::{create_hull_shape, create_sphere_shape};
+use crate::interact::{self, MouseGrab};
+use crate::vis::{pos, push_poses, vec3, VisBody};
+use box3d_rust::body::{body_compute_aabb, create_body, destroy_body, get_body_transform};
+use box3d_rust::distance::ShapeProxy;
+use box3d_rust::geometry::{Capsule, ShapeType, Sphere, SurfaceMaterial};
+use box3d_rust::height_field::{
+    create_wave, get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
+};
+use box3d_rust::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
+use box3d_rust::id::{BodyId, ShapeId, NULL_BODY_ID};
+use box3d_rust::math_functions::{
+    make_quat_from_axis_angle, normalize, offset_pos, transform_point, Pos, Transform, Vec3, PI,
+    POS_ZERO, TRANSFORM_IDENTITY, VEC3_ONE, VEC3_ZERO,
+};
+use box3d_rust::mesh::{create_torus_mesh, get_mesh_triangles, get_mesh_vertices, MeshData};
+use box3d_rust::shape::{
+    create_capsule_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
+    create_sphere_shape, shape_get_user_data,
+};
 use box3d_rust::types::{
     default_body_def, default_query_filter, default_shape_def, default_world_def, BodyType,
 };
-use box3d_rust::world::{world_cast_ray_closest, World};
-use std::cell::RefCell;
+use box3d_rust::world::{world_cast_ray, world_cast_shape, World};
+use std::cell::{Cell, RefCell};
 use wasm_bindgen::prelude::*;
+
+const MAX_COUNT: usize = 64;
+const IGNORE_BASE: usize = 0x7;
+
+const MODE_ANY: i32 = 0;
+const MODE_CLOSEST: i32 = 1;
+const MODE_MULTIPLE: i32 = 2;
+const MODE_SORTED: i32 = 3;
+
+const CAST_RAY: i32 = 0;
+const CAST_SPHERE: i32 = 1;
+const CAST_CAPSULE: i32 = 2;
+const CAST_BOX: i32 = 3;
+
+const HIT_STRIDE: usize = 9;
+const RAND_LIMIT: u32 = 32767;
 
 thread_local! {
     static STATE: RefCell<Option<QueryState>> = const { RefCell::new(None) };
+    static RAND_SEED: Cell<u32> = const { Cell::new(12345) };
+}
+
+struct CastContext {
+    points: [Pos; 3],
+    normals: [Vec3; 3],
+    fractions: [f32; 3],
+    material_ids: [u64; 3],
+    triangle_indices: [i32; 3],
+    count: i32,
+    initial_overlap: bool,
+}
+
+impl Default for CastContext {
+    fn default() -> Self {
+        Self {
+            points: [POS_ZERO; 3],
+            normals: [VEC3_ZERO; 3],
+            fractions: [f32::MAX; 3],
+            material_ids: [0; 3],
+            triangle_indices: [0; 3],
+            count: 0,
+            initial_overlap: false,
+        }
+    }
+}
+
+struct SurfaceVis {
+    body_id: BodyId,
+    local_edges: Vec<f32>,
 }
 
 struct QueryState {
     world: World,
-    bodies: Vec<VisBody>,
+    grab: MouseGrab,
+    bodies: [BodyId; MAX_COUNT],
+    vis: Vec<VisBody>,
+    surfaces: Vec<SurfaceVis>,
+    body_index: usize,
+    mode: i32,
+    cast_type: i32,
+    cast_radius: f32,
+    initial_overlap: bool,
+    origin: Pos,
+    translation: Vec3,
+    sphere: Sphere,
+    capsule: Capsule,
+    box_hull: BoxHull,
+    mesh: MeshData,
+    height_field: HeightFieldData,
+    cast_context: CastContext,
 }
 
 fn with_state<R>(f: impl FnOnce(&mut QueryState) -> R) -> R {
@@ -26,73 +102,443 @@ fn with_state<R>(f: impl FnOnce(&mut QueryState) -> R) -> R {
         let mut slot = cell.borrow_mut();
         f(slot
             .as_mut()
-            .expect("query not initialized — call query_reset first"))
+            .expect("query not initialized - call query_reset first"))
     })
 }
 
-fn new_world() -> World {
-    let mut def = default_world_def();
-    def.gravity = Vec3 {
-        x: 0.0,
-        y: -10.0,
-        z: 0.0,
-    };
-    World::new(&def)
+/// XorShift like C `RandomFloatRange` / `shared/utils.h` (not `box3d_rust::human`).
+fn random_float_range(lo: f32, hi: f32) -> f32 {
+    RAND_SEED.with(|seed| {
+        let mut x = seed.get();
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        seed.set(x);
+        let r = (x % (RAND_LIMIT + 1)) as f32 / RAND_LIMIT as f32;
+        (hi - lo) * r + lo
+    })
 }
 
-/// Static props for interactive ray casts.
-#[wasm_bindgen]
-pub fn query_reset() -> u32 {
-    STATE.with(|cell| {
-        let mut world = new_world();
-        let mut bodies = Vec::new();
+fn random_vec3_uniform(lo: f32, hi: f32) -> Vec3 {
+    Vec3 {
+        x: random_float_range(lo, hi),
+        y: random_float_range(lo, hi),
+        z: random_float_range(lo, hi),
+    }
+}
 
-        let mut ground_def = default_body_def();
-        ground_def.type_ = BodyType::Static;
-        ground_def.position = pos(0.0, -0.5, 0.0);
-        let ground = create_body(&mut world, &ground_def);
-        let ground_hull = make_box_hull(10.0, 0.5, 10.0);
-        create_hull_shape(&mut world, ground, &default_shape_def(), &ground_hull.base);
-        bodies.push(VisBody::box_body(ground.index1 - 1, 10.0, 0.5, 10.0));
-
-        let props: &[(f32, f32, f32, f32, f32, f32)] = &[
-            (-2.0, 1.0, 0.0, 1.0, 1.0, 1.0),
-            (2.0, 1.5, -1.0, 0.75, 1.5, 0.75),
-            (0.0, 0.75, 2.5, 1.5, 0.75, 0.5),
-            (-1.5, 0.6, -2.0, 0.6, 0.6, 0.6),
+fn mesh_local_edges(mesh: &MeshData, scale: Vec3) -> Vec<f32> {
+    let verts = get_mesh_vertices(mesh);
+    let tris = get_mesh_triangles(mesh);
+    let mut edges = Vec::new();
+    for tri in tris {
+        let pts = [
+            Vec3 {
+                x: verts[tri.index1 as usize].x * scale.x,
+                y: verts[tri.index1 as usize].y * scale.y,
+                z: verts[tri.index1 as usize].z * scale.z,
+            },
+            Vec3 {
+                x: verts[tri.index2 as usize].x * scale.x,
+                y: verts[tri.index2 as usize].y * scale.y,
+                z: verts[tri.index2 as usize].z * scale.z,
+            },
+            Vec3 {
+                x: verts[tri.index3 as usize].x * scale.x,
+                y: verts[tri.index3 as usize].y * scale.y,
+                z: verts[tri.index3 as usize].z * scale.z,
+            },
         ];
-        for &(x, y, z, hx, hy, hz) in props {
-            let mut body_def = default_body_def();
-            body_def.type_ = BodyType::Static;
-            body_def.position = pos(x, y, z);
-            let body = create_body(&mut world, &body_def);
-            let hull = make_box_hull(hx, hy, hz);
-            create_hull_shape(&mut world, body, &default_shape_def(), &hull.base);
-            bodies.push(VisBody::box_body(body.index1 - 1, hx, hy, hz));
+        for e in 0..3 {
+            let a = pts[e];
+            let b = pts[(e + 1) % 3];
+            edges.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
+        }
+    }
+    edges
+}
+
+fn hf_local_edges(hf: &HeightFieldData) -> Vec<f32> {
+    let count = get_height_field_triangle_count(hf);
+    let mut edges = Vec::new();
+    for i in 0..count {
+        let tri = get_height_field_triangle(hf, i);
+        let verts = tri.vertices;
+        for e in 0..3 {
+            let a = verts[e];
+            let b = verts[(e + 1) % 3];
+            edges.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
+        }
+    }
+    edges
+}
+
+fn remove_body_vis(state: &mut QueryState, body_id: BodyId) {
+    let index = body_id.index1 - 1;
+    state.vis.retain(|v| v.body_index != index);
+    state.surfaces.retain(|s| s.body_id != body_id);
+}
+
+fn cast_callback(
+    world: &World,
+    ctx: &mut CastContext,
+    mode: i32,
+    shape_id: ShapeId,
+    point: Pos,
+    normal: Vec3,
+    fraction: f32,
+    material_id: u64,
+    triangle_index: i32,
+) -> f32 {
+    if !ctx.initial_overlap && fraction == 0.0 {
+        return -1.0;
+    }
+    if shape_get_user_data(world, shape_id) == 1 {
+        return -1.0;
+    }
+
+    match mode {
+        MODE_ANY => {
+            ctx.points[0] = point;
+            ctx.normals[0] = normal;
+            ctx.fractions[0] = fraction;
+            ctx.material_ids[0] = material_id;
+            ctx.triangle_indices[0] = triangle_index;
+            ctx.count = 1;
+            0.0
+        }
+        MODE_MULTIPLE => {
+            let count = ctx.count as usize;
+            debug_assert!(count < 3);
+            ctx.points[count] = point;
+            ctx.normals[count] = normal;
+            ctx.fractions[count] = fraction;
+            ctx.material_ids[count] = material_id;
+            ctx.triangle_indices[count] = triangle_index;
+            ctx.count = count as i32 + 1;
+            if ctx.count == 3 {
+                0.0
+            } else {
+                1.0
+            }
+        }
+        MODE_SORTED => {
+            let count = ctx.count;
+            debug_assert!(count <= 3);
+            let mut index = 3;
+            while fraction < ctx.fractions[index - 1] {
+                index -= 1;
+                if index == 0 {
+                    break;
+                }
+            }
+            if index == 3 {
+                return ctx.fractions[2];
+            }
+            for j in (index + 1..=2).rev() {
+                ctx.points[j] = ctx.points[j - 1];
+                ctx.normals[j] = ctx.normals[j - 1];
+                ctx.fractions[j] = ctx.fractions[j - 1];
+                ctx.material_ids[j] = ctx.material_ids[j - 1];
+                ctx.triangle_indices[j] = ctx.triangle_indices[j - 1];
+            }
+            ctx.points[index] = point;
+            ctx.normals[index] = normal;
+            ctx.fractions[index] = fraction;
+            ctx.material_ids[index] = material_id;
+            ctx.triangle_indices[index] = triangle_index;
+            ctx.count = if count < 3 { count + 1 } else { 3 };
+            if ctx.count == 3 {
+                ctx.fractions[2]
+            } else {
+                1.0
+            }
+        }
+        _ => {
+            // MODE_CLOSEST (and fallback)
+            ctx.points[0] = point;
+            ctx.normals[0] = normal;
+            ctx.fractions[0] = fraction;
+            ctx.material_ids[0] = material_id;
+            ctx.triangle_indices[0] = triangle_index;
+            ctx.count = 1;
+            fraction
+        }
+    }
+}
+
+fn run_cast(state: &mut QueryState) {
+    let mut ctx = CastContext {
+        initial_overlap: state.initial_overlap,
+        fractions: [f32::MAX; 3],
+        ..Default::default()
+    };
+
+    let radius = state.cast_radius;
+    let mut proxy = ShapeProxy::default();
+    let mut _box_keep: Option<BoxHull> = None;
+
+    match state.cast_type {
+        CAST_RAY => {
+            proxy.count = 0;
+        }
+        CAST_SPHERE => {
+            proxy.count = 1;
+            proxy.radius = radius;
+            proxy.points[0] = VEC3_ZERO;
+        }
+        CAST_CAPSULE => {
+            proxy.count = 2;
+            proxy.radius = radius;
+            proxy.points[0] = VEC3_ZERO;
+            proxy.points[1] = Vec3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            };
+        }
+        CAST_BOX => {
+            let extent = Vec3 {
+                x: radius,
+                y: 0.5 * radius,
+                z: 0.25 * radius,
+            };
+            let box_hull =
+                make_transformed_box_hull(extent.x, extent.y, extent.z, TRANSFORM_IDENTITY);
+            proxy.count = box_hull.base.vertex_count;
+            for i in 0..box_hull.base.vertex_count as usize {
+                proxy.points[i] = box_hull.box_points[i];
+            }
+            proxy.radius = 0.0;
+            _box_keep = Some(box_hull);
+        }
+        _ => {}
+    }
+
+    let mut filter = default_query_filter();
+    filter.name = "cast_world".into();
+    let mode = state.mode;
+    let origin = state.origin;
+    let translation = state.translation;
+    let cast_type = state.cast_type;
+
+    {
+        let world = &state.world;
+        let callback = |shape_id, point, normal, fraction, material_id, triangle_index, _child| {
+            cast_callback(
+                world,
+                &mut ctx,
+                mode,
+                shape_id,
+                point,
+                normal,
+                fraction,
+                material_id,
+                triangle_index,
+            )
+        };
+
+        if cast_type == CAST_RAY {
+            world_cast_ray(world, origin, translation, &filter, callback);
+        } else {
+            world_cast_shape(world, origin, &proxy, translation, &filter, callback);
+        }
+    }
+
+    state.cast_context = ctx;
+}
+
+fn create_shapes(state: &mut QueryState, shape_type: ShapeType, count: i32) {
+    let mut shape_def = default_shape_def();
+    let mut body_def = default_body_def();
+    body_def.gravity_scale = 0.0;
+
+    for _ in 0..count {
+        let idx = state.body_index;
+        if state.bodies[idx].is_non_null() {
+            let old = state.bodies[idx];
+            destroy_body(&mut state.world, old);
+            remove_body_vis(state, old);
+            state.bodies[idx] = NULL_BODY_ID;
         }
 
-        // One dynamic sphere so the scene has motion
-        let mut dyn_def = default_body_def();
-        dyn_def.type_ = BodyType::Dynamic;
-        dyn_def.position = pos(0.5, 4.0, 0.0);
-        let ball = create_body(&mut world, &dyn_def);
-        let mut shape_def = default_shape_def();
-        shape_def.density = 1.0;
-        let sph = sphere(0.4);
-        create_sphere_shape(&mut world, ball, &shape_def, &sph);
-        bodies.push(VisBody::sphere_body(ball.index1 - 1, 0.4));
+        body_def.type_ = if idx % 3 == 0 {
+            BodyType::Kinematic
+        } else if idx % 2 == 0 {
+            BodyType::Dynamic
+        } else {
+            BodyType::Static
+        };
 
-        let count = bodies.len() as u32;
-        *cell.borrow_mut() = Some(QueryState { world, bodies });
-        count
+        if shape_type == ShapeType::Height {
+            body_def.type_ = BodyType::Static;
+        }
+
+        body_def.position = offset_pos(POS_ZERO, random_vec3_uniform(-20.0, 20.0));
+        let axis = normalize(random_vec3_uniform(-1.0, 1.0));
+        let angle = random_float_range(-PI, PI);
+        body_def.rotation = make_quat_from_axis_angle(axis, angle);
+
+        let body_id = create_body(&mut state.world, &body_def);
+        let flag: u64 = if (idx & IGNORE_BASE) == IGNORE_BASE {
+            1
+        } else {
+            0
+        };
+        shape_def.user_data = flag;
+        shape_def.materials.clear();
+
+        match shape_type {
+            ShapeType::Sphere => {
+                shape_def.base_material.user_material_id = 11;
+                create_sphere_shape(&mut state.world, body_id, &shape_def, &state.sphere);
+                state
+                    .vis
+                    .push(VisBody::sphere_body(body_id.index1 - 1, state.sphere.radius));
+            }
+            ShapeType::Capsule => {
+                shape_def.base_material.user_material_id = 22;
+                create_capsule_shape(&mut state.world, body_id, &shape_def, &state.capsule);
+                state
+                    .vis
+                    .push(VisBody::capsule_body(body_id.index1 - 1, &state.capsule));
+            }
+            ShapeType::Hull => {
+                shape_def.base_material.user_material_id = 33;
+                create_hull_shape(&mut state.world, body_id, &shape_def, &state.box_hull.base);
+                state
+                    .vis
+                    .push(VisBody::box_body(body_id.index1 - 1, 0.6, 0.6, 0.6));
+            }
+            ShapeType::Mesh => {
+                shape_def.base_material.user_material_id = 44;
+                let scale = Vec3 {
+                    x: 4.0,
+                    y: 3.0,
+                    z: -2.0,
+                };
+                create_mesh_shape(&mut state.world, body_id, &shape_def, &state.mesh, scale);
+                let edges = mesh_local_edges(&state.mesh, scale);
+                state.surfaces.push(SurfaceVis {
+                    body_id,
+                    local_edges: edges,
+                });
+            }
+            ShapeType::Height => {
+                shape_def.base_material.user_material_id = 55;
+                shape_def.materials = vec![
+                    SurfaceMaterial {
+                        user_material_id: 111,
+                        ..Default::default()
+                    },
+                    SurfaceMaterial {
+                        user_material_id: 222,
+                        ..Default::default()
+                    },
+                    SurfaceMaterial {
+                        user_material_id: 333,
+                        ..Default::default()
+                    },
+                ];
+                create_height_field_shape(&mut state.world, body_id, &shape_def, &state.height_field);
+                let edges = hf_local_edges(&state.height_field);
+                state.surfaces.push(SurfaceVis {
+                    body_id,
+                    local_edges: edges,
+                });
+            }
+            _ => {}
+        }
+
+        state.bodies[idx] = body_id;
+        state.body_index = (idx + 1) % MAX_COUNT;
+    }
+}
+
+fn destroy_one_body(state: &mut QueryState) {
+    for i in 0..MAX_COUNT {
+        if state.bodies[i].is_non_null() {
+            let body_id = state.bodies[i];
+            destroy_body(&mut state.world, body_id);
+            remove_body_vis(state, body_id);
+            state.bodies[i] = NULL_BODY_ID;
+            return;
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn query_reset() -> u32 {
+    RAND_SEED.with(|s| s.set(12345));
+    STATE.with(|cell| {
+        let mut def = default_world_def();
+        def.gravity = Vec3 {
+            x: 0.0,
+            y: -10.0,
+            z: 0.0,
+        };
+        let world = World::new(&def);
+        let mesh = create_torus_mesh(10, 12, 0.65, 0.35).expect("torus mesh");
+        let scale = Vec3 {
+            x: 0.5 * VEC3_ONE.x,
+            y: 0.5 * VEC3_ONE.y,
+            z: 0.5 * VEC3_ONE.z,
+        };
+        let height_field = create_wave(10, 10, scale, 0.03, 0.09, false);
+
+        let mut state = QueryState {
+            world,
+            grab: MouseGrab::default(),
+            bodies: [NULL_BODY_ID; MAX_COUNT],
+            vis: Vec::new(),
+            surfaces: Vec::new(),
+            body_index: 0,
+            mode: MODE_CLOSEST,
+            cast_type: CAST_RAY,
+            cast_radius: 0.5,
+            initial_overlap: false,
+            origin: pos(-20.0, 10.0, 0.0),
+            translation: Vec3 {
+                x: 20.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            sphere: Sphere {
+                center: VEC3_ZERO,
+                radius: 0.9,
+            },
+            capsule: Capsule {
+                center1: Vec3 {
+                    x: -0.5,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                center2: Vec3 {
+                    x: 0.5,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                radius: 0.8,
+            },
+            box_hull: make_box_hull(0.6, 0.6, 0.6),
+            mesh,
+            height_field,
+            cast_context: CastContext::default(),
+        };
+
+        create_shapes(&mut state, ShapeType::Sphere, 10);
+        let n = state.bodies.iter().filter(|b| b.is_non_null()).count() as u32;
+        *cell.borrow_mut() = Some(state);
+        n
     })
 }
 
 #[wasm_bindgen]
 pub fn query_step(dt: f32, sub_steps: i32) -> u32 {
     with_state(|state| {
+        state.grab.pre_step(&mut state.world, dt);
         state.world.step(dt, sub_steps);
-        state.bodies.len() as u32
+        state.bodies.iter().filter(|b| b.is_non_null()).count() as u32
     })
 }
 
@@ -100,37 +546,264 @@ pub fn query_step(dt: f32, sub_steps: i32) -> u32 {
 pub fn query_poses() -> Vec<f32> {
     with_state(|state| {
         let mut out = Vec::new();
-        push_poses(&state.world, &state.bodies, &mut out);
+        push_poses(&state.world, &state.vis, &mut out);
         out
     })
 }
 
-/// Closest ray cast. Returns
-/// `[hit, px, py, pz, nx, ny, nz, fraction]` (hit is 1/0).
 #[wasm_bindgen]
-pub fn query_ray_cast(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+pub fn query_set_params(cast_type: i32, mode: i32, radius: f32, initial_overlap: i32) {
+    with_state(|state| {
+        state.cast_type = cast_type.clamp(0, 3);
+        state.mode = mode.clamp(0, 3);
+        state.cast_radius = radius.clamp(0.1, 2.0);
+        state.initial_overlap = initial_overlap != 0;
+    });
+}
+
+#[wasm_bindgen]
+pub fn query_set_ray(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) {
+    with_state(|state| {
+        state.origin = pos(ox, oy, oz);
+        state.translation = vec3(tx, ty, tz);
+    });
+}
+
+#[wasm_bindgen]
+pub fn query_add_shapes(shape_type: i32, count: i32) -> u32 {
+    with_state(|state| {
+        let st = match shape_type {
+            0 => ShapeType::Capsule,
+            2 => ShapeType::Height,
+            3 => ShapeType::Hull,
+            4 => ShapeType::Mesh,
+            5 => ShapeType::Sphere,
+            _ => return 0,
+        };
+        create_shapes(state, st, count.max(1));
+        state.bodies.iter().filter(|b| b.is_non_null()).count() as u32
+    })
+}
+
+#[wasm_bindgen]
+pub fn query_destroy_shape() -> u32 {
+    with_state(|state| {
+        destroy_one_body(state);
+        state.bodies.iter().filter(|b| b.is_non_null()).count() as u32
+    })
+}
+
+/// `[count, ox,oy,oz, tx,ty,tz, cast_type, radius, hits...]`
+/// each hit: px,py,pz, nx,ny,nz, fraction, material, triangle
+#[wasm_bindgen]
+pub fn query_cast() -> Vec<f32> {
+    with_state(|state| {
+        run_cast(state);
+        let ctx = &state.cast_context;
+        let mut out = Vec::with_capacity(9 + ctx.count as usize * HIT_STRIDE);
+        out.push(ctx.count as f32);
+        out.push(state.origin.x as f32);
+        out.push(state.origin.y as f32);
+        out.push(state.origin.z as f32);
+        out.push(state.translation.x);
+        out.push(state.translation.y);
+        out.push(state.translation.z);
+        out.push(state.cast_type as f32);
+        out.push(state.cast_radius);
+        for i in 0..ctx.count as usize {
+            out.push(ctx.points[i].x as f32);
+            out.push(ctx.points[i].y as f32);
+            out.push(ctx.points[i].z as f32);
+            out.push(ctx.normals[i].x);
+            out.push(ctx.normals[i].y);
+            out.push(ctx.normals[i].z);
+            out.push(ctx.fractions[i]);
+            out.push(ctx.material_ids[i] as f32);
+            out.push(ctx.triangle_indices[i] as f32);
+        }
+        out
+    })
+}
+
+#[wasm_bindgen]
+pub fn query_ignore_aabbs() -> Vec<f32> {
+    with_state(|state| {
+        let mut out = vec![0.0];
+        let mut count = 0i32;
+        for (i, &body_id) in state.bodies.iter().enumerate() {
+            if (i & IGNORE_BASE) == IGNORE_BASE && body_id.is_non_null() {
+                let aabb = body_compute_aabb(&state.world, body_id);
+                out.push(aabb.lower_bound.x);
+                out.push(aabb.lower_bound.y);
+                out.push(aabb.lower_bound.z);
+                out.push(aabb.upper_bound.x);
+                out.push(aabb.upper_bound.y);
+                out.push(aabb.upper_bound.z);
+                count += 1;
+            }
+        }
+        out[0] = count as f32;
+        out
+    })
+}
+
+#[wasm_bindgen]
+pub fn query_surface_wireframe() -> Vec<f32> {
+    with_state(|state| {
+        let mut out = Vec::new();
+        for surf in &state.surfaces {
+            if surf.body_id.is_null() {
+                continue;
+            }
+            let xf = get_body_transform(&state.world, surf.body_id.index1 - 1);
+            let local_xf = Transform {
+                p: Vec3 {
+                    x: xf.p.x as f32,
+                    y: xf.p.y as f32,
+                    z: xf.p.z as f32,
+                },
+                q: xf.q,
+            };
+            let edges = &surf.local_edges;
+            for i in (0..edges.len()).step_by(6) {
+                if i + 5 >= edges.len() {
+                    break;
+                }
+                let a = transform_point(
+                    local_xf,
+                    Vec3 {
+                        x: edges[i],
+                        y: edges[i + 1],
+                        z: edges[i + 2],
+                    },
+                );
+                let b = transform_point(
+                    local_xf,
+                    Vec3 {
+                        x: edges[i + 3],
+                        y: edges[i + 4],
+                        z: edges[i + 5],
+                    },
+                );
+                out.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
+            }
+        }
+        out
+    })
+}
+
+#[wasm_bindgen]
+pub fn query_mouse_down(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     with_state(|state| {
         let origin = pos(ox, oy, oz);
-        let translation = Vec3 {
-            x: tx - ox,
-            y: ty - oy,
-            z: tz - oz,
-        };
-        let filter = default_query_filter();
-        let result = world_cast_ray_closest(&state.world, origin, translation, &filter);
-        if result.hit {
+        let translation = vec3(tx, ty, tz);
+        if state.grab.begin(&mut state.world, origin, translation) {
             vec![
                 1.0,
-                result.point.x as f32,
-                result.point.y as f32,
-                result.point.z as f32,
-                result.normal.x,
-                result.normal.y,
-                result.normal.z,
-                result.fraction,
+                state.grab.mouse_point.x as f32,
+                state.grab.mouse_point.y as f32,
+                state.grab.mouse_point.z as f32,
             ]
         } else {
-            vec![0.0, tx, ty, tz, 0.0, 1.0, 0.0, 1.0]
+            vec![0.0, 0.0, 0.0, 0.0]
         }
     })
+}
+
+#[wasm_bindgen]
+pub fn query_mouse_move(px: f32, py: f32, pz: f32) {
+    with_state(|state| {
+        state.grab.move_to(pos(px, py, pz));
+    });
+}
+
+#[wasm_bindgen]
+pub fn query_mouse_up() {
+    with_state(|state| {
+        state.grab.end(&mut state.world);
+    });
+}
+
+#[wasm_bindgen]
+pub fn query_mouse_active() -> bool {
+    with_state(|state| state.grab.is_active())
+}
+
+#[wasm_bindgen]
+pub fn query_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+    with_state(|state| {
+        match interact::spawn_random(&mut state.world, pos(ox, oy, oz), vec3(tx, ty, tz)) {
+            Some(s) => {
+                match s.kind {
+                    1 => state
+                        .vis
+                        .push(VisBody::sphere_body(s.body_index, s.half_extents[0])),
+                    2 => state.vis.push(VisBody::capsule_body(
+                        s.body_index,
+                        &Capsule {
+                            center1: Vec3 {
+                                x: 0.0,
+                                y: -s.half_extents[1],
+                                z: 0.0,
+                            },
+                            center2: Vec3 {
+                                x: 0.0,
+                                y: s.half_extents[1],
+                                z: 0.0,
+                            },
+                            radius: s.half_extents[0],
+                        },
+                    )),
+                    _ => state.vis.push(VisBody::box_body(
+                        s.body_index,
+                        s.half_extents[0],
+                        s.half_extents[1],
+                        s.half_extents[2],
+                    )),
+                }
+                vec![
+                    1.0,
+                    s.body_index as f32,
+                    s.half_extents[0],
+                    s.half_extents[1],
+                    s.half_extents[2],
+                    s.kind as f32,
+                ]
+            }
+            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    })
+}
+
+#[wasm_bindgen]
+pub fn query_delete_at_ray(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> i32 {
+    with_state(|state| {
+        let index = interact::delete_at_ray(
+            &mut state.world,
+            &mut state.grab,
+            pos(ox, oy, oz),
+            vec3(tx, ty, tz),
+        );
+        if index >= 0 {
+            state.vis.retain(|b| b.body_index != index);
+            state.surfaces.retain(|s| s.body_id.index1 - 1 != index);
+            for slot in state.bodies.iter_mut() {
+                if slot.is_non_null() && slot.index1 - 1 == index {
+                    *slot = NULL_BODY_ID;
+                    break;
+                }
+            }
+        }
+        index
+    })
+}
+
+#[wasm_bindgen]
+pub fn query_counters() -> Vec<f32> {
+    with_state(|state| interact::counters_with_sleep(&state.world).to_vec())
+}
+
+#[wasm_bindgen]
+pub fn query_debug_draw(flags: u32) -> Vec<f32> {
+    with_state(|state| interact::collect_debug_draw(&mut state.world, flags))
 }

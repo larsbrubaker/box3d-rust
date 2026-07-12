@@ -180,8 +180,8 @@ function renderHome(container: HTMLElement) {
         <a href="#/queries" class="feature-card">
           <span class="card-icon">&#9678;</span>
           <span class="card-badge badge-live">LIVE</span>
-          <h3>Queries</h3>
-          <p>Animated closest ray cast with hit point and normal.</p>
+          <h3>Cast World</h3>
+          <p>Collision / Cast World — ray and shape casts, modes, spawn targets.</p>
         </a>
         <a href="#/far-pyramid" class="feature-card">
           <span class="card-icon">&#9651;</span>

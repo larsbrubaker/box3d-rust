@@ -98,7 +98,21 @@ export interface Box3dWasm {
   query_reset(): number;
   query_step(dt: number, sub_steps: number): number;
   query_poses(): Float32Array;
-  query_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  query_set_params(cast_type: number, mode: number, radius: number, initial_overlap: number): void;
+  query_set_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): void;
+  query_add_shapes(shape_type: number, count: number): number;
+  query_destroy_shape(): number;
+  query_cast(): Float32Array;
+  query_ignore_aabbs(): Float32Array;
+  query_surface_wireframe(): Float32Array;
+  query_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  query_mouse_move(px: number, py: number, pz: number): void;
+  query_mouse_up(): void;
+  query_mouse_active(): boolean;
+  query_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  query_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  query_counters(): Float32Array;
+  query_debug_draw(flags: number): Float32Array;
 
   sim_reset_compound(): number;
   sim_reset_compound_simple(): number;

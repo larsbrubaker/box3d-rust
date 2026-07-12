@@ -6,7 +6,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Manifold", blurb: "Contact points and normals", route: "manifolds" },
   { name: "Mesh", blurb: "Triangle meshes / height field (partial)", route: "terrain" },
   { name: "Tree", blurb: "Dynamic AABB tree broad-phase", route: "tree" },
-  { name: "Collision", blurb: "Hulls, height fields, casting (partial)", route: "hull" },
+  { name: "Collision", blurb: "Cast World ray/shape casts", route: "queries" },
   { name: "Compound", blurb: "Simple, Spheres, Hulls, Village (building.obj)", route: "compound" },
   { name: "Bodies", blurb: "Body Type gallery (more samples TBD)", route: "bodies" },
   { name: "Shapes", blurb: "Inclined Plane, Restitution, Wind, … — not yet ported" },
