@@ -4,7 +4,9 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::interact::{self, MouseGrab};
-use box3d_rust::body::{create_body, destroy_body, get_body_transform, make_body_id};
+use box3d_rust::body::{
+    body_get_type, create_body, destroy_body, get_body_transform, is_body_awake, make_body_id,
+};
 use box3d_rust::compound::{create_compound, CompoundDef, CompoundHullDef};
 use box3d_rust::geometry::{default_surface_material, Sphere};
 use box3d_rust::hull::make_box_hull;
@@ -12,9 +14,13 @@ use box3d_rust::math_functions::{
     make_quat_from_axis_angle, mul_transforms, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y,
     VEC3_AXIS_Z, VEC3_ZERO,
 };
+use box3d_rust::recording::{start_recording, stop_recording, Recording};
 use box3d_rust::shape::{create_compound_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
-use box3d_rust::world::World;
+use box3d_rust::world::{
+    world_enable_continuous, world_enable_sleeping, world_enable_warm_starting,
+    world_set_contact_recycle_distance, World,
+};
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
@@ -35,6 +41,28 @@ struct SimState {
     world: World,
     bodies: Vec<SimBody>,
     grab: MouseGrab,
+    /// Owns the active recording buffer; world holds a raw pointer into it.
+    recording: Option<Box<Recording>>,
+    record_start_step: i32,
+    step_count: i32,
+}
+
+fn new_sim() -> SimState {
+    SimState {
+        world: new_world(),
+        bodies: Vec::new(),
+        grab: MouseGrab::default(),
+        recording: None,
+        record_start_step: 0,
+        step_count: 0,
+    }
+}
+
+fn stop_recording_if_any(sim: &mut SimState) {
+    if sim.recording.is_some() {
+        stop_recording(&mut sim.world);
+        sim.recording = None;
+    }
 }
 
 fn with_sim<R>(f: impl FnOnce(&mut SimState) -> R) -> R {
@@ -162,11 +190,10 @@ fn new_world() -> World {
 #[wasm_bindgen]
 pub fn sim_reset_bodies() -> u32 {
     SIM.with(|cell| {
-        let mut sim = SimState {
-            world: new_world(),
-            bodies: Vec::new(),
-            grab: MouseGrab::default(),
-        };
+        if let Some(prev) = cell.borrow_mut().as_mut() {
+            stop_recording_if_any(prev);
+        }
+        let mut sim = new_sim();
         add_ground(&mut sim, 10.0);
         push_dynamic_box(&mut sim, 0.0, 4.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.3);
         push_dynamic_box(&mut sim, -3.0, 6.0, 0.0, 0.5, 0.5, 0.5, 1.0, 0.4);
@@ -183,11 +210,10 @@ pub fn sim_reset_bodies() -> u32 {
 #[wasm_bindgen]
 pub fn sim_reset_compound() -> u32 {
     SIM.with(|cell| {
-        let mut sim = SimState {
-            world: new_world(),
-            bodies: Vec::new(),
-            grab: MouseGrab::default(),
-        };
+        if let Some(prev) = cell.borrow_mut().as_mut() {
+            stop_recording_if_any(prev);
+        }
+        let mut sim = new_sim();
 
         let a = 4.0f32;
         let box_a = make_box_hull(a, 0.125 * a, a);
@@ -279,11 +305,10 @@ pub fn sim_reset_compound() -> u32 {
 pub fn sim_reset_stacking(count: u32) -> u32 {
     let n = count.clamp(1, 24);
     SIM.with(|cell| {
-        let mut sim = SimState {
-            world: new_world(),
-            bodies: Vec::new(),
-            grab: MouseGrab::default(),
-        };
+        if let Some(prev) = cell.borrow_mut().as_mut() {
+            stop_recording_if_any(prev);
+        }
+        let mut sim = new_sim();
         add_ground(&mut sim, 20.0);
         let a = 0.5f32;
         for i in 0..n {
@@ -301,11 +326,10 @@ pub fn sim_reset_stacking(count: u32) -> u32 {
 pub fn sim_reset_pyramid(size: u32) -> u32 {
     let n = size.clamp(2, 10) as i32;
     SIM.with(|cell| {
-        let mut sim = SimState {
-            world: new_world(),
-            bodies: Vec::new(),
-            grab: MouseGrab::default(),
-        };
+        if let Some(prev) = cell.borrow_mut().as_mut() {
+            stop_recording_if_any(prev);
+        }
+        let mut sim = new_sim();
         add_ground(&mut sim, 30.0);
         let a = 0.75f32;
         for row in 0..n {
@@ -326,11 +350,10 @@ pub fn sim_reset_pyramid(size: u32) -> u32 {
 pub fn sim_reset_sphere_stack(count: u32) -> u32 {
     let n = count.clamp(1, 20);
     SIM.with(|cell| {
-        let mut sim = SimState {
-            world: new_world(),
-            bodies: Vec::new(),
-            grab: MouseGrab::default(),
-        };
+        if let Some(prev) = cell.borrow_mut().as_mut() {
+            stop_recording_if_any(prev);
+        }
+        let mut sim = new_sim();
         add_ground(&mut sim, 15.0);
         let r = 0.45f32;
         let mut y = 1.5 * r;
@@ -350,16 +373,18 @@ pub fn sim_step(dt: f32, sub_steps: i32) -> u32 {
     with_sim(|sim| {
         sim.grab.pre_step(&mut sim.world, dt);
         sim.world.step(dt, sub_steps);
+        sim.step_count = sim.step_count.saturating_add(1);
         sim.bodies.len() as u32
     })
 }
 
 /// Interleaved body poses: for each body
-/// `[px, py, pz, qx, qy, qz, qw, hx, hy, hz, kind]`.
+/// `[px, py, pz, qx, qy, qz, qw, hx, hy, hz, kind, body_type, awake]`.
+/// `body_type`: 0 static, 1 kinematic, 2 dynamic. `awake`: 1/0.
 #[wasm_bindgen]
 pub fn sim_body_poses() -> Vec<f32> {
     with_sim(|sim| {
-        let mut out = Vec::with_capacity(sim.bodies.len() * 11);
+        let mut out = Vec::with_capacity(sim.bodies.len() * 13);
         for b in &sim.bodies {
             let xf = get_body_transform(&sim.world, b.body_index);
             let (px, py, pz, qx, qy, qz, qw) = if let Some(local) = b.local {
@@ -404,6 +429,13 @@ pub fn sim_body_poses() -> Vec<f32> {
             out.push(b.half_extents[1]);
             out.push(b.half_extents[2]);
             out.push(b.kind as f32);
+            let id = make_body_id(&sim.world, b.body_index);
+            out.push(body_get_type(&sim.world, id) as u8 as f32);
+            out.push(if is_body_awake(&sim.world, b.body_index) {
+                1.0
+            } else {
+                0.0
+            });
         }
         out
     })
@@ -527,5 +559,78 @@ pub fn sim_destroy_body_index(body_index: i32) -> u32 {
         destroy_body(&mut sim.world, id);
         sim.bodies.retain(|b| b.body_index != body_index);
         1
+    })
+}
+
+/// Solver step count since the last scene reset.
+#[wasm_bindgen]
+pub fn sim_step_count() -> i32 {
+    with_sim(|sim| sim.step_count)
+}
+
+/// Enable/disable sleeping (b3World_EnableSleeping).
+#[wasm_bindgen]
+pub fn sim_set_enable_sleep(flag: bool) {
+    with_sim(|sim| world_enable_sleeping(&mut sim.world, flag));
+}
+
+/// Enable/disable warm starting (b3World_EnableWarmStarting).
+#[wasm_bindgen]
+pub fn sim_set_enable_warm_starting(flag: bool) {
+    with_sim(|sim| world_enable_warm_starting(&mut sim.world, flag));
+}
+
+/// Enable/disable continuous collision (b3World_EnableContinuous).
+#[wasm_bindgen]
+pub fn sim_set_enable_continuous(flag: bool) {
+    with_sim(|sim| world_enable_continuous(&mut sim.world, flag));
+}
+
+/// Contact recycle distance in meters (b3World_SetContactRecycleDistance).
+#[wasm_bindgen]
+pub fn sim_set_recycle_distance(meters: f32) {
+    with_sim(|sim| world_set_contact_recycle_distance(&mut sim.world, meters));
+}
+
+/// Start recording the sim world into an in-memory `.b3rec` buffer.
+#[wasm_bindgen]
+pub fn sim_start_recording() {
+    with_sim(|sim| {
+        stop_recording_if_any(sim);
+        let mut rec = Box::new(Recording::new(0));
+        start_recording(&mut sim.world, &mut *rec);
+        sim.record_start_step = sim.step_count;
+        sim.recording = Some(rec);
+    });
+}
+
+/// Stop recording and return the `.b3rec` bytes (empty if not recording).
+#[wasm_bindgen]
+pub fn sim_stop_recording() -> Vec<u8> {
+    with_sim(|sim| {
+        if sim.recording.is_none() {
+            return Vec::new();
+        }
+        stop_recording(&mut sim.world);
+        let rec = sim.recording.take().expect("recording present");
+        rec.data().to_vec()
+    })
+}
+
+/// True while a recording session is active.
+#[wasm_bindgen]
+pub fn sim_is_recording() -> bool {
+    with_sim(|sim| sim.recording.is_some())
+}
+
+/// Step index when the current recording started (0 if idle).
+#[wasm_bindgen]
+pub fn sim_record_start_step() -> i32 {
+    with_sim(|sim| {
+        if sim.recording.is_some() {
+            sim.record_start_step
+        } else {
+            0
+        }
     })
 }

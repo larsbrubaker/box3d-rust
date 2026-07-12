@@ -1,14 +1,14 @@
-// Shared simulation interaction layer: pause/step/restart, pick-drag, spawn/delete,
-// stats overlay, debug-draw toggles, and declarative parameter panels.
+// Shared simulation interaction layer: Samples App Info panel (C DrawInfoPanel),
+// pause/step/restart, pick-drag, spawn/delete, Solver/Recording, debug-draw.
 
 import * as THREE from "three";
 import {
   createButton,
   createButtonGroup,
   createCheckbox,
-  createReadout,
+  createCollapsingSection,
   createSlider,
-  updateReadout,
+  createTextInput,
 } from "./controls.ts";
 import type { DemoScene } from "./three-scene.ts";
 
@@ -24,6 +24,15 @@ export type InteractWasm = {
   sim_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   sim_counters(): Float32Array;
   sim_debug_draw(flags: number): Float32Array;
+  sim_step_count?(): number;
+  sim_set_enable_sleep?(flag: boolean): void;
+  sim_set_enable_warm_starting?(flag: boolean): void;
+  sim_set_enable_continuous?(flag: boolean): void;
+  sim_set_recycle_distance?(meters: number): void;
+  sim_start_recording?(): void;
+  sim_stop_recording?(): Uint8Array;
+  sim_is_recording?(): boolean;
+  sim_record_start_step?(): number;
 };
 
 export const DRAW_CONTACTS = 1 << 0;
@@ -71,9 +80,12 @@ export type SimController = {
   stepsPending: number;
   timeScale: number;
   subSteps: number;
+  /** Solver frequency in Hz (C sample Hertz). dt = 1/hertz. */
+  hertz: number;
   debugFlags: number;
   /** Rolling average step time in ms. */
   stepMsAvg: number;
+  stepCount: number;
   params: ParamValues;
   setPaused(v: boolean): void;
   requestStep(n?: number): void;
@@ -88,12 +100,18 @@ export type AttachInteractionOpts = {
   controls: HTMLElement;
   /** Rebuild the scene (called on R / Restart / restart-on-change params). */
   onRestart: () => void;
-  /** Optional declarative parameter panel (applied before sim controls). */
+  /** Sample name shown in goldenrod (C entry.Name). */
+  sampleName?: string;
+  /** Category shown in light gray (C entry.Category). */
+  sampleCategory?: string;
+  /** Optional declarative parameter panel (applied before solver). */
   params?: ParamDef[];
   onParamsChange?: (values: ParamValues, changedKey: string) => void;
   /** Hide spawn/delete hints when false. Default true. */
   enableSpawnDelete?: boolean;
-  /** Base dt passed to wasm (default 1/60). */
+  /** Show Solver + Recording panels. Default true. */
+  showSolverPanel?: boolean;
+  /** Fallback base dt when hertz is unavailable (default 1/60). */
   baseDt?: number;
 };
 
@@ -103,6 +121,7 @@ const _hitPlane = new THREE.Plane();
 const _planeHit = new THREE.Vector3();
 const _camDir = new THREE.Vector3();
 const _grabPoint = new THREE.Vector3();
+const _camOffset = new THREE.Vector3();
 
 function screenToNdc(canvas: HTMLCanvasElement, clientX: number, clientY: number): THREE.Vector2 {
   const rect = canvas.getBoundingClientRect();
@@ -138,10 +157,35 @@ function dragPointOnCameraPlane(
   if (_raycaster.ray.intersectPlane(_hitPlane, _planeHit)) {
     return _planeHit.clone();
   }
-  // Fallback: project along ray at the original grab depth
   return _raycaster.ray.origin.clone().add(
     _raycaster.ray.direction.clone().multiplyScalar(planePoint.distanceTo(_raycaster.ray.origin)),
   );
+}
+
+function cameraReadout(demo: DemoScene): {
+  px: number;
+  py: number;
+  pz: number;
+  yaw: number;
+  pitch: number;
+  radius: number;
+} {
+  const t = demo.controls.target;
+  _camOffset.copy(demo.camera.position).sub(t);
+  const radius = Math.max(1e-6, _camOffset.length());
+  const yaw = (Math.atan2(_camOffset.x, _camOffset.z) * 180) / Math.PI;
+  const pitch = (Math.asin(Math.max(-1, Math.min(1, _camOffset.y / radius))) * 180) / Math.PI;
+  return { px: t.x, py: t.y, pz: t.z, yaw, pitch, radius };
+}
+
+function downloadBytes(filename: string, data: Uint8Array) {
+  const blob = new Blob([data], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "recording.b3rec";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Build a declarative parameter panel; returns current values + dispose. */
@@ -301,8 +345,8 @@ function floatBitsToRgb(bitsAsF32: number): [number, number, number] {
 }
 
 /**
- * Attach pause/step/restart, hotkeys, time scale, pick-drag, spawn/delete,
- * stats readout, and debug-draw toggles to a dynamics demo.
+ * Attach Samples App Info panel + pause/step/restart, hotkeys, Solver/Recording,
+ * pick-drag, spawn/delete, and debug-draw toggles to a dynamics demo.
  */
 export function attachInteraction(opts: AttachInteractionOpts): SimControllerWithTick {
   const {
@@ -311,36 +355,78 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     canvas,
     controls,
     onRestart,
+    sampleName = "Sample",
+    sampleCategory = "Dynamics",
     params: paramDefs = [],
     onParamsChange,
     enableSpawnDelete = true,
+    showSolverPanel = true,
     baseDt = 1 / 60,
   } = opts;
+
+  controls.classList.add("samples-info-panel");
 
   const state: SimController = {
     paused: false,
     stepsPending: 0,
     timeScale: 1,
     subSteps: 4,
+    hertz: 60,
     debugFlags: 0,
     stepMsAvg: 0,
+    stepCount: 0,
     params: {},
     setPaused(v) {
       state.paused = v;
       pauseBtn.classList.toggle("active", v);
-      pauseBtn.textContent = v ? "Resume (Space)" : "Pause (Space)";
+      pauseBtn.textContent = v ? "Resume (P)" : "Pause (P)";
+      pauseBadge.hidden = !v;
     },
     requestStep(n = 1) {
       state.stepsPending += n;
     },
     restart() {
       wasm.sim_mouse_up();
+      if (wasm.sim_is_recording?.()) {
+        // Drop in-progress recording on restart (C SelectSample recreates world).
+        wasm.sim_stop_recording?.();
+        updateRecordingUi(false);
+      }
       onRestart();
+      state.stepCount = 0;
     },
     dispose() {
       /* filled below */
     },
   };
+
+  // --- Info header (C DrawInfoPanel top) ---
+  const infoHead = document.createElement("div");
+  infoHead.className = "samples-info-head";
+  infoHead.innerHTML = `
+    <div class="sample-name">${escapeHtml(sampleName)}</div>
+    <div class="sample-category">${escapeHtml(sampleCategory)}</div>
+    <div class="sample-paused" hidden>PAUSED <span class="sample-paused-hint">(P)</span></div>
+    <div class="sample-sep"></div>
+    <div class="sample-stats">
+      <div class="sample-stat frame-ms">0.0 ms</div>
+      <div class="sample-stat step-count">step 0</div>
+    </div>
+    <div class="sample-sep"></div>
+    <div class="sample-camera">
+      <div class="sample-stat cam-pivot">pivot m (0.0, 0.0, 0.0)</div>
+      <div class="sample-stat cam-yaw">yaw/pitch (0.0, 0.0)</div>
+      <div class="sample-stat cam-radius">radius m 0.0</div>
+    </div>
+    <div class="sample-sep"></div>
+  `;
+  controls.appendChild(infoHead);
+  const pauseBadge = infoHead.querySelector(".sample-paused") as HTMLElement;
+  const frameMsEl = infoHead.querySelector(".frame-ms") as HTMLElement;
+  const stepCountEl = infoHead.querySelector(".step-count") as HTMLElement;
+  const camPivotEl = infoHead.querySelector(".cam-pivot") as HTMLElement;
+  const camYawEl = infoHead.querySelector(".cam-yaw") as HTMLElement;
+  const camRadiusEl = infoHead.querySelector(".cam-radius") as HTMLElement;
 
   // --- Parameter panel ---
   let paramDispose = () => {};
@@ -354,23 +440,16 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     paramDispose = panel.dispose;
   }
 
-  // --- Sim controls ---
-  const simSection = document.createElement("div");
-  simSection.className = "control-section-title";
-  simSection.textContent = "Simulation";
-  controls.appendChild(simSection);
-
-  const pauseBtn = createButton("Pause (Space)", () => state.setPaused(!state.paused));
-  const stepBtn = createButton("Step (S)", () => {
+  // --- Transport ---
+  const transport = document.createElement("div");
+  transport.className = "control-row samples-transport";
+  const pauseBtn = createButton("Pause (P)", () => state.setPaused(!state.paused));
+  const stepBtn = createButton("Step (O)", () => {
     state.setPaused(true);
     state.requestStep(1);
   });
-  const restartBtn = createButton("Restart (R)", () => state.restart());
-  const row = document.createElement("div");
-  row.className = "control-row";
-  row.style.marginBottom = "12px";
-  row.append(pauseBtn, stepBtn, restartBtn);
-  controls.appendChild(row);
+  transport.append(pauseBtn, stepBtn);
+  controls.appendChild(transport);
 
   controls.appendChild(
     createSlider("Time scale", 0, 2, 1, 0.05, (v) => {
@@ -378,11 +457,125 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     }),
   );
 
+  // --- Solver (C CollapsingHeader) ---
+  let recordingFile = "recording.b3rec";
+  let recordingStatusEl: HTMLElement | null = null;
+  let recordRestartBtn: HTMLButtonElement | null = null;
+  let recordNowBtn: HTMLButtonElement | null = null;
+  let recordStopBtn: HTMLButtonElement | null = null;
+
+  const updateRecordingUi = (active: boolean) => {
+    if (!recordingStatusEl || !recordRestartBtn || !recordNowBtn || !recordStopBtn) return;
+    recordRestartBtn.hidden = active;
+    recordNowBtn.hidden = active;
+    recordStopBtn.hidden = !active;
+    if (active) {
+      const from = wasm.sim_record_start_step?.() ?? 0;
+      recordingStatusEl.textContent = `recording (from step ${from})`;
+      recordingStatusEl.hidden = false;
+    } else {
+      recordingStatusEl.hidden = true;
+      recordingStatusEl.textContent = "";
+    }
+  };
+
+  if (showSolverPanel) {
+    const solver = createCollapsingSection("Solver", true);
+    controls.appendChild(solver.root);
+
+    solver.body.appendChild(
+      createSlider("Sub-steps", 1, 50, state.subSteps, 1, (v) => {
+        state.subSteps = Math.round(v);
+      }),
+    );
+    solver.body.appendChild(
+      createSlider("Hertz", 5, 240, state.hertz, 1, (v) => {
+        state.hertz = Math.round(v);
+      }),
+    );
+
+    const workers = createSlider("Workers", 1, 8, 1, 1, () => {});
+    workers.querySelector("input")!.setAttribute("disabled", "true");
+    workers.title = "WASM demos run single-threaded (serial port)";
+    const workersNote = document.createElement("div");
+    workersNote.className = "control-note";
+    workersNote.textContent = "Workers: 1 (WASM is serial)";
+    solver.body.appendChild(workers);
+    solver.body.appendChild(workersNote);
+
+    solver.body.appendChild(
+      createSlider("Recycle", 0, 10, 0, 0.1, (cm) => {
+        const meters = 0.01 * cm;
+        wasm.sim_set_recycle_distance?.(meters);
+      }),
+    );
+
+    solver.body.appendChild(
+      createCheckbox("Sleep", true, (v) => wasm.sim_set_enable_sleep?.(v)),
+    );
+    solver.body.appendChild(
+      createCheckbox("Warm Starting", true, (v) => wasm.sim_set_enable_warm_starting?.(v)),
+    );
+    solver.body.appendChild(
+      createCheckbox("Continuous", true, (v) => wasm.sim_set_enable_continuous?.(v)),
+    );
+
+    const restartBtn = createButton("Restart", () => state.restart());
+    restartBtn.classList.add("control-btn-block");
+    solver.body.appendChild(restartBtn);
+
+    // --- Recording ---
+    const hasRecordingApi = typeof wasm.sim_start_recording === "function";
+    const recording = createCollapsingSection("Recording", true);
+    controls.appendChild(recording.root);
+
+    const fileField = createTextInput("File", recordingFile, (v) => {
+      recordingFile = v.trim() || "recording.b3rec";
+    });
+    recording.body.appendChild(fileField.root);
+
+    if (hasRecordingApi) {
+      recordRestartBtn = createButton("Record (restart)", () => {
+        state.restart();
+        wasm.sim_start_recording?.();
+        updateRecordingUi(true);
+      });
+      recordNowBtn = createButton("Record Now", () => {
+        wasm.sim_start_recording?.();
+        updateRecordingUi(true);
+      });
+      recordStopBtn = createButton("Stop", () => {
+        const bytes = wasm.sim_stop_recording?.() ?? new Uint8Array();
+        updateRecordingUi(false);
+        if (bytes.length > 0) downloadBytes(recordingFile, bytes);
+      });
+      recordStopBtn.hidden = true;
+      recordingStatusEl = document.createElement("div");
+      recordingStatusEl.className = "sample-stat recording-status";
+      recordingStatusEl.hidden = true;
+      const row = document.createElement("div");
+      row.className = "control-row";
+      row.append(recordRestartBtn, recordNowBtn, recordStopBtn);
+      recording.body.appendChild(row);
+      recording.body.appendChild(recordingStatusEl);
+    } else {
+      const note = document.createElement("div");
+      note.className = "control-note";
+      note.textContent = "Recording API coming soon";
+      const disabledRow = document.createElement("div");
+      disabledRow.className = "control-row";
+      const a = createButton("Record (restart)", () => {});
+      const b = createButton("Record Now", () => {});
+      a.disabled = true;
+      b.disabled = true;
+      disabledRow.append(a, b);
+      recording.body.append(disabledRow, note);
+    }
+  }
+
   // --- Debug draw toggles ---
-  const dbgTitle = document.createElement("div");
-  dbgTitle.className = "control-section-title";
-  dbgTitle.textContent = "Debug draw";
-  controls.appendChild(dbgTitle);
+  const dbg = createCollapsingSection("Debug draw", false);
+  controls.appendChild(dbg.root);
 
   const flagDefs: { label: string; flag: number }[] = [
     { label: "Contacts", flag: DRAW_CONTACTS },
@@ -395,7 +588,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     { label: "Islands", flag: DRAW_ISLANDS },
   ];
   for (const f of flagDefs) {
-    controls.appendChild(
+    dbg.body.appendChild(
       createCheckbox(f.label, false, (on) => {
         if (on) state.debugFlags |= f.flag;
         else state.debugFlags &= ~f.flag;
@@ -403,19 +596,24 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     );
   }
 
-  const hint = document.createElement("div");
-  hint.className = "info-box";
-  hint.innerHTML = enableSpawnDelete
-    ? "Drag body to grab · Shift-click spawn · Ctrl-click delete · Space/S/R"
-    : "Drag body to grab · Space pause · S step · R restart";
-  controls.appendChild(hint);
-
-  const readout = createReadout();
-  controls.appendChild(readout);
-
-  const statsHud = document.createElement("div");
-  statsHud.className = "stats-overlay";
-  canvas.parentElement?.appendChild(statsHud);
+  // --- Keyboard / mouse legend (C Controls window, adapted) ---
+  const keys = createCollapsingSection("Keyboard", false);
+  controls.appendChild(keys.root);
+  keys.body.innerHTML = `
+    <table class="key-legend">
+      <tr><td>P / Space</td><td>Pause / resume</td></tr>
+      <tr><td>O / S</td><td>Single step (Shift: 5)</td></tr>
+      <tr><td>R</td><td>Restart sample</td></tr>
+      <tr><td>Drag</td><td>Grab body</td></tr>
+      ${
+        enableSpawnDelete
+          ? "<tr><td>Shift-click</td><td>Spawn shape</td></tr><tr><td>Ctrl-click</td><td>Delete body</td></tr>"
+          : ""
+      }
+      <tr><td>Orbit</td><td>Left-drag empty / right-drag</td></tr>
+      <tr><td>Scroll</td><td>Zoom</td></tr>
+    </table>
+  `;
 
   const debugOverlay = new DebugDrawOverlay(demo);
 
@@ -485,7 +683,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
-  // Prevent context menu on ctrl-click
   const onContext = (e: Event) => {
     if (suppressClick) {
       e.preventDefault();
@@ -494,14 +691,18 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   };
   canvas.addEventListener("contextmenu", onContext);
 
-  // --- Hotkeys ---
+  // --- Hotkeys (C: P pause, O step, R restart; Space/S kept as aliases) ---
   const onKey = (e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (e.code === "Space") {
+    if (e.code === "Space" || e.code === "KeyP") {
       e.preventDefault();
       state.setPaused(!state.paused);
-    } else if (e.code === "KeyS" && !e.ctrlKey && !e.metaKey) {
+    } else if (
+      (e.code === "KeyS" || e.code === "KeyO") &&
+      !e.ctrlKey &&
+      !e.metaKey
+    ) {
       e.preventDefault();
       state.setPaused(true);
       state.requestStep(e.shiftKey ? 5 : 1);
@@ -514,9 +715,15 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
 
   let frame = 0;
   let stepEma = 0;
+  let lastFrameMs = 0;
+  let lastFrameT = performance.now();
 
   /** Call once per animation frame from the demo loop. Returns whether a step ran. */
   function tickFrame(): boolean {
+    const now = performance.now();
+    lastFrameMs = now - lastFrameT;
+    lastFrameT = now;
+
     let stepped = false;
     const scale = state.timeScale;
     const shouldStep =
@@ -524,11 +731,17 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
 
     if (shouldStep) {
       const t0 = performance.now();
-      const dt = state.paused ? baseDt : baseDt * scale;
+      // C Sample::Step: timeStep = 1/hertz (then optionally scaled for browser demos).
+      const hz = state.hertz > 0 ? state.hertz : 1 / baseDt;
+      const dt = state.paused ? 1 / hz : (1 / hz) * scale;
       wasm.sim_step(dt, state.subSteps);
       const ms = performance.now() - t0;
       stepEma = stepEma === 0 ? ms : stepEma * 0.9 + ms * 0.1;
       state.stepMsAvg = stepEma;
+      state.stepCount =
+        typeof wasm.sim_step_count === "function"
+          ? wasm.sim_step_count()
+          : state.stepCount + 1;
       if (state.paused && state.stepsPending > 0) state.stepsPending -= 1;
       stepped = true;
     }
@@ -540,29 +753,18 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     }
 
     frame += 1;
-    if (frame % 10 === 0) {
-      const c = wasm.sim_counters();
-      const entries = [
-        { label: "step", value: `${state.stepMsAvg.toFixed(2)} ms` },
-        { label: "bodies", value: String(c[0] | 0) },
-        { label: "shapes", value: String(c[1] | 0) },
-        { label: "contacts", value: String(c[2] | 0) },
-        { label: "joints", value: String(c[3] | 0) },
-        { label: "awake", value: String(c[5] | 0) },
-        { label: "sleeping", value: String(c[6] | 0) },
-        { label: "paused", value: state.paused ? "yes" : "no" },
-      ];
-      updateReadout(readout, entries);
-      statsHud.textContent =
-        `${state.stepMsAvg.toFixed(1)} ms  ·  ` +
-        `${c[0] | 0} bodies  ·  ${c[5] | 0} awake / ${c[6] | 0} sleep` +
-        (state.paused ? "  ·  PAUSED" : "");
+    if (frame % 2 === 0) {
+      frameMsEl.textContent = `${lastFrameMs.toFixed(1)} ms`;
+      stepCountEl.textContent = `step ${state.stepCount}`;
+      const cam = cameraReadout(demo);
+      camPivotEl.textContent = `pivot m (${cam.px.toFixed(1)}, ${cam.py.toFixed(1)}, ${cam.pz.toFixed(1)})`;
+      camYawEl.textContent = `yaw/pitch (${cam.yaw.toFixed(1)}, ${cam.pitch.toFixed(1)})`;
+      camRadiusEl.textContent = `radius m ${cam.radius.toFixed(1)}`;
     }
 
     return stepped;
   }
 
-  // Expose tick on the controller
   const withTick = state as SimControllerWithTick;
   withTick.tickFrame = tickFrame;
 
@@ -574,13 +776,21 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     canvas.removeEventListener("pointercancel", onPointerUp);
     canvas.removeEventListener("contextmenu", onContext);
     wasm.sim_mouse_up();
+    if (wasm.sim_is_recording?.()) wasm.sim_stop_recording?.();
     debugOverlay.dispose();
-    statsHud.remove();
     paramDispose();
     demo.controls.enabled = true;
   };
 
   return withTick;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export type SimControllerWithTick = SimController & { tickFrame: () => boolean };

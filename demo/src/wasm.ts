@@ -83,6 +83,15 @@ export interface Box3dWasm {
   sim_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   sim_counters(): Float32Array;
   sim_debug_draw(flags: number): Float32Array;
+  sim_step_count(): number;
+  sim_set_enable_sleep(flag: boolean): void;
+  sim_set_enable_warm_starting(flag: boolean): void;
+  sim_set_enable_continuous(flag: boolean): void;
+  sim_set_recycle_distance(meters: number): void;
+  sim_start_recording(): void;
+  sim_stop_recording(): Uint8Array;
+  sim_is_recording(): boolean;
+  sim_record_start_step(): number;
 
   terrain_reset(mode: number): number;
   terrain_step(dt: number, sub_steps: number): number;

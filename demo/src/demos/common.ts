@@ -30,20 +30,38 @@ export function runLoop(frame: () => void, readout: HTMLElement): () => void {
   };
 }
 
+export type DemoPageOpts = {
+  /** C sample category label (shown in Info panel). */
+  category?: string;
+  /** Use Samples App dark shell (right Info panel). Default false. */
+  samplesShell?: boolean;
+  /** Hide the top demo header — name lives in the Info panel. Default follows samplesShell. */
+  hideHeader?: boolean;
+};
+
 export function demoPage(
   container: HTMLElement,
   title: string,
   description: string,
   hint: string,
   version: string,
-): { canvas: HTMLCanvasElement; controls: HTMLElement } {
+  opts: DemoPageOpts = {},
+): { canvas: HTMLCanvasElement; controls: HTMLElement; page: HTMLElement } {
+  const samplesShell = opts.samplesShell === true;
+  const hideHeader = opts.hideHeader ?? samplesShell;
+  const shellClass = samplesShell ? " samples-shell" : "";
+
   container.innerHTML = `
-    <div class="demo-page">
-      <div class="demo-header">
+    <div class="demo-page${shellClass}">
+      ${
+        hideHeader
+          ? ""
+          : `<div class="demo-header">
         <h2>${title} <span class="badge-live">LIVE</span></h2>
         <p>${description}</p>
         <p class="wasm-note">computed by box3d-rust v${version} · WebAssembly</p>
-      </div>
+      </div>`
+      }
       <div class="demo-body">
         <div class="demo-canvas-area">
           <canvas id="demo-canvas"></canvas>
@@ -56,5 +74,6 @@ export function demoPage(
   return {
     canvas: document.getElementById("demo-canvas") as HTMLCanvasElement,
     controls: document.getElementById("controls")!,
+    page: container.querySelector(".demo-page") as HTMLElement,
   };
 }

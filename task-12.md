@@ -38,25 +38,29 @@ every demo that follows.
       with restart-on-change semantics, like the C ImGui panel
       (framework + applied to Bodies and Stacking)
 
+**Done (2026-07-12):** Samples App Info panel shell matching C `DrawInfoPanel`
+(goldenrod name, category, pause, frame ms / step, camera readout, Solver
+collapsing section with Hertz/sub-steps/Workers/Recycle/Sleep/Warm
+Starting/Continuous/Restart, Recording panel wired to wasm `.b3rec`
+start/stop + download, keyboard legend). Hertz/sub-steps drive `sim_step`.
+
 **Remaining for section 1:** opt the other dynamics demos (ragdolls, joints,
 continuous, sensors, queries, terrain, character) into `attachInteraction`
-(they still use their own step loops without pick/pause/stats).
+(they still use their own step loops without pick/pause/stats / Info panel).
 
 ## 2. Visual quality
 
-- [ ] Shadows: directional key light with PCF-soft shadow maps sized to each
-      scene's bounds (the single largest visual upgrade)
-- [ ] Ground & environment: checkered/grid ground material, horizon gradient
-      or sky, subtle distance fog; consistent with a dark UI theme
-- [ ] Body colorization matching the C debug palette: static/kinematic/
-      dynamic-awake/sleeping/bullet each get their color, with a smooth
-      transition on sleep/wake (sleep state is visible physics — show it)
+**Done (2026-07-12):** PCF-soft shadows on the directional key light; grey
+grid floor + muted grey/blue sky + fog; C debug body-color helpers
+(static/kinematic/dynamic awake/sleep) with flat-ish materials; tone mapping;
+Bodies/Stacking consume the palette from pose `bodyType`/`awake`.
+
 - [ ] Instanced meshes for high-body-count scenes (stacks, pyramids,
       benchmark scenes) so draw calls don't cap scene size
 - [ ] Camera polish: per-demo initial framing, orbit damping, auto-reframe on
       restart, double-click to focus a body
-- [ ] Tone mapping + antialiasing pass; consistent material roughness so
-      scenes read as one family
+- [ ] Refresh remaining dynamics demos to use Samples shell + body colorization
+      (ragdolls, joints, continuous, sensors, queries, terrain, character)
 
 ## 3. Coverage — close the sample-category gaps
 

@@ -1200,3 +1200,270 @@ body {
     font-size: 11px;
   }
 }
+
+/* ============================================================================
+   Samples App shell — dark right Info panel (C DrawInfoPanel)
+   ============================================================================ */
+
+.demo-page.samples-shell {
+  --samples-panel-bg: #1e2228;
+  --samples-panel-alt: #262b33;
+  --samples-border: #343b46;
+  --samples-text: #e6e8ec;
+  --samples-muted: #9aa3b2;
+  --samples-goldenrod: #daa520;
+  --samples-seagreen: #2e8b57;
+  --samples-paused: #e05555;
+  --samples-accent: #4a90d9;
+}
+
+.demo-page.samples-shell .demo-canvas-area {
+  background: #5c6778;
+}
+
+.demo-page.samples-shell .canvas-hint {
+  background: rgba(30, 34, 40, 0.82);
+  border-color: var(--samples-border);
+  color: var(--samples-muted);
+  box-shadow: none;
+}
+
+.demo-page.samples-shell .demo-controls,
+.demo-page.samples-shell .demo-controls.samples-info-panel {
+  width: 300px;
+  min-width: 300px;
+  background: var(--samples-panel-bg);
+  border-left: 1px solid var(--samples-border);
+  color: var(--samples-text);
+  padding: 14px 14px 24px;
+}
+
+.demo-page.samples-shell .samples-info-head {
+  margin-bottom: 4px;
+}
+
+.demo-page.samples-shell .sample-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--samples-goldenrod);
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+}
+
+.demo-page.samples-shell .sample-category {
+  font-size: 12px;
+  color: #d3d3d3;
+  margin-top: 2px;
+  margin-bottom: 6px;
+}
+
+.demo-page.samples-shell .sample-paused {
+  color: var(--samples-paused);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+
+.demo-page.samples-shell .sample-paused-hint {
+  color: var(--samples-muted);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.demo-page.samples-shell .sample-sep {
+  height: 1px;
+  background: var(--samples-border);
+  margin: 8px 0;
+}
+
+.demo-page.samples-shell .sample-stat {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--samples-seagreen);
+  line-height: 1.55;
+}
+
+.demo-page.samples-shell .control-section-title,
+.demo-page.samples-shell .collapse-header {
+  color: var(--samples-muted);
+}
+
+.demo-page.samples-shell .collapse-section {
+  margin: 10px 0 4px;
+  border-top: 1px solid var(--samples-border);
+  padding-top: 6px;
+}
+
+.demo-page.samples-shell .collapse-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  color: var(--samples-muted);
+  font-family: var(--font);
+}
+
+.demo-page.samples-shell .collapse-header:hover {
+  color: var(--samples-text);
+}
+
+.demo-page.samples-shell .collapse-chevron {
+  display: inline-block;
+  transition: transform 120ms ease;
+  font-size: 10px;
+}
+
+.demo-page.samples-shell .collapse-section:not(.open) .collapse-chevron {
+  transform: rotate(-90deg);
+}
+
+.demo-page.samples-shell .collapse-section:not(.open) .collapse-body {
+  display: none;
+}
+
+.demo-page.samples-shell .collapse-body {
+  padding: 6px 0 4px;
+}
+
+.demo-page.samples-shell .control-group label {
+  color: var(--samples-muted);
+}
+
+.demo-page.samples-shell .slider-value {
+  color: var(--samples-accent);
+}
+
+.demo-page.samples-shell .control-group input[type="range"] {
+  background: #3a424e;
+}
+
+.demo-page.samples-shell .control-group input[type="range"]::-webkit-slider-thumb {
+  background: var(--samples-accent);
+  border-color: var(--samples-panel-bg);
+}
+
+.demo-page.samples-shell .control-btn {
+  background: var(--samples-panel-alt);
+  border-color: var(--samples-border);
+  color: var(--samples-text);
+}
+
+.demo-page.samples-shell .control-btn:hover:not(:disabled) {
+  border-color: var(--samples-accent);
+  color: var(--samples-accent);
+}
+
+.demo-page.samples-shell .control-btn.active {
+  background: var(--samples-accent);
+  border-color: var(--samples-accent);
+  color: #fff;
+}
+
+.demo-page.samples-shell .control-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.demo-page.samples-shell .control-btn-block {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.demo-page.samples-shell .control-checkbox {
+  color: var(--samples-text);
+}
+
+.demo-page.samples-shell .control-checkbox input {
+  accent-color: var(--samples-accent);
+}
+
+.demo-page.samples-shell .control-text {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--samples-border);
+  border-radius: var(--radius-sm);
+  background: var(--samples-panel-alt);
+  color: var(--samples-text);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+
+.demo-page.samples-shell .control-text:focus {
+  border-color: var(--samples-accent);
+}
+
+.demo-page.samples-shell .control-note {
+  font-size: 11px;
+  color: var(--samples-muted);
+  margin: 4px 0 10px;
+  line-height: 1.4;
+}
+
+.demo-page.samples-shell .info-box {
+  background: rgba(74, 144, 217, 0.12);
+  border-color: rgba(74, 144, 217, 0.28);
+  color: #9ec1e8;
+}
+
+.demo-page.samples-shell .info-readout {
+  background: var(--samples-panel-alt);
+  border-color: var(--samples-border);
+  color: var(--samples-muted);
+}
+
+.demo-page.samples-shell .info-readout .value {
+  color: var(--samples-text);
+}
+
+.demo-page.samples-shell .key-legend {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  color: var(--samples-muted);
+}
+
+.demo-page.samples-shell .key-legend td {
+  padding: 3px 0;
+  vertical-align: top;
+}
+
+.demo-page.samples-shell .key-legend td:first-child {
+  color: var(--samples-text);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  padding-right: 10px;
+  width: 42%;
+}
+
+.demo-page.samples-shell .samples-transport {
+  margin-bottom: 10px;
+}
+
+.demo-page.samples-shell .stats-overlay {
+  display: none;
+}
+
+.demo-page.samples-shell input[type="range"]:disabled {
+  opacity: 0.45;
+}
+
+@media (max-width: 768px) {
+  .demo-page.samples-shell .demo-controls,
+  .demo-page.samples-shell .demo-controls.samples-info-panel {
+    width: 100%;
+    min-width: 0;
+    max-height: 42vh;
+    border-left: none;
+    border-top: 1px solid var(--samples-border);
+  }
+}

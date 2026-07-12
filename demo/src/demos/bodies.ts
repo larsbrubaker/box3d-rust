@@ -1,17 +1,17 @@
-// Bodies — HelloWorld fall + compound ground scene, with full interaction layer.
+// Bodies — HelloWorld fall + compound ground scene, with Samples App Info panel.
 
 import * as THREE from "three";
 import { createButtonGroup, createInfoBox } from "../controls.ts";
 import {
   attachInteraction,
-  type ParamValues,
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { COLORS, DemoScene } from "../three-scene.ts";
+import { applyBodyColor, DemoScene, makeBodyMaterial } from "../three-scene.ts";
 
-const STRIDE = 11;
+/** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
+const STRIDE = 13;
 
 type Mode = "bodies" | "compound";
 
@@ -22,8 +22,9 @@ export function init(container: HTMLElement) {
     "Bodies",
     "Live <code>World::step</code>: HelloWorld hulls/spheres, or a compound-shape ground " +
       "with falling bodies (mirrors <code>sample_compound</code> Simple).",
-    "Drag body · Shift spawn · Ctrl delete · Space/S/R",
+    "Drag body · Shift spawn · Ctrl delete · P/O/R",
     wasm.version(),
+    { category: "Bodies", samplesShell: true },
   );
 
   controls.appendChild(
@@ -38,22 +39,11 @@ export function init(container: HTMLElement) {
   const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 18 });
   const meshes: THREE.Object3D[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
-  const sphereGeo = new THREE.SphereGeometry(1, 24, 16);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x9aa3b2,
-    roughness: 0.9,
-    metalness: 0.05,
-  });
-  const dynamicMat = new THREE.MeshStandardMaterial({
-    color: COLORS.accent,
-    roughness: 0.45,
-    metalness: 0.15,
-  });
-  const compoundMat = new THREE.MeshStandardMaterial({
-    color: 0x6b7280,
-    roughness: 0.85,
-    metalness: 0.08,
-  });
+  const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+  // Shared materials per body state; colorized each frame from pose bodyType/awake.
+  const staticMat = makeBodyMaterial(0, true);
+  const dynamicMat = makeBodyMaterial(2, true);
+  const sleepMat = makeBodyMaterial(2, false);
 
   function clearMeshes() {
     for (const m of meshes) {
@@ -90,33 +80,16 @@ export function init(container: HTMLElement) {
     ),
   );
 
-  let subSteps = 4;
-
   const ctrl = attachInteraction({
     wasm,
     demo,
     canvas,
     controls,
     onRestart: reset,
-    params: [
-      {
-        type: "slider",
-        key: "subSteps",
-        label: "Sub-steps",
-        min: 1,
-        max: 8,
-        step: 1,
-        default: 4,
-        restart: false,
-      },
-    ],
-    onParamsChange: (values: ParamValues) => {
-      subSteps = Number(values.subSteps) || 4;
-      ctrl.subSteps = subSteps;
-    },
+    sampleName: "Bodies",
+    sampleCategory: "Bodies",
   }) as SimControllerWithTick;
 
-  ctrl.subSteps = subSteps;
   reset();
 
   const quat = new THREE.Quaternion();
@@ -128,16 +101,20 @@ export function init(container: HTMLElement) {
       const m = meshes.pop()!;
       demo.content.remove(m);
     }
-    const compoundHulls = mode === "compound" ? 3 : 1;
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;
       const kind = poses[o + 10]!;
+      const bodyType = poses[o + 11]! | 0;
+      const awake = poses[o + 12]! > 0.5;
       const hx = poses[o + 7]!;
       const hy = poses[o + 8]!;
       const hz = poses[o + 9]!;
       let mesh = meshes[i] as THREE.Mesh | undefined;
       const wantSphere = kind === 1;
       const wantCapsule = kind === 2;
+      const mat =
+        bodyType === 0 ? staticMat : awake ? dynamicMat : sleepMat;
+      applyBodyColor(mat, bodyType, awake);
 
       if (wantCapsule) {
         const radius = hx;
@@ -148,12 +125,14 @@ export function init(container: HTMLElement) {
           if (mesh) demo.content.remove(mesh);
           mesh = new THREE.Mesh(
             new THREE.CapsuleGeometry(radius, Math.max(1e-4, halfLen * 2), 4, 10),
-            dynamicMat,
+            mat,
           );
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
           demo.content.add(mesh);
           meshes[i] = mesh;
         } else {
-          mesh.material = dynamicMat;
+          mesh.material = mat;
         }
         mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
         quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
@@ -175,22 +154,13 @@ export function init(container: HTMLElement) {
             mesh.geometry.dispose();
           }
         }
-        const mat =
-          !wantSphere && i < compoundHulls
-            ? mode === "compound"
-              ? compoundMat
-              : groundMat
-            : dynamicMat;
         mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, mat);
+        mesh.castShadow = bodyType !== 0;
+        mesh.receiveShadow = true;
         demo.content.add(mesh);
         meshes[i] = mesh;
       } else {
-        mesh.material =
-          !wantSphere && i < compoundHulls
-            ? mode === "compound"
-              ? compoundMat
-              : groundMat
-            : dynamicMat;
+        mesh.material = mat;
       }
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
@@ -207,8 +177,8 @@ export function init(container: HTMLElement) {
     demo.dispose();
     boxGeo.dispose();
     sphereGeo.dispose();
-    groundMat.dispose();
+    staticMat.dispose();
     dynamicMat.dispose();
-    compoundMat.dispose();
+    sleepMat.dispose();
   };
 }

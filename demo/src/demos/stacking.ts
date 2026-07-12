@@ -1,4 +1,4 @@
-// Stacking — box stack, pyramid, and sphere stack with full interaction layer.
+// Stacking — box stack, pyramid, and sphere stack with Samples App Info panel.
 
 import * as THREE from "three";
 import { createButtonGroup, createInfoBox } from "../controls.ts";
@@ -9,9 +9,10 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { COLORS, DemoScene } from "../three-scene.ts";
+import { applyBodyColor, DemoScene, makeBodyMaterial } from "../three-scene.ts";
 
-const STRIDE = 11;
+/** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
+const STRIDE = 13;
 
 type Mode = "boxes" | "pyramid" | "spheres";
 
@@ -22,8 +23,9 @@ export function init(container: HTMLElement) {
     "Stacking",
     "Vertical box stack, Pyramid2D, and sphere stack — driven by the ported " +
       "<code>World::step</code> scalar solver (mirrors <code>sample_stacking</code>).",
-    "Drag body · Shift spawn · Ctrl delete · Space/S/R",
+    "Drag body · Shift spawn · Ctrl delete · P/O/R",
     wasm.version(),
+    { category: "Stacking", samplesShell: true },
   );
 
   controls.appendChild(
@@ -38,20 +40,13 @@ export function init(container: HTMLElement) {
   let pyramidSize = 6;
   let sphereCount = 12;
 
-  const demo = new DemoScene(canvas, { target: [0, 6, 0], distance: 28 });
+  const demo = new DemoScene(canvas, { target: [0, 6, 0], distance: 28, shadowExtent: 36 });
   const meshes: THREE.Mesh[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x9aa3b2,
-    roughness: 0.92,
-    metalness: 0.05,
-  });
-  const boxMat = new THREE.MeshStandardMaterial({
-    color: COLORS.accent,
-    roughness: 0.4,
-    metalness: 0.12,
-  });
+  const staticMat = makeBodyMaterial(0, true);
+  const dynamicMat = makeBodyMaterial(2, true);
+  const sleepMat = makeBodyMaterial(2, false);
 
   function clearMeshes() {
     for (const m of meshes) {
@@ -61,10 +56,17 @@ export function init(container: HTMLElement) {
     meshes.length = 0;
   }
 
-  function ensureMesh(i: number, kind: number): THREE.Mesh {
+  function pickMat(bodyType: number, awake: boolean): THREE.MeshStandardMaterial {
+    const mat = bodyType === 0 ? staticMat : awake ? dynamicMat : sleepMat;
+    applyBodyColor(mat, bodyType, awake);
+    return mat;
+  }
+
+  function ensureMesh(i: number, kind: number, bodyType: number, awake: boolean): THREE.Mesh {
     let mesh = meshes[i];
     const wantSphere = kind === 1;
     const wantCapsule = kind === 2;
+    const mat = pickMat(bodyType, awake);
 
     if (wantCapsule) {
       if (!mesh || mesh.geometry.type !== "CapsuleGeometry") {
@@ -72,11 +74,13 @@ export function init(container: HTMLElement) {
           demo.content.remove(mesh);
           if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
         }
-        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), boxMat);
+        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         demo.content.add(mesh);
         meshes[i] = mesh;
       } else {
-        mesh.material = boxMat;
+        mesh.material = mat;
       }
       return mesh;
     }
@@ -86,11 +90,13 @@ export function init(container: HTMLElement) {
         demo.content.remove(mesh);
         if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
       }
-      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, i === 0 ? groundMat : boxMat);
+      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, mat);
+      mesh.castShadow = bodyType !== 0;
+      mesh.receiveShadow = true;
       demo.content.add(mesh);
       meshes[i] = mesh;
     } else {
-      mesh.material = i === 0 ? groundMat : boxMat;
+      mesh.material = mat;
     }
     return mesh;
   }
@@ -123,6 +129,8 @@ export function init(container: HTMLElement) {
     canvas,
     controls,
     onRestart: reset,
+    sampleName: "Stacking",
+    sampleCategory: "Stacking",
     params: [
       {
         type: "slider",
@@ -157,7 +165,9 @@ export function init(container: HTMLElement) {
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;
       const kind = poses[o + 10]!;
-      const mesh = ensureMesh(i, kind);
+      const bodyType = poses[o + 11]! | 0;
+      const awake = poses[o + 12]! > 0.5;
+      const mesh = ensureMesh(i, kind, bodyType, awake);
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       mesh.quaternion.copy(quat);
@@ -187,7 +197,8 @@ export function init(container: HTMLElement) {
     demo.dispose();
     boxGeo.dispose();
     sphereGeo.dispose();
-    groundMat.dispose();
-    boxMat.dispose();
+    staticMat.dispose();
+    dynamicMat.dispose();
+    sleepMat.dispose();
   };
 }

@@ -10,7 +10,7 @@ export function createSlider(
   const labelText = document.createTextNode(label);
   const valSpan = document.createElement("span");
   valSpan.className = "slider-value";
-  valSpan.textContent = String(value);
+  valSpan.textContent = formatSliderValue(value, step);
   lbl.appendChild(labelText);
   lbl.appendChild(valSpan);
 
@@ -22,13 +22,19 @@ export function createSlider(
   input.value = String(value);
   input.addEventListener("input", () => {
     const v = parseFloat(input.value);
-    valSpan.textContent = String(v);
+    valSpan.textContent = formatSliderValue(v, step);
     onChange(v);
   });
 
   group.appendChild(lbl);
   group.appendChild(input);
   return group;
+}
+
+function formatSliderValue(v: number, step: number): string {
+  if (step >= 1) return String(Math.round(v));
+  if (step >= 0.1) return v.toFixed(1);
+  return String(v);
 }
 
 export function createButton(label: string, onClick: () => void, active = false): HTMLButtonElement {
@@ -43,12 +49,15 @@ export function createCheckbox(
   label: string,
   checked: boolean,
   onChange: (val: boolean) => void,
+  opts: { disabled?: boolean; title?: string } = {},
 ): HTMLElement {
   const wrap = document.createElement("label");
   wrap.className = "control-checkbox";
+  if (opts.title) wrap.title = opts.title;
   const input = document.createElement("input");
   input.type = "checkbox";
   input.checked = checked;
+  if (opts.disabled) input.disabled = true;
   input.addEventListener("change", () => onChange(input.checked));
   wrap.appendChild(input);
   wrap.appendChild(document.createTextNode(label));
@@ -94,4 +103,51 @@ export function updateReadout(el: HTMLElement, entries: { label: string; value: 
   el.innerHTML = entries.map((e) =>
     `<span class="label">${e.label}:</span> <span class="value">${e.value}</span>`
   ).join("<br>");
+}
+
+export function createTextInput(
+  label: string,
+  value: string,
+  onChange: (val: string) => void,
+): { root: HTMLElement; input: HTMLInputElement } {
+  const group = document.createElement("div");
+  group.className = "control-group";
+  const lbl = document.createElement("label");
+  lbl.textContent = label;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "control-text";
+  input.value = value;
+  input.addEventListener("input", () => onChange(input.value));
+  group.appendChild(lbl);
+  group.appendChild(input);
+  return { root: group, input };
+}
+
+/** Collapsing section matching C ImGui CollapsingHeader (open by default). */
+export function createCollapsingSection(
+  title: string,
+  open = true,
+): { root: HTMLElement; body: HTMLElement; setOpen: (v: boolean) => void } {
+  const root = document.createElement("div");
+  root.className = "collapse-section" + (open ? " open" : "");
+
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "collapse-header";
+  header.innerHTML = `<span class="collapse-chevron">▾</span><span>${title}</span>`;
+
+  const body = document.createElement("div");
+  body.className = "collapse-body";
+
+  const setOpen = (v: boolean) => {
+    root.classList.toggle("open", v);
+  };
+
+  header.addEventListener("click", () => {
+    setOpen(!root.classList.contains("open"));
+  });
+
+  root.append(header, body);
+  return { root, body, setOpen };
 }

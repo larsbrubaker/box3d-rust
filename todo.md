@@ -20,8 +20,9 @@ below is quality, presentation, and release work — not core physics.**
 | [task-12.md](task-12.md) | Demo excellence: interaction layer (mouse drag, pause/step), visual quality (shadows, colorization), sample-category coverage, site polish | — |
 
 The C samples app has ~90 samples with mouse-drag, pause/single-step, tuning
-panels, and debug overlays; our 17 demos play like a viewer, not a playground.
-task-12 is the whole gap, ordered so the shared interaction layer lands first.
+panels, and debug overlays. Bodies/Stacking now use the Samples App Info panel
+shell + interaction layer; remaining dynamics demos and coverage gaps are in
+task-12.
 
 ## Upstream tracking (recurring)
 

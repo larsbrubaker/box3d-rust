@@ -1,4 +1,5 @@
-// Shared Three.js scene helper for demo SPA routes.
+// Shared Three.js scene helper for demo SPA routes — Samples App look:
+// muted sky, soft shadows, grid floor, flat-ish materials, C debug body colors.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -9,8 +10,75 @@ export const COLORS = {
   good: 0x15803d,
   shape: 0x5a6170,
   muted: 0x8b92a0,
-  bg: 0xf0f2f5,
+  /** Muted grey/blue sky matching the C samples soft environment. */
+  sky: 0x6b7a8f,
+  bg: 0x6b7a8f,
 } as const;
+
+/** C physics_world.c debug shape palette (b3HexColor). */
+export const DEBUG_BODY_COLORS = {
+  static: 0xa9a9a9, // DarkGray
+  kinematicAwake: 0x4682b4, // SteelBlue
+  kinematicSleep: 0xb0c4de, // LightSteelBlue
+  dynamicAwake: 0xd2b48c, // Tan
+  dynamicSleep: 0x778899, // LightSlateGray
+  bullet: 0x40e0d0, // Turquoise
+  sensor: 0xf5deb3, // Wheat
+} as const;
+
+/** body_type: 0 static, 1 kinematic, 2 dynamic (matches b3BodyType). */
+export function debugBodyColor(bodyType: number, awake: boolean): number {
+  if (bodyType === 0) return DEBUG_BODY_COLORS.static;
+  if (bodyType === 1) {
+    return awake ? DEBUG_BODY_COLORS.kinematicAwake : DEBUG_BODY_COLORS.kinematicSleep;
+  }
+  return awake ? DEBUG_BODY_COLORS.dynamicAwake : DEBUG_BODY_COLORS.dynamicSleep;
+}
+
+/** Roughness / metalness from C debug_adapter kBodyType* + material presets. */
+export function debugBodyMaterialProps(
+  bodyType: number,
+  awake: boolean,
+): { roughness: number; metalness: number } {
+  if (bodyType === 0) return { roughness: 0.85, metalness: 0.0 }; // matte
+  if (bodyType === 1) {
+    return awake
+      ? { roughness: 0.35, metalness: 0.85 } // metallic
+      : { roughness: 0.85, metalness: 0.0 }; // matte
+  }
+  return awake
+    ? { roughness: 0.65, metalness: 0.0 } // soft
+    : { roughness: 0.95, metalness: 0.0 }; // dead
+}
+
+export function makeBodyMaterial(
+  bodyType: number,
+  awake: boolean,
+  opacity = 1,
+): THREE.MeshStandardMaterial {
+  const props = debugBodyMaterialProps(bodyType, awake);
+  return new THREE.MeshStandardMaterial({
+    color: debugBodyColor(bodyType, awake),
+    roughness: props.roughness,
+    metalness: props.metalness,
+    transparent: opacity < 1,
+    opacity,
+    flatShading: true,
+    side: THREE.DoubleSide,
+  });
+}
+
+/** Apply C debug colorization to an existing standard material. */
+export function applyBodyColor(
+  mat: THREE.MeshStandardMaterial,
+  bodyType: number,
+  awake: boolean,
+) {
+  const props = debugBodyMaterialProps(bodyType, awake);
+  mat.color.setHex(debugBodyColor(bodyType, awake));
+  mat.roughness = props.roughness;
+  mat.metalness = props.metalness;
+}
 
 const _yUp = new THREE.Vector3(0, 1, 0);
 const _tmp = new THREE.Vector3();
@@ -25,10 +93,12 @@ export class DemoScene {
   readonly dynamic: THREE.Group;
   /** Persistent content (shapes that change infrequently). */
   readonly content: THREE.Group;
+  readonly keyLight: THREE.DirectionalLight;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly ro: ResizeObserver;
   private disposed = false;
+  private readonly grid: THREE.GridHelper;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -36,11 +106,16 @@ export class DemoScene {
       target?: [number, number, number];
       distance?: number;
       fov?: number;
+      /** Shadow camera half-extent (default 28). */
+      shadowExtent?: number;
+      gridSize?: number;
+      gridDivisions?: number;
     } = {},
   ) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(COLORS.bg);
+    this.scene.background = new THREE.Color(COLORS.sky);
+    this.scene.fog = new THREE.Fog(COLORS.sky, 28, 90);
 
     this.camera = new THREE.PerspectiveCamera(opts.fov ?? 45, 1, 0.05, 200);
     const dist = opts.distance ?? 12;
@@ -53,6 +128,10 @@ export class DemoScene {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -60,12 +139,41 @@ export class DemoScene {
     this.controls.target.set(...(opts.target ?? [0, 0, 0]));
     this.controls.update();
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-    const key = new THREE.DirectionalLight(0xffffff, 0.85);
-    key.position.set(4, 8, 5);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-    fill.position.set(-3, 2, -4);
+    const ambient = new THREE.AmbientLight(0xc8d0dc, 0.42);
+    const key = new THREE.DirectionalLight(0xfff5e8, 1.05);
+    key.position.set(8, 16, 6);
+    key.castShadow = true;
+    const extent = opts.shadowExtent ?? 28;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    key.shadow.camera.near = 0.5;
+    key.shadow.camera.far = extent * 4;
+    key.shadow.camera.left = -extent;
+    key.shadow.camera.right = extent;
+    key.shadow.camera.top = extent;
+    key.shadow.camera.bottom = -extent;
+    this.keyLight = key;
+
+    const fill = new THREE.DirectionalLight(0xa8b8d0, 0.28);
+    fill.position.set(-6, 4, -8);
     this.scene.add(ambient, key, fill);
+
+    const gridSize = opts.gridSize ?? 40;
+    const gridDiv = opts.gridDivisions ?? 40;
+    this.grid = new THREE.GridHelper(gridSize, gridDiv, 0x7a8494, 0x5c6574);
+    this.grid.position.y = 0.001;
+    const gridMat = this.grid.material as THREE.LineBasicMaterial | THREE.LineBasicMaterial[];
+    if (Array.isArray(gridMat)) {
+      for (const m of gridMat) {
+        m.transparent = true;
+        m.opacity = 0.55;
+      }
+    } else {
+      gridMat.transparent = true;
+      gridMat.opacity = 0.55;
+    }
+    this.scene.add(this.grid);
 
     this.content = new THREE.Group();
     this.dynamic = new THREE.Group();
@@ -115,6 +223,8 @@ export class DemoScene {
     this.controls.dispose();
     this.clearContent();
     this.clearDynamic();
+    this.scene.remove(this.grid);
+    disposeObject(this.grid);
     this.scene.traverse((obj) => {
       if (obj !== this.content && obj !== this.dynamic) disposeObject(obj);
     });
@@ -142,8 +252,9 @@ export function solidMat(color: number, opacity = 0.85): THREE.MeshStandardMater
     color,
     transparent: opacity < 1,
     opacity,
-    roughness: 0.55,
-    metalness: 0.05,
+    roughness: 0.78,
+    metalness: 0.04,
+    flatShading: true,
     side: THREE.DoubleSide,
   });
 }
@@ -170,6 +281,8 @@ export function makeSphere(
     solidMat(color, opacity),
   );
   mesh.position.set(cx, cy, cz);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -194,6 +307,8 @@ export function makeCapsule(
   if (len > 1e-6) {
     mesh.quaternion.setFromUnitVectors(_yUp, dir.normalize());
   }
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -229,6 +344,8 @@ export function makeSolidBox(
     solidMat(color, opacity),
   );
   mesh.position.set(cx, cy, cz);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -275,7 +392,10 @@ export function makeTriangleMesh(
   geo.computeVertexNormals();
   const mat = solidMat(color, opacity);
   mat.wireframe = wireframe;
-  return new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 export function makeDot(
