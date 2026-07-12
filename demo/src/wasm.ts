@@ -37,6 +37,7 @@ export interface Box3dWasm {
 
   sim_reset_bodies(): number;
   sim_reset_stacking(count: number): number;
+  sim_reset_jenga(layers: number): number;
   sim_reset_single_box(): number;
   sim_step(dt: number, sub_steps: number): number;
   sim_body_poses(): Float32Array;

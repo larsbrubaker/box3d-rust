@@ -144,7 +144,7 @@ function renderHome(container: HTMLElement) {
           <span class="card-icon">&#8801;</span>
           <span class="card-badge badge-live">LIVE</span>
           <h3>Stacking</h3>
-          <p>Single Box, Box Stack, Pyramid2D, and Sphere Stack from the scalar solver.</p>
+          <p>Jenga Stack, Box Stack, Pyramid2D (planar), and Sphere Stack from the scalar solver.</p>
         </a>
         <a href="#/benchmark" class="feature-card">
           <span class="card-icon">&#9881;</span>

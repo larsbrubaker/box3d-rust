@@ -1,4 +1,4 @@
-// Stacking — Single Box, Box Stack, Pyramid2D, Sphere Stack (sample_stacking).
+// Stacking — Jenga, Box Stack, Pyramid2D (planar), Sphere Stack, Single Box (sample_stacking).
 
 import * as THREE from "three";
 import { createButtonGroup, createInfoBox } from "../controls.ts";
@@ -14,15 +14,15 @@ import { applyBodyColor, DemoScene, makeBodyMaterial } from "../three-scene.ts";
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
 
-type Mode = "single" | "boxes" | "pyramid" | "spheres";
+type Mode = "jenga" | "boxes" | "pyramid" | "spheres" | "single";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Stacking",
-    "Official Stacking samples — Single Box, Box Stack, Pyramid2D, and Sphere Stack — " +
-      "driven by the ported <code>World::step</code> scalar solver.",
+    "Official Stacking samples — Jenga Stack, Box Stack, Pyramid2D (planar), Sphere Stack, " +
+      "and Single Box — driven by the ported <code>World::step</code> scalar solver.",
     "Drag body · Shift spawn · Ctrl delete · P/O/R",
     wasm.version(),
     { category: "Stacking", samplesShell: true },
@@ -30,14 +30,17 @@ export function init(container: HTMLElement) {
 
   controls.appendChild(
     createInfoBox(
-      "Single Box matches C exactly (half=0.5, ωy=10). Box Stack / Sphere Stack use " +
-        "browser-capped counts (C uses 40 / 30). Pyramid2D locks motion to the XY plane " +
-        "with C's layout formula (a=1).",
+      "Default is <strong>Jenga Stack</strong> (alternating X/Z planks — full 3D, no locks). " +
+        "Box / Sphere stacks match C (column at x=z=0). " +
+        "<strong>Pyramid2D is intentionally planar</strong>: C locks linear Z + angular X/Y " +
+        "so collapse stays in the XY plane — not a 3D engine bug.",
     ),
   );
 
-  let mode: Mode = "single";
+  // Jenga is the 3D showcase; Pyramid2D must never be the default (it looks like a 2D sim).
+  let mode: Mode = "jenga";
   let stackCount = 12;
+  let jengaLayers = 12;
   let pyramidSize = 6;
   let sphereCount = 12;
 
@@ -67,6 +70,17 @@ export function init(container: HTMLElement) {
     } else if (mode === "spheres") {
       demo.controls.target.set(0, 10, 0);
       demo.camera.position.set(0, 15, 40);
+    } else if (mode === "jenga") {
+      // Match C JengaStack: yaw 35°, pitch 15°, radius 30, look at (0,10,0).
+      demo.controls.target.set(0, 10, 0);
+      const yaw = (35 * Math.PI) / 180;
+      const pitch = (15 * Math.PI) / 180;
+      const r = 30;
+      demo.camera.position.set(
+        r * Math.cos(pitch) * Math.sin(yaw),
+        10 + r * Math.sin(pitch),
+        r * Math.cos(pitch) * Math.cos(yaw),
+      );
     } else {
       demo.controls.target.set(0, 12, 0);
       demo.camera.position.set(0, 18, 42);
@@ -123,6 +137,7 @@ export function init(container: HTMLElement) {
     clearMeshes();
     if (mode === "single") wasm.sim_reset_single_box();
     else if (mode === "boxes") wasm.sim_reset_stacking(stackCount);
+    else if (mode === "jenga") wasm.sim_reset_jenga(jengaLayers);
     else if (mode === "pyramid") wasm.sim_reset_pyramid(pyramidSize);
     else wasm.sim_reset_sphere_stack(sphereCount);
     setCameraForMode();
@@ -131,12 +146,13 @@ export function init(container: HTMLElement) {
   controls.appendChild(
     createButtonGroup(
       [
-        { label: "Single Box", value: "single" },
+        { label: "Jenga Stack", value: "jenga" },
         { label: "Box Stack", value: "boxes" },
-        { label: "Pyramid2D", value: "pyramid" },
+        { label: "Pyramid2D (planar)", value: "pyramid" },
         { label: "Sphere Stack", value: "spheres" },
+        { label: "Single Box", value: "single" },
       ],
-      "single",
+      "jenga",
       (v) => {
         mode = v as Mode;
         reset();
@@ -167,6 +183,7 @@ export function init(container: HTMLElement) {
     onParamsChange: (values: ParamValues) => {
       const n = Math.round(Number(values.count) || 12);
       if (mode === "boxes") stackCount = n;
+      else if (mode === "jenga") jengaLayers = n;
       else if (mode === "spheres") sphereCount = n;
       else if (mode === "pyramid") pyramidSize = Math.min(12, Math.max(2, n));
     },

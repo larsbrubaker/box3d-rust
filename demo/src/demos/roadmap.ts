@@ -9,7 +9,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Compound", blurb: "Simple, Spheres, Hulls, Village", route: "compound" },
   { name: "Bodies", blurb: "Body types, sleeping, user data", route: "bodies" },
   { name: "Shapes", blurb: "Spheres, capsules, hulls", route: "bodies" },
-  { name: "Stacking", blurb: "Single Box, Box Stack, Pyramid2D, Sphere Stack", route: "stacking" },
+  { name: "Stacking", blurb: "Jenga, Box Stack, Pyramid2D (planar), Sphere Stack", route: "stacking" },
   { name: "Joints", blurb: "Revolute, spherical, motor hinge", route: "joints" },
   { name: "Continuous", blurb: "Fast bodies without tunneling", route: "continuous" },
   { name: "Events", blurb: "Contacts, sensors, hit events", route: "sensors" },
