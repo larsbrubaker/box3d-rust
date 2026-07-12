@@ -190,6 +190,8 @@ export function init(container: HTMLElement) {
     canvas,
     controls,
     onRestart: reset,
+    sampleName: "Benchmark",
+    sampleCategory: "Benchmark",
     params: [
       {
         type: "slider",

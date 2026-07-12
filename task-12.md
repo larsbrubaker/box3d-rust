@@ -44,9 +44,9 @@ collapsing section with Hertz/sub-steps/Workers/Recycle/Sleep/Warm
 Starting/Continuous/Restart, Recording panel wired to wasm `.b3rec`
 start/stop + download, keyboard legend). Hertz/sub-steps drive `sim_step`.
 
-**Remaining for section 1:** opt the other dynamics demos (ragdolls, joints,
-continuous, sensors, queries, terrain, character) into `attachInteraction`
-(they still use their own step loops without pick/pause/stats / Info panel).
+**Remaining for section 1:** opt remaining dynamics demos (ragdolls,
+continuous, sensors, queries, terrain) into `attachInteraction` / Samples
+shell (joints, character, compound, benchmark now wired).
 
 ## 2. Visual quality
 
@@ -60,32 +60,27 @@ Bodies/Stacking consume the palette from pose `bodyType`/`awake`.
 - [ ] Camera polish: per-demo initial framing, orbit damping, auto-reframe on
       restart, double-click to focus a body
 - [ ] Refresh remaining dynamics demos to use Samples shell + body colorization
-      (ragdolls, joints, continuous, sensors, queries, terrain, character)
+      (ragdolls, continuous, sensors, queries, terrain)
 
 ## 3. Coverage — close the sample-category gaps
 
-New demos, roughly one marquee scene per missing C category:
+**Done (2026-07-12, browser-scaled):** Stacking Single Box; Benchmark Large
+Pyramid / Junkyard / Falling Trees; Joints Revolute / Gear Lift / Driving;
+Compound Simple / Spheres / Hulls / Village; Character BasicMover (+ Village
+walk). Recording UI on sim demos (download `.b3rec`); full Replay viewer still
+open.
 
-- [ ] Replay (sample_replay.cpp) — record a session in-browser via the ported
-      recording API, replay it bit-exactly, download/upload the session file.
-      Nothing shows off the determinism story better
-- [ ] Shapes gallery (sample_shapes.cpp) — every shape type together, wind
-      toggle (`shape_apply_wind`), material property sliders
-- [ ] Compound gallery (sample_compound.cpp) — compound bodies with mixed
-      children, break/attach toggles
-- [ ] Events (sample_events.cpp) — contact begin/end flashes, hit-event
-      sparks with approach-speed readout, sensor enter/exit tinting
-- [ ] Explosion (sample_world.cpp) — `world_explode` on click with falloff
-      radius visualization
-- [ ] Robustness (sample_robustness.cpp) — overlap recovery, high mass
-      ratios, degenerate stacks
-- [ ] Joints expansion (sample_joint.cpp is 16 samples) — motorized
-      revolute/prismatic rigs, joint limits/springs playground with live
-      sliders, breakable-force demo, bridge
-- [ ] Benchmark scenes (sample_benchmark.cpp) — large pyramid / many-ragdoll
-      scenes with the stats overlay front and center
-- [ ] Determinism readout — the falling-ragdolls demo shows the live world
-      hash and sleep step, asserting the golden values in-browser
+Still missing / partial vs C ~150 samples:
+
+- [ ] Replay viewer (sample_replay.cpp) — scrub / upload / bit-exact replay UI
+- [ ] Shapes gallery (sample_shapes.cpp)
+- [ ] Events (sample_events.cpp)
+- [ ] Explosion / World far scenes (sample_world.cpp)
+- [ ] Robustness (sample_robustness.cpp)
+- [ ] Remaining Joints (Bridge, Door, Wheel, Prismatic, …)
+- [ ] Remaining Benchmark (Rain, Wide/Many Pyramids, Chains, …)
+- [ ] Determinism readout on Falling Ragdolls
+- [ ] Remaining Bodies / Stacking / Continuous / Mesh / Manifold / Collision samples
 
 ## 4. Site polish
 

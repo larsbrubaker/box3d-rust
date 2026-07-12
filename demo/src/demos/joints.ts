@@ -189,6 +189,8 @@ export function init(container: HTMLElement) {
     canvas,
     controls,
     onRestart: reset,
+    sampleName: "Joints",
+    sampleCategory: "Joints",
     enableSpawnDelete: false,
     params: [
       {
