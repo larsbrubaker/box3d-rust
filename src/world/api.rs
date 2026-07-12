@@ -110,6 +110,10 @@ pub fn world_enable_sleeping(world: &mut World, flag: bool) {
         return;
     }
 
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_enable_sleeping(wid, flag);
+    });
+
     world.enable_sleep = flag;
 
     if !flag {
@@ -134,6 +138,10 @@ pub fn world_enable_warm_starting(world: &mut World, flag: bool) {
         return;
     }
 
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_enable_warm_starting(wid, flag);
+    });
+
     world.enable_warm_starting = flag;
 }
 
@@ -154,6 +162,10 @@ pub fn world_enable_continuous(world: &mut World, flag: bool) {
         return;
     }
 
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_enable_continuous(wid, flag);
+    });
+
     world.enable_continuous = flag;
 }
 
@@ -168,6 +180,10 @@ pub fn world_enable_speculative(world: &mut World, flag: bool) {
     if world.locked {
         return;
     }
+
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_enable_speculative(wid, flag);
+    });
 
     world.enable_speculative = flag;
 }
@@ -184,6 +200,10 @@ pub fn world_set_restitution_threshold(world: &mut World, value: f32) {
         return;
     }
 
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_restitution_threshold(wid, value);
+    });
+
     world.restitution_threshold = clamp_float(value, 0.0, f32::MAX);
 }
 
@@ -198,6 +218,10 @@ pub fn world_set_hit_event_threshold(world: &mut World, value: f32) {
     if world.locked {
         return;
     }
+
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_hit_event_threshold(wid, value);
+    });
 
     world.hit_event_threshold = clamp_float(value, 0.0, f32::MAX);
 }
@@ -214,6 +238,10 @@ pub fn world_set_contact_tuning(
     damping_ratio: f32,
     contact_speed: f32,
 ) {
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_contact_tuning(wid, hertz, damping_ratio, contact_speed);
+    });
+
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -231,6 +259,10 @@ pub fn world_set_contact_recycle_distance(world: &mut World, recycle_distance: f
         return;
     }
 
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_contact_recycle_distance(wid, recycle_distance);
+    });
+
     world.contact_recycle_distance = clamp_float(recycle_distance, 0.0, f32::MAX);
 }
 
@@ -240,7 +272,11 @@ pub fn world_get_contact_recycle_distance(world: &World) -> f32 {
 }
 
 /// Set the maximum linear speed. (b3World_SetMaximumLinearSpeed)
-pub fn world_set_maximum_linear_speed(world: &mut World, maximum_linear_speed: f32) {
+pub fn world_set_maximum_linear_speed(world: &mut World, maximum_linear_speed: f32) {    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_maximum_linear_speed(wid, maximum_linear_speed);
+    });
+
+
     debug_assert!(is_valid_float(maximum_linear_speed) && maximum_linear_speed > 0.0);
 
     debug_assert!(!world.locked);
@@ -363,6 +399,9 @@ pub fn world_set_pre_solve_callback(world: &mut World, fcn: Option<PreSolveFcn>,
 
 /// Set the gravity vector. (b3World_SetGravity)
 pub fn world_set_gravity(world: &mut World, gravity: Vec3) {
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_gravity(wid, gravity);
+    });
     world.gravity = gravity;
 }
 
@@ -378,11 +417,19 @@ pub fn world_rebuild_static_tree(world: &mut World) {
         return;
     }
 
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_rebuild_static_tree(wid);
+    });
+
     world.broad_phase.trees[BodyType::Static as usize].rebuild(true);
 }
 
 /// Apply a radial explosion. (b3World_Explode + static ExplosionCallback)
 pub fn world_explode(world: &mut World, explosion_def: &ExplosionDef) {
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_explode(wid, *explosion_def);
+    });
+
     let mask_bits = explosion_def.mask_bits;
     let position = explosion_def.position;
     let radius = explosion_def.radius;
@@ -592,4 +639,19 @@ pub fn world_get_worker_count(world: &World) -> i32 {
         return 0;
     }
     world.worker_count
+}
+
+
+/// Begin capturing mutations into `recording`. (b3World_StartRecording)
+pub fn world_start_recording(world: &mut World, recording: &mut crate::recording::Recording) {
+    debug_assert!(world.recording.is_none());
+    if world.recording.is_some() {
+        return;
+    }
+    crate::recording::start_recording(world, recording);
+}
+
+/// Finalize the active recording. (b3World_StopRecording)
+pub fn world_stop_recording(world: &mut World) {
+    crate::recording::stop_recording(world);
 }

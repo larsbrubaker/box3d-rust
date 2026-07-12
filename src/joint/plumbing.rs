@@ -206,6 +206,9 @@ pub fn destroy_joint_internal(world: &mut World, joint_id: i32, wake_bodies: boo
 
 /// (b3DestroyJoint)
 pub fn destroy_joint(world: &mut World, joint_id: JointId, wake_attached: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_destroy_joint(joint_id, wake_attached);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

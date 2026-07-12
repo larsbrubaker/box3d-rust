@@ -266,7 +266,13 @@ pub fn create_sphere_shape(
     def: &ShapeDef,
     sphere: &Sphere,
 ) -> ShapeId {
-    create_shape(world, body_id, def, ShapeGeometry::Sphere(*sphere))
+    let shape_id = create_shape(world, body_id, def, ShapeGeometry::Sphere(*sphere));
+    if shape_id.index1 != 0 {
+        crate::recording::with_recording(world, |rec| {
+            rec.write_create_sphere_shape(body_id, def, *sphere, shape_id);
+        });
+    }
+    shape_id
 }
 
 /// (b3CreateCapsuleShape)
@@ -277,7 +283,7 @@ pub fn create_capsule_shape(
     capsule: &Capsule,
 ) -> ShapeId {
     let length_sqr = distance_squared(capsule.center1, capsule.center2);
-    if length_sqr <= linear_slop() * linear_slop() {
+    let shape_id = if length_sqr <= linear_slop() * linear_slop() {
         let sphere = Sphere {
             center: lerp(capsule.center1, capsule.center2, 0.5),
             radius: capsule.radius,
@@ -285,7 +291,13 @@ pub fn create_capsule_shape(
         create_shape(world, body_id, def, ShapeGeometry::Sphere(sphere))
     } else {
         create_shape(world, body_id, def, ShapeGeometry::Capsule(*capsule))
+    };
+    if shape_id.index1 != 0 {
+        crate::recording::with_recording(world, |rec| {
+            rec.write_create_capsule_shape(body_id, def, *capsule, shape_id);
+        });
     }
+    shape_id
 }
 
 /// (b3CreateHullShape)
@@ -298,7 +310,14 @@ pub fn create_hull_shape(
     debug_assert!(crate::hull::is_valid_hull(hull));
     debug_assert!(hull.hash != 0);
     let shared = world.hull_database.add(hull);
-    create_shape(world, body_id, def, ShapeGeometry::Hull(shared))
+    let shape_id = create_shape(world, body_id, def, ShapeGeometry::Hull(shared));
+    if shape_id.index1 != 0 {
+        crate::recording::with_recording(world, |rec| {
+            let geometry_id = rec.registry.intern_hull(hull);
+            rec.write_create_hull_shape(body_id, def, geometry_id, shape_id);
+        });
+    }
+    shape_id
 }
 
 /// (b3CreateMeshShape)
@@ -314,7 +333,7 @@ pub fn create_mesh_shape(
 ) -> ShapeId {
     debug_assert!(is_valid_mesh(Some(mesh)));
     debug_assert!(mesh.hash != 0);
-    create_shape(
+    let shape_id = create_shape(
         world,
         body_id,
         def,
@@ -322,7 +341,14 @@ pub fn create_mesh_shape(
             data: mesh.clone(),
             scale: safe_scale(scale),
         },
-    )
+    );
+    if shape_id.index1 != 0 {
+        crate::recording::with_recording(world, |rec| {
+            let geometry_id = rec.registry.intern_mesh(mesh);
+            rec.write_create_mesh_shape(body_id, def, geometry_id, safe_scale(scale), shape_id);
+        });
+    }
+    shape_id
 }
 
 /// (b3CreateHeightFieldShape)
@@ -335,12 +361,19 @@ pub fn create_height_field_shape(
     height_field: &HeightFieldData,
 ) -> ShapeId {
     debug_assert!(height_field.hash != 0);
-    create_shape(
+    let shape_id = create_shape(
         world,
         body_id,
         def,
         ShapeGeometry::HeightField(height_field.clone()),
-    )
+    );
+    if shape_id.index1 != 0 {
+        crate::recording::with_recording(world, |rec| {
+            let geometry_id = rec.registry.intern_height_field(height_field);
+            rec.write_create_height_field_shape(body_id, def, geometry_id, shape_id);
+        });
+    }
+    shape_id
 }
 
 /// (b3CreateCompoundShape)
@@ -354,12 +387,19 @@ pub fn create_compound_shape(
     compound: &CompoundData,
 ) -> ShapeId {
     debug_assert!(!def.is_sensor);
-    create_shape(
+    let shape_id = create_shape(
         world,
         body_id,
         def,
         ShapeGeometry::Compound(compound.clone()),
-    )
+    );
+    if shape_id.index1 != 0 {
+        crate::recording::with_recording(world, |rec| {
+            let geometry_id = rec.registry.intern_compound(compound);
+            rec.write_create_compound_shape(body_id, def, geometry_id, shape_id);
+        });
+    }
+    shape_id
 }
 
 /// Resolve a ShapeId to the shape index. (b3GetShape)
@@ -491,6 +531,10 @@ pub fn destroy_shape(world: &mut World, shape_id: ShapeId, update_body_mass: boo
     if world.locked {
         return;
     }
+
+    crate::recording::with_recording(world, |rec| {
+        rec.write_destroy_shape(shape_id, update_body_mass);
+    });
 
     world.locked = true;
 

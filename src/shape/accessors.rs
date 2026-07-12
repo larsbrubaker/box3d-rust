@@ -57,6 +57,9 @@ fn shape_has_flag(world: &World, shape_id: ShapeId, bit: u8) -> bool {
 
 /// (b3Shape_EnableSensorEvents)
 pub fn shape_enable_sensor_events(world: &mut World, shape_id: ShapeId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_enable_sensor_events(shape_id, flag);
+    });
     set_shape_flag(world, shape_id, shape_flags::ENABLE_SENSOR_EVENTS, flag);
 }
 
@@ -67,6 +70,9 @@ pub fn shape_are_sensor_events_enabled(world: &World, shape_id: ShapeId) -> bool
 
 /// (b3Shape_EnableContactEvents)
 pub fn shape_enable_contact_events(world: &mut World, shape_id: ShapeId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_enable_contact_events(shape_id, flag);
+    });
     set_shape_flag(world, shape_id, shape_flags::ENABLE_CONTACT_EVENTS, flag);
 }
 
@@ -77,6 +83,9 @@ pub fn shape_are_contact_events_enabled(world: &World, shape_id: ShapeId) -> boo
 
 /// (b3Shape_EnablePreSolveEvents)
 pub fn shape_enable_pre_solve_events(world: &mut World, shape_id: ShapeId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_enable_pre_solve_events(shape_id, flag);
+    });
     set_shape_flag(world, shape_id, shape_flags::ENABLE_PRE_SOLVE_EVENTS, flag);
 }
 
@@ -87,6 +96,9 @@ pub fn shape_are_pre_solve_events_enabled(world: &World, shape_id: ShapeId) -> b
 
 /// (b3Shape_EnableHitEvents)
 pub fn shape_enable_hit_events(world: &mut World, shape_id: ShapeId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_enable_hit_events(shape_id, flag);
+    });
     set_shape_flag(world, shape_id, shape_flags::ENABLE_HIT_EVENTS, flag);
 }
 
@@ -110,6 +122,9 @@ pub fn shape_get_user_data(world: &World, shape_id: ShapeId) -> u64 {
 /// Set the shape name (truncated to [`SHAPE_NAME_LENGTH`]). Uses the world name
 /// cache rather than C's fixed char buffer. (b3Shape_SetName)
 pub fn shape_set_name(world: &mut World, shape_id: ShapeId, name: &str) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_name(shape_id, name);
+    });
     let truncated = truncate_shape_name(name);
     let name_id = world.names.add_name(truncated);
     let index = get_shape(world, shape_id);
@@ -160,6 +175,9 @@ pub fn shape_set_density(
     density: f32,
     update_body_mass: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_density(shape_id, density, update_body_mass);
+    });
     debug_assert!(is_valid_float(density) && density >= 0.0);
     debug_assert!(!world.locked);
     if world.locked {

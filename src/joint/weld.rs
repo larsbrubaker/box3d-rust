@@ -22,6 +22,9 @@ use crate::world::World;
 
 /// (b3WeldJoint_SetLinearHertz)
 pub fn weld_joint_set_linear_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_weld_joint_set_linear_hertz(joint_id, hertz);
+    });
     debug_assert!(hertz >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Weld)
         .weld_mut()
@@ -41,6 +44,9 @@ pub fn weld_joint_set_linear_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_weld_joint_set_linear_damping_ratio(joint_id, damping_ratio);
+    });
     debug_assert!(damping_ratio >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Weld)
         .weld_mut()
@@ -56,6 +62,9 @@ pub fn weld_joint_get_linear_damping_ratio(world: &World, joint_id: JointId) -> 
 
 /// (b3WeldJoint_SetAngularHertz)
 pub fn weld_joint_set_angular_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_weld_joint_set_angular_hertz(joint_id, hertz);
+    });
     debug_assert!(hertz >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Weld)
         .weld_mut()
@@ -75,6 +84,9 @@ pub fn weld_joint_set_angular_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_weld_joint_set_angular_damping_ratio(joint_id, damping_ratio);
+    });
     debug_assert!(damping_ratio >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Weld)
         .weld_mut()

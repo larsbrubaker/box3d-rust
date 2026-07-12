@@ -292,7 +292,11 @@ pub fn create_filter_joint(world: &mut World, def: &FilterJointDef) -> JointId {
     }
 
     let joint_id = create_joint(world, &def.base, JointType::Filter);
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_filter_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateDistanceJoint)
@@ -327,7 +331,11 @@ pub fn create_distance_joint(world: &mut World, def: &DistanceJointDef) -> Joint
     joint.upper_impulse = 0.0;
     joint.motor_impulse = 0.0;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_distance_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateMotorJoint)
@@ -354,7 +362,11 @@ pub fn create_motor_joint(world: &mut World, def: &MotorJointDef) -> JointId {
     joint.angular_damping_ratio = def.angular_damping_ratio;
     joint.max_spring_torque = def.max_spring_torque;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_motor_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateParallelJoint)
@@ -377,7 +389,11 @@ pub fn create_parallel_joint(world: &mut World, def: &ParallelJointDef) -> Joint
     joint.damping_ratio = def.damping_ratio;
     joint.max_torque = def.max_torque;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_parallel_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateSphericalJoint)
@@ -412,7 +428,11 @@ pub fn create_spherical_joint(world: &mut World, def: &SphericalJointDef) -> Joi
     joint.enable_twist_limit = def.enable_twist_limit;
     joint.enable_motor = def.enable_motor;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_spherical_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateWeldJoint)
@@ -437,7 +457,11 @@ pub fn create_weld_joint(world: &mut World, def: &WeldJointDef) -> JointId {
     joint.angular_hertz = def.angular_hertz;
     joint.angular_damping_ratio = def.angular_damping_ratio;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_weld_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateRevoluteJoint)
@@ -468,7 +492,11 @@ pub fn create_revolute_joint(world: &mut World, def: &RevoluteJointDef) -> Joint
     joint.enable_limit = def.enable_limit;
     joint.enable_motor = def.enable_motor;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_revolute_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreatePrismaticJoint)
@@ -496,7 +524,11 @@ pub fn create_prismatic_joint(world: &mut World, def: &PrismaticJointDef) -> Joi
     joint.enable_limit = def.enable_limit;
     joint.enable_motor = def.enable_motor;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_prismatic_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3CreateWheelJoint)
@@ -531,11 +563,18 @@ pub fn create_wheel_joint(world: &mut World, def: &WheelJointDef) -> JointId {
     joint.lower_steering_limit = def.lower_steering_limit;
     joint.upper_steering_limit = def.upper_steering_limit;
 
-    make_joint_id(world, joint_id)
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_wheel_joint(wid, def, id);
+    });
+    id
 }
 
 /// (b3Joint_SetCollideConnected)
 pub fn joint_set_collide_connected(world: &mut World, joint_id: JointId, should_collide: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_set_collide_connected(joint_id, should_collide);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

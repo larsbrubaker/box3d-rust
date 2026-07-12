@@ -20,6 +20,9 @@ use crate::world::World;
 
 /// Change a body's simulation type. (b3Body_SetType)
 pub fn body_set_type(world: &mut World, body_id: BodyId, type_: BodyType) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_type(body_id, type_ as i32);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -211,6 +214,9 @@ pub fn body_set_type(world: &mut World, body_id: BodyId, type_: BodyType) {
 
 /// Disable a body (move to the disabled set, remove proxies). (b3Body_Disable)
 pub fn body_disable(world: &mut World, body_id: BodyId) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_disable(body_id);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -274,6 +280,9 @@ pub fn body_disable(world: &mut World, body_id: BodyId) {
 ///
 /// Matches C: does not lock the world for the duration of the operation.
 pub fn body_enable(world: &mut World, body_id: BodyId) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_enable(body_id);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

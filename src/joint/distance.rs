@@ -24,6 +24,9 @@ use crate::world::World;
 
 /// (b3DistanceJoint_SetLength)
 pub fn distance_joint_set_length(world: &mut World, joint_id: JointId, length: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_length(joint_id, length);
+    });
     let base = get_joint_sim_check_type(world, joint_id, JointType::Distance);
     let joint = base.distance_mut();
 
@@ -42,6 +45,9 @@ pub fn distance_joint_get_length(world: &World, joint_id: JointId) -> f32 {
 
 /// (b3DistanceJoint_EnableLimit)
 pub fn distance_joint_enable_limit(world: &mut World, joint_id: JointId, enable_limit: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_enable_limit(joint_id, enable_limit);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Distance)
         .distance_mut()
         .enable_limit = enable_limit;
@@ -61,6 +67,9 @@ pub fn distance_joint_set_length_range(
     min_length: f32,
     max_length: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_length_range(joint_id, min_length, max_length);
+    });
     let base = get_joint_sim_check_type(world, joint_id, JointType::Distance);
     let joint = base.distance_mut();
 
@@ -102,6 +111,9 @@ pub fn distance_joint_get_current_length(world: &World, joint_id: JointId) -> f3
 
 /// (b3DistanceJoint_EnableSpring)
 pub fn distance_joint_enable_spring(world: &mut World, joint_id: JointId, enable_spring: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_enable_spring(joint_id, enable_spring);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Distance)
         .distance_mut()
         .enable_spring = enable_spring;
@@ -121,6 +133,9 @@ pub fn distance_joint_set_spring_force_range(
     lower_force: f32,
     upper_force: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_spring_force_range(joint_id, lower_force, upper_force);
+    });
     debug_assert!(lower_force <= upper_force);
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Distance).distance_mut();
     joint.lower_spring_force = lower_force;
@@ -135,6 +150,9 @@ pub fn distance_joint_get_spring_force_range(world: &World, joint_id: JointId) -
 
 /// (b3DistanceJoint_SetSpringHertz)
 pub fn distance_joint_set_spring_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_spring_hertz(joint_id, hertz);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Distance)
         .distance_mut()
         .hertz = hertz;
@@ -146,6 +164,9 @@ pub fn distance_joint_set_spring_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_spring_damping_ratio(joint_id, damping_ratio);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Distance)
         .distance_mut()
         .damping_ratio = damping_ratio;
@@ -167,6 +188,9 @@ pub fn distance_joint_get_spring_damping_ratio(world: &World, joint_id: JointId)
 
 /// (b3DistanceJoint_EnableMotor)
 pub fn distance_joint_enable_motor(world: &mut World, joint_id: JointId, enable_motor: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_enable_motor(joint_id, enable_motor);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Distance).distance_mut();
     if enable_motor != joint.enable_motor {
         joint.enable_motor = enable_motor;
@@ -183,6 +207,9 @@ pub fn distance_joint_is_motor_enabled(world: &World, joint_id: JointId) -> bool
 
 /// (b3DistanceJoint_SetMotorSpeed)
 pub fn distance_joint_set_motor_speed(world: &mut World, joint_id: JointId, motor_speed: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_motor_speed(joint_id, motor_speed);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Distance)
         .distance_mut()
         .motor_speed = motor_speed;
@@ -203,6 +230,9 @@ pub fn distance_joint_get_motor_force(world: &World, joint_id: JointId) -> f32 {
 
 /// (b3DistanceJoint_SetMaxMotorForce)
 pub fn distance_joint_set_max_motor_force(world: &mut World, joint_id: JointId, force: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_distance_joint_set_max_motor_force(joint_id, force);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Distance)
         .distance_mut()
         .max_motor_force = force;

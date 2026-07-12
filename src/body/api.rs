@@ -80,6 +80,9 @@ pub fn body_get_mass_data(world: &World, body_id: BodyId) -> MassData {
 
 /// (b3Body_SetMassData)
 pub fn body_set_mass_data(world: &mut World, body_id: BodyId, mass_data: MassData) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_mass_data(body_id, mass_data);
+    });
     debug_assert!(is_valid_float(mass_data.mass) && mass_data.mass >= 0.0);
     debug_assert!(is_valid_matrix3(mass_data.inertia));
     debug_assert!(is_valid_vec3(mass_data.center));
@@ -177,6 +180,9 @@ pub fn body_get_angular_velocity(world: &World, body_id: BodyId) -> Vec3 {
 
 /// (b3Body_SetLinearVelocity)
 pub fn body_set_linear_velocity(world: &mut World, body_id: BodyId, linear_velocity: Vec3) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_linear_velocity(body_id, linear_velocity);
+    });
     debug_assert!(is_valid_vec3(linear_velocity));
 
     let body_index = get_body_full_id(world, body_id);
@@ -197,6 +203,9 @@ pub fn body_set_linear_velocity(world: &mut World, body_id: BodyId, linear_veloc
 
 /// (b3Body_SetAngularVelocity)
 pub fn body_set_angular_velocity(world: &mut World, body_id: BodyId, angular_velocity: Vec3) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_angular_velocity(body_id, angular_velocity);
+    });
     debug_assert!(is_valid_vec3(angular_velocity));
 
     let body_index = get_body_full_id(world, body_id);
@@ -241,6 +250,9 @@ pub fn body_get_position(world: &World, body_id: BodyId) -> Pos {
 }
 
 pub fn body_set_linear_damping(world: &mut World, body_id: BodyId, linear_damping: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_linear_damping(body_id, linear_damping);
+    });
     debug_assert!(is_valid_float(linear_damping) && linear_damping >= 0.0);
     debug_assert!(!world.locked);
     if world.locked {
@@ -259,6 +271,9 @@ pub fn body_get_linear_damping(world: &World, body_id: BodyId) -> f32 {
 
 /// (b3Body_SetAngularDamping)
 pub fn body_set_angular_damping(world: &mut World, body_id: BodyId, angular_damping: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_angular_damping(body_id, angular_damping);
+    });
     debug_assert!(is_valid_float(angular_damping) && angular_damping >= 0.0);
     debug_assert!(!world.locked);
     if world.locked {
@@ -277,6 +292,9 @@ pub fn body_get_angular_damping(world: &World, body_id: BodyId) -> f32 {
 
 /// (b3Body_SetGravityScale)
 pub fn body_set_gravity_scale(world: &mut World, body_id: BodyId, gravity_scale: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_gravity_scale(body_id, gravity_scale);
+    });
     debug_assert!(is_valid_float(gravity_scale));
     debug_assert!(!world.locked);
     if world.locked {
@@ -301,6 +319,9 @@ pub fn body_is_sleep_enabled(world: &World, body_id: BodyId) -> bool {
 
 /// (b3Body_SetSleepThreshold)
 pub fn body_set_sleep_threshold(world: &mut World, body_id: BodyId, sleep_threshold: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_sleep_threshold(body_id, sleep_threshold);
+    });
     let body_index = get_body_full_id(world, body_id);
     world.bodies[body_index as usize].sleep_threshold = sleep_threshold;
 }
@@ -316,6 +337,9 @@ pub fn body_get_sleep_threshold(world: &World, body_id: BodyId) -> f32 {
 /// No-op when the flag is already at the requested value — must not leave the
 /// world locked (EnableSleepNoopUnlockTest regression).
 pub fn body_enable_sleep(world: &mut World, body_id: BodyId, enable_sleep: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_enable_sleep(body_id, enable_sleep);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -350,6 +374,9 @@ pub fn body_get_transform(world: &World, body_id: BodyId) -> crate::math_functio
 
 /// (b3Body_SetBullet)
 pub fn body_set_bullet(world: &mut World, body_id: BodyId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_bullet(body_id, flag);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -374,6 +401,9 @@ pub fn body_is_bullet(world: &World, body_id: BodyId) -> bool {
 
 /// (b3Body_EnableContactRecycling)
 pub fn body_enable_contact_recycling(world: &mut World, body_id: BodyId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_enable_contact_recycling(body_id, flag);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -402,8 +432,32 @@ pub fn body_is_contact_recycling_enabled(world: &World, body_id: BodyId) -> bool
     (world.bodies[body_index as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
 }
 
+/// Enable hit events on all shapes attached to this body. (b3Body_EnableHitEvents)
+pub fn body_enable_hit_events(world: &mut World, body_id: BodyId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_enable_hit_events(body_id, flag);
+    });
+    use crate::core::NULL_INDEX;
+    use crate::shape::shape_flags;
+
+    let body_index = get_body_full_id(world, body_id);
+    let mut shape_id = world.bodies[body_index as usize].head_shape_id;
+    while shape_id != NULL_INDEX {
+        let shape = &mut world.shapes[shape_id as usize];
+        if flag {
+            shape.flags |= shape_flags::ENABLE_HIT_EVENTS;
+        } else {
+            shape.flags &= !shape_flags::ENABLE_HIT_EVENTS;
+        }
+        shape_id = shape.next_shape_id;
+    }
+}
+
 /// (b3Body_SetMotionLocks)
 pub fn body_set_motion_locks(world: &mut World, body_id: BodyId, locks: crate::types::MotionLocks) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_motion_locks(body_id, locks);
+    });
     use super::mass::update_body_mass_data;
 
     debug_assert!(!world.locked);
@@ -519,6 +573,9 @@ pub fn body_is_enabled(world: &World, body_id: BodyId) -> bool {
 /// Set the body name (truncated to [`BODY_NAME_LENGTH`]). Uses the world name
 /// cache rather than C's fixed char buffer. (b3Body_SetName)
 pub fn body_set_name(world: &mut World, body_id: BodyId, name: &str) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_name(body_id, name);
+    });
     let truncated = if name.len() > BODY_NAME_LENGTH {
         // Truncate on UTF-8 char boundary at or before the C byte limit.
         let mut end = BODY_NAME_LENGTH;

@@ -44,6 +44,21 @@ impl GeometryRegistry {
         Self::default()
     }
 
+    /// Append without dedup (id == slot index). (b3AppendGeometry)
+    pub fn append(&mut self, kind: GeometryKind, content_hash: u64, bytes: Vec<u8>) -> u32 {
+        let id = self.entries.len() as u32;
+        let hash_next = self.dedup.get(&content_hash).copied().unwrap_or(-1);
+        self.entries.push(GeometryEntry {
+            content_hash,
+            id,
+            kind,
+            bytes,
+            hash_next,
+        });
+        self.dedup.insert(content_hash, id as i32);
+        id
+    }
+
     /// (b3InternGeometry)
     pub fn intern(&mut self, kind: GeometryKind, content_hash: u64, bytes: Vec<u8>) -> u32 {
         if let Some(&head) = self.dedup.get(&content_hash) {

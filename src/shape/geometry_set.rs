@@ -42,6 +42,9 @@ pub fn shape_get_capsule(world: &World, shape_id: ShapeId) -> Capsule {
 
 /// (b3Shape_SetSphere)
 pub fn shape_set_sphere(world: &mut World, shape_id: ShapeId, sphere: &Sphere) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_sphere(shape_id, *sphere);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -68,6 +71,9 @@ pub fn shape_set_sphere(world: &mut World, shape_id: ShapeId, sphere: &Sphere) {
 
 /// (b3Shape_SetCapsule)
 pub fn shape_set_capsule(world: &mut World, shape_id: ShapeId, capsule: &Capsule) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_capsule(shape_id, *capsule);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

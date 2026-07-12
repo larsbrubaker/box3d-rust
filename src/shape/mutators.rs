@@ -82,6 +82,9 @@ pub(crate) fn reset_proxy(
 
 /// (b3Shape_SetFriction)
 pub fn shape_set_friction(world: &mut World, shape_id: ShapeId, friction: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_friction(shape_id, friction);
+    });
     debug_assert!(is_valid_float(friction) && friction >= 0.0);
     let index = get_shape(world, shape_id);
     let shape = &mut world.shapes[index as usize];
@@ -97,6 +100,9 @@ pub fn shape_get_friction(world: &World, shape_id: ShapeId) -> f32 {
 
 /// (b3Shape_SetRestitution)
 pub fn shape_set_restitution(world: &mut World, shape_id: ShapeId, restitution: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_restitution(shape_id, restitution);
+    });
     debug_assert!(is_valid_float(restitution) && restitution >= 0.0);
     let index = get_shape(world, shape_id);
     let shape = &mut world.shapes[index as usize];
@@ -116,6 +122,9 @@ pub fn shape_set_surface_material(
     shape_id: ShapeId,
     surface_material: SurfaceMaterial,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_surface_material(shape_id, surface_material);
+    });
     debug_assert!(is_valid_float(surface_material.friction) && surface_material.friction >= 0.0);
     debug_assert!(
         is_valid_float(surface_material.restitution) && surface_material.restitution >= 0.0
@@ -196,6 +205,9 @@ pub fn shape_set_filter(
     filter: Filter,
     invoke_contacts: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_filter(shape_id, filter, invoke_contacts);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

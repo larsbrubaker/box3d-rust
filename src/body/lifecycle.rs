@@ -384,6 +384,11 @@ pub fn create_body(world: &mut World, def: &crate::types::BodyDef) -> BodyId {
 
     let id = make_body_id(world, body_id);
     world.locked = false;
+
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_body(wid, def, id);
+    });
+
     id
 }
 
@@ -406,6 +411,10 @@ pub fn destroy_body(world: &mut World, body_id: BodyId) {
     if world.locked {
         return;
     }
+
+    crate::recording::capture::rec(world, |_rec, _wid| {
+        _rec.write_destroy_body(body_id);
+    });
 
     world.locked = true;
 

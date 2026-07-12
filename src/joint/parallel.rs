@@ -24,6 +24,9 @@ use crate::world::World;
 
 /// (b3ParallelJoint_SetSpringHertz)
 pub fn parallel_joint_set_spring_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_parallel_joint_set_spring_hertz(joint_id, hertz);
+    });
     debug_assert!(hertz >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Parallel)
         .parallel_mut()
@@ -43,6 +46,9 @@ pub fn parallel_joint_set_spring_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_parallel_joint_set_spring_damping_ratio(joint_id, damping_ratio);
+    });
     debug_assert!(damping_ratio >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Parallel)
         .parallel_mut()
@@ -58,6 +64,9 @@ pub fn parallel_joint_get_spring_damping_ratio(world: &World, joint_id: JointId)
 
 /// (b3ParallelJoint_SetMaxTorque)
 pub fn parallel_joint_set_max_torque(world: &mut World, joint_id: JointId, max_force: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_parallel_joint_set_max_torque(joint_id, max_force);
+    });
     debug_assert!(max_force >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Parallel)
         .parallel_mut()

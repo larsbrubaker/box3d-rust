@@ -186,6 +186,9 @@ pub fn update_body_mass_data(world: &mut World, body_index: i32) {
 /// This updates the mass properties to the sum of the mass properties of the shapes.
 /// (b3Body_ApplyMassFromShapes)
 pub fn body_apply_mass_from_shapes(world: &mut World, body_id: BodyId) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_mass_from_shapes(body_id);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

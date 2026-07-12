@@ -15,6 +15,9 @@ use crate::world::World;
 
 /// (b3WheelJoint_EnableSuspension)
 pub fn wheel_joint_enable_suspension(world: &mut World, joint_id: JointId, enable_spring: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_enable_suspension(joint_id, enable_spring);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     if enable_spring != joint.enable_suspension_spring {
         joint.enable_suspension_spring = enable_spring;
@@ -31,6 +34,9 @@ pub fn wheel_joint_is_suspension_enabled(world: &World, joint_id: JointId) -> bo
 
 /// (b3WheelJoint_SetSuspensionHertz)
 pub fn wheel_joint_set_suspension_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_suspension_hertz(joint_id, hertz);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .suspension_hertz = hertz;
@@ -49,6 +55,9 @@ pub fn wheel_joint_set_suspension_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_suspension_damping_ratio(joint_id, damping_ratio);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .suspension_damping_ratio = damping_ratio;
@@ -67,6 +76,9 @@ pub fn wheel_joint_enable_suspension_limit(
     joint_id: JointId,
     enable_limit: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_enable_suspension_limit(joint_id, enable_limit);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     if joint.enable_suspension_limit != enable_limit {
         joint.lower_suspension_impulse = 0.0;
@@ -103,6 +115,9 @@ pub fn wheel_joint_set_suspension_limits(
     lower: f32,
     upper: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_suspension_limits(joint_id, lower, upper);
+    });
     debug_assert!(lower <= upper);
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     if lower != joint.lower_suspension_limit || upper != joint.upper_suspension_limit {
@@ -115,6 +130,9 @@ pub fn wheel_joint_set_suspension_limits(
 
 /// (b3WheelJoint_EnableSpinMotor)
 pub fn wheel_joint_enable_spin_motor(world: &mut World, joint_id: JointId, enable_motor: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_enable_spin_motor(joint_id, enable_motor);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     if joint.enable_spin_motor != enable_motor {
         joint.spin_impulse = 0.0;
@@ -131,6 +149,9 @@ pub fn wheel_joint_is_spin_motor_enabled(world: &World, joint_id: JointId) -> bo
 
 /// (b3WheelJoint_SetSpinMotorSpeed)
 pub fn wheel_joint_set_spin_motor_speed(world: &mut World, joint_id: JointId, motor_speed: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_spin_motor_speed(joint_id, motor_speed);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .spin_speed = motor_speed;
@@ -145,6 +166,9 @@ pub fn wheel_joint_get_spin_motor_speed(world: &World, joint_id: JointId) -> f32
 
 /// (b3WheelJoint_SetMaxSpinTorque)
 pub fn wheel_joint_set_max_spin_torque(world: &mut World, joint_id: JointId, torque: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_max_spin_torque(joint_id, torque);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .max_spin_torque = torque;
@@ -159,6 +183,9 @@ pub fn wheel_joint_get_max_spin_torque(world: &World, joint_id: JointId) -> f32 
 
 /// (b3WheelJoint_EnableSteering)
 pub fn wheel_joint_enable_steering(world: &mut World, joint_id: JointId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_enable_steering(joint_id, flag);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     if joint.enable_steering != flag {
         joint.angular_impulse = Vec2 { x: 0.0, y: 0.0 };
@@ -175,6 +202,9 @@ pub fn wheel_joint_is_steering_enabled(world: &World, joint_id: JointId) -> bool
 
 /// (b3WheelJoint_SetSteeringHertz)
 pub fn wheel_joint_set_steering_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_steering_hertz(joint_id, hertz);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .steering_hertz = hertz;
@@ -193,6 +223,9 @@ pub fn wheel_joint_set_steering_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_steering_damping_ratio(joint_id, damping_ratio);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .steering_damping_ratio = damping_ratio;
@@ -207,6 +240,9 @@ pub fn wheel_joint_get_steering_damping_ratio(world: &World, joint_id: JointId) 
 
 /// (b3WheelJoint_SetMaxSteeringTorque)
 pub fn wheel_joint_set_max_steering_torque(world: &mut World, joint_id: JointId, max_torque: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_max_steering_torque(joint_id, max_torque);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .max_steering_torque = max_torque;
@@ -221,6 +257,9 @@ pub fn wheel_joint_get_max_steering_torque(world: &World, joint_id: JointId) -> 
 
 /// (b3WheelJoint_EnableSteeringLimit)
 pub fn wheel_joint_enable_steering_limit(world: &mut World, joint_id: JointId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_enable_steering_limit(joint_id, flag);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     if joint.enable_steering_limit != flag {
         joint.lower_steering_impulse = 0.0;
@@ -257,6 +296,9 @@ pub fn wheel_joint_set_steering_limits(
     lower_radians: f32,
     upper_radians: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_steering_limits(joint_id, lower_radians, upper_radians);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Wheel).wheel_mut();
     joint.lower_steering_limit = lower_radians;
     joint.upper_steering_limit = upper_radians;
@@ -264,6 +306,9 @@ pub fn wheel_joint_set_steering_limits(
 
 /// (b3WheelJoint_SetTargetSteeringAngle)
 pub fn wheel_joint_set_target_steering_angle(world: &mut World, joint_id: JointId, radians: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_wheel_joint_set_target_steering_angle(joint_id, radians);
+    });
     get_joint_sim_check_type(world, joint_id, JointType::Wheel)
         .wheel_mut()
         .target_steering_angle = radians;

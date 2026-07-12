@@ -27,6 +27,9 @@ use crate::world::World;
 
 /// (b3RevoluteJoint_EnableLimit)
 pub fn revolute_joint_enable_limit(world: &mut World, joint_id: JointId, enable_limit: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_enable_limit(joint_id, enable_limit);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Revolute).revolute_mut();
     if enable_limit != joint.enable_limit {
         joint.lower_impulse = 0.0;
@@ -63,6 +66,9 @@ pub fn revolute_joint_set_limits(
     lower_limit_radians: f32,
     upper_limit_radians: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_set_limits(joint_id, lower_limit_radians, upper_limit_radians);
+    });
     debug_assert!(is_valid_float(lower_limit_radians) && is_valid_float(upper_limit_radians));
 
     let lower_angle = min_float(lower_limit_radians, upper_limit_radians);
@@ -94,6 +100,9 @@ pub fn revolute_joint_get_angle(world: &World, joint_id: JointId) -> f32 {
 
 /// (b3RevoluteJoint_EnableSpring)
 pub fn revolute_joint_enable_spring(world: &mut World, joint_id: JointId, enable_spring: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_enable_spring(joint_id, enable_spring);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Revolute).revolute_mut();
     if enable_spring != joint.enable_spring {
         joint.spring_impulse = 0.0;
@@ -110,6 +119,9 @@ pub fn revolute_joint_is_spring_enabled(world: &World, joint_id: JointId) -> boo
 
 /// (b3RevoluteJoint_SetTargetAngle)
 pub fn revolute_joint_set_target_angle(world: &mut World, joint_id: JointId, target_radians: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_set_target_angle(joint_id, target_radians);
+    });
     debug_assert!(is_valid_float(target_radians) && (-PI..=PI).contains(&target_radians));
     get_joint_sim_check_type(world, joint_id, JointType::Revolute)
         .revolute_mut()
@@ -125,6 +137,9 @@ pub fn revolute_joint_get_target_angle(world: &World, joint_id: JointId) -> f32 
 
 /// (b3RevoluteJoint_SetSpringHertz)
 pub fn revolute_joint_set_spring_hertz(world: &mut World, joint_id: JointId, hertz: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_set_spring_hertz(joint_id, hertz);
+    });
     debug_assert!(is_valid_float(hertz) && hertz >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Revolute)
         .revolute_mut()
@@ -144,6 +159,9 @@ pub fn revolute_joint_set_spring_damping_ratio(
     joint_id: JointId,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_set_spring_damping_ratio(joint_id, damping_ratio);
+    });
     debug_assert!(is_valid_float(damping_ratio) && damping_ratio >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Revolute)
         .revolute_mut()
@@ -159,6 +177,9 @@ pub fn revolute_joint_get_spring_damping_ratio(world: &World, joint_id: JointId)
 
 /// (b3RevoluteJoint_EnableMotor)
 pub fn revolute_joint_enable_motor(world: &mut World, joint_id: JointId, enable_motor: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_enable_motor(joint_id, enable_motor);
+    });
     let joint = get_joint_sim_check_type(world, joint_id, JointType::Revolute).revolute_mut();
     if enable_motor != joint.enable_motor {
         joint.motor_impulse = 0.0;
@@ -175,6 +196,9 @@ pub fn revolute_joint_is_motor_enabled(world: &World, joint_id: JointId) -> bool
 
 /// (b3RevoluteJoint_SetMotorSpeed)
 pub fn revolute_joint_set_motor_speed(world: &mut World, joint_id: JointId, motor_speed: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_set_motor_speed(joint_id, motor_speed);
+    });
     debug_assert!(is_valid_float(motor_speed));
     get_joint_sim_check_type(world, joint_id, JointType::Revolute)
         .revolute_mut()
@@ -190,6 +214,9 @@ pub fn revolute_joint_get_motor_speed(world: &World, joint_id: JointId) -> f32 {
 
 /// (b3RevoluteJoint_SetMaxMotorTorque)
 pub fn revolute_joint_set_max_motor_torque(world: &mut World, joint_id: JointId, max_force: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_revolute_joint_set_max_motor_torque(joint_id, max_force);
+    });
     debug_assert!(is_valid_float(max_force) && max_force >= 0.0);
     get_joint_sim_check_type(world, joint_id, JointType::Revolute)
         .revolute_mut()

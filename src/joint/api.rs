@@ -29,6 +29,9 @@ pub fn joint_set_constraint_tuning(
     hertz: f32,
     damping_ratio: f32,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_set_constraint_tuning(joint_id, hertz, damping_ratio);
+    });
     debug_assert!(is_valid_float(hertz) && hertz >= 0.0);
     debug_assert!(is_valid_float(damping_ratio) && damping_ratio >= 0.0);
 
@@ -47,6 +50,9 @@ pub fn joint_get_constraint_tuning(world: &World, joint_id: JointId) -> (f32, f3
 
 /// (b3Joint_SetForceThreshold)
 pub fn joint_set_force_threshold(world: &mut World, joint_id: JointId, threshold: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_set_force_threshold(joint_id, threshold);
+    });
     debug_assert!(is_valid_float(threshold) && threshold >= 0.0);
 
     let id = get_joint_full_id(world, joint_id);
@@ -61,6 +67,9 @@ pub fn joint_get_force_threshold(world: &World, joint_id: JointId) -> f32 {
 
 /// (b3Joint_SetTorqueThreshold)
 pub fn joint_set_torque_threshold(world: &mut World, joint_id: JointId, threshold: f32) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_set_torque_threshold(joint_id, threshold);
+    });
     debug_assert!(is_valid_float(threshold) && threshold >= 0.0);
 
     let id = get_joint_full_id(world, joint_id);
@@ -84,6 +93,9 @@ pub fn joint_get_world(world: &World, joint_id: JointId) -> WorldId {
 
 /// (b3Joint_SetLocalFrameA)
 pub fn joint_set_local_frame_a(world: &mut World, joint_id: JointId, local_frame: Transform) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_set_local_frame_a(joint_id, local_frame);
+    });
     debug_assert!(is_valid_transform(local_frame));
 
     let id = get_joint_full_id(world, joint_id);
@@ -98,6 +110,9 @@ pub fn joint_get_local_frame_a(world: &World, joint_id: JointId) -> Transform {
 
 /// (b3Joint_SetLocalFrameB)
 pub fn joint_set_local_frame_b(world: &mut World, joint_id: JointId, local_frame: Transform) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_set_local_frame_b(joint_id, local_frame);
+    });
     debug_assert!(is_valid_transform(local_frame));
 
     let id = get_joint_full_id(world, joint_id);
@@ -124,6 +139,9 @@ pub fn joint_get_user_data(world: &World, joint_id: JointId) -> u64 {
 
 /// (b3Joint_WakeBodies)
 pub fn joint_wake_bodies(world: &mut World, joint_id: JointId) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_joint_wake_bodies(joint_id);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;

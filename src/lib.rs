@@ -155,6 +155,9 @@ mod determinism_tests;
 mod recording_tests;
 
 #[cfg(test)]
+mod recording_replay_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

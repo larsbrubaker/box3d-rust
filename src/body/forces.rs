@@ -22,6 +22,9 @@ use crate::world::World;
 
 /// (b3Body_ApplyForce)
 pub fn body_apply_force(world: &mut World, body_id: BodyId, force: Vec3, point: Pos, wake: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_force(body_id, force, point, wake);
+    });
     debug_assert!(is_valid_vec3(force));
 
     let body_index = get_body_full_id(world, body_id);
@@ -42,6 +45,9 @@ pub fn body_apply_force(world: &mut World, body_id: BodyId, force: Vec3, point: 
 
 /// (b3Body_ApplyForceToCenter)
 pub fn body_apply_force_to_center(world: &mut World, body_id: BodyId, force: Vec3, wake: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_force_to_center(body_id, force, wake);
+    });
     debug_assert!(is_valid_vec3(force));
 
     let body_index = get_body_full_id(world, body_id);
@@ -58,6 +64,9 @@ pub fn body_apply_force_to_center(world: &mut World, body_id: BodyId, force: Vec
 
 /// (b3Body_ApplyTorque)
 pub fn body_apply_torque(world: &mut World, body_id: BodyId, torque: Vec3, wake: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_torque(body_id, torque, wake);
+    });
     debug_assert!(is_valid_vec3(torque));
 
     let body_index = get_body_full_id(world, body_id);
@@ -80,6 +89,9 @@ pub fn body_apply_linear_impulse(
     point: Pos,
     wake: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_linear_impulse(body_id, impulse, point, wake);
+    });
     debug_assert!(is_valid_vec3(impulse));
     debug_assert!(is_valid_position(point));
 
@@ -117,6 +129,9 @@ pub fn body_apply_linear_impulse_to_center(
     impulse: Vec3,
     wake: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_linear_impulse_to_center(body_id, impulse, wake);
+    });
     debug_assert!(is_valid_vec3(impulse));
 
     let body_index = get_body_full_id(world, body_id);
@@ -141,6 +156,9 @@ pub fn body_apply_linear_impulse_to_center(
 
 /// (b3Body_ApplyAngularImpulse)
 pub fn body_apply_angular_impulse(world: &mut World, body_id: BodyId, impulse: Vec3, wake: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_apply_angular_impulse(body_id, impulse, wake);
+    });
     debug_assert!(is_valid_vec3(impulse));
     debug_assert!(super::lifecycle::body_is_valid(world, body_id));
 
@@ -168,6 +186,9 @@ pub fn body_apply_angular_impulse(world: &mut World, body_id: BodyId, impulse: V
 
 /// (b3Body_SetTransform)
 pub fn body_set_transform(world: &mut World, body_id: BodyId, position: Pos, rotation: Quat) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_transform(body_id, position, rotation);
+    });
     debug_assert!(is_valid_position(position));
     debug_assert!(is_valid_quat(rotation));
     debug_assert!(super::lifecycle::body_is_valid(world, body_id));
@@ -243,6 +264,9 @@ pub fn body_set_transform(world: &mut World, body_id: BodyId, position: Pos, rot
 
 /// (b3Body_SetAwake)
 pub fn body_set_awake(world: &mut World, body_id: BodyId, awake: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_awake(body_id, awake);
+    });
     debug_assert!(!world.locked);
     if world.locked {
         return;
@@ -277,6 +301,9 @@ pub fn body_set_target_transform(
     time_step: f32,
     wake: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_set_target_transform(body_id, target, time_step, wake);
+    });
     debug_assert!(is_valid_world_transform(target));
 
     let body_index = get_body_full_id(world, body_id);

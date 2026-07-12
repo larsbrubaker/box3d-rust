@@ -19,6 +19,10 @@ impl World {
             return;
         }
 
+        crate::recording::capture::rec(self, |rec, wid| {
+            rec.write_step(wid, time_step, sub_step_count);
+        });
+
         self.locked = true;
 
         self.body_move_events.clear();
@@ -100,5 +104,39 @@ impl World {
         self.sensor_end_events[self.end_event_array_index as usize].clear();
         self.contact_end_events[self.end_event_array_index as usize].clear();
         self.locked = false;
+
+        if self.recording.is_some() {
+            use crate::math_functions::aabb_union;
+            use crate::recording::hash::hash_world_state;
+            use crate::recording::session::world_public_id;
+            use crate::types::BODY_TYPE_COUNT;
+
+            let hash = hash_world_state(self);
+            let wid = world_public_id(self);
+            crate::recording::with_recording(self, |rec| {
+                rec.write_state_hash(wid, hash);
+            });
+
+            let mut world_bounds = crate::math_functions::Aabb::default();
+            let mut have_bounds = false;
+            for i in 0..BODY_TYPE_COUNT {
+                let tree = &self.broad_phase.trees[i];
+                if tree.proxy_count() == 0 {
+                    continue;
+                }
+                let bounds = tree.root_bounds();
+                world_bounds = if have_bounds {
+                    aabb_union(world_bounds, bounds)
+                } else {
+                    bounds
+                };
+                have_bounds = true;
+            }
+            if have_bounds {
+                crate::recording::with_recording(self, |rec| {
+                    rec.accumulate_bounds(world_bounds);
+                });
+            }
+        }
     }
 }

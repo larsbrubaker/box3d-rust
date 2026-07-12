@@ -1,4 +1,4 @@
-//! World overlap and cast queries from physics_world.c (no recording).
+//! World overlap and cast queries from physics_world.c (with recording capture).
 //!
 //! C passes function pointers plus a void* context; the Rust port passes
 //! closures, matching the dynamic-tree callback style used across the crate.
@@ -48,6 +48,15 @@ pub fn world_overlap_aabb(
 
     debug_assert!(is_valid_aabb(aabb));
 
+    let mut rec = crate::recording::query_capture::maybe_begin(world, filter);
+    if let Some(w) = rec.as_mut() {
+        w.write_overlap_aabb_header(
+            crate::recording::query_capture::world_id(world),
+            aabb,
+            filter,
+        );
+    }
+
     for i in 0..BODY_TYPE_COUNT {
         let tree_result =
             world.broad_phase.trees[i].query(aabb, filter.mask_bits, false, |_, user_data| {
@@ -63,11 +72,25 @@ pub fn world_overlap_aabb(
                     world0: world.world_id,
                     generation: shape.generation,
                 };
-                fcn(id)
+                let ret = fcn(id);
+                if let Some(w) = rec.as_mut() {
+                    w.append_overlap_hit(id, ret);
+                }
+                ret
             });
 
         tree_stats.node_visits += tree_result.node_visits;
         tree_stats.leaf_visits += tree_result.leaf_visits;
+    }
+
+    if let Some(mut w) = rec {
+        w.finish_counted();
+        w.append_tree_stats(tree_stats);
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryOverlapAABB,
+        );
     }
 
     tree_stats
@@ -90,6 +113,16 @@ pub fn world_overlap_shape(
     }
 
     debug_assert!(is_valid_position(origin));
+
+    let mut rec = crate::recording::query_capture::maybe_begin(world, filter);
+    if let Some(w) = rec.as_mut() {
+        w.write_overlap_shape_header(
+            crate::recording::query_capture::world_id(world),
+            origin,
+            proxy,
+            filter,
+        );
+    }
 
     // Bound the proxy in origin relative space then lift to a conservative world float box
     let aabb = offset_aabb(
@@ -117,11 +150,25 @@ pub fn world_overlap_shape(
                 }
 
                 let id = query_shape_id(world, shape);
-                fcn(id)
+                let ret = fcn(id);
+                if let Some(w) = rec.as_mut() {
+                    w.append_overlap_hit(id, ret);
+                }
+                ret
             });
 
         tree_stats.node_visits += tree_result.node_visits;
         tree_stats.leaf_visits += tree_result.leaf_visits;
+    }
+
+    if let Some(mut w) = rec {
+        w.finish_counted();
+        w.append_tree_stats(tree_stats);
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryOverlapShape,
+        );
     }
 
     tree_stats
@@ -133,6 +180,44 @@ pub fn world_overlap_shape(
 /// 0 to terminate, a fraction in 0..=1 to clip, or >1 to continue without clipping.
 /// (b3World_CastRay + static RayCastCallback)
 pub fn world_cast_ray(
+    world: &World,
+    origin: Pos,
+    translation: Vec3,
+    filter: &QueryFilter,
+    mut fcn: impl FnMut(ShapeId, Pos, Vec3, f32, u64, i32, i32) -> f32,
+) -> TreeStats {
+    let mut rec = crate::recording::query_capture::maybe_begin(world, filter);
+    if let Some(w) = rec.as_mut() {
+        w.write_cast_ray_header(
+            crate::recording::query_capture::world_id(world),
+            origin,
+            translation,
+            filter,
+        );
+    }
+
+    let tree_stats = cast_ray_impl(world, origin, translation, filter, |id, point, normal, fraction, mid, tri, child| {
+        let user_fraction = fcn(id, point, normal, fraction, mid, tri, child);
+        if let Some(w) = rec.as_mut() {
+            w.append_cast_hit(id, point, normal, fraction, mid, tri, child, user_fraction);
+        }
+        user_fraction
+    });
+
+    if let Some(mut w) = rec {
+        w.finish_counted();
+        w.append_tree_stats(tree_stats);
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryCastRay,
+        );
+    }
+
+    tree_stats
+}
+
+fn cast_ray_impl(
     world: &World,
     origin: Pos,
     translation: Vec3,
@@ -248,7 +333,8 @@ pub fn world_cast_ray_closest(
     debug_assert!(is_valid_position(origin));
     debug_assert!(is_valid_vec3(translation));
 
-    let stats = world_cast_ray(
+    // Use the unrecorded path so CastRayClosest records a single RayResult, matching C.
+    let stats = cast_ray_impl(
         world,
         origin,
         translation,
@@ -273,6 +359,22 @@ pub fn world_cast_ray_closest(
 
     result.node_visits = stats.node_visits;
     result.leaf_visits = stats.leaf_visits;
+
+    if let Some(mut w) = crate::recording::query_capture::maybe_begin(world, filter) {
+        w.write_cast_ray_closest_header(
+            crate::recording::query_capture::world_id(world),
+            origin,
+            translation,
+            filter,
+        );
+        w.append_ray_result(&result);
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryCastRayClosest,
+        );
+    }
+
     result
 }
 
@@ -295,6 +397,17 @@ pub fn world_cast_shape(
 
     debug_assert!(is_valid_position(origin));
     debug_assert!(is_valid_vec3(translation));
+
+    let mut rec = crate::recording::query_capture::maybe_begin(world, filter);
+    if let Some(w) = rec.as_mut() {
+        w.write_cast_shape_header(
+            crate::recording::query_capture::world_id(world),
+            origin,
+            proxy,
+            translation,
+            filter,
+        );
+    }
 
     let cast_input = ShapeCastInput {
         proxy: *proxy,
@@ -348,15 +461,29 @@ pub fn world_cast_shape(
                     let user_material_id =
                         shape.shape_materials()[material_index as usize].user_material_id;
 
+                    let point = offset_pos(origin, output.point);
                     let user_fraction = fcn(
                         id,
-                        offset_pos(origin, output.point),
+                        point,
                         output.normal,
                         output.fraction,
                         user_material_id,
                         output.triangle_index,
                         output.child_index,
                     );
+
+                    if let Some(w) = rec.as_mut() {
+                        w.append_cast_hit(
+                            id,
+                            point,
+                            output.normal,
+                            output.fraction,
+                            user_material_id,
+                            output.triangle_index,
+                            output.child_index,
+                            user_fraction,
+                        );
+                    }
 
                     if (0.0..=1.0).contains(&user_fraction) {
                         fraction = user_fraction;
@@ -379,6 +506,16 @@ pub fn world_cast_shape(
         tree_input.max_fraction = fraction;
     }
 
+    if let Some(mut w) = rec {
+        w.finish_counted();
+        w.append_tree_stats(tree_stats);
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryCastShape,
+        );
+    }
+
     tree_stats
 }
 
@@ -398,6 +535,16 @@ pub fn world_collide_mover(
     }
 
     debug_assert!(is_valid_position(origin));
+
+    let mut rec = crate::recording::query_capture::maybe_begin(world, filter);
+    if let Some(w) = rec.as_mut() {
+        w.write_collide_mover_header(
+            crate::recording::query_capture::world_id(world),
+            origin,
+            *mover,
+            filter,
+        );
+    }
 
     let r = Vec3 {
         x: mover.radius,
@@ -430,11 +577,25 @@ pub fn world_collide_mover(
 
             if count > 0 {
                 let id = query_shape_id(world, shape);
-                return fcn(id, &buffer[..count as usize]);
+                let planes = &buffer[..count as usize];
+                let ret = fcn(id, planes);
+                if let Some(w) = rec.as_mut() {
+                    w.append_plane_hit(id, planes, ret);
+                }
+                return ret;
             }
 
             true
         });
+    }
+
+    if let Some(mut w) = rec {
+        w.finish_counted();
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryCollideMover,
+        );
     }
 }
 
@@ -455,6 +616,17 @@ pub fn world_cast_mover(
     debug_assert!(!world.locked);
     if world.locked {
         return 1.0;
+    }
+
+    let mut rec = crate::recording::query_capture::maybe_begin(world, filter);
+    if let Some(w) = rec.as_mut() {
+        w.write_cast_mover_header(
+            crate::recording::query_capture::world_id(world),
+            origin,
+            *mover,
+            translation,
+            filter,
+        );
     }
 
     let cast_input = ShapeCastInput {
@@ -487,13 +659,24 @@ pub fn world_cast_mover(
                     return fraction;
                 }
 
-                if let Some(ref mut fcn) = filter_fcn {
-                    let id = ShapeId {
-                        index1: shape_id + 1,
-                        world0: world.world_id,
-                        generation: shape.generation,
-                    };
-                    if !fcn(id) {
+                let id = ShapeId {
+                    index1: shape_id + 1,
+                    world0: world.world_id,
+                    generation: shape.generation,
+                };
+
+                // When recording, always record the filter decision (accept-all if no user filter),
+                // matching C's overlap trampoline installed even for NULL filters.
+                let should_collide = if let Some(ref mut fcn) = filter_fcn {
+                    fcn(id)
+                } else {
+                    true
+                };
+                if rec.is_some() || filter_fcn.is_some() {
+                    if let Some(w) = rec.as_mut() {
+                        w.append_overlap_hit(id, should_collide);
+                    }
+                    if !should_collide {
                         return fraction;
                     }
                 }
@@ -523,6 +706,16 @@ pub fn world_cast_mover(
         }
 
         tree_input.max_fraction = fraction;
+    }
+
+    if let Some(mut w) = rec {
+        w.finish_counted();
+        w.append_f32(fraction);
+        crate::recording::query_capture::commit(
+            world,
+            w,
+            crate::recording::ops::RecOp::QueryCastMover,
+        );
     }
 
     fraction

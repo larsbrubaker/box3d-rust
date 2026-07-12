@@ -34,6 +34,9 @@ pub fn shape_apply_wind(
     max_speed: f32,
     wake: bool,
 ) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_apply_wind(shape_id, wind, drag, lift, max_speed, wake);
+    });
     let shape_index = get_shape(world, shape_id);
 
     let shape_type = world.shapes[shape_index as usize].shape_type();

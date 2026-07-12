@@ -306,6 +306,11 @@ pub struct World {
     pub enable_continuous: bool,
     pub enable_speculative: bool,
     pub in_use: bool,
+
+    /// Non-null while a recording session is active. Set by
+    /// [`crate::recording::start_recording`], cleared by
+    /// [`crate::recording::stop_recording`]. (world->recording)
+    pub recording: Option<*mut crate::recording::Recording>,
 }
 
 /// Default friction mixing: `sqrt(frictionA * frictionB)`.
@@ -471,6 +476,7 @@ impl World {
             enable_continuous: def.enable_continuous,
             enable_speculative: true,
             in_use: true,
+            recording: None,
         }
     }
 
