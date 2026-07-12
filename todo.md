@@ -19,11 +19,11 @@ precision modes. Everything below is completeness, not core physics.**
 |---|---|---|
 | [task-8.md](task-8.md) | API completeness: introspection, kinematic targets, wind | — |
 | [task-9.md](task-9.md) | Recording, replay, world snapshots (last full C subsystem) | task-8 helps (op capture wraps the full API) but can start with snapshots now |
-| [task-10.md](task-10.md) | Debug draw (`b3DebugDraw` + `b3World_Draw`) | — |
 | [task-11.md](task-11.md) | Demo site samples (TypeScript/wasm; frontend-only) | — |
 
-All four touch disjoint areas and can run on separate machines. task-9 is the
-largest; task-8 is the smallest and unblocks task-9's op-capture breadth.
+All three remaining tracks touch disjoint areas and can run on separate
+machines. task-9 is the largest; task-8 is the smallest and unblocks
+task-9's op-capture breadth.
 
 ## Benchmarks
 
@@ -33,7 +33,7 @@ largest; task-8 is the smallest and unblocks task-9's op-capture breadth.
 
 ## Release readiness
 
-Once tasks 8–10 land, the crate is functionally complete. Polish for 0.1:
+Once tasks 8–9 land (debug draw is done), the crate is functionally complete. Polish for 0.1:
 
 - [ ] Rustdoc pass over the public API (crate-level docs, module docs on the
       main entry points, doc examples for World/body/shape/joint creation)

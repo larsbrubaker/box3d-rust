@@ -6,6 +6,7 @@
 
 mod api;
 mod distance;
+mod draw;
 mod lifecycle;
 mod motor;
 mod parallel;
@@ -21,6 +22,7 @@ mod wheel_api;
 
 pub use api::*;
 pub use distance::*;
+pub use draw::*;
 pub use lifecycle::*;
 pub use motor::*;
 pub use parallel::*;

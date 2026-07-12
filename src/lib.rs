@@ -18,6 +18,7 @@ pub mod constraint_graph;
 pub mod contact;
 pub mod contact_solver;
 pub mod core;
+pub mod debug_draw;
 pub mod determinism;
 pub mod distance;
 pub mod dynamic_tree;
@@ -43,6 +44,10 @@ pub mod table;
 pub mod types;
 pub mod world;
 
+pub use debug_draw::{
+    make_debug_color, CreateDebugShapeCallback, DebugDraw, DebugMaterial, DebugShape,
+    DestroyDebugShapeCallback, HexColor,
+};
 pub use id::{BodyId, ContactId, JointId, ShapeId, WorldId};
 pub use math_functions::{
     Aabb, CosSin, Matrix3, Plane, Pos, Quat, SegmentDistanceResult, Transform, Triangle, Vec2,
@@ -87,6 +92,9 @@ mod compound_tests;
 
 #[cfg(test)]
 mod contact_tests;
+
+#[cfg(test)]
+mod debug_draw_tests;
 
 #[cfg(test)]
 mod distance_tests;
