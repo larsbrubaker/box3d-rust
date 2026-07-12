@@ -1,4 +1,4 @@
-// Stacking — box stack, pyramid, and sphere stack with full interaction layer.
+// Stacking — Single Box, Box Stack, Pyramid2D, Sphere Stack (sample_stacking).
 
 import * as THREE from "three";
 import { createButtonGroup, createInfoBox } from "../controls.ts";
@@ -13,32 +13,33 @@ import { COLORS, DemoScene } from "../three-scene.ts";
 
 const STRIDE = 11;
 
-type Mode = "boxes" | "pyramid" | "spheres";
+type Mode = "single" | "boxes" | "pyramid" | "spheres";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Stacking",
-    "Vertical box stack, Pyramid2D, and sphere stack — driven by the ported " +
-      "<code>World::step</code> scalar solver (mirrors <code>sample_stacking</code>).",
+    "Official Stacking samples — Single Box, Box Stack, Pyramid2D, and Sphere Stack — " +
+      "driven by the ported <code>World::step</code> scalar solver.",
     "Drag body · Shift spawn · Ctrl delete · Space/S/R",
     wasm.version(),
   );
 
   controls.appendChild(
     createInfoBox(
-      "Box stack matches upstream Box Stack. Pyramid locks motion to the XY plane. " +
-        "Sphere stack uses rolling resistance like Sphere Stack.",
+      "Single Box matches C exactly (half=0.5, ωy=10). Box Stack / Sphere Stack use " +
+        "browser-capped counts (C uses 40 / 30). Pyramid2D locks motion to the XY plane " +
+        "with C's layout formula (a=1).",
     ),
   );
 
-  let mode: Mode = "boxes";
+  let mode: Mode = "single";
   let stackCount = 12;
   let pyramidSize = 6;
   let sphereCount = 12;
 
-  const demo = new DemoScene(canvas, { target: [0, 6, 0], distance: 28 });
+  const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 14 });
   const meshes: THREE.Mesh[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
@@ -59,6 +60,23 @@ export function init(container: HTMLElement) {
       if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
     }
     meshes.length = 0;
+  }
+
+  function setCameraForMode() {
+    if (mode === "single") {
+      demo.controls.target.set(0, 0, 0);
+      demo.camera.position.set(0, 8, 12);
+    } else if (mode === "pyramid") {
+      demo.controls.target.set(0, 5, 0);
+      demo.camera.position.set(0, 20, 40);
+    } else if (mode === "spheres") {
+      demo.controls.target.set(0, 10, 0);
+      demo.camera.position.set(0, 15, 40);
+    } else {
+      demo.controls.target.set(0, 12, 0);
+      demo.camera.position.set(0, 18, 42);
+    }
+    demo.controls.update();
   }
 
   function ensureMesh(i: number, kind: number): THREE.Mesh {
@@ -97,19 +115,22 @@ export function init(container: HTMLElement) {
 
   function reset() {
     clearMeshes();
-    if (mode === "boxes") wasm.sim_reset_stacking(stackCount);
+    if (mode === "single") wasm.sim_reset_single_box();
+    else if (mode === "boxes") wasm.sim_reset_stacking(stackCount);
     else if (mode === "pyramid") wasm.sim_reset_pyramid(pyramidSize);
     else wasm.sim_reset_sphere_stack(sphereCount);
+    setCameraForMode();
   }
 
   controls.appendChild(
     createButtonGroup(
       [
+        { label: "Single Box", value: "single" },
         { label: "Box Stack", value: "boxes" },
-        { label: "Pyramid", value: "pyramid" },
-        { label: "Spheres", value: "spheres" },
+        { label: "Pyramid2D", value: "pyramid" },
+        { label: "Sphere Stack", value: "spheres" },
       ],
-      "boxes",
+      "single",
       (v) => {
         mode = v as Mode;
         reset();
@@ -129,7 +150,7 @@ export function init(container: HTMLElement) {
         key: "count",
         label: "Count",
         min: 4,
-        max: 20,
+        max: 24,
         step: 1,
         default: 12,
         restart: true,
@@ -139,7 +160,7 @@ export function init(container: HTMLElement) {
       const n = Math.round(Number(values.count) || 12);
       if (mode === "boxes") stackCount = n;
       else if (mode === "spheres") sphereCount = n;
-      else pyramidSize = Math.min(10, Math.max(2, n));
+      else if (mode === "pyramid") pyramidSize = Math.min(12, Math.max(2, n));
     },
   }) as SimControllerWithTick;
 

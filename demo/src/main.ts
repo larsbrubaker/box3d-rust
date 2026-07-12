@@ -13,6 +13,7 @@ const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
   tree: () => import("./demos/tree.ts"),
   bodies: () => import("./demos/bodies.ts"),
   stacking: () => import("./demos/stacking.ts"),
+  benchmark: () => import("./demos/benchmark.ts"),
   ragdolls: () => import("./demos/ragdolls.ts"),
   joints: () => import("./demos/joints.ts"),
   continuous: () => import("./demos/continuous.ts"),
@@ -81,7 +82,7 @@ function renderHome(container: HTMLElement) {
       </div>
 
       <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">
-        Live now <span class="badge-live">16 demos</span>
+        Live now <span class="badge-live">17 demos</span>
       </h2>
       <div class="feature-grid">
         <a href="#/math" class="feature-card">
@@ -136,7 +137,13 @@ function renderHome(container: HTMLElement) {
           <span class="card-icon">&#8801;</span>
           <span class="card-badge badge-live">LIVE</span>
           <h3>Stacking</h3>
-          <p>Vertical box stack from the scalar solver — settle under gravity.</p>
+          <p>Single Box, Box Stack, Pyramid2D, and Sphere Stack from the scalar solver.</p>
+        </a>
+        <a href="#/benchmark" class="feature-card">
+          <span class="card-icon">&#9881;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Benchmark</h3>
+          <p>Large Pyramid, Junkyard, and Falling Trees — browser-scaled from benchmarks.c.</p>
         </a>
         <a href="#/ragdolls" class="feature-card">
           <span class="card-icon">&#9823;</span>
@@ -207,7 +214,7 @@ function renderHome(container: HTMLElement) {
             <div class="stat-label">Port version</div>
           </div>
           <div class="stat">
-            <div class="stat-value">16</div>
+            <div class="stat-value">17</div>
             <div class="stat-label">Live demos</div>
           </div>
           <div class="stat">

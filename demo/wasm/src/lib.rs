@@ -3,6 +3,7 @@
 
 use wasm_bindgen::prelude::*;
 
+mod benchmark_demo;
 mod character_demo;
 mod continuous_demo;
 mod geometry_demo;

@@ -58,6 +58,22 @@ fn push_dynamic_box(
     density: f32,
     friction: f32,
 ) {
+    push_dynamic_box_ex(sim, x, y, z, hx, hy, hz, density, friction, 0.0, VEC3_ZERO);
+}
+
+fn push_dynamic_box_ex(
+    sim: &mut SimState,
+    x: f32,
+    y: f32,
+    z: f32,
+    hx: f32,
+    hy: f32,
+    hz: f32,
+    density: f32,
+    friction: f32,
+    rolling_resistance: f32,
+    angular_velocity: Vec3,
+) {
     let mut body_def = default_body_def();
     body_def.type_ = BodyType::Dynamic;
     body_def.position = Pos {
@@ -65,10 +81,12 @@ fn push_dynamic_box(
         y: y as _,
         z: z as _,
     };
+    body_def.angular_velocity = angular_velocity;
     let body_id = create_body(&mut sim.world, &body_def);
     let mut shape_def = default_shape_def();
     shape_def.density = density;
     shape_def.base_material.friction = friction;
+    shape_def.base_material.rolling_resistance = rolling_resistance;
     let hull = make_box_hull(hx, hy, hz);
     create_hull_shape(&mut sim.world, body_id, &shape_def, &hull.base);
     sim.bodies.push(SimBody {
@@ -274,10 +292,9 @@ pub fn sim_reset_compound() -> u32 {
     })
 }
 
-/// Stacking demo: vertical box stack (mirrors sample BoxStack, fewer boxes for the browser).
+/// Exact Single Box sample: cube half-extents 0.5 at y=0.5, ωy = 10.
 #[wasm_bindgen]
-pub fn sim_reset_stacking(count: u32) -> u32 {
-    let n = count.clamp(1, 24);
+pub fn sim_reset_single_box() -> u32 {
     SIM.with(|cell| {
         let mut sim = SimState {
             world: new_world(),
@@ -285,10 +302,45 @@ pub fn sim_reset_stacking(count: u32) -> u32 {
             grab: MouseGrab::default(),
         };
         add_ground(&mut sim, 20.0);
+        push_dynamic_box_ex(
+            &mut sim,
+            0.0,
+            0.5,
+            0.0,
+            0.5,
+            0.5,
+            0.5,
+            1.0,
+            0.3,
+            0.0,
+            Vec3 {
+                x: 0.0,
+                y: 10.0,
+                z: 0.0,
+            },
+        );
+        let total = sim.bodies.len() as u32;
+        *cell.borrow_mut() = Some(sim);
+        total
+    })
+}
+
+/// Box Stack sample (mirrors `BoxStack`, fewer boxes for the browser).
+#[wasm_bindgen]
+pub fn sim_reset_stacking(count: u32) -> u32 {
+    let n = count.clamp(1, 40);
+    SIM.with(|cell| {
+        let mut sim = SimState {
+            world: new_world(),
+            bodies: Vec::new(),
+            grab: MouseGrab::default(),
+        };
+        add_ground(&mut sim, 40.0);
         let a = 0.5f32;
         for i in 0..n {
             let y = 1.5 * a + 2.5 * a * i as f32;
-            push_dynamic_box(&mut sim, 0.0, y, 0.0, a, a, a, 1.0, 0.5);
+            // C BoxStack uses rollingResistance = 0.1 on each cube.
+            push_dynamic_box_ex(&mut sim, 0.0, y, 0.0, a, a, a, 1.0, 0.3, 0.1, VEC3_ZERO);
         }
         let total = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
@@ -296,21 +348,22 @@ pub fn sim_reset_stacking(count: u32) -> u32 {
     })
 }
 
-/// Pyramid2D stacking (motion-locked to XY plane). `size` is base row length (2–10).
+/// Pyramid2D stacking (motion-locked to XY plane). `size` is base row length (2–12).
+/// Matches C layout: `(-10 + 2*column + row) * a` with `a = 1`.
 #[wasm_bindgen]
 pub fn sim_reset_pyramid(size: u32) -> u32 {
-    let n = size.clamp(2, 10) as i32;
+    let n = size.clamp(2, 12) as i32;
     SIM.with(|cell| {
         let mut sim = SimState {
             world: new_world(),
             bodies: Vec::new(),
             grab: MouseGrab::default(),
         };
-        add_ground(&mut sim, 30.0);
-        let a = 0.75f32;
+        add_ground(&mut sim, 40.0);
+        let a = 1.0f32;
         for row in 0..n {
             for column in 0..(n - row) {
-                let x = (-0.5 * (n - row - 1) as f32 + column as f32) * 2.0 * a;
+                let x = (-10.0 + 2.0 * column as f32 + row as f32) * a;
                 let y = (1.5 + 2.5 * row as f32) * a;
                 push_dynamic_box_locked(&mut sim, x, y, 0.0, a, a, a);
             }
@@ -321,10 +374,11 @@ pub fn sim_reset_pyramid(size: u32) -> u32 {
     })
 }
 
-/// Sphere stack (sample SphereStack, capped for the browser).
+/// Sphere Stack sample (mirrors `SphereStack`, capped for the browser).
+/// C uses r = 0.5 and spacing `y += 3 * r`.
 #[wasm_bindgen]
 pub fn sim_reset_sphere_stack(count: u32) -> u32 {
-    let n = count.clamp(1, 20);
+    let n = count.clamp(1, 30);
     SIM.with(|cell| {
         let mut sim = SimState {
             world: new_world(),
@@ -332,11 +386,11 @@ pub fn sim_reset_sphere_stack(count: u32) -> u32 {
             grab: MouseGrab::default(),
         };
         add_ground(&mut sim, 15.0);
-        let r = 0.45f32;
+        let r = 0.5f32;
         let mut y = 1.5 * r;
         for _ in 0..n {
             push_dynamic_sphere(&mut sim, 0.0, y, 0.0, r, 1.0);
-            y += 2.0 * r + 0.05;
+            y += 3.0 * r;
         }
         let total = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
