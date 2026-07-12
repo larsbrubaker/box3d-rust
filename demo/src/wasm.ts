@@ -49,10 +49,34 @@ export interface Box3dWasm {
 
   joint_reset_chain(link_count: number): number;
   joint_reset_hinge(): number;
+  joint_reset_gear_lift(): number;
+  joint_reset_driving(): number;
   joint_set_motor(enabled: boolean, speed: number, torque: number): void;
+  joint_set_revolute_params(
+    flags: number,
+    lower_deg: number,
+    upper_deg: number,
+    motor_speed: number,
+    motor_torque: number,
+    hertz: number,
+    damping: number,
+    target_deg: number,
+  ): void;
+  joint_set_drive_input(throttle_x: number, throttle_y: number): void;
+  joint_set_drive_params(spin_speed: number, max_spin_torque: number): void;
   joint_step(dt: number, sub_steps: number): number;
   joint_poses(): Float32Array;
   joint_body_count(): number;
+  joint_chassis_pose(): Float32Array;
+  joint_terrain_wireframe(): Float32Array;
+  joint_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  joint_mouse_move(px: number, py: number, pz: number): void;
+  joint_mouse_up(): void;
+  joint_mouse_active(): boolean;
+  joint_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  joint_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  joint_counters(): Float32Array;
+  joint_debug_draw(flags: number): Float32Array;
 
   continuous_reset(continuous: boolean): number;
   continuous_set_enabled(continuous: boolean): void;

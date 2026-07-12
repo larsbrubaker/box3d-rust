@@ -10,6 +10,8 @@ mod height_field_demo;
 mod hull_demo;
 mod interact;
 mod joint_demo;
+mod joint_drive;
+mod joint_gear;
 mod manifold_demo;
 mod mesh_demo;
 mod query_demo;
