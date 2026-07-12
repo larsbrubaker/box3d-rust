@@ -11,7 +11,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Shapes", blurb: "Spheres, capsules, hulls", route: "bodies" },
   { name: "Stacking", blurb: "Jenga, Box Stack, Pyramid2D (planar), Sphere Stack", route: "stacking" },
   { name: "Joints", blurb: "Revolute, spherical, motor hinge", route: "joints" },
-  { name: "Continuous", blurb: "Fast bodies without tunneling", route: "continuous" },
+  { name: "Continuous", blurb: "Thin Wall, Bounce House, Bullet vs Stack", route: "continuous" },
   { name: "Events", blurb: "Contacts, sensors, hit events", route: "sensors" },
   { name: "Character", blurb: "BasicMover + Village walk", route: "character" },
   { name: "World", blurb: "Queries, gravity, large worlds", route: "queries" },

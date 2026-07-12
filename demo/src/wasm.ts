@@ -80,12 +80,10 @@ export interface Box3dWasm {
   joint_counters(): Float32Array;
   joint_debug_draw(flags: number): Float32Array;
 
-  continuous_reset(continuous: boolean): number;
-  continuous_set_enabled(continuous: boolean): void;
-  continuous_is_enabled(): boolean;
-  continuous_step(dt: number, sub_steps: number): number;
-  continuous_poses(): Float32Array;
-  continuous_status(): Float32Array;
+  sim_reset_thin_wall(): number;
+  sim_reset_bounce_house(): number;
+  sim_reset_bullet_vs_stack(): number;
+  sim_launch_bullet(): number;
 
   sensor_reset(): number;
   sensor_step(dt: number, sub_steps: number): number;

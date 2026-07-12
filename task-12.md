@@ -80,7 +80,8 @@ Still missing / partial vs C ~150 samples:
 - [ ] Remaining Joints (Bridge, Door, Wheel, Prismatic, …)
 - [ ] Remaining Benchmark (Rain, Wide/Many Pyramids, Chains, …)
 - [ ] Determinism readout on Falling Ragdolls
-- [ ] Remaining Bodies / Stacking / Continuous / Mesh / Manifold / Collision samples
+- [ ] Remaining Bodies / Stacking / Mesh / Manifold / Collision samples
+  (Continuous: Thin Wall, Bounce House, Bullet vs Stack now live)
 
 ## 4. Site polish
 

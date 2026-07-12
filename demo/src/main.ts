@@ -168,7 +168,7 @@ function renderHome(container: HTMLElement) {
           <span class="card-icon">&#9889;</span>
           <span class="card-badge badge-live">LIVE</span>
           <h3>Continuous</h3>
-          <p>Bullet vs thin wall — toggle CCD and watch tunneling.</p>
+          <p>Thin Wall, Bounce House, and Bullet vs Stack — CCD for fast bodies.</p>
         </a>
         <a href="#/sensors" class="feature-card">
           <span class="card-icon">&#9673;</span>
