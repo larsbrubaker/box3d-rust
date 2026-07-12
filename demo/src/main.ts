@@ -12,6 +12,7 @@ const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
   mesh: () => import("./demos/mesh.ts"),
   tree: () => import("./demos/tree.ts"),
   bodies: () => import("./demos/bodies.ts"),
+  compound: () => import("./demos/compound.ts"),
   stacking: () => import("./demos/stacking.ts"),
   benchmark: () => import("./demos/benchmark.ts"),
   ragdolls: () => import("./demos/ragdolls.ts"),
@@ -133,6 +134,12 @@ function renderHome(container: HTMLElement) {
           <h3>Bodies</h3>
           <p>Live <code>World::step</code> with gravity, collide, and contact solve.</p>
         </a>
+        <a href="#/compound" class="feature-card">
+          <span class="card-icon">&#9638;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Compound</h3>
+          <p>Simple / Spheres / Hulls / Village — compound shapes from the C samples.</p>
+        </a>
         <a href="#/stacking" class="feature-card">
           <span class="card-icon">&#8801;</span>
           <span class="card-badge badge-live">LIVE</span>
@@ -185,7 +192,7 @@ function renderHome(container: HTMLElement) {
           <span class="card-icon">&#9823;</span>
           <span class="card-badge badge-live">LIVE</span>
           <h3>Character</h3>
-          <p>WASD capsule mover on height-field terrain with jump/sprint.</p>
+          <p>BasicMover capsule with pogo ray, static capsules, and Village walk mode.</p>
         </a>
         <a href="#/roadmap" class="feature-card">
           <span class="card-icon">&#9776;</span>

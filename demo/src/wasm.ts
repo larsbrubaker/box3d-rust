@@ -97,6 +97,10 @@ export interface Box3dWasm {
   query_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
 
   sim_reset_compound(): number;
+  sim_reset_compound_simple(): number;
+  sim_reset_compound_spheres(): number;
+  sim_reset_compound_hulls(): number;
+  sim_reset_village(grid_count: number): number;
   sim_reset_pyramid(size: number): number;
   sim_reset_sphere_stack(count: number): number;
 
@@ -140,6 +144,7 @@ export interface Box3dWasm {
   terrain_wireframe(): Float32Array;
 
   character_reset(): number;
+  character_reset_ex(mode: number, grid_count: number): number;
   character_set_input(
     throttle_x: number,
     throttle_y: number,
@@ -153,6 +158,7 @@ export interface Box3dWasm {
   character_step(dt: number, sub_steps: number): number;
   character_poses(): Float32Array;
   character_status(): Float32Array;
+  character_debug_lines(): Float32Array;
   character_terrain_wireframe(): Float32Array;
 }
 

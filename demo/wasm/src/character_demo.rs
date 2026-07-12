@@ -1,18 +1,28 @@
-//! Character mover demo — capsule mover on height-field terrain (sample BasicMover, simplified).
+//! Character / Mover — capsule mover toward BasicMover fidelity (`sample_character.cpp`).
+//!
+//! Scene modes:
+//! - `0` BasicMover-style: wave height field, static capsules, boxes, dynamic sphere
+//! - `1` Village walk: browser-scaled compound village tiles + mover (C Village embeds a mover)
 
 use crate::vis::{pos, push_poses, sphere, VisBody, KIND_CAPSULE, POSE_STRIDE};
 use box3d_rust::body::create_body;
-use box3d_rust::geometry::{Capsule, CollisionPlane};
+use box3d_rust::compound::{
+    create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundSphereDef,
+};
+use box3d_rust::geometry::{default_surface_material, Capsule, CollisionPlane, Sphere};
 use box3d_rust::height_field::{
     create_wave, get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
 };
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
-    dot, get_length_and_normalize, length, length_squared, max_float, mul_sv, offset_pos, sub_pos,
-    Vec3, VEC3_AXIS_Y, VEC3_ZERO,
+    dot, get_length_and_normalize, length, length_squared, make_quat_from_axis_angle, max_float,
+    mul_sv, offset_pos, sub_pos, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::mover::{clip_vector, solve_planes};
-use box3d_rust::shape::{create_height_field_shape, create_hull_shape, create_sphere_shape};
+use box3d_rust::shape::{
+    create_capsule_shape, create_compound_shape, create_height_field_shape, create_hull_shape,
+    create_sphere_shape,
+};
 use box3d_rust::types::{
     default_body_def, default_query_filter, default_shape_def, default_world_def, BodyType,
 };
@@ -33,26 +43,53 @@ thread_local! {
     static STATE: RefCell<Option<CharacterState>> = const { RefCell::new(None) };
 }
 
+struct DemoRng(u32);
+
+impl DemoRng {
+    fn next_u32(&mut self) -> u32 {
+        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
+        self.0
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
+    }
+
+    fn range(&mut self, lo: f32, hi: f32) -> f32 {
+        lo + (hi - lo) * self.next_f32()
+    }
+
+    fn vec3_range(&mut self, lo: Vec3, hi: Vec3) -> Vec3 {
+        Vec3 {
+            x: self.range(lo.x, hi.x),
+            y: self.range(lo.y, hi.y),
+            z: self.range(lo.z, hi.z),
+        }
+    }
+}
+
 struct CharacterState {
     world: World,
-    /// Static scenery (boxes) + optional dynamic sphere for poses.
+    /// Static scenery + dynamic props for poses.
     bodies: Vec<VisBody>,
-    hf: HeightFieldData,
+    hf: Option<HeightFieldData>,
     hf_origin: Vec3,
-    mover_pos: box3d_rust::math_functions::Pos,
+    mover_pos: Pos,
     velocity: Vec3,
     capsule: Capsule,
     pogo_velocity: f32,
     on_ground: bool,
     sprint: bool,
-    /// Throttle: x = forward/back, y = strafe
     throttle_x: f32,
     throttle_y: f32,
     jump: bool,
     want_sprint: bool,
-    /// Camera-relative forward/right on XZ (unit-ish).
     forward: Vec3,
     right: Vec3,
+    /// Last pogo ray segment for debug draw: origin → end (or hit).
+    pogo_origin: Vec3,
+    pogo_end: Vec3,
+    pogo_hit: bool,
 }
 
 fn with_state<R>(f: impl FnOnce(&mut CharacterState) -> R) -> R {
@@ -74,12 +111,28 @@ fn new_world() -> World {
     World::new(&def)
 }
 
+fn mover_capsule() -> Capsule {
+    Capsule {
+        center1: Vec3 {
+            x: 0.0,
+            y: -0.5,
+            z: 0.0,
+        },
+        center2: Vec3 {
+            x: 0.0,
+            y: 0.5,
+            z: 0.0,
+        },
+        radius: 0.3,
+    }
+}
+
 fn solve_move(state: &mut CharacterState, time_step: f32) {
     if time_step <= 0.0 {
         return;
     }
 
-    // Friction
+    // Friction (XZ plane)
     let speed = length(state.velocity);
     if speed < MIN_SPEED {
         state.velocity.x = 0.0;
@@ -127,7 +180,7 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
 
     state.velocity.y -= MOVER_GRAVITY * time_step;
 
-    // Pogo ground probe
+    // Pogo ground probe (visualized as the ground ray)
     let pogo_rest_length = 3.0 * state.capsule.radius;
     let ray_length = pogo_rest_length + state.capsule.radius;
     let ray_origin = offset_pos(state.mover_pos, state.capsule.center1);
@@ -135,12 +188,21 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
     let filter = default_query_filter();
     let ray_result = world_cast_ray_closest(&state.world, ray_origin, ray_translation, &filter);
 
+    state.pogo_origin = Vec3 {
+        x: ray_origin.x as f32,
+        y: ray_origin.y as f32,
+        z: ray_origin.z as f32,
+    };
     if !ray_result.hit {
         state.on_ground = false;
         state.pogo_velocity = 0.0;
+        state.pogo_hit = false;
+        state.pogo_end = state.pogo_origin + ray_translation;
     } else {
         state.on_ground = true;
+        state.pogo_hit = true;
         let pogo_current_length = ray_result.fraction * ray_length;
+        state.pogo_end = state.pogo_origin + mul_sv(ray_result.fraction, ray_translation);
         let zeta = 0.7f32;
         let hertz = 4.0f32;
         let omega = 2.0 * std::f32::consts::PI * hertz;
@@ -212,7 +274,6 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
         }
     }
 
-    // Clip velocity against planes from final position
     let mut planes = [CollisionPlane::default(); PLANE_CAPACITY];
     let mut plane_count = 0usize;
     world_collide_mover(
@@ -236,66 +297,56 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
             true
         },
     );
-    // Re-solve once so push flags are set for clipping
     let _ = solve_planes(VEC3_ZERO, &mut planes[..plane_count]);
     state.velocity = clip_vector(state.velocity, &planes[..plane_count]);
 }
 
-/// Reset character scene on a wave height field with a few obstacles.
-#[wasm_bindgen]
-pub fn character_reset() -> u32 {
-    STATE.with(|cell| {
-        let mut world = new_world();
-        let rows = 33;
-        let cols = 33;
-        let scale = Vec3 {
-            x: 1.0,
-            y: 1.2,
-            z: 1.0,
-        };
-        let hf = create_wave(rows, cols, scale, 0.08, 0.04, false);
-        let hf_origin = Vec3 {
-            x: -0.5 * scale.x * (cols - 1) as f32,
-            y: 0.0,
-            z: -0.5 * scale.z * (rows - 1) as f32,
-        };
+fn build_basic_mover(world: &mut World, bodies: &mut Vec<VisBody>) -> (HeightFieldData, Vec3, Pos) {
+    // Height field offset like BasicMover (`position = {20,0,0}`), smaller for the browser.
+    let rows = 41;
+    let cols = 41;
+    let scale = Vec3 {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+    };
+    let hf = create_wave(rows, cols, scale, 0.02, 0.04, true);
+    let hf_origin = Vec3 {
+        x: 20.0 - 0.5 * scale.x * (cols - 1) as f32,
+        y: 0.0,
+        z: -0.5 * scale.z * (rows - 1) as f32,
+    };
 
-        let mut ground_def = default_body_def();
-        ground_def.type_ = BodyType::Static;
-        ground_def.position = pos(hf_origin.x, hf_origin.y, hf_origin.z);
-        let ground = create_body(&mut world, &ground_def);
-        create_height_field_shape(&mut world, ground, &default_shape_def(), &hf);
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    ground_def.position = pos(hf_origin.x, hf_origin.y, hf_origin.z);
+    let ground = create_body(world, &ground_def);
+    create_height_field_shape(world, ground, &default_shape_def(), &hf);
 
-        let mut bodies = Vec::new();
+    // Obstacle boxes (stand-in for the C test_map01 mesh corners)
+    for (bx, by, bz, hx, hy, hz) in [
+        (4.0f32, 1.0, 14.0, 1.0, 1.0, 1.0),
+        (4.0, 1.0, 13.95, 1.0, 1.0, 1.0),
+        (5.8, 1.0, 13.7, 1.0, 1.0, 1.0),
+        (-3.0, 0.8, 2.0, 1.2, 0.8, 0.6),
+        (2.0, 0.5, -5.0, 2.0, 0.5, 0.5),
+        (7.0, 0.25, -3.0, 0.5, 0.25, 0.5),
+    ] {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        body_def.position = pos(bx, by, bz);
+        let body = create_body(world, &body_def);
+        let hull = make_box_hull(hx, hy, hz);
+        create_hull_shape(world, body, &default_shape_def(), &hull.base);
+        bodies.push(VisBody::box_body(body.index1 - 1, hx, hy, hz));
+    }
 
-        // Obstacle boxes
-        for (bx, by, bz, hx, hy, hz) in [
-            (4.0f32, 1.0, 4.0, 1.0, 1.0, 1.0),
-            (-3.0, 0.8, 2.0, 1.2, 0.8, 0.6),
-            (2.0, 0.5, -5.0, 2.0, 0.5, 0.5),
-            (-6.0, 1.0, -3.0, 0.8, 1.0, 0.8),
-        ] {
-            let mut body_def = default_body_def();
-            body_def.type_ = BodyType::Static;
-            body_def.position = pos(bx, by, bz);
-            let body = create_body(&mut world, &body_def);
-            let hull = make_box_hull(hx, hy, hz);
-            create_hull_shape(&mut world, body, &default_shape_def(), &hull.base);
-            bodies.push(VisBody::box_body(body.index1 - 1, hx, hy, hz));
-        }
-
-        // Dynamic sphere to shove
-        {
-            let mut body_def = default_body_def();
-            body_def.type_ = BodyType::Dynamic;
-            body_def.position = pos(1.0, 3.0, 1.0);
-            let body = create_body(&mut world, &body_def);
-            let mut shape_def = default_shape_def();
-            shape_def.density = 1.0;
-            create_sphere_shape(&mut world, body, &shape_def, &sphere(0.4));
-            bodies.push(VisBody::sphere_body(body.index1 - 1, 0.4));
-        }
-
+    // Enemy capsule (pushable wall feel) — BasicMover violet-red
+    {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        body_def.position = pos(0.0, 1.4, 6.0);
+        let body = create_body(world, &body_def);
         let capsule = Capsule {
             center1: Vec3 {
                 x: 0.0,
@@ -309,13 +360,220 @@ pub fn character_reset() -> u32 {
             },
             radius: 0.3,
         };
+        create_capsule_shape(world, body, &default_shape_def(), &capsule);
+        bodies.push(VisBody::capsule_body(body.index1 - 1, &capsule));
+    }
+
+    // Friendly capsule (filter group in C; here still collides, green visual)
+    {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        body_def.position = pos(0.0, 1.4, 5.0);
+        let body = create_body(world, &body_def);
+        let capsule = Capsule {
+            center1: Vec3 {
+                x: 0.0,
+                y: -0.5,
+                z: 0.0,
+            },
+            center2: Vec3 {
+                x: 0.0,
+                y: 0.5,
+                z: 0.0,
+            },
+            radius: 0.3,
+        };
+        create_capsule_shape(world, body, &default_shape_def(), &capsule);
+        bodies.push(VisBody::capsule_body(body.index1 - 1, &capsule));
+    }
+
+    // Dynamic sphere to shove
+    {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.position = pos(7.0, 5.0, 0.0);
+        let body = create_body(world, &body_def);
+        let mut shape_def = default_shape_def();
+        shape_def.density = 1.0;
+        create_sphere_shape(world, body, &shape_def, &sphere(0.5));
+        bodies.push(VisBody::sphere_body(body.index1 - 1, 0.5));
+    }
+
+    let start = pos(7.5, 0.75, 9.0);
+    (hf, hf_origin, start)
+}
+
+fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32) -> Pos {
+    let a = 4.0f32;
+    let mut rng = DemoRng(0xB111_A6E7);
+    let material = default_surface_material();
+    let box_hull = make_box_hull(a, 0.5 * a, a);
+
+    let hull_count = (grid * grid) as usize;
+    let prop_capacity = hull_count / 8 + 1;
+    let mut capsules: Vec<CompoundCapsuleDef> = Vec::with_capacity(prop_capacity);
+    let mut spheres: Vec<CompoundSphereDef> = Vec::with_capacity(prop_capacity);
+    let mut hull_transforms: Vec<Transform> = Vec::with_capacity(hull_count);
+
+    let mut transform = Transform {
+        p: VEC3_ZERO,
+        q: QUAT_IDENTITY,
+    };
+
+    for i in 0..grid {
+        transform.p.x = (2.0 * i as f32 - grid as f32) * a;
+        for j in 0..grid {
+            transform.p.z = (2.0 * j as f32 - grid as f32) * a;
+            transform.p.y = rng.range(-0.25, 0.125) * a;
+
+            if (i & 1) != 0 && (j & 1) != 0 {
+                let base = transform.p;
+                let p1 = base
+                    + rng.vec3_range(
+                        Vec3 {
+                            x: -a,
+                            y: a,
+                            z: -a,
+                        },
+                        Vec3 {
+                            x: a,
+                            y: 2.0 * a,
+                            z: a,
+                        },
+                    );
+                let p2 = base
+                    + rng.vec3_range(
+                        Vec3 {
+                            x: -a,
+                            y: a,
+                            z: -a,
+                        },
+                        Vec3 {
+                            x: a,
+                            y: 2.0 * a,
+                            z: a,
+                        },
+                    );
+                let radius = rng.range(0.1, 0.5);
+                if capsules.len() < spheres.len() {
+                    if capsules.len() < prop_capacity {
+                        capsules.push(CompoundCapsuleDef {
+                            capsule: Capsule {
+                                center1: p1,
+                                center2: p2,
+                                radius,
+                            },
+                            material,
+                        });
+                    }
+                } else if spheres.len() < prop_capacity {
+                    spheres.push(CompoundSphereDef {
+                        sphere: Sphere {
+                            center: p1,
+                            radius,
+                        },
+                        material,
+                    });
+                }
+            }
+
+            hull_transforms.push(transform);
+        }
+    }
+
+    let hulls: Vec<CompoundHullDef<'_>> = hull_transforms
+        .iter()
+        .map(|xf| CompoundHullDef {
+            hull: &box_hull.base,
+            transform: *xf,
+            material,
+        })
+        .collect();
+
+    let compound = create_compound(&CompoundDef {
+        capsules: &capsules,
+        hulls: &hulls,
+        spheres: &spheres,
+        ..Default::default()
+    })
+    .expect("village compound");
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Static;
+    body_def.position = Pos {
+        x: (-1.0) as _,
+        y: (-0.5) as _,
+        z: 2.0 as _,
+    };
+    body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, -1.15 * std::f32::consts::PI);
+    let ground = create_body(world, &body_def);
+    create_compound_shape(world, ground, &default_shape_def(), &compound);
+
+    let parent_index = ground.index1 - 1;
+    for xf in &hull_transforms {
+        bodies.push(VisBody::box_local(
+            parent_index,
+            a,
+            0.5 * a,
+            a,
+            *xf,
+        ));
+    }
+    for s in &spheres {
+        bodies.push(VisBody::sphere_local(
+            parent_index,
+            s.sphere.radius,
+            Transform {
+                p: s.sphere.center,
+                q: QUAT_IDENTITY,
+            },
+        ));
+    }
+    for c in &capsules {
+        // Centers are compound-local; body world transform is applied in push_poses.
+        bodies.push(VisBody {
+            body_index: parent_index,
+            kind: KIND_CAPSULE,
+            params: [
+                c.capsule.center1.x,
+                c.capsule.center1.y,
+                c.capsule.center1.z,
+                c.capsule.center2.x,
+                c.capsule.center2.y,
+                c.capsule.center2.z,
+                c.capsule.radius,
+            ],
+            local: None,
+        });
+    }
+
+    pos(0.0, 10.0, 0.0)
+}
+
+/// Reset character scene.
+/// `mode`: 0 = BasicMover-style, 1 = Village walk (`grid_count` used only for village).
+#[wasm_bindgen]
+pub fn character_reset_ex(mode: u32, grid_count: u32) -> u32 {
+    STATE.with(|cell| {
+        let mut world = new_world();
+        let mut bodies = Vec::new();
+        let capsule = mover_capsule();
+
+        let (hf, hf_origin, start) = if mode == 1 {
+            let grid = grid_count.clamp(8, 16) as i32;
+            let start = build_village_ground(&mut world, &mut bodies, grid);
+            (None, VEC3_ZERO, start)
+        } else {
+            let (hf, origin, start) = build_basic_mover(&mut world, &mut bodies);
+            (Some(hf), origin, start)
+        };
 
         let state = CharacterState {
             world,
             bodies,
             hf,
             hf_origin,
-            mover_pos: pos(0.0, 4.0, 0.0),
+            mover_pos: start,
             velocity: VEC3_ZERO,
             capsule,
             pogo_velocity: 0.0,
@@ -335,11 +593,20 @@ pub fn character_reset() -> u32 {
                 y: 0.0,
                 z: 0.0,
             },
+            pogo_origin: VEC3_ZERO,
+            pogo_end: VEC3_ZERO,
+            pogo_hit: false,
         };
-        let n = state.bodies.len() as u32 + 1; // + mover
+        let n = state.bodies.len() as u32 + 1;
         *cell.borrow_mut() = Some(state);
         n
     })
+}
+
+/// Reset BasicMover-style scene (default).
+#[wasm_bindgen]
+pub fn character_reset() -> u32 {
+    character_reset_ex(0, 10)
 }
 
 /// Set WASD throttle, jump edge, sprint, and camera-relative axes (XZ).
@@ -402,13 +669,12 @@ pub fn character_step(dt: f32, sub_steps: i32) -> u32 {
     })
 }
 
-/// Poses: static boxes + dynamic sphere, then the mover capsule (kind 2).
+/// Poses: scenery bodies, then the mover capsule (kind 2).
 #[wasm_bindgen]
 pub fn character_poses() -> Vec<f32> {
     with_state(|state| {
         let mut out = Vec::new();
         push_poses(&state.world, &state.bodies, &mut out);
-        // Mover capsule — kinematic visual (not a rigid body)
         out.push(state.mover_pos.x as f32);
         out.push(state.mover_pos.y as f32);
         out.push(state.mover_pos.z as f32);
@@ -445,13 +711,44 @@ pub fn character_status() -> Vec<f32> {
     })
 }
 
+/// Debug overlay segments: pogo ray (6 floats) + velocity (6 floats) + hit flag.
+/// Layout: `[ox,oy,oz, ex,ey,ez,  vx0,vy0,vz0, vx1,vy1,vz1, hit]`
+#[wasm_bindgen]
+pub fn character_debug_lines() -> Vec<f32> {
+    with_state(|state| {
+        let p = Vec3 {
+            x: state.mover_pos.x as f32,
+            y: state.mover_pos.y as f32,
+            z: state.mover_pos.z as f32,
+        };
+        vec![
+            state.pogo_origin.x,
+            state.pogo_origin.y,
+            state.pogo_origin.z,
+            state.pogo_end.x,
+            state.pogo_end.y,
+            state.pogo_end.z,
+            p.x,
+            p.y,
+            p.z,
+            p.x + state.velocity.x,
+            p.y + state.velocity.y,
+            p.z + state.velocity.z,
+            if state.pogo_hit { 1.0 } else { 0.0 },
+        ]
+    })
+}
+
 #[wasm_bindgen]
 pub fn character_terrain_wireframe() -> Vec<f32> {
     with_state(|state| {
         let mut out = Vec::new();
-        let count = get_height_field_triangle_count(&state.hf);
+        let Some(hf) = state.hf.as_ref() else {
+            return out;
+        };
+        let count = get_height_field_triangle_count(hf);
         for i in 0..count {
-            let tri = get_height_field_triangle(&state.hf, i);
+            let tri = get_height_field_triangle(hf, i);
             let verts = tri.vertices;
             for e in 0..3 {
                 let a = verts[e];

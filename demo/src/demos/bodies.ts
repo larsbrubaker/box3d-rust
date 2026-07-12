@@ -1,7 +1,8 @@
-// Bodies — HelloWorld fall + compound ground scene, with Samples App Info panel.
+// Bodies — HelloWorld fall with Samples App Info panel.
+// Compound gallery lives under #/compound.
 
 import * as THREE from "three";
-import { createButtonGroup, createInfoBox } from "../controls.ts";
+import { createInfoBox } from "../controls.ts";
 import {
   attachInteraction,
   type SimControllerWithTick,
@@ -13,15 +14,13 @@ import { applyBodyColor, DemoScene, makeBodyMaterial } from "../three-scene.ts";
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
 
-type Mode = "bodies" | "compound";
-
 export function init(container: HTMLElement) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Bodies",
-    "Live <code>World::step</code>: HelloWorld hulls/spheres, or a compound-shape ground " +
-      "with falling bodies (mirrors <code>sample_compound</code> Simple).",
+    "Live <code>World::step</code>: HelloWorld hulls and spheres under gravity " +
+      "(compound gallery lives under <a href=\"#/compound\">Compound</a>).",
     "Drag body · Shift spawn · Ctrl delete · P/O/R",
     wasm.version(),
     { category: "Bodies", samplesShell: true },
@@ -29,18 +28,14 @@ export function init(container: HTMLElement) {
 
   controls.appendChild(
     createInfoBox(
-      "Compound mode builds a static multi-hull compound via <code>create_compound</code> / " +
-        "<code>create_compound_shape</code>, then drops spheres onto it.",
+      "Pick and fling dynamic bodies. Compound Simple / Village scenes are in the Compound category.",
     ),
   );
 
-  let mode: Mode = "bodies";
-
-  const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 18 });
+  const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 18, shadowExtent: 28 });
   const meshes: THREE.Object3D[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
-  // Shared materials per body state; colorized each frame from pose bodyType/awake.
   const staticMat = makeBodyMaterial(0, true);
   const dynamicMat = makeBodyMaterial(2, true);
   const sleepMat = makeBodyMaterial(2, false);
@@ -62,23 +57,8 @@ export function init(container: HTMLElement) {
 
   function reset() {
     clearMeshes();
-    if (mode === "bodies") wasm.sim_reset_bodies();
-    else wasm.sim_reset_compound();
+    wasm.sim_reset_bodies();
   }
-
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Hello World", value: "bodies" },
-        { label: "Compound", value: "compound" },
-      ],
-      "bodies",
-      (v) => {
-        mode = v as Mode;
-        reset();
-      },
-    ),
-  );
 
   const ctrl = attachInteraction({
     wasm,
@@ -112,8 +92,7 @@ export function init(container: HTMLElement) {
       let mesh = meshes[i] as THREE.Mesh | undefined;
       const wantSphere = kind === 1;
       const wantCapsule = kind === 2;
-      const mat =
-        bodyType === 0 ? staticMat : awake ? dynamicMat : sleepMat;
+      const mat = bodyType === 0 ? staticMat : awake ? dynamicMat : sleepMat;
       applyBodyColor(mat, bodyType, awake);
 
       if (wantCapsule) {
@@ -147,10 +126,7 @@ export function init(container: HTMLElement) {
       ) {
         if (mesh) {
           demo.content.remove(mesh);
-          if (
-            mesh.geometry !== boxGeo &&
-            mesh.geometry !== sphereGeo
-          ) {
+          if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) {
             mesh.geometry.dispose();
           }
         }

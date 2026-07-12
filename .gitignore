@@ -6,3 +6,6 @@ demo/public/pkg/
 nul
 .cursor/
 bun.lock
+
+.worktrees/
+
