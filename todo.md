@@ -23,12 +23,6 @@ The C samples app has ~90 samples with mouse-drag, pause/single-step, tuning
 panels, and debug overlays; our 17 demos play like a viewer, not a playground.
 task-12 is the whole gap, ordered so the shared interaction layer lands first.
 
-## Benchmarks
-
-- [ ] Port `benchmark/` scenes as criterion benches (informs whether the
-      pooled manifold allocator or SIMD ever become worth it — both stay out
-      until benches justify them and bit-exactness is preserved)
-
 ## Release readiness
 
 The crate is functionally complete. `0.1.0` is published on crates.io

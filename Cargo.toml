@@ -40,6 +40,23 @@ double-precision = []
 [dependencies]
 
 [dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "large_pyramid"
+harness = false
+
+[[bench]]
+name = "joint_grid"
+harness = false
+
+[[bench]]
+name = "many_pyramids"
+harness = false
+
+[[bench]]
+name = "junkyard"
+harness = false
 
 # Port-idiomatic style: allow Clippy lints that conflict with faithful C-shaped code.
 [workspace.lints.clippy]
