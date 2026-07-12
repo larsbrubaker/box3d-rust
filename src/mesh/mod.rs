@@ -31,9 +31,9 @@ pub use factory::{
 };
 pub use query::{collide_mover_and_mesh, get_mesh_triangle, overlap_mesh, query_mesh};
 pub use types::{
-    get_mesh_flags, get_mesh_material_indices, get_mesh_nodes, get_mesh_triangles,
-    get_mesh_vertices, Mesh, MeshData, MeshDef, MeshNode, MeshTriangle, ALL_CONCAVE_EDGES,
-    ALL_FLAT_EDGES, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3, FLAT_EDGE1, FLAT_EDGE2,
-    FLAT_EDGE3, INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3, LEAF_NODE,
-    MESH_DATA_SIZE, MESH_NODE_SIZE, MESH_STACK_SIZE, MESH_TRIANGLE_SIZE, MESH_VERSION,
+    convert_bytes_to_mesh, get_mesh_flags, get_mesh_material_indices, get_mesh_nodes,
+    get_mesh_triangles, get_mesh_vertices, Mesh, MeshData, MeshDef, MeshNode, MeshTriangle,
+    ALL_CONCAVE_EDGES, ALL_FLAT_EDGES, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3, FLAT_EDGE1,
+    FLAT_EDGE2, FLAT_EDGE3, INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3,
+    LEAF_NODE, MESH_DATA_SIZE, MESH_NODE_SIZE, MESH_STACK_SIZE, MESH_TRIANGLE_SIZE, MESH_VERSION,
 };

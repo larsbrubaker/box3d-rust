@@ -27,8 +27,9 @@ pub use factory::{create_grid, create_wave, dump_height_data, load_height_field}
 pub use query::{collide_mover_and_height_field, overlap_height_field, query_height_field};
 pub use triangle::{get_height_field_material, get_height_field_triangle};
 pub use types::{
-    get_height_field_compressed_heights, get_height_field_flags, get_height_field_material_indices,
-    get_height_field_triangle_count, HeightFieldData, HeightFieldDef, CONCAVE_EDGE1, CONCAVE_EDGE2,
-    CONCAVE_EDGE3, HEIGHT_FIELD_DATA_SIZE, HEIGHT_FIELD_HOLE, HEIGHT_FIELD_VERSION,
-    INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3,
+    convert_bytes_to_height_field, get_height_field_compressed_heights, get_height_field_flags,
+    get_height_field_material_indices, get_height_field_triangle_count, HeightFieldData,
+    HeightFieldDef, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3, HEIGHT_FIELD_DATA_SIZE,
+    HEIGHT_FIELD_HOLE, HEIGHT_FIELD_VERSION, INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2,
+    INVERSE_CONCAVE_EDGE3,
 };

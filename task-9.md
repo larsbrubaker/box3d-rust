@@ -12,12 +12,11 @@ reproduce states exactly.
 Port order matters: snapshot first (replay bootstraps from a snapshot), then
 op capture, then replay.
 
-## Snapshots (world_snapshot.c)
+## Snapshots (world_snapshot.c) — DONE
 
-- [ ] World state serialization (bodies, shapes, joints, contacts, islands,
-      solver sets, id pools — the C layout, adapted to Vec-backed pools)
-- [ ] Deserialization that reconstructs an identical stepping world
-      (snapshot → step N → hash equals original → step N → hash)
+World state serialization / deserialization landed in `src/recording/`:
+field-by-field format adapted to Vec-backed pools, geometry registry interning,
+`hash_world_state`, and round-trip / step-hash tests in `recording_tests.rs`.
 
 ## Recording (recording.c, recording_ops.inl)
 
@@ -36,3 +35,4 @@ op capture, then replay.
 
 - [ ] Port `test/test_recording.c` module by module alongside the above
       (it covers op round-trips per subsystem — body, shape, joint, world)
+      Snapshot fidelity tests already land in `recording_tests.rs`.

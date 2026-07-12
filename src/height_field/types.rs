@@ -137,6 +137,119 @@ fn write_u64_le(buf: &mut Vec<u8>, v: u64) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
 
+fn read_u64_le(buf: &[u8], off: usize) -> u64 {
+    u64::from_le_bytes(buf[off..off + 8].try_into().unwrap())
+}
+
+fn read_u32_le(buf: &[u8], off: usize) -> u32 {
+    u32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+}
+
+fn read_i32_le(buf: &[u8], off: usize) -> i32 {
+    read_u32_le(buf, off) as i32
+}
+
+fn read_u16_le(buf: &[u8], off: usize) -> u16 {
+    u16::from_le_bytes(buf[off..off + 2].try_into().unwrap())
+}
+
+fn read_f32_le(buf: &[u8], off: usize) -> f32 {
+    f32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+}
+
+fn read_vec3_at(buf: &[u8], off: usize) -> Vec3 {
+    Vec3 {
+        x: read_f32_le(buf, off),
+        y: read_f32_le(buf, off + 4),
+        z: read_f32_le(buf, off + 8),
+    }
+}
+
+fn read_aabb_at(buf: &[u8], off: usize) -> Aabb {
+    Aabb {
+        lower_bound: read_vec3_at(buf, off),
+        upper_bound: read_vec3_at(buf, off + 12),
+    }
+}
+
+/// Restore a height field from a contiguous blob. (inverse of [`HeightFieldData::to_bytes`])
+pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
+    if bytes.len() < HEIGHT_FIELD_DATA_SIZE {
+        return None;
+    }
+    let version = read_u64_le(bytes, 0);
+    if version != HEIGHT_FIELD_VERSION {
+        return None;
+    }
+    let byte_count = read_i32_le(bytes, 8);
+    if byte_count < HEIGHT_FIELD_DATA_SIZE as i32 || bytes.len() != byte_count as usize {
+        return None;
+    }
+    let hash = read_u32_le(bytes, 12);
+    let aabb = read_aabb_at(bytes, 16);
+    let min_height = read_f32_le(bytes, 40);
+    let max_height = read_f32_le(bytes, 44);
+    let height_scale = read_f32_le(bytes, 48);
+    let scale = read_vec3_at(bytes, 52);
+    let column_count = read_i32_le(bytes, 64);
+    let row_count = read_i32_le(bytes, 68);
+    let heights_offset = read_i32_le(bytes, 72);
+    let material_offset = read_i32_le(bytes, 76);
+    let flags_offset = read_i32_le(bytes, 80);
+    let clockwise = bytes[84] != 0;
+    let padding = [bytes[85], bytes[86], bytes[87]];
+
+    if column_count < 0 || row_count < 0 {
+        return None;
+    }
+    let height_count = (column_count as usize).checked_mul(row_count as usize)?;
+    let cell_count = ((column_count - 1).max(0) as usize)
+        .checked_mul((row_count - 1).max(0) as usize)?;
+
+    let hoff = heights_offset as usize;
+    if hoff + height_count * 2 > bytes.len() {
+        return None;
+    }
+    let mut compressed_heights = Vec::with_capacity(height_count);
+    for i in 0..height_count {
+        compressed_heights.push(read_u16_le(bytes, hoff + i * 2));
+    }
+
+    let moff = material_offset as usize;
+    if moff + cell_count > bytes.len() {
+        return None;
+    }
+    let material_indices = bytes[moff..moff + cell_count].to_vec();
+
+    let foff = flags_offset as usize;
+    let flag_count = cell_count * 2; // two triangles per cell
+    if foff + flag_count > bytes.len() {
+        return None;
+    }
+    let flags = bytes[foff..foff + flag_count].to_vec();
+
+    Some(HeightFieldData {
+        version,
+        byte_count,
+        hash,
+        aabb,
+        min_height,
+        max_height,
+        height_scale,
+        scale,
+        column_count,
+        row_count,
+        heights_offset,
+        material_offset,
+        flags_offset,
+        clockwise,
+        padding,
+        compressed_heights,
+        material_indices,
+        flags,
+    })
+}
+
 fn write_u32_le(buf: &mut Vec<u8>, v: u32) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -186,6 +299,11 @@ fn write_header(buf: &mut Vec<u8>, h: &HeightFieldData, hash_override: Option<u3
 }
 
 impl HeightFieldData {
+    /// Restore from a contiguous blob. (inverse of [`to_bytes`])
+    pub fn from_bytes(bytes: &[u8]) -> Option<HeightFieldData> {
+        convert_bytes_to_height_field(bytes)
+    }
+
     /// Serialize to the C contiguous trailing-blob layout (for hash parity).
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_bytes_with_hash(self.hash)
