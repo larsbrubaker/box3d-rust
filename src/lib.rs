@@ -11,8 +11,80 @@
 //! Box3D / box2d-rust), not a Rust-ergonomic wrapper. A thin ergonomic layer may be
 //! considered after 0.1 if downstream users ask for one.
 //!
-//! Enable the `double-precision` feature to mirror upstream `BOX3D_DOUBLE_PRECISION`
-//! (large-world mode). See the repository README for status and a quick-start.
+//! # Quick start
+//!
+//! Add the crate, create a [`world::World`], attach bodies and shapes, then step:
+//!
+//! ```rust
+//! use box3d_rust::body::create_body;
+//! use box3d_rust::geometry::Sphere;
+//! use box3d_rust::hull::make_box_hull;
+//! use box3d_rust::shape::{create_hull_shape, create_sphere_shape};
+//! use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
+//! use box3d_rust::world::World;
+//! use box3d_rust::{Pos, VEC3_ZERO};
+//!
+//! let mut world = World::new(&default_world_def());
+//!
+//! let mut ground_def = default_body_def();
+//! ground_def.type_ = BodyType::Static;
+//! let ground = create_body(&mut world, &ground_def);
+//!
+//! let mut ball_def = default_body_def();
+//! ball_def.type_ = BodyType::Dynamic;
+//! ball_def.position = Pos {
+//!     x: 0.0 as _,
+//!     y: 0.5 as _,
+//!     z: 0.0 as _,
+//! };
+//! let ball = create_body(&mut world, &ball_def);
+//!
+//! let shape_def = default_shape_def();
+//! let ground_hull = make_box_hull(5.0, 0.5, 5.0);
+//! create_hull_shape(&mut world, ground, &shape_def, &ground_hull.base);
+//!
+//! let mut ball_shape = default_shape_def();
+//! ball_shape.density = 1.0;
+//! create_sphere_shape(
+//!     &mut world,
+//!     ball,
+//!     &ball_shape,
+//!     &Sphere {
+//!         center: VEC3_ZERO,
+//!         radius: 0.5,
+//!     },
+//! );
+//!
+//! // 60 Hz, 1 sub-step
+//! world.step(1.0 / 60.0, 1);
+//! ```
+//!
+//! # Features
+//!
+//! Enable **`double-precision`** to mirror upstream `BOX3D_DOUBLE_PRECISION`
+//! (large-world mode). World positions use a wider scalar while collision math
+//! stays `f32`; both configurations are tested against the C reference.
+//!
+//! # Determinism
+//!
+//! Box3D is designed for cross-platform determinism. This port keeps the
+//! hand-rolled approximations (for example `atan2` / `cos`/`sin`) bit-for-bit
+//! with the C scalar path — do not replace them with `std` trig. The
+//! [`determinism`] module and the falling-ragdoll scene gate bit-exact match
+//! with the pinned reference build.
+//!
+//! # Key modules
+//!
+//! | Module | Role |
+//! |---|---|
+//! | [`world`] | Own a simulation, step it, run queries and casts |
+//! | [`body`] | Create and configure rigid bodies |
+//! | [`shape`] | Attach collision geometry to bodies |
+//! | [`joint`] | Constraints between bodies |
+//! | [`types`] | Public defs/defaults (`WorldDef`, `BodyDef`, `ShapeDef`, …) |
+//! | [`math_functions`] | `Vec3`, `Quat`, `Transform`, and deterministic math |
+//!
+//! See the repository README for port status and the live wasm demo.
 
 pub mod aabb;
 pub mod bitset;

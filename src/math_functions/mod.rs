@@ -1,10 +1,17 @@
-// Port of box3d-cpp-reference/include/box3d/math_functions.h and src/math_functions.c
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
-//
-// Split into focused submodules to stay under the project file-length limit. The
-// submodules form one flat namespace: everything is re-exported here, so callers
-// use `crate::math_functions::<name>` exactly as before.
+//! Vectors, quaternions, transforms, and deterministic scalar math.
+//!
+//! Core types ([`Vec3`], [`Quat`], [`Pos`], [`Transform`], [`Aabb`], …) and the
+//! hand-rolled trig used for cross-platform determinism. Many of these are
+//! re-exported at the crate root (`box3d_rust::Vec3`, `Pos`, …).
+//!
+//! With the `double-precision` feature, [`Pos`] (and related world-space
+//! scalars) widen to match `BOX3D_DOUBLE_PRECISION`; collision math stays `f32`.
+//!
+//! Port of `include/box3d/math_functions.h` and `src/math_functions.c`.
+//! Submodules form one flat namespace via re-exports here.
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
 
 // Float literals are written with the exact digits of the C source, and Pos math casts
 // through PosScalar so the same expression compiles in both precision modes (the cast is

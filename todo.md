@@ -23,20 +23,6 @@ The C samples app has ~90 samples with mouse-drag, pause/single-step, tuning
 panels, and debug overlays; our 17 demos play like a viewer, not a playground.
 task-12 is the whole gap, ordered so the shared interaction layer lands first.
 
-## Benchmarks
-
-- [ ] Port `benchmark/` scenes as criterion benches (informs whether the
-      pooled manifold allocator or SIMD ever become worth it — both stay out
-      until benches justify them and bit-exactness is preserved)
-
-## Release readiness
-
-The crate is functionally complete. `0.1.0` is published on crates.io
-(https://crates.io/crates/box3d-rust) and tagged `v0.1.0`. Remaining polish:
-
-- [ ] Rustdoc pass over the public API (module docs on the main entry points,
-      doc examples for World/body/shape/joint creation)
-
 ## Upstream tracking (recurring)
 
 Upstream Box3D moves fast (released June 2026; submodule pinned at `540ea38`).
