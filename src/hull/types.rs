@@ -251,6 +251,171 @@ fn pad_to(buf: &mut Vec<u8>, len: usize) {
     }
 }
 
+fn read_u32_le(buf: &[u8], off: usize) -> u32 {
+    u32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+}
+
+fn read_i32_le(buf: &[u8], off: usize) -> i32 {
+    read_u32_le(buf, off) as i32
+}
+
+fn read_u64_le(buf: &[u8], off: usize) -> u64 {
+    u64::from_le_bytes(buf[off..off + 8].try_into().unwrap())
+}
+
+fn read_f32_le(buf: &[u8], off: usize) -> f32 {
+    f32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+}
+
+fn read_vec3(buf: &[u8], off: usize) -> Vec3 {
+    Vec3 {
+        x: read_f32_le(buf, off),
+        y: read_f32_le(buf, off + 4),
+        z: read_f32_le(buf, off + 8),
+    }
+}
+
+fn read_aabb(buf: &[u8], off: usize) -> Aabb {
+    Aabb {
+        lower_bound: read_vec3(buf, off),
+        upper_bound: read_vec3(buf, off + 12),
+    }
+}
+
+fn read_matrix3(buf: &[u8], off: usize) -> Matrix3 {
+    Matrix3 {
+        cx: read_vec3(buf, off),
+        cy: read_vec3(buf, off + 12),
+        cz: read_vec3(buf, off + 24),
+    }
+}
+
+fn read_plane(buf: &[u8], off: usize) -> Plane {
+    Plane {
+        normal: read_vec3(buf, off),
+        offset: read_f32_le(buf, off + 12),
+    }
+}
+
+/// Restore a hull from a contiguous blob. (inverse of [`HullData::to_bytes`])
+pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
+    if bytes.len() < HULL_DATA_SIZE {
+        return None;
+    }
+    let version = read_u64_le(bytes, 0);
+    if version != HULL_VERSION {
+        return None;
+    }
+    let byte_count = read_i32_le(bytes, 8);
+    if byte_count < HULL_DATA_SIZE as i32 || bytes.len() != byte_count as usize {
+        return None;
+    }
+    let hash = read_u32_le(bytes, 12);
+    let aabb = read_aabb(bytes, 16);
+    let surface_area = read_f32_le(bytes, 40);
+    let volume = read_f32_le(bytes, 44);
+    let inner_radius = read_f32_le(bytes, 48);
+    let center = read_vec3(bytes, 52);
+    let central_inertia = read_matrix3(bytes, 64);
+    let vertex_count = read_i32_le(bytes, 100);
+    let vertex_offset = read_i32_le(bytes, 104);
+    let point_offset = read_i32_le(bytes, 108);
+    let edge_count = read_i32_le(bytes, 112);
+    let edge_offset = read_i32_le(bytes, 116);
+    let face_count = read_i32_le(bytes, 120);
+    let face_offset = read_i32_le(bytes, 124);
+    let plane_offset = read_i32_le(bytes, 128);
+    let padding = read_i32_le(bytes, 132);
+
+    if vertex_count < 0 || edge_count < 0 || face_count < 0 {
+        return None;
+    }
+    let vc = vertex_count as usize;
+    let ec = edge_count as usize;
+    let fc = face_count as usize;
+
+    let mut vertices = Vec::with_capacity(vc);
+    let voff = vertex_offset as usize;
+    if voff + vc > bytes.len() {
+        return None;
+    }
+    for i in 0..vc {
+        vertices.push(HullVertex {
+            edge: bytes[voff + i],
+        });
+    }
+
+    let mut points = Vec::with_capacity(vc);
+    let poff = point_offset as usize;
+    if poff + vc * 12 > bytes.len() {
+        return None;
+    }
+    for i in 0..vc {
+        points.push(read_vec3(bytes, poff + i * 12));
+    }
+
+    let mut edges = Vec::with_capacity(ec);
+    let eoff = edge_offset as usize;
+    if eoff + ec * 4 > bytes.len() {
+        return None;
+    }
+    for i in 0..ec {
+        let o = eoff + i * 4;
+        edges.push(HullHalfEdge {
+            next: bytes[o],
+            twin: bytes[o + 1],
+            origin: bytes[o + 2],
+            face: bytes[o + 3],
+        });
+    }
+
+    let mut faces = Vec::with_capacity(fc);
+    let foff = face_offset as usize;
+    if foff + fc > bytes.len() {
+        return None;
+    }
+    for i in 0..fc {
+        faces.push(HullFace {
+            edge: bytes[foff + i],
+        });
+    }
+
+    let mut planes = Vec::with_capacity(fc);
+    let ploff = plane_offset as usize;
+    if ploff + fc * 16 > bytes.len() {
+        return None;
+    }
+    for i in 0..fc {
+        planes.push(read_plane(bytes, ploff + i * 16));
+    }
+
+    Some(HullData {
+        version,
+        byte_count,
+        hash,
+        aabb,
+        surface_area,
+        volume,
+        inner_radius,
+        center,
+        central_inertia,
+        vertex_count,
+        vertex_offset,
+        point_offset,
+        edge_count,
+        edge_offset,
+        face_count,
+        face_offset,
+        plane_offset,
+        padding,
+        vertices,
+        points,
+        edges,
+        faces,
+        planes,
+    })
+}
+
 impl HullData {
     /// Serialize to the C contiguous trailing-blob layout (for hash / memcmp parity).
     pub fn to_bytes(&self) -> Vec<u8> {

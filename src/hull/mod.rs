@@ -20,5 +20,5 @@ pub use create::*;
 pub use database::*;
 pub use identity::*;
 pub use queries::*;
-pub use types::*;
+pub use types::{convert_bytes_to_hull, *};
 pub use validate::*;

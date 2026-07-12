@@ -240,6 +240,148 @@ fn write_u64_le(buf: &mut Vec<u8>, v: u64) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
 
+fn read_u64_le(buf: &[u8], off: usize) -> u64 {
+    u64::from_le_bytes(buf[off..off + 8].try_into().unwrap())
+}
+
+fn read_u32_le(buf: &[u8], off: usize) -> u32 {
+    u32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+}
+
+fn read_i32_le(buf: &[u8], off: usize) -> i32 {
+    read_u32_le(buf, off) as i32
+}
+
+fn read_f32_le(buf: &[u8], off: usize) -> f32 {
+    f32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+}
+
+fn read_vec3_at(buf: &[u8], off: usize) -> Vec3 {
+    Vec3 {
+        x: read_f32_le(buf, off),
+        y: read_f32_le(buf, off + 4),
+        z: read_f32_le(buf, off + 8),
+    }
+}
+
+fn read_aabb_at(buf: &[u8], off: usize) -> Aabb {
+    Aabb {
+        lower_bound: read_vec3_at(buf, off),
+        upper_bound: read_vec3_at(buf, off + 12),
+    }
+}
+
+/// Restore a mesh from a contiguous blob. (inverse of [`MeshData::to_bytes`])
+pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
+    if bytes.len() < MESH_DATA_SIZE {
+        return None;
+    }
+    let version = read_u64_le(bytes, 0);
+    if version != MESH_VERSION {
+        return None;
+    }
+    let byte_count = read_i32_le(bytes, 8);
+    if byte_count < MESH_DATA_SIZE as i32 || bytes.len() != byte_count as usize {
+        return None;
+    }
+    let hash = read_u32_le(bytes, 12);
+    let bounds = read_aabb_at(bytes, 16);
+    let surface_area = read_f32_le(bytes, 40);
+    let tree_height = read_i32_le(bytes, 44);
+    let degenerate_count = read_i32_le(bytes, 48);
+    let node_offset = read_i32_le(bytes, 52);
+    let node_count = read_i32_le(bytes, 56);
+    let vertex_offset = read_i32_le(bytes, 60);
+    let vertex_count = read_i32_le(bytes, 64);
+    let triangle_offset = read_i32_le(bytes, 68);
+    let triangle_count = read_i32_le(bytes, 72);
+    let material_offset = read_i32_le(bytes, 76);
+    let material_count = read_i32_le(bytes, 80);
+    let flags_offset = read_i32_le(bytes, 84);
+
+    if node_count < 0 || vertex_count < 0 || triangle_count < 0 || material_count < 0 {
+        return None;
+    }
+    let nc = node_count as usize;
+    let vc = vertex_count as usize;
+    let tc = triangle_count as usize;
+    let mc = material_count as usize;
+
+    let noff = node_offset as usize;
+    if noff + nc * MESH_NODE_SIZE > bytes.len() {
+        return None;
+    }
+    let mut nodes = Vec::with_capacity(nc);
+    for i in 0..nc {
+        let o = noff + i * MESH_NODE_SIZE;
+        nodes.push(MeshNode {
+            lower_bound: read_vec3_at(bytes, o),
+            data: read_u32_le(bytes, o + 12),
+            upper_bound: read_vec3_at(bytes, o + 16),
+            triangle_offset: read_u32_le(bytes, o + 28),
+        });
+    }
+
+    let voff = vertex_offset as usize;
+    if voff + vc * 12 > bytes.len() {
+        return None;
+    }
+    let mut vertices = Vec::with_capacity(vc);
+    for i in 0..vc {
+        vertices.push(read_vec3_at(bytes, voff + i * 12));
+    }
+
+    let toff = triangle_offset as usize;
+    if toff + tc * MESH_TRIANGLE_SIZE > bytes.len() {
+        return None;
+    }
+    let mut triangles = Vec::with_capacity(tc);
+    for i in 0..tc {
+        let o = toff + i * MESH_TRIANGLE_SIZE;
+        triangles.push(MeshTriangle {
+            index1: read_i32_le(bytes, o),
+            index2: read_i32_le(bytes, o + 4),
+            index3: read_i32_le(bytes, o + 8),
+        });
+    }
+
+    let moff = material_offset as usize;
+    if moff + mc > bytes.len() {
+        return None;
+    }
+    let material_indices = bytes[moff..moff + mc].to_vec();
+
+    let foff = flags_offset as usize;
+    if foff + tc > bytes.len() {
+        return None;
+    }
+    let flags = bytes[foff..foff + tc].to_vec();
+
+    Some(MeshData {
+        version,
+        byte_count,
+        hash,
+        bounds,
+        surface_area,
+        tree_height,
+        degenerate_count,
+        node_offset,
+        node_count,
+        vertex_offset,
+        vertex_count,
+        triangle_offset,
+        triangle_count,
+        material_offset,
+        material_count,
+        flags_offset,
+        nodes,
+        vertices,
+        triangles,
+        material_indices,
+        flags,
+    })
+}
+
 fn write_u32_le(buf: &mut Vec<u8>, v: u32) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -297,6 +439,11 @@ fn write_node(buf: &mut Vec<u8>, n: &MeshNode) {
 }
 
 impl MeshData {
+    /// Restore a mesh from a contiguous blob. (inverse of [`to_bytes`])
+    pub fn from_bytes(bytes: &[u8]) -> Option<MeshData> {
+        convert_bytes_to_mesh(bytes)
+    }
+
     /// Serialize to the C contiguous trailing-blob layout (for hash parity).
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_bytes_with_hash(self.hash)

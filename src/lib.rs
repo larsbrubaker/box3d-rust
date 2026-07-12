@@ -35,6 +35,7 @@ pub mod math_functions;
 pub mod mesh;
 pub mod mover;
 pub mod name_cache;
+pub mod recording;
 pub mod sensor;
 pub mod shape;
 pub mod solver;
@@ -141,6 +142,9 @@ mod large_world_tests;
 
 #[cfg(test)]
 mod determinism_tests;
+
+#[cfg(test)]
+mod recording_tests;
 
 #[cfg(test)]
 mod tests {
