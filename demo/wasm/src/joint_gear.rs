@@ -152,7 +152,14 @@ fn make_z_cylinder(radius: f32, z_min: f32, z_max: f32, sides: i32) -> box3d_rus
     create_hull(&points, 2 * sides).expect("z-cylinder hull")
 }
 
-fn push_cap(indices: &mut Vec<i32>, r0: i32, r1: i32, r2: i32, v_offset: i32, want_positive_z: bool) {
+fn push_cap(
+    indices: &mut Vec<i32>,
+    r0: i32,
+    r1: i32,
+    r2: i32,
+    v_offset: i32,
+    want_positive_z: bool,
+) {
     let p0 = BASIN_POINTS[r0 as usize];
     let p1 = BASIN_POINTS[r1 as usize];
     let p2 = BASIN_POINTS[r2 as usize];
@@ -298,14 +305,46 @@ fn add_teeth(
         );
         center.z = z_center;
         let local = [
-            Vec3 { x: -hx, y: -base_half, z: -hz },
-            Vec3 { x: -hx, y: base_half, z: -hz },
-            Vec3 { x: -hx, y: base_half, z: hz },
-            Vec3 { x: -hx, y: -base_half, z: hz },
-            Vec3 { x: hx, y: -tip_half, z: -hz },
-            Vec3 { x: hx, y: tip_half, z: -hz },
-            Vec3 { x: hx, y: tip_half, z: hz },
-            Vec3 { x: hx, y: -tip_half, z: hz },
+            Vec3 {
+                x: -hx,
+                y: -base_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: -hx,
+                y: base_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: -hx,
+                y: base_half,
+                z: hz,
+            },
+            Vec3 {
+                x: -hx,
+                y: -base_half,
+                z: hz,
+            },
+            Vec3 {
+                x: hx,
+                y: -tip_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: hx,
+                y: tip_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: hx,
+                y: tip_half,
+                z: hz,
+            },
+            Vec3 {
+                x: hx,
+                y: -tip_half,
+                z: hz,
+            },
         ];
         let points: Vec<Vec3> = local
             .iter()
@@ -332,7 +371,11 @@ fn push_gear_vis(bodies: &mut Vec<VisBody>, body_index: i32) {
         GEAR_RADIUS,
         GEAR_HALF_DEPTH,
         Transform {
-            p: Vec3 { x: 0.0, y: 0.0, z: -GEAR_Z },
+            p: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: -GEAR_Z,
+            },
             q: q_yz,
         },
         COLOR_SADDLE_BROWN,
@@ -342,7 +385,11 @@ fn push_gear_vis(bodies: &mut Vec<VisBody>, body_index: i32) {
         GEAR_RADIUS,
         GEAR_HALF_DEPTH,
         Transform {
-            p: Vec3 { x: 0.0, y: 0.0, z: GEAR_Z },
+            p: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: GEAR_Z,
+            },
             q: q_yz,
         },
         COLOR_SADDLE_BROWN,
@@ -351,7 +398,10 @@ fn push_gear_vis(bodies: &mut Vec<VisBody>, body_index: i32) {
         body_index,
         AXLE_RADIUS,
         GEAR_Z,
-        Transform { p: VEC3_ZERO, q: q_yz },
+        Transform {
+            p: VEC3_ZERO,
+            q: q_yz,
+        },
         COLOR_SLATE_GRAY,
     ));
 }
@@ -390,8 +440,16 @@ fn create_chain(
     attach: Pos,
 ) -> BodyId {
     let capsule = Capsule {
-        center1: Vec3 { x: 0.0, y: -LINK_HALF_LENGTH, z: 0.0 },
-        center2: Vec3 { x: 0.0, y: LINK_HALF_LENGTH, z: 0.0 },
+        center1: Vec3 {
+            x: 0.0,
+            y: -LINK_HALF_LENGTH,
+            z: 0.0,
+        },
+        center2: Vec3 {
+            x: 0.0,
+            y: LINK_HALF_LENGTH,
+            z: 0.0,
+        },
         radius: LINK_RADIUS,
     };
     let mut shape_def = default_shape_def();
@@ -480,7 +538,10 @@ fn create_door(
     joint_def.base.body_id_b = door;
     joint_def.base.local_frame_a.p = body_get_local_point(world, ground, door_position);
     joint_def.base.local_frame_a.q = slide;
-    joint_def.base.local_frame_b = Transform { p: VEC3_ZERO, q: slide };
+    joint_def.base.local_frame_b = Transform {
+        p: VEC3_ZERO,
+        q: slide,
+    };
     joint_def.max_motor_force = 200.0;
     joint_def.enable_motor = true;
     joint_def.base.collide_connected = true;
@@ -605,15 +666,30 @@ pub(crate) fn build_gear_lift() -> JointState {
         &mut world,
         &mut bodies,
         follower,
-        Pos { x: link_attach.x, y: link_attach.y, z: -GEAR_Z },
+        Pos {
+            x: link_attach.x,
+            y: link_attach.y,
+            z: -GEAR_Z,
+        },
     );
     let far_link = create_chain(
         &mut world,
         &mut bodies,
         follower,
-        Pos { x: link_attach.x, y: link_attach.y, z: GEAR_Z },
+        Pos {
+            x: link_attach.x,
+            y: link_attach.y,
+            z: GEAR_Z,
+        },
     );
-    create_door(&mut world, &mut bodies, ground, door_position, near_link, far_link);
+    create_door(
+        &mut world,
+        &mut bodies,
+        ground,
+        door_position,
+        near_link,
+        far_link,
+    );
     create_debris(&mut world, &mut bodies);
 
     let mut state = empty_state(world, bodies, JointScene::GearLift);
