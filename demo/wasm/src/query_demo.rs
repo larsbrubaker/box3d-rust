@@ -1,20 +1,18 @@
 //! Collision / Cast World - faithful port of `sample_collision.cpp` CastWorld.
 
 use crate::interact::{self, MouseGrab};
-use crate::vis::{pos, push_poses, vec3, VisBody};
+use crate::vis::{hf_triangle_edges, mesh_triangle_edges, pos, push_poses, vec3, VisBody};
 use box3d_rust::body::{body_compute_aabb, create_body, destroy_body, get_body_transform};
 use box3d_rust::distance::ShapeProxy;
 use box3d_rust::geometry::{Capsule, ShapeType, Sphere, SurfaceMaterial};
-use box3d_rust::height_field::{
-    create_wave, get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
-};
+use box3d_rust::height_field::{create_wave, HeightFieldData};
 use box3d_rust::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
 use box3d_rust::id::{BodyId, ShapeId, NULL_BODY_ID};
 use box3d_rust::math_functions::{
     make_quat_from_axis_angle, normalize, offset_pos, transform_point, Pos, Transform, Vec3, PI,
     POS_ZERO, TRANSFORM_IDENTITY, VEC3_ONE, VEC3_ZERO,
 };
-use box3d_rust::mesh::{create_torus_mesh, get_mesh_triangles, get_mesh_vertices, MeshData};
+use box3d_rust::mesh::{create_torus_mesh, MeshData};
 use box3d_rust::shape::{
     create_capsule_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
     create_sphere_shape, shape_get_user_data,
@@ -125,52 +123,6 @@ fn random_vec3_uniform(lo: f32, hi: f32) -> Vec3 {
         y: random_float_range(lo, hi),
         z: random_float_range(lo, hi),
     }
-}
-
-fn mesh_local_edges(mesh: &MeshData, scale: Vec3) -> Vec<f32> {
-    let verts = get_mesh_vertices(mesh);
-    let tris = get_mesh_triangles(mesh);
-    let mut edges = Vec::new();
-    for tri in tris {
-        let pts = [
-            Vec3 {
-                x: verts[tri.index1 as usize].x * scale.x,
-                y: verts[tri.index1 as usize].y * scale.y,
-                z: verts[tri.index1 as usize].z * scale.z,
-            },
-            Vec3 {
-                x: verts[tri.index2 as usize].x * scale.x,
-                y: verts[tri.index2 as usize].y * scale.y,
-                z: verts[tri.index2 as usize].z * scale.z,
-            },
-            Vec3 {
-                x: verts[tri.index3 as usize].x * scale.x,
-                y: verts[tri.index3 as usize].y * scale.y,
-                z: verts[tri.index3 as usize].z * scale.z,
-            },
-        ];
-        for e in 0..3 {
-            let a = pts[e];
-            let b = pts[(e + 1) % 3];
-            edges.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
-        }
-    }
-    edges
-}
-
-fn hf_local_edges(hf: &HeightFieldData) -> Vec<f32> {
-    let count = get_height_field_triangle_count(hf);
-    let mut edges = Vec::new();
-    for i in 0..count {
-        let tri = get_height_field_triangle(hf, i);
-        let verts = tri.vertices;
-        for e in 0..3 {
-            let a = verts[e];
-            let b = verts[(e + 1) % 3];
-            edges.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
-        }
-    }
-    edges
 }
 
 fn remove_body_vis(state: &mut QueryState, body_id: BodyId) {
@@ -392,9 +344,10 @@ fn create_shapes(state: &mut QueryState, shape_type: ShapeType, count: i32) {
             ShapeType::Sphere => {
                 shape_def.base_material.user_material_id = 11;
                 create_sphere_shape(&mut state.world, body_id, &shape_def, &state.sphere);
-                state
-                    .vis
-                    .push(VisBody::sphere_body(body_id.index1 - 1, state.sphere.radius));
+                state.vis.push(VisBody::sphere_body(
+                    body_id.index1 - 1,
+                    state.sphere.radius,
+                ));
             }
             ShapeType::Capsule => {
                 shape_def.base_material.user_material_id = 22;
@@ -418,7 +371,7 @@ fn create_shapes(state: &mut QueryState, shape_type: ShapeType, count: i32) {
                     z: -2.0,
                 };
                 create_mesh_shape(&mut state.world, body_id, &shape_def, &state.mesh, scale);
-                let edges = mesh_local_edges(&state.mesh, scale);
+                let edges = mesh_triangle_edges(&state.mesh, scale);
                 state.surfaces.push(SurfaceVis {
                     body_id,
                     local_edges: edges,
@@ -440,8 +393,13 @@ fn create_shapes(state: &mut QueryState, shape_type: ShapeType, count: i32) {
                         ..Default::default()
                     },
                 ];
-                create_height_field_shape(&mut state.world, body_id, &shape_def, &state.height_field);
-                let edges = hf_local_edges(&state.height_field);
+                create_height_field_shape(
+                    &mut state.world,
+                    body_id,
+                    &shape_def,
+                    &state.height_field,
+                );
+                let edges = hf_triangle_edges(&state.height_field, VEC3_ZERO);
                 state.surfaces.push(SurfaceVis {
                     body_id,
                     local_edges: edges,
@@ -468,7 +426,7 @@ fn destroy_one_body(state: &mut QueryState) {
 }
 
 #[wasm_bindgen]
-pub fn query_reset() -> u32 {
+pub fn query_reset() {
     RAND_SEED.with(|s| s.set(12345));
     STATE.with(|cell| {
         let mut def = default_world_def();
@@ -486,7 +444,7 @@ pub fn query_reset() -> u32 {
         };
         let height_field = create_wave(10, 10, scale, 0.03, 0.09, false);
 
-        let mut state = QueryState {
+        let state = QueryState {
             world,
             grab: MouseGrab::default(),
             bodies: [NULL_BODY_ID; MAX_COUNT],
@@ -526,10 +484,10 @@ pub fn query_reset() -> u32 {
             cast_context: CastContext::default(),
         };
 
-        create_shapes(&mut state, ShapeType::Sphere, 10);
-        let n = state.bodies.iter().filter(|b| b.is_non_null()).count() as u32;
+        // C CastWorld constructor starts with an EMPTY world — shapes are added
+        // only via CreateShapes() from the UI (sample_collision.cpp:352-384) — so there
+        // is no body count to report here.
         *cell.borrow_mut() = Some(state);
-        n
     })
 }
 

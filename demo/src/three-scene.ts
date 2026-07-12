@@ -243,6 +243,27 @@ function disposeObject(obj: THREE.Object3D) {
   });
 }
 
+/// C `camera::SetView(yaw, pitch, distance, target)` → orbit camera position.
+/// x = target.x + d·cos(pitch)·sin(yaw), y = target.y + d·sin(pitch),
+/// z = target.z + d·cos(pitch)·cos(yaw); angles in degrees.
+export function setView(
+  demo: DemoScene,
+  yawDeg: number,
+  pitchDeg: number,
+  distance: number,
+  target: [number, number, number],
+) {
+  demo.controls.target.set(target[0], target[1], target[2]);
+  const yaw = (yawDeg * Math.PI) / 180;
+  const pitch = (pitchDeg * Math.PI) / 180;
+  demo.camera.position.set(
+    target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
+    target[1] + distance * Math.sin(pitch),
+    target[2] + distance * Math.cos(pitch) * Math.cos(yaw),
+  );
+  demo.controls.update();
+}
+
 export function makeAxes(len = 1.5): THREE.AxesHelper {
   return new THREE.AxesHelper(len);
 }

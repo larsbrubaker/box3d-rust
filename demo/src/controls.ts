@@ -93,6 +93,22 @@ export function createInfoBox(html: string): HTMLElement {
   return box;
 }
 
+/** Create a `.sample-draw-text` HUD overlay pinned over the demo canvas and return it.
+ *  Mirrors the C samples drawing text lines directly over the viewport (`DrawTextLine`). */
+export function createCanvasOverlay(page: HTMLElement): HTMLElement {
+  const canvasArea = page.querySelector(".demo-canvas-area") as HTMLElement;
+  const overlay = document.createElement("div");
+  overlay.className = "sample-draw-text";
+  canvasArea.appendChild(overlay);
+  return overlay;
+}
+
+/** Two significant figures, matching C `printf("%.2g")` for sample HUD readouts. */
+export function fmt2g(x: number): string {
+  if (x === 0) return "0";
+  return parseFloat(x.toPrecision(2)).toString();
+}
+
 export function createReadout(): HTMLElement {
   const box = document.createElement("div");
   box.className = "info-readout";

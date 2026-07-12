@@ -4,12 +4,12 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::sim_demo::{add_ground, new_sim, stop_recording_if_any, with_sim, SimBody, SIM};
-use box3d_rust::body::{create_body, destroy_body, get_body_transform, make_body_id};
+use box3d_rust::body::{create_body, destroy_body, make_body_id};
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::hull::{make_box_hull, make_transformed_box_hull};
 use box3d_rust::math_functions::{
-    compute_quat_between_unit_vectors, make_quat_from_axis_angle, mul_transforms, Pos, Transform,
-    Vec3, DEG_TO_RAD, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_ZERO,
+    compute_quat_between_unit_vectors, make_quat_from_axis_angle, Pos, Transform, Vec3, DEG_TO_RAD,
+    QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{default_body_def, default_shape_def, BodyType};

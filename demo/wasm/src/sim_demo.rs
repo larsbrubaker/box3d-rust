@@ -8,18 +8,14 @@ use crate::interact::{self, MouseGrab};
 use box3d_rust::body::{
     body_get_type, create_body, destroy_body, get_body_transform, is_body_awake, make_body_id,
 };
-use box3d_rust::compound::{create_compound, CompoundDef, CompoundHullDef, CompoundSphereDef};
-use box3d_rust::geometry::Sphere;
-use box3d_rust::hull::{make_box_hull, make_transformed_box_hull};
+use box3d_rust::geometry::{Capsule, Sphere};
+use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
     compute_quat_between_unit_vectors, get_length_and_normalize, make_quat_from_axis_angle,
-    mul_transforms, Pos, Transform, Vec3, DEG_TO_RAD, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Y,
-    VEC3_ZERO,
+    mul_transforms, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::recording::{start_recording, stop_recording, Recording};
-use box3d_rust::shape::{
-    create_capsule_shape, create_compound_shape, create_hull_shape, create_sphere_shape,
-};
+use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use box3d_rust::world::{
     world_enable_continuous, world_enable_sleeping, world_enable_warm_starting,
@@ -137,20 +133,6 @@ pub(crate) fn with_sim<R>(f: impl FnOnce(&mut SimState) -> R) -> R {
     })
 }
 
-pub(crate) fn push_dynamic_box(
-    sim: &mut SimState,
-    x: f32,
-    y: f32,
-    z: f32,
-    hx: f32,
-    hy: f32,
-    hz: f32,
-    density: f32,
-    friction: f32,
-) {
-    push_dynamic_box_ex(sim, x, y, z, hx, hy, hz, density, friction, 0.0, VEC3_ZERO);
-}
-
 pub(crate) fn push_dynamic_box_ex(
     sim: &mut SimState,
     x: f32,
@@ -199,8 +181,8 @@ fn push_dynamic_box_locked(sim: &mut SimState, x: f32, y: f32, z: f32, hx: f32, 
     body_def.motion_locks.angular_x = true;
     body_def.motion_locks.angular_y = true;
     let body_id = create_body(&mut sim.world, &body_def);
-    let mut shape_def = default_shape_def();
-    shape_def.density = 1.0;
+    // C Pyramid2D uses b3DefaultShapeDef() (density = water); no override.
+    let shape_def = default_shape_def();
     let hull = make_box_hull(hx, hy, hz);
     create_hull_shape(&mut sim.world, body_id, &shape_def, &hull.base);
     sim.bodies.push(SimBody {
@@ -211,13 +193,16 @@ fn push_dynamic_box_locked(sim: &mut SimState, x: f32, y: f32, z: f32, hx: f32, 
     });
 }
 
+/// Push a dynamic sphere using `b3DefaultShapeDef()` (density = water). Only the
+/// rolling resistance varies between C samples: Sphere Stack sets 0.1, the
+/// Compound samples leave it at the default 0.
 pub(crate) fn push_dynamic_sphere(
     sim: &mut SimState,
     x: f32,
     y: f32,
     z: f32,
     radius: f32,
-    density: f32,
+    rolling_resistance: f32,
 ) {
     let mut body_def = default_body_def();
     body_def.type_ = BodyType::Dynamic;
@@ -228,8 +213,7 @@ pub(crate) fn push_dynamic_sphere(
     };
     let body_id = create_body(&mut sim.world, &body_def);
     let mut shape_def = default_shape_def();
-    shape_def.density = density;
-    shape_def.base_material.rolling_resistance = 0.1;
+    shape_def.base_material.rolling_resistance = rolling_resistance;
     let sphere = Sphere {
         center: VEC3_ZERO,
         radius,
@@ -243,21 +227,24 @@ pub(crate) fn push_dynamic_sphere(
     });
 }
 
-pub(crate) fn add_ground(sim: &mut SimState, half_extent: f32) {
+/// Static ground box matching C `Sample::AddGroundBox(extent)` (sample.cpp:543):
+/// a box with half-extents `(extent, 1, extent)` centered at `{0, -1, 0}`, so the
+/// top surface sits at y = 0. Callers pass the same `extent` their C sample does.
+pub(crate) fn add_ground(sim: &mut SimState, extent: f32) {
     let mut ground_def = default_body_def();
     ground_def.type_ = BodyType::Static;
     ground_def.position = Pos {
         x: 0.0 as _,
-        y: (-half_extent) as _,
+        y: (-1.0) as _,
         z: 0.0 as _,
     };
     let ground = create_body(&mut sim.world, &ground_def);
     let shape_def = default_shape_def();
-    let hull = make_box_hull(half_extent * 2.0, half_extent, half_extent * 2.0);
+    let hull = make_box_hull(extent, 1.0, extent);
     create_hull_shape(&mut sim.world, ground, &shape_def, &hull.base);
     sim.bodies.push(SimBody {
         body_index: ground.index1 - 1,
-        half_extents: [half_extent * 2.0, half_extent, half_extent * 2.0],
+        half_extents: [extent, 1.0, extent],
         kind: 0,
         local: None,
     });
@@ -273,26 +260,6 @@ fn new_world() -> World {
     World::new(&def)
 }
 
-/// Bodies demo: ground + falling cube (HelloWorld) + a few companions.
-#[wasm_bindgen]
-pub fn sim_reset_bodies() -> u32 {
-    SIM.with(|cell| {
-        if let Some(prev) = cell.borrow_mut().as_mut() {
-            stop_recording_if_any(prev);
-        }
-        let mut sim = new_sim();
-        add_ground(&mut sim, 10.0);
-        push_dynamic_box(&mut sim, 0.0, 4.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.3);
-        push_dynamic_box(&mut sim, -3.0, 6.0, 0.0, 0.5, 0.5, 0.5, 1.0, 0.4);
-        push_dynamic_box(&mut sim, 3.0, 8.0, 1.0, 0.75, 0.4, 0.75, 1.5, 0.5);
-        push_dynamic_sphere(&mut sim, 1.5, 10.0, -1.0, 0.6, 1.0);
-        push_dynamic_sphere(&mut sim, -1.5, 12.0, 0.5, 0.4, 0.8);
-        let count = sim.bodies.len() as u32;
-        *cell.borrow_mut() = Some(sim);
-        count
-    })
-}
-
 /// Exact Single Box sample: cube half-extents 0.5 at y=0.5, Ï‰y = 10.
 #[wasm_bindgen]
 pub fn sim_reset_single_box() -> u32 {
@@ -302,6 +269,7 @@ pub fn sim_reset_single_box() -> u32 {
         }
         let mut sim = new_sim();
         add_ground(&mut sim, 20.0);
+        // C SingleBox uses b3DefaultShapeDef(): density = water (1000), friction 0.6.
         push_dynamic_box_ex(
             &mut sim,
             0.0,
@@ -310,8 +278,8 @@ pub fn sim_reset_single_box() -> u32 {
             0.5,
             0.5,
             0.5,
-            1.0,
-            0.3,
+            1000.0,
+            0.6,
             0.0,
             Vec3 {
                 x: 0.0,
@@ -325,10 +293,12 @@ pub fn sim_reset_single_box() -> u32 {
     })
 }
 
-/// Box Stack sample (mirrors `BoxStack`, fewer boxes for the browser).
+/// Box Stack sample (`BoxStack`, C `m_size` is a fixed 40 — light in serial wasm).
+/// The C sample has no count control, so this takes no argument.
 #[wasm_bindgen]
-pub fn sim_reset_stacking(count: u32) -> u32 {
-    let n = count.clamp(1, 40);
+pub fn sim_reset_stacking() -> u32 {
+    // C BoxStack builds exactly 40 cubes.
+    let n = 40u32;
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -338,8 +308,9 @@ pub fn sim_reset_stacking(count: u32) -> u32 {
         let a = 0.5f32;
         for i in 0..n {
             let y = 1.5 * a + 2.5 * a * i as f32;
-            // C BoxStack uses rollingResistance = 0.1 on each cube.
-            push_dynamic_box_ex(&mut sim, 0.0, y, 0.0, a, a, a, 1.0, 0.3, 0.1, VEC3_ZERO);
+            // C BoxStack uses b3DefaultShapeDef() (density = water, friction 0.6)
+            // plus rollingResistance = 0.1 on each cube.
+            push_dynamic_box_ex(&mut sim, 0.0, y, 0.0, a, a, a, 1000.0, 0.6, 0.1, VEC3_ZERO);
         }
         let total = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
@@ -347,11 +318,13 @@ pub fn sim_reset_stacking(count: u32) -> u32 {
     })
 }
 
-/// Pyramid2D stacking (motion-locked to XY plane). `size` is base row length (2â€“12).
-/// Matches C layout: `(-10 + 2*column + row) * a` with `a = 1`.
+/// Pyramid2D stacking (motion-locked to XY plane). C `m_size` is a fixed 12.
+/// Matches C layout: `(-10 + 2*column + row) * a` with `a = 1`. The C sample has
+/// no size control, so this takes no argument.
 #[wasm_bindgen]
-pub fn sim_reset_pyramid(size: u32) -> u32 {
-    let n = size.clamp(2, 12) as i32;
+pub fn sim_reset_pyramid() -> u32 {
+    // C Pyramid2D uses m_size = 12.
+    let n = 12i32;
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -372,11 +345,13 @@ pub fn sim_reset_pyramid(size: u32) -> u32 {
     })
 }
 
-/// Sphere Stack sample (mirrors `SphereStack`, capped for the browser).
-/// C uses r = 0.5 and spacing `y += 3 * r`.
+/// Sphere Stack sample (`SphereStack`, C builds a fixed 30 spheres).
+/// C uses r = 0.5, spacing `y += 3 * r`, and rollingResistance 0.1. The C sample
+/// has no count control, so this takes no argument.
 #[wasm_bindgen]
-pub fn sim_reset_sphere_stack(count: u32) -> u32 {
-    let n = count.clamp(1, 30);
+pub fn sim_reset_sphere_stack() -> u32 {
+    // C SphereStack builds exactly 30 spheres.
+    let n = 30u32;
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -386,7 +361,7 @@ pub fn sim_reset_sphere_stack(count: u32) -> u32 {
         let r = 0.5f32;
         let mut y = 1.5 * r;
         for _ in 0..n {
-            push_dynamic_sphere(&mut sim, 0.0, y, 0.0, r, 1.0);
+            push_dynamic_sphere(&mut sim, 0.0, y, 0.0, r, 0.1);
             y += 3.0 * r;
         }
         let total = sim.bodies.len() as u32;
@@ -395,11 +370,13 @@ pub fn sim_reset_sphere_stack(count: u32) -> u32 {
     })
 }
 
-/// Jenga Stack sample (mirrors `JengaStack` hull mode). `layers` is row count (C uses 40).
-/// Alternating X/Z placement â€” the clearly 3D stacking showcase (no motion locks).
+/// Jenga Stack sample (`JengaStack`, C `m_size` = 40 rows, two bodies per row).
+/// `shape_type` selects the C `DrawControls` radio: 0 = Hull (box 2.5Ã—0.25Ã—0.25,
+/// rollingResistance 0.01), 1 = Capsule (capsule Â±2.5 on X, radius 0.25,
+/// rollingResistance 0.1). Alternating X/Z placement â€” the 3D showcase (no locks).
 #[wasm_bindgen]
-pub fn sim_reset_jenga(layers: u32) -> u32 {
-    let n = layers.clamp(2, 24);
+pub fn sim_reset_jenga(shape_type: u32) -> u32 {
+    let capsule_mode = shape_type == 1;
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -407,9 +384,27 @@ pub fn sim_reset_jenga(layers: u32) -> u32 {
         let mut sim = new_sim();
         add_ground(&mut sim, 60.0);
 
+        // C JengaStack builds m_size = 40 rows.
+        let n = 40i32;
         let mut shape_def = default_shape_def();
-        shape_def.base_material.rolling_resistance = 0.01;
+        shape_def.base_material.rolling_resistance = if capsule_mode { 0.1 } else { 0.01 };
         let hull = make_box_hull(2.5, 0.25, 0.25);
+        let capsule = Capsule {
+            center1: Vec3 {
+                x: -2.5,
+                y: 0.0,
+                z: 0.0,
+            },
+            center2: Vec3 {
+                x: 2.5,
+                y: 0.0,
+                z: 0.0,
+            },
+            radius: 0.25,
+        };
+        // Render orientation for the capsule child (maps geometry-Y to local X).
+        let (capsule_local, capsule_half) =
+            capsule_local_from_centers(capsule.center1, capsule.center2, capsule.radius);
         let half_pi = 0.5 * std::f32::consts::PI;
 
         for i in 0..n {
@@ -429,13 +424,23 @@ pub fn sim_reset_jenga(layers: u32) -> u32 {
                 };
                 body_def.rotation = rotation;
                 let body_id = create_body(&mut sim.world, &body_def);
-                create_hull_shape(&mut sim.world, body_id, &shape_def, &hull.base);
-                sim.bodies.push(SimBody {
-                    body_index: body_id.index1 - 1,
-                    half_extents: [2.5, 0.25, 0.25],
-                    kind: 0,
-                    local: None,
-                });
+                if capsule_mode {
+                    create_capsule_shape(&mut sim.world, body_id, &shape_def, &capsule);
+                    sim.bodies.push(SimBody {
+                        body_index: body_id.index1 - 1,
+                        half_extents: capsule_half,
+                        kind: 2,
+                        local: Some(capsule_local),
+                    });
+                } else {
+                    create_hull_shape(&mut sim.world, body_id, &shape_def, &hull.base);
+                    sim.bodies.push(SimBody {
+                        body_index: body_id.index1 - 1,
+                        half_extents: [2.5, 0.25, 0.25],
+                        kind: 0,
+                        local: None,
+                    });
+                }
             }
         }
 

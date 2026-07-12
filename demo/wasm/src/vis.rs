@@ -13,7 +13,11 @@
 
 use box3d_rust::body::get_body_transform;
 use box3d_rust::geometry::{Capsule, Sphere};
-use box3d_rust::math_functions::{mul_transforms, Pos, Transform, Vec3};
+use box3d_rust::height_field::{
+    get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
+};
+use box3d_rust::math_functions::{mul_transforms, Pos, Quat, Transform, Vec3};
+use box3d_rust::mesh::{get_mesh_triangles, get_mesh_vertices, MeshData};
 use box3d_rust::world::World;
 
 pub const POSE_STRIDE: usize = 16;
@@ -221,6 +225,82 @@ pub fn sphere(radius: f32) -> Sphere {
             z: 0.0,
         },
         radius,
+    }
+}
+
+/// Height-field triangle edges as interleaved endpoints `[x0,y0,z0, x1,y1,z1, ...]`.
+/// Each triangle contributes its 3 edges (shared edges are duplicated). `origin` is added
+/// to every vertex; pass `VEC3_ZERO` for local-space output.
+pub fn hf_triangle_edges(hf: &HeightFieldData, origin: Vec3) -> Vec<f32> {
+    let count = get_height_field_triangle_count(hf);
+    let mut edges = Vec::new();
+    for i in 0..count {
+        let tri = get_height_field_triangle(hf, i);
+        let verts = tri.vertices;
+        for e in 0..3 {
+            let a = verts[e];
+            let b = verts[(e + 1) % 3];
+            edges.extend_from_slice(&[
+                a.x + origin.x,
+                a.y + origin.y,
+                a.z + origin.z,
+                b.x + origin.x,
+                b.y + origin.y,
+                b.z + origin.z,
+            ]);
+        }
+    }
+    edges
+}
+
+/// Mesh triangle edges as interleaved endpoints `[x0,y0,z0, x1,y1,z1, ...]`.
+/// Each triangle contributes its 3 edges (shared edges are duplicated). `scale`
+/// multiplies every vertex component; pass `VEC3_ONE` for unscaled output.
+pub fn mesh_triangle_edges(mesh: &MeshData, scale: Vec3) -> Vec<f32> {
+    let verts = get_mesh_vertices(mesh);
+    let tris = get_mesh_triangles(mesh);
+    let mut edges = Vec::with_capacity(tris.len() * 18);
+    for tri in tris {
+        let pts = [
+            Vec3 {
+                x: verts[tri.index1 as usize].x * scale.x,
+                y: verts[tri.index1 as usize].y * scale.y,
+                z: verts[tri.index1 as usize].z * scale.z,
+            },
+            Vec3 {
+                x: verts[tri.index2 as usize].x * scale.x,
+                y: verts[tri.index2 as usize].y * scale.y,
+                z: verts[tri.index2 as usize].z * scale.z,
+            },
+            Vec3 {
+                x: verts[tri.index3 as usize].x * scale.x,
+                y: verts[tri.index3 as usize].y * scale.y,
+                z: verts[tri.index3 as usize].z * scale.z,
+            },
+        ];
+        for e in 0..3 {
+            let a = pts[e];
+            let b = pts[(e + 1) % 3];
+            edges.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
+        }
+    }
+    edges
+}
+
+/// Uniform random quaternion, ported bit-for-bit from the C samples' `RandomQuat`
+/// (`utils.h`:113, Shoemake "Uniform Random Rotations", Graphics Gems III 1992). Callers
+/// supply the three uniform samples (`u1` in `[0,1]`, `u2`/`u3` in `[0, 2π)`) from their
+/// own RNG stream.
+pub fn random_quat_from(u1: f32, u2: f32, u3: f32) -> Quat {
+    let sqrt1_minus_u1 = (1.0 - u1).sqrt();
+    let sqrt_u1 = u1.sqrt();
+    Quat {
+        v: Vec3 {
+            x: sqrt1_minus_u1 * u2.sin(),
+            y: sqrt1_minus_u1 * u2.cos(),
+            z: sqrt_u1 * u3.sin(),
+        },
+        s: sqrt_u1 * u3.cos(),
     }
 }
 

@@ -4,9 +4,9 @@ use wasm_bindgen::prelude::*;
 
 use box3d_rust::geometry::RayCastInput;
 use box3d_rust::height_field::{
-    create_wave, get_height_field_triangle, get_height_field_triangle_count, ray_cast_height_field,
+    create_wave, get_height_field_triangle_count, ray_cast_height_field,
 };
-use box3d_rust::math_functions::Vec3;
+use box3d_rust::math_functions::{Vec3, VEC3_ZERO};
 use std::cell::RefCell;
 
 thread_local! {
@@ -63,23 +63,7 @@ pub fn hf_wireframe() -> Vec<f32> {
     HF.with(|cell| {
         let borrow = cell.borrow();
         let hf = borrow.as_ref().unwrap();
-        let count = get_height_field_triangle_count(hf);
-        let mut out = Vec::new();
-        for i in 0..count {
-            let tri = get_height_field_triangle(hf, i);
-            let verts = tri.vertices;
-            for e in 0..3 {
-                let a = verts[e];
-                let b = verts[(e + 1) % 3];
-                out.push(a.x);
-                out.push(a.y);
-                out.push(a.z);
-                out.push(b.x);
-                out.push(b.y);
-                out.push(b.z);
-            }
-        }
-        out
+        crate::vis::hf_triangle_edges(hf, VEC3_ZERO)
     })
 }
 

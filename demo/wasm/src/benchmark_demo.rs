@@ -3,11 +3,16 @@
 //! Ports `CreateLargePyramid` / `CreateJunkyard`+`StepJunkyard` / `CreateTrees` from
 //! `box3d-cpp-reference/shared/benchmarks.c` with browser-scaled counts.
 //!
-//! Scale vs C (documented for the demo inventory):
-//! - Large Pyramid: default `baseCount=24` (C DEBUG=20, full=90) → ~300 boxes vs 4095.
-//! - Junkyard: 2 rock layers × 8×8 grid (C DEBUG=2×21×21) → 128 rocks vs 882; arena ~0.65×.
-//! - Falling Trees: wave mesh 40×50 (C Trees25 = 600×800), 6 trees × 8 segments
-//!   (C DEBUG=10 trees × 22 segments) → mesh ~0.004× Trees25, trees 0.6× DEBUG.
+//! Counts vs C (both are Erin's — C release when it runs interactively in serial
+//! wasm, else the C DEBUG value; never a third invented number):
+//! - Large Pyramid: `baseCount=20` (C DEBUG; C release 90 is a full 3D pyramid of
+//!   hundreds of thousands of bodies, far beyond serial wasm).
+//! - Junkyard: full C geometry (ground half 120, walls 1×8×50 at ±50, pusher radius
+//!   35, cylinder 24×4). Rocks = C DEBUG 2 layers × 21×21 (882) at 4 m spacing from
+//!   -40, height 24 (C release uses 24 layers).
+//! - Falling Trees: wave mesh `scale*150 × scale*200` (default scale 1 = 150×200,
+//!   matching CreateTrees100), 10 trees × 22 tapering hulls (bodyCount = C DEBUG;
+//!   22 hulls is fixed in C, not a debug/release split). C release uses 50 trees.
 
 use crate::interact::{self, MouseGrab};
 use box3d_rust::body::{
@@ -21,7 +26,7 @@ use box3d_rust::math_functions::{
     compute_cos_sin, cross, mul_transforms, sub_pos, Pos, Transform, Vec3, WorldTransform,
     QUAT_IDENTITY, VEC3_ONE,
 };
-use box3d_rust::mesh::{create_wave_mesh, get_mesh_triangles, get_mesh_vertices, MeshData};
+use box3d_rust::mesh::{create_wave_mesh, MeshData};
 use box3d_rust::shape::{create_hull_shape, create_mesh_shape};
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use box3d_rust::world::{world_enable_sleeping, World};
@@ -102,10 +107,12 @@ fn push_vis(
 }
 
 /// `CreateLargePyramid` — sleep disabled, density 100, half-size 0.5.
-/// `base_count` clamped 8..=40 (browser-friendly; C full uses 90).
+/// C fixes `baseCount = BENCHMARK_DEBUG ? 20 : 90`; the browser uses the DEBUG
+/// value 20 (release 90 builds hundreds of thousands of bodies). C has no runtime
+/// baseCount control, so the count is pinned to 20 here.
 #[wasm_bindgen]
-pub fn bench_reset_large_pyramid(base_count: u32) -> u32 {
-    let base = base_count.clamp(8, 40) as i32;
+pub fn bench_reset_large_pyramid() -> u32 {
+    let base = 20i32;
     BENCH.with(|cell| {
         let mut world = new_world();
         world_enable_sleeping(&mut world, false);
@@ -177,9 +184,9 @@ pub fn bench_reset_junkyard() -> u32 {
             tree_mesh: None,
         };
 
-        // Arena half-extent (C uses 50 wall offset / 120 ground).
-        let wall = 32.0f32;
-        let ground_half = 80.0f32;
+        // Arena: C ground half 120, walls MakeOffsetBoxHull(1,8,50) at ±50.
+        let wall = 50.0f32;
+        let ground_half = 120.0f32;
         let wall_h = 8.0f32;
 
         let mut ground_def = default_body_def();
@@ -263,24 +270,22 @@ pub fn bench_reset_junkyard() -> u32 {
             );
         }
 
-        // Rocks: C DEBUG uses 2 layers × 21×21; browser uses 2 × 8×8.
+        // Rocks: C DEBUG 2 layers × 21×21 (X,Z in 0..=20) at 4 m spacing from -40,
+        // stacked at height 24 (C release uses 24 layers). 2×21×21 = 882 rocks.
         let rock_hull = create_rock(1.5).expect("rock hull");
         let layer_count = 2i32;
-        let grid = 8i32;
-        let height = 16.0f32;
-        let span = 28.0f32;
-        let step = (2.0 * span) / grid as f32;
+        let height = 24.0f32;
 
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;
         let rock_shape = default_shape_def();
         for y_i in 0..layer_count {
-            for x_i in 0..=grid {
-                for z_i in 0..=grid {
+            for x_i in 0..=20 {
+                for z_i in 0..=20 {
                     body_def.position = Pos {
-                        x: (-span + step * x_i as f32) as _,
+                        x: (-40.0 + 4.0 * x_i as f32) as _,
                         y: (4.0 * y_i as f32 + height + 1.0) as _,
-                        z: (-span + step * z_i as f32) as _,
+                        z: (-40.0 + 4.0 * z_i as f32) as _,
                     };
                     let body_id = create_body(&mut bench.world, &body_def);
                     create_hull_shape(&mut bench.world, body_id, &rock_shape, &rock_hull);
@@ -290,9 +295,10 @@ pub fn bench_reset_junkyard() -> u32 {
             }
         }
 
-        let pusher_radius = 22.0f32;
-        let pusher_height = 16.0f32;
-        let pusher_cyl_r = 3.0f32;
+        // Pusher: C radius 35, CreateCylinder(24, 4, 0, 16), kinematic at {35,0,0}.
+        let pusher_radius = 35.0f32;
+        let pusher_height = 24.0f32;
+        let pusher_cyl_r = 4.0f32;
         let cyl = create_cylinder(pusher_height, pusher_cyl_r, 0.0, 16).expect("pusher cylinder");
         let mut kin_def = default_body_def();
         kin_def.type_ = BodyType::Kinematic;
@@ -351,10 +357,13 @@ fn step_junkyard(bench: &mut BenchState, dt: f32) {
     body_set_target_transform(&mut bench.world, anim.pusher_id, target, dt, false);
 }
 
-/// Reduced `CreateTrees`: smaller wave mesh + fewer tapering cylinder trees.
-/// Mesh ~40×50 (C Trees25 = 600×800); 6 trees × 8 hulls (C DEBUG = 10 × 22).
+/// `CreateTrees` — wave-mesh ground + tapering cylinder trees.
+/// `grid_size` mirrors the C DrawControls radio (100/50/25 cm cell width) mapping
+/// to `scale` 1/2/4: mesh is `scale*150 × scale*200`, `cellWidth = 1/scale`.
+/// Default (100 cm → scale 1) is CreateTrees100 = 150×200. Trees: bodyCount = 10
+/// (C DEBUG; release 50), 22 tapering hulls each (fixed in C), z start -15 (C DEBUG).
 #[wasm_bindgen]
-pub fn bench_reset_trees() -> u32 {
+pub fn bench_reset_trees(grid_size: u32) -> u32 {
     BENCH.with(|cell| {
         let world = new_world();
         let mut bench = BenchState {
@@ -366,9 +375,14 @@ pub fn bench_reset_trees() -> u32 {
             tree_mesh: None,
         };
 
-        let x_count = 40i32;
-        let z_count = 50i32;
-        let cell_width = 1.0f32;
+        let scale = match grid_size {
+            25 => 4i32,
+            50 => 2i32,
+            _ => 1i32, // 100 cm (and any stale 0-arg binding) → default scale 1
+        };
+        let x_count = scale * 150;
+        let z_count = scale * 200;
+        let cell_width = 1.0f32 / scale as f32;
         let mesh =
             create_wave_mesh(x_count, z_count, cell_width, 0.4, 0.05, 0.1).expect("wave mesh");
 
@@ -389,8 +403,8 @@ pub fn bench_reset_trees() -> u32 {
         // Mesh is drawn via wireframe; no box proxy for ground.
         bench.tree_mesh = Some(mesh);
 
-        let body_count = 6i32;
-        let hull_count = 8i32;
+        let body_count = 10i32;
+        let hull_count = 22i32;
         let mut hulls = Vec::with_capacity(hull_count as usize);
         let mut segs = Vec::with_capacity(hull_count as usize);
         let mut y = 1.0f32;
@@ -417,7 +431,7 @@ pub fn bench_reset_trees() -> u32 {
         shape_def.density = 1.0;
 
         let mut angular_velocity = -0.5f32;
-        let mut z = -12.0f32;
+        let mut z = -15.0f32;
         for body_index in 0..body_count {
             body_def.position = Pos {
                 x: 0.0 as _,
@@ -544,30 +558,10 @@ pub fn bench_body_count() -> u32 {
 #[wasm_bindgen]
 pub fn bench_mesh_wireframe() -> Vec<f32> {
     with_bench(|bench| {
-        let mut out = Vec::new();
         let Some(mesh) = &bench.tree_mesh else {
-            return out;
+            return Vec::new();
         };
-        let verts = get_mesh_vertices(mesh);
-        let tris = get_mesh_triangles(mesh);
-        for t in tris {
-            let vs = [
-                verts[t.index1 as usize],
-                verts[t.index2 as usize],
-                verts[t.index3 as usize],
-            ];
-            for e in 0..3 {
-                let a = vs[e];
-                let b = vs[(e + 1) % 3];
-                out.push(a.x);
-                out.push(a.y);
-                out.push(a.z);
-                out.push(b.x);
-                out.push(b.y);
-                out.push(b.z);
-            }
-        }
-        out
+        crate::vis::mesh_triangle_edges(mesh, VEC3_ONE)
     })
 }
 

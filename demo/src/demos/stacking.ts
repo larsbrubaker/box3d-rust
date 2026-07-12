@@ -1,15 +1,14 @@
 // Stacking — Jenga, Box Stack, Pyramid2D (planar), Sphere Stack, Single Box (sample_stacking).
 
 import * as THREE from "three";
-import { createButtonGroup, createInfoBox } from "../controls.ts";
+import { createButtonGroup, createCanvasOverlay, createInfoBox, fmt2g } from "../controls.ts";
 import {
   attachInteraction,
-  type ParamValues,
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { applyBodyColor, DemoScene, makeBodyMaterial } from "../three-scene.ts";
+import { applyBodyColor, DemoScene, makeBodyMaterial, setView } from "../three-scene.ts";
 
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
@@ -18,7 +17,7 @@ type Mode = "jenga" | "boxes" | "pyramid" | "spheres" | "single";
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, page } = demoPage(
     container,
     "Stacking",
     "Official Stacking samples — Jenga Stack, Box Stack, Pyramid2D (planar), Sphere Stack, " +
@@ -30,8 +29,9 @@ export function init(container: HTMLElement) {
 
   controls.appendChild(
     createInfoBox(
-      "Default is <strong>Jenga Stack</strong> (alternating X/Z planks — full 3D, no locks). " +
-        "Box / Sphere stacks match C (column at x=z=0). " +
+      "Exact C sample counts: <strong>Jenga Stack</strong> 40 planks (Hull or Capsule, C " +
+        "<code>DrawControls</code> radio), <strong>Box Stack</strong> 40, <strong>Sphere Stack</strong> " +
+        "30. Jenga is the 3D showcase (alternating X/Z planks, no locks). " +
         "<strong>Pyramid2D is intentionally planar</strong>: C locks linear Z + angular X/Y " +
         "so collapse stays in the XY plane — not a 3D engine bug.",
     ),
@@ -39,10 +39,12 @@ export function init(container: HTMLElement) {
 
   // Jenga is the 3D showcase; Pyramid2D must never be the default (it looks like a 2D sim).
   let mode: Mode = "jenga";
-  let stackCount = 12;
-  let jengaLayers = 12;
-  let pyramidSize = 6;
-  let sphereCount = 12;
+  // C JengaStack DrawControls radio: Hull (default) or Capsule.
+  let jengaShape: "hull" | "capsule" = "hull";
+
+  // Single Box HUD readout (C SingleBox::Step draws "(x, y, z) = ...").
+  const hud = createCanvasOverlay(page);
+  hud.style.display = "none";
 
   const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 14, shadowExtent: 36 });
   const meshes: THREE.Mesh[] = [];
@@ -61,31 +63,18 @@ export function init(container: HTMLElement) {
   }
 
   function setCameraForMode() {
+    // C SetView(yaw, pitch, distance, target) values from sample_stacking.cpp.
     if (mode === "single") {
-      demo.controls.target.set(0, 0, 0);
-      demo.camera.position.set(0, 8, 12);
+      setView(demo, 0, 25, 10, [0, 0, 0]); // SingleBox :278
+    } else if (mode === "boxes") {
+      setView(demo, 0, 15, 50, [0, 20, 0]); // BoxStack :432
     } else if (mode === "pyramid") {
-      demo.controls.target.set(0, 5, 0);
-      demo.camera.position.set(0, 20, 40);
+      setView(demo, 0, 30, 50, [0, 5, 0]); // Pyramid2D :895
     } else if (mode === "spheres") {
-      demo.controls.target.set(0, 10, 0);
-      demo.camera.position.set(0, 15, 40);
-    } else if (mode === "jenga") {
-      // Match C JengaStack: yaw 35°, pitch 15°, radius 30, look at (0,10,0).
-      demo.controls.target.set(0, 10, 0);
-      const yaw = (35 * Math.PI) / 180;
-      const pitch = (15 * Math.PI) / 180;
-      const r = 30;
-      demo.camera.position.set(
-        r * Math.cos(pitch) * Math.sin(yaw),
-        10 + r * Math.sin(pitch),
-        r * Math.cos(pitch) * Math.cos(yaw),
-      );
+      setView(demo, 0, 15, 50, [0, 10, 0]); // SphereStack :173
     } else {
-      demo.controls.target.set(0, 12, 0);
-      demo.camera.position.set(0, 18, 42);
+      setView(demo, 35, 15, 30, [0, 10, 0]); // JengaStack :493
     }
-    demo.controls.update();
   }
 
   function pickMat(bodyType: number, awake: boolean): THREE.MeshStandardMaterial {
@@ -135,13 +124,32 @@ export function init(container: HTMLElement) {
 
   function reset() {
     clearMeshes();
+    hud.style.display = mode === "single" ? "" : "none";
+    // Fixed C sample counts (all light enough for serial wasm).
     if (mode === "single") wasm.sim_reset_single_box();
-    else if (mode === "boxes") wasm.sim_reset_stacking(stackCount);
-    else if (mode === "jenga") wasm.sim_reset_jenga(jengaLayers);
-    else if (mode === "pyramid") wasm.sim_reset_pyramid(pyramidSize);
-    else wasm.sim_reset_sphere_stack(sphereCount);
+    else if (mode === "boxes") wasm.sim_reset_stacking();
+    else if (mode === "jenga") wasm.sim_reset_jenga(jengaShape === "capsule" ? 1 : 0);
+    else if (mode === "pyramid") wasm.sim_reset_pyramid();
+    else wasm.sim_reset_sphere_stack();
     setCameraForMode();
   }
+
+  // C JengaStack DrawControls Capsule/Hull radio — only shown while Jenga is active.
+  const jengaControls = document.createElement("div");
+  jengaControls.style.display = "none";
+  jengaControls.appendChild(
+    createButtonGroup(
+      [
+        { label: "Hull", value: "hull" },
+        { label: "Capsule", value: "capsule" },
+      ],
+      "hull",
+      (v) => {
+        jengaShape = v as "hull" | "capsule";
+        if (mode === "jenga") reset();
+      },
+    ),
+  );
 
   controls.appendChild(
     createButtonGroup(
@@ -155,10 +163,13 @@ export function init(container: HTMLElement) {
       "jenga",
       (v) => {
         mode = v as Mode;
+        jengaControls.style.display = mode === "jenga" ? "" : "none";
         reset();
       },
     ),
   );
+  controls.appendChild(jengaControls);
+  jengaControls.style.display = mode === "jenga" ? "" : "none";
 
   const ctrl = attachInteraction({
     wasm,
@@ -168,25 +179,6 @@ export function init(container: HTMLElement) {
     onRestart: reset,
     sampleName: "Stacking",
     sampleCategory: "Stacking",
-    params: [
-      {
-        type: "slider",
-        key: "count",
-        label: "Count",
-        min: 4,
-        max: 24,
-        step: 1,
-        default: 12,
-        restart: true,
-      },
-    ],
-    onParamsChange: (values: ParamValues) => {
-      const n = Math.round(Number(values.count) || 12);
-      if (mode === "boxes") stackCount = n;
-      else if (mode === "jenga") jengaLayers = n;
-      else if (mode === "spheres") sphereCount = n;
-      else if (mode === "pyramid") pyramidSize = Math.min(12, Math.max(2, n));
-    },
   }) as SimControllerWithTick;
 
   reset();
@@ -199,6 +191,12 @@ export function init(container: HTMLElement) {
     while (meshes.length > n) {
       const m = meshes.pop()!;
       demo.content.remove(m);
+    }
+    // Single Box HUD: C SingleBox::Step prints the cube's position (body 1, after ground).
+    if (mode === "single" && n > 1) {
+      const o = STRIDE;
+      hud.textContent =
+        `(x, y, z) = (${fmt2g(poses[o]!)}, ${fmt2g(poses[o + 1]!)}, ${fmt2g(poses[o + 2]!)})`;
     }
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;

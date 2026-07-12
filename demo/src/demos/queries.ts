@@ -34,7 +34,7 @@ type CastWorldWasm = Box3dWasm & {
   query_debug_draw(flags: number): Float32Array;
 };
 import { demoPage, runLoop } from "./common.ts";
-import { COLORS, DemoScene, lineMat, makeWireEdges } from "../three-scene.ts";
+import { COLORS, DemoScene, lineMat, makeWireEdges, setView } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
 /** ShapeType discriminant values from box3d geometry. */
@@ -59,24 +59,6 @@ function queryAsInteract(wasm: CastWorldWasm): InteractWasm {
     sim_counters: () => wasm.query_counters(),
     sim_debug_draw: (flags) => wasm.query_debug_draw(flags),
   };
-}
-
-function cameraFromView(
-  demo: DemoScene,
-  yawDeg: number,
-  pitchDeg: number,
-  distance: number,
-  target: [number, number, number],
-) {
-  demo.controls.target.set(target[0], target[1], target[2]);
-  const yaw = (yawDeg * Math.PI) / 180;
-  const pitch = (pitchDeg * Math.PI) / 180;
-  demo.camera.position.set(
-    target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
-    target[1] + distance * Math.sin(pitch),
-    target[2] + distance * Math.cos(pitch) * Math.cos(yaw),
-  );
-  demo.controls.update();
 }
 
 function applyParams(wasm: CastWorldWasm, p: ParamValues) {
@@ -348,7 +330,7 @@ export function init(container: HTMLElement) {
   function reset() {
     wasm.query_reset();
     applyParams(wasm, ctrl.params);
-    cameraFromView(demo, 45, 30, 20, [0, 0, 0]);
+    setView(demo, 45, 30, 20, [0, 0, 0]);
     syncIgnoreAabbs();
     syncSurfaceWire();
   }

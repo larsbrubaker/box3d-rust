@@ -4,7 +4,10 @@ use crate::interact::{self, MouseGrab};
 use crate::joint_drive;
 use crate::joint_gear;
 use crate::vis::{capsule_x, pos, push_poses, sphere, vec3, VisBody};
-use box3d_rust::body::create_body;
+use box3d_rust::body::{
+    body_get_angular_velocity, body_get_linear_velocity, body_get_mass_data, body_get_world_center,
+    create_body,
+};
 use box3d_rust::height_field::HeightFieldData;
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
@@ -16,14 +19,14 @@ use box3d_rust::joint::{
     revolute_joint_set_target_angle,
 };
 use box3d_rust::math_functions::{
-    Transform, Vec3, DEG_TO_RAD, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
+    dot, mul_mv, Transform, Vec3, DEG_TO_RAD, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
     default_body_def, default_revolute_joint_def, default_shape_def, default_spherical_joint_def,
     default_world_def, BodyType,
 };
-use box3d_rust::world::World;
+use box3d_rust::world::{world_get_gravity, World};
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
@@ -46,6 +49,8 @@ pub(crate) struct JointState {
     pub scene: JointScene,
     /// Revolute hinge or Gear Lift driver.
     pub control_joint: JointId,
+    /// Revolute sample plank body, for the energy readout (C Render()).
+    pub hinge_body: BodyId,
     pub chassis: BodyId,
     pub front_left: JointId,
     pub front_right: JointId,
@@ -93,6 +98,7 @@ pub(crate) fn empty_state(world: World, bodies: Vec<VisBody>, scene: JointScene)
         grab: MouseGrab::default(),
         scene,
         control_joint: NULL_JOINT_ID,
+        hinge_body: NULL_BODY_ID,
         chassis: NULL_BODY_ID,
         front_left: NULL_JOINT_ID,
         front_right: NULL_JOINT_ID,
@@ -116,9 +122,11 @@ fn install(state: JointState) -> u32 {
 }
 
 /// Ball-and-chain: spherical-linked capsules with a heavy sphere tip.
+///
+/// C hard-codes `linkCount = 32` with no control (sample_joint.cpp:1557).
 #[wasm_bindgen]
-pub fn joint_reset_chain(link_count: u32) -> u32 {
-    let n = link_count.clamp(4, 24);
+pub fn joint_reset_chain() -> u32 {
+    let n = 32u32;
     let mut world = new_world();
     let mut bodies = Vec::new();
 
@@ -152,7 +160,7 @@ pub fn joint_reset_chain(link_count: u32) -> u32 {
         parent = child;
     }
 
-    let sphere_radius = 1.5f32;
+    let sphere_radius = 2.0f32;
     body_def.position = pos(
         (1.0 + 2.0 * n as f32) * link_extent + sphere_radius - link_extent,
         0.0,
@@ -204,6 +212,7 @@ pub fn joint_reset_hinge() -> u32 {
     joint_def.base.body_id_b = plank;
     joint_def.base.local_frame_a = xf_at(0.0, 6.5, 0.0);
     joint_def.base.local_frame_b = xf_at(0.0, 1.5, 0.0);
+    joint_def.base.draw_scale = 2.0;
     joint_def.enable_motor = false;
     joint_def.max_motor_torque = 5000.0;
     joint_def.motor_speed = 0.0;
@@ -217,6 +226,7 @@ pub fn joint_reset_hinge() -> u32 {
 
     let mut state = empty_state(world, bodies, JointScene::Revolute);
     state.control_joint = joint_id;
+    state.hinge_body = plank;
     install(state)
 }
 
@@ -291,6 +301,70 @@ pub fn joint_set_drive_params(spin_speed: f32, max_spin_torque: f32) {
         state.spin_speed = spin_speed;
         joint_drive::apply_spin_torque(state, max_spin_torque);
     });
+}
+
+/// Driving "Suspension" sliders (C DrawControls): lower/upper translation limits,
+/// hertz, damping ratio, applied to all four wheels.
+#[wasm_bindgen]
+pub fn joint_set_driving_suspension(lower: f32, upper: f32, hertz: f32, damping: f32) {
+    with_state(|state| joint_drive::set_suspension(state, lower, upper, hertz, damping));
+}
+
+/// Driving "Steering" sliders (C DrawControls): hertz, damping ratio, max torque,
+/// and lower/upper steering limits in degrees, applied to the two front wheels.
+#[wasm_bindgen]
+pub fn joint_set_driving_steering(
+    hertz: f32,
+    damping: f32,
+    torque: f32,
+    lower_deg: f32,
+    upper_deg: f32,
+) {
+    with_state(|state| {
+        joint_drive::set_steering(
+            state,
+            hertz,
+            damping,
+            torque,
+            lower_deg * DEG_TO_RAD,
+            upper_deg * DEG_TO_RAD,
+        );
+    });
+}
+
+/// Driving telemetry HUD (C Render()): see [`joint_drive::telemetry`] for layout.
+#[wasm_bindgen]
+pub fn joint_drive_telemetry() -> Vec<f32> {
+    with_state(|state| joint_drive::telemetry(state))
+}
+
+/// Revolute energy readout (C RevoluteJoint::Render, sample_joint.cpp:1155-1170).
+/// Returns `[kinetic, potential, total]` for the hanging plank.
+#[wasm_bindgen]
+pub fn joint_revolute_energy() -> Vec<f32> {
+    with_state(|state| {
+        if !state.hinge_body.is_non_null() {
+            return vec![0.0, 0.0, 0.0];
+        }
+        let body = state.hinge_body;
+        let mass_data = body_get_mass_data(&state.world, body);
+        let angular_velocity = body_get_angular_velocity(&state.world, body);
+        let linear_velocity = body_get_linear_velocity(&state.world, body);
+        let mut kinetic = 0.5
+            * dot(
+                angular_velocity,
+                mul_mv(mass_data.inertia, angular_velocity),
+            );
+        kinetic += 0.5 * mass_data.mass * dot(linear_velocity, linear_velocity);
+        let center = body_get_world_center(&state.world, body);
+        let gravity = world_get_gravity(&state.world);
+        // C (sample_joint.cpp:1166): `-mass * center.y * gravity.y`, keeping C's exact
+        // multiply order `((-mass) * center.y) * gravity.y` and narrowing to f32 only at the
+        // final assignment (never `center.y as f32` before the products). The demo always links
+        // box3d-rust in single precision, so `center.y` is f32 and this is C's f32 path exactly.
+        let potential = (-mass_data.mass * center.y * gravity.y) as f32;
+        vec![kinetic, potential, kinetic + potential]
+    })
 }
 
 #[wasm_bindgen]
