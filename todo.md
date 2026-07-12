@@ -31,14 +31,13 @@ task-12 is the whole gap, ordered so the shared interaction layer lands first.
 
 ## Release readiness
 
-The crate is functionally complete. `0.1.0` is the crates.io release aligned with
-the pinned C reference. Remaining polish:
+The crate is functionally complete. `0.1.0` is published on crates.io
+(https://crates.io/crates/box3d-rust) and tagged `v0.1.0`. Remaining polish:
 
 - [ ] Rustdoc pass over the public API (module docs on the main entry points,
       doc examples for World/body/shape/joint creation)
 - [ ] Decide the idiomatic-API question: ship the C-mirror API as-is for 0.1
       (like box2d-rust) or add a thin ergonomic layer — record the decision
-- [ ] Git tag `v0.1.0` on the publish commit (if not already tagged)
 
 ## Upstream tracking (recurring)
 
