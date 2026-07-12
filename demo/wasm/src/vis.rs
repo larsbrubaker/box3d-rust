@@ -10,7 +10,7 @@
 
 use box3d_rust::body::get_body_transform;
 use box3d_rust::geometry::{Capsule, Sphere};
-use box3d_rust::math_functions::{Pos, Vec3};
+use box3d_rust::math_functions::{mul_transforms, Pos, Transform, Vec3};
 use box3d_rust::world::World;
 
 pub const POSE_STRIDE: usize = 15;
@@ -23,6 +23,8 @@ pub struct VisBody {
     pub kind: u8,
     /// Box half-extents, sphere radius in [0], or capsule centers + radius.
     pub params: [f32; 7],
+    /// Optional local transform for compound children (world = body × local).
+    pub local: Option<Transform>,
 }
 
 impl VisBody {
@@ -31,6 +33,16 @@ impl VisBody {
             body_index,
             kind: KIND_BOX,
             params: [hx, hy, hz, 0.0, 0.0, 0.0, 0.0],
+            local: None,
+        }
+    }
+
+    pub fn box_local(body_index: i32, hx: f32, hy: f32, hz: f32, local: Transform) -> Self {
+        Self {
+            body_index,
+            kind: KIND_BOX,
+            params: [hx, hy, hz, 0.0, 0.0, 0.0, 0.0],
+            local: Some(local),
         }
     }
 
@@ -39,6 +51,16 @@ impl VisBody {
             body_index,
             kind: KIND_SPHERE,
             params: [radius, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            local: None,
+        }
+    }
+
+    pub fn sphere_local(body_index: i32, radius: f32, local: Transform) -> Self {
+        Self {
+            body_index,
+            kind: KIND_SPHERE,
+            params: [radius, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            local: Some(local),
         }
     }
 
@@ -55,6 +77,7 @@ impl VisBody {
                 capsule.center2.z,
                 capsule.radius,
             ],
+            local: None,
         }
     }
 }
@@ -64,13 +87,43 @@ pub fn push_poses(world: &World, bodies: &[VisBody], out: &mut Vec<f32>) {
     out.reserve(bodies.len() * POSE_STRIDE);
     for b in bodies {
         let xf = get_body_transform(world, b.body_index);
-        out.push(xf.p.x as f32);
-        out.push(xf.p.y as f32);
-        out.push(xf.p.z as f32);
-        out.push(xf.q.v.x);
-        out.push(xf.q.v.y);
-        out.push(xf.q.v.z);
-        out.push(xf.q.s);
+        let (px, py, pz, qx, qy, qz, qw) = if let Some(local) = b.local {
+            let parent = Transform {
+                p: Vec3 {
+                    x: xf.p.x as f32,
+                    y: xf.p.y as f32,
+                    z: xf.p.z as f32,
+                },
+                q: xf.q,
+            };
+            let world_xf = mul_transforms(parent, local);
+            (
+                world_xf.p.x,
+                world_xf.p.y,
+                world_xf.p.z,
+                world_xf.q.v.x,
+                world_xf.q.v.y,
+                world_xf.q.v.z,
+                world_xf.q.s,
+            )
+        } else {
+            (
+                xf.p.x as f32,
+                xf.p.y as f32,
+                xf.p.z as f32,
+                xf.q.v.x,
+                xf.q.v.y,
+                xf.q.v.z,
+                xf.q.s,
+            )
+        };
+        out.push(px);
+        out.push(py);
+        out.push(pz);
+        out.push(qx);
+        out.push(qy);
+        out.push(qz);
+        out.push(qw);
         out.extend_from_slice(&b.params);
         out.push(b.kind as f32);
     }

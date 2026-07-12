@@ -5,18 +5,70 @@
 
 use crate::interact::{self, MouseGrab};
 use box3d_rust::body::{create_body, destroy_body, get_body_transform, make_body_id};
-use box3d_rust::compound::{create_compound, CompoundDef, CompoundHullDef};
-use box3d_rust::geometry::{default_surface_material, Sphere};
+use box3d_rust::compound::{
+    create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundSphereDef,
+};
+use box3d_rust::geometry::{default_surface_material, Capsule, Sphere};
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
-    make_quat_from_axis_angle, mul_transforms, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y,
-    VEC3_AXIS_Z, VEC3_ZERO,
+    compute_quat_between_unit_vectors, get_length_and_normalize, make_quat_from_axis_angle,
+    mul_transforms, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::shape::{create_compound_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use box3d_rust::world::World;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
+
+/// Tiny LCG for village prop placement (demo-only; not the C Random* stream).
+struct DemoRng(u32);
+
+impl DemoRng {
+    fn next_u32(&mut self) -> u32 {
+        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
+        self.0
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
+    }
+
+    fn range(&mut self, lo: f32, hi: f32) -> f32 {
+        lo + (hi - lo) * self.next_f32()
+    }
+
+    fn vec3_range(&mut self, lo: Vec3, hi: Vec3) -> Vec3 {
+        Vec3 {
+            x: self.range(lo.x, hi.x),
+            y: self.range(lo.y, hi.y),
+            z: self.range(lo.z, hi.z),
+        }
+    }
+}
+
+fn capsule_local_from_centers(c1: Vec3, c2: Vec3, radius: f32) -> (Transform, [f32; 3]) {
+    let mut dir = Vec3 {
+        x: c2.x - c1.x,
+        y: c2.y - c1.y,
+        z: c2.z - c1.z,
+    };
+    let mut len = 0.0;
+    dir = get_length_and_normalize(&mut len, dir);
+    let mid = Vec3 {
+        x: 0.5 * (c1.x + c2.x),
+        y: 0.5 * (c1.y + c2.y),
+        z: 0.5 * (c1.z + c2.z),
+    };
+    let q = if len > 1e-6 {
+        compute_quat_between_unit_vectors(VEC3_AXIS_Y, dir)
+    } else {
+        QUAT_IDENTITY
+    };
+    (
+        Transform { p: mid, q },
+        [radius, 0.5 * len, radius],
+    )
+}
 
 thread_local! {
     static SIM: RefCell<Option<SimState>> = const { RefCell::new(None) };
@@ -179,9 +231,15 @@ pub fn sim_reset_bodies() -> u32 {
     })
 }
 
-/// Compound ground (several hull children) + falling spheres — sample SimpleCompound vibe.
+/// Compound / Simple — matches `sample_compound.cpp` SimpleCompound (single hull + sphere).
 #[wasm_bindgen]
 pub fn sim_reset_compound() -> u32 {
+    sim_reset_compound_simple()
+}
+
+/// Named Simple compound gallery sample (C: Compound / Simple).
+#[wasm_bindgen]
+pub fn sim_reset_compound_simple() -> u32 {
     SIM.with(|cell| {
         let mut sim = SimState {
             world: new_world(),
@@ -190,49 +248,21 @@ pub fn sim_reset_compound() -> u32 {
         };
 
         let a = 4.0f32;
-        let box_a = make_box_hull(a, 0.125 * a, a);
-        let box_b = make_box_hull(1.5, 0.4, 1.5);
-        let box_c = make_box_hull(0.8, 0.8, 0.8);
+        let box_hull = make_box_hull(a, 0.125 * a, a);
         let material = default_surface_material();
-
-        let hulls = [
-            CompoundHullDef {
-                hull: &box_a.base,
-                transform: Transform {
-                    p: Vec3 {
-                        x: 1.0,
-                        y: -0.125 * a,
-                        z: 0.0,
-                    },
-                    q: QUAT_IDENTITY,
-                },
-                material,
+        let hull_transform = Transform {
+            p: Vec3 {
+                x: 1.0,
+                y: -0.125 * a,
+                z: 0.0,
             },
-            CompoundHullDef {
-                hull: &box_b.base,
-                transform: Transform {
-                    p: Vec3 {
-                        x: -3.0,
-                        y: 0.4,
-                        z: 2.0,
-                    },
-                    q: make_quat_from_axis_angle(VEC3_AXIS_Y, 0.3),
-                },
-                material,
-            },
-            CompoundHullDef {
-                hull: &box_c.base,
-                transform: Transform {
-                    p: Vec3 {
-                        x: 3.5,
-                        y: 0.8,
-                        z: -1.5,
-                    },
-                    q: make_quat_from_axis_angle(VEC3_AXIS_Z, 0.2),
-                },
-                material,
-            },
-        ];
+            q: QUAT_IDENTITY,
+        };
+        let hulls = [CompoundHullDef {
+            hull: &box_hull.base,
+            transform: hull_transform,
+            material,
+        }];
 
         let compound = create_compound(&CompoundDef {
             hulls: &hulls,
@@ -243,8 +273,8 @@ pub fn sim_reset_compound() -> u32 {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Static;
         body_def.position = Pos {
-            x: 0.0 as _,
-            y: 0.0 as _,
+            x: 2.0 as _,
+            y: (-1.0) as _,
             z: 0.0 as _,
         };
         body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, 0.25 * std::f32::consts::PI);
@@ -252,21 +282,342 @@ pub fn sim_reset_compound() -> u32 {
         create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
 
         let parent_index = ground.index1 - 1;
-        let child_sizes = [(a, 0.125 * a, a), (1.5f32, 0.4, 1.5), (0.8f32, 0.8, 0.8)];
-        for (i, h) in hulls.iter().enumerate() {
-            let (hx, hy, hz) = child_sizes[i];
-            sim.bodies.push(SimBody {
-                body_index: parent_index,
-                half_extents: [hx, hy, hz],
-                kind: 0,
-                local: Some(h.transform),
+        sim.bodies.push(SimBody {
+            body_index: parent_index,
+            half_extents: [a, 0.125 * a, a],
+            kind: 0,
+            local: Some(hull_transform),
+        });
+
+        push_dynamic_sphere(&mut sim, 0.0, 2.0, 0.0, 0.25, 1.0);
+
+        let count = sim.bodies.len() as u32;
+        *cell.borrow_mut() = Some(sim);
+        count
+    })
+}
+
+/// Compound / Spheres — cloud of compound spheres (C: Compound / Spheres, count 20).
+#[wasm_bindgen]
+pub fn sim_reset_compound_spheres() -> u32 {
+    SIM.with(|cell| {
+        let mut sim = SimState {
+            world: new_world(),
+            bodies: Vec::new(),
+            grab: MouseGrab::default(),
+        };
+
+        let mut rng = DemoRng(0xC0FF_EE42);
+        let h = 10.0f32;
+        let material = default_surface_material();
+        let mut spheres = Vec::with_capacity(20);
+        for _ in 0..20 {
+            let center = rng.vec3_range(
+                Vec3 {
+                    x: -h,
+                    y: -h,
+                    z: -h,
+                },
+                Vec3 {
+                    x: h,
+                    y: h,
+                    z: h,
+                },
+            );
+            let radius = rng.range(0.01 * h, 0.05 * h);
+            spheres.push(CompoundSphereDef {
+                sphere: Sphere { center, radius },
+                material,
             });
         }
 
-        push_dynamic_sphere(&mut sim, 0.0, 4.0, 0.0, 0.35, 1.0);
-        push_dynamic_sphere(&mut sim, -1.0, 5.5, 0.5, 0.3, 1.0);
-        push_dynamic_sphere(&mut sim, 1.2, 6.5, -0.4, 0.4, 1.0);
-        push_dynamic_box(&mut sim, 0.5, 8.0, 0.0, 0.35, 0.35, 0.35, 1.0, 0.4);
+        let compound = create_compound(&CompoundDef {
+            spheres: &spheres,
+            ..Default::default()
+        })
+        .expect("compound spheres");
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        let ground = create_body(&mut sim.world, &body_def);
+        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+
+        let parent_index = ground.index1 - 1;
+        for s in &spheres {
+            sim.bodies.push(SimBody {
+                body_index: parent_index,
+                half_extents: [s.sphere.radius, s.sphere.radius, s.sphere.radius],
+                kind: 1,
+                local: Some(Transform {
+                    p: s.sphere.center,
+                    q: QUAT_IDENTITY,
+                }),
+            });
+        }
+
+        let count = sim.bodies.len() as u32;
+        *cell.borrow_mut() = Some(sim);
+        count
+    })
+}
+
+/// Compound / Hulls — cloud of compound box hulls (C: Compound / Hulls, count 20).
+#[wasm_bindgen]
+pub fn sim_reset_compound_hulls() -> u32 {
+    SIM.with(|cell| {
+        let mut sim = SimState {
+            world: new_world(),
+            bodies: Vec::new(),
+            grab: MouseGrab::default(),
+        };
+
+        let mut rng = DemoRng(0xA011_C0DE);
+        let h = 10.0f32;
+        let material = default_surface_material();
+        // Keep owned hulls alive for create_compound.
+        let mut box_hulls = Vec::with_capacity(20);
+        let mut extents = Vec::with_capacity(20);
+        let mut transforms = Vec::with_capacity(20);
+        for _ in 0..20 {
+            let e = Vec3 {
+                x: rng.range(0.01 * h, 0.05 * h),
+                y: rng.range(0.01 * h, 0.05 * h),
+                z: rng.range(0.01 * h, 0.05 * h),
+            };
+            extents.push(e);
+            box_hulls.push(make_box_hull(e.x, e.y, e.z));
+            let mut axis = rng.vec3_range(
+                Vec3 {
+                    x: -1.0,
+                    y: -1.0,
+                    z: -1.0,
+                },
+                Vec3 {
+                    x: 1.0,
+                    y: 1.0,
+                    z: 1.0,
+                },
+            );
+            let mut axis_len = 0.0;
+            axis = get_length_and_normalize(&mut axis_len, axis);
+            if axis_len < 1e-4 {
+                axis = VEC3_AXIS_Y;
+            }
+            transforms.push(Transform {
+                p: rng.vec3_range(
+                    Vec3 {
+                        x: -h,
+                        y: -h,
+                        z: -h,
+                    },
+                    Vec3 {
+                        x: h,
+                        y: h,
+                        z: h,
+                    },
+                ),
+                q: make_quat_from_axis_angle(axis, rng.range(0.0, std::f32::consts::TAU)),
+            });
+        }
+
+        let hulls: Vec<CompoundHullDef<'_>> = box_hulls
+            .iter()
+            .zip(transforms.iter())
+            .map(|(bh, xf)| CompoundHullDef {
+                hull: &bh.base,
+                transform: *xf,
+                material,
+            })
+            .collect();
+
+        let compound = create_compound(&CompoundDef {
+            hulls: &hulls,
+            ..Default::default()
+        })
+        .expect("compound hulls");
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        let ground = create_body(&mut sim.world, &body_def);
+        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+
+        let parent_index = ground.index1 - 1;
+        for (i, xf) in transforms.iter().enumerate() {
+            let e = extents[i];
+            sim.bodies.push(SimBody {
+                body_index: parent_index,
+                half_extents: [e.x, e.y, e.z],
+                kind: 0,
+                local: Some(*xf),
+            });
+        }
+
+        let count = sim.bodies.len() as u32;
+        *cell.borrow_mut() = Some(sim);
+        count
+    })
+}
+
+/// Compound / Village — tiled compound hull ground + odd-tile sphere/capsule props.
+///
+/// C uses `gridCount = 8` (debug) / `200` (release) plus building meshes. Browser scale is
+/// `grid_count` clamped to 8..=16 (default 10); building meshes are omitted (no OBJ loader).
+#[wasm_bindgen]
+pub fn sim_reset_village(grid_count: u32) -> u32 {
+    let grid = grid_count.clamp(8, 16) as i32;
+    SIM.with(|cell| {
+        let mut sim = SimState {
+            world: new_world(),
+            bodies: Vec::new(),
+            grab: MouseGrab::default(),
+        };
+
+        let a = 4.0f32;
+        let mut rng = DemoRng(0xB111_A6E7);
+        let material = default_surface_material();
+        let box_hull = make_box_hull(a, 0.5 * a, a);
+
+        let hull_count = (grid * grid) as usize;
+        let prop_capacity = hull_count / 8 + 1;
+
+        let mut capsules: Vec<CompoundCapsuleDef> = Vec::with_capacity(prop_capacity);
+        let mut spheres: Vec<CompoundSphereDef> = Vec::with_capacity(prop_capacity);
+        let mut hull_transforms: Vec<Transform> = Vec::with_capacity(hull_count);
+
+        let mut transform = Transform {
+            p: VEC3_ZERO,
+            q: QUAT_IDENTITY,
+        };
+
+        for i in 0..grid {
+            transform.p.x = (2.0 * i as f32 - grid as f32) * a;
+            for j in 0..grid {
+                transform.p.z = (2.0 * j as f32 - grid as f32) * a;
+                transform.p.y = rng.range(-0.25, 0.125) * a;
+
+                if (i & 1) != 0 && (j & 1) != 0 {
+                    let p1 = Vec3 {
+                        x: transform.p.x,
+                        y: transform.p.y,
+                        z: transform.p.z,
+                    } + rng.vec3_range(
+                        Vec3 {
+                            x: -a,
+                            y: a,
+                            z: -a,
+                        },
+                        Vec3 {
+                            x: a,
+                            y: 2.0 * a,
+                            z: a,
+                        },
+                    );
+                    let p2 = Vec3 {
+                        x: transform.p.x,
+                        y: transform.p.y,
+                        z: transform.p.z,
+                    } + rng.vec3_range(
+                        Vec3 {
+                            x: -a,
+                            y: a,
+                            z: -a,
+                        },
+                        Vec3 {
+                            x: a,
+                            y: 2.0 * a,
+                            z: a,
+                        },
+                    );
+                    let radius = rng.range(0.1, 0.5);
+                    if capsules.len() < spheres.len() {
+                        if capsules.len() < prop_capacity {
+                            capsules.push(CompoundCapsuleDef {
+                                capsule: Capsule {
+                                    center1: p1,
+                                    center2: p2,
+                                    radius,
+                                },
+                                material,
+                            });
+                        }
+                    } else if spheres.len() < prop_capacity {
+                        spheres.push(CompoundSphereDef {
+                            sphere: Sphere {
+                                center: p1,
+                                radius,
+                            },
+                            material,
+                        });
+                    }
+                }
+
+                hull_transforms.push(transform);
+            }
+        }
+
+        let hulls: Vec<CompoundHullDef<'_>> = hull_transforms
+            .iter()
+            .map(|xf| CompoundHullDef {
+                hull: &box_hull.base,
+                transform: *xf,
+                material,
+            })
+            .collect();
+
+        let compound = create_compound(&CompoundDef {
+            capsules: &capsules,
+            hulls: &hulls,
+            spheres: &spheres,
+            ..Default::default()
+        })
+        .expect("village compound");
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        body_def.position = Pos {
+            x: (-1.0) as _,
+            y: (-0.5) as _,
+            z: 2.0 as _,
+        };
+        body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, -1.15 * std::f32::consts::PI);
+        let ground = create_body(&mut sim.world, &body_def);
+        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+
+        let parent_index = ground.index1 - 1;
+        for xf in &hull_transforms {
+            sim.bodies.push(SimBody {
+                body_index: parent_index,
+                half_extents: [a, 0.5 * a, a],
+                kind: 0,
+                local: Some(*xf),
+            });
+        }
+        for s in &spheres {
+            sim.bodies.push(SimBody {
+                body_index: parent_index,
+                half_extents: [s.sphere.radius, s.sphere.radius, s.sphere.radius],
+                kind: 1,
+                local: Some(Transform {
+                    p: s.sphere.center,
+                    q: QUAT_IDENTITY,
+                }),
+            });
+        }
+        for c in &capsules {
+            let (local, half) =
+                capsule_local_from_centers(c.capsule.center1, c.capsule.center2, c.capsule.radius);
+            sim.bodies.push(SimBody {
+                body_index: parent_index,
+                half_extents: half,
+                kind: 2,
+                local: Some(local),
+            });
+        }
+
+        // A few dynamic drop-ins so the village is interactive like other dynamics demos.
+        push_dynamic_sphere(&mut sim, 0.0, 12.0, 0.0, 0.4, 1.0);
+        push_dynamic_sphere(&mut sim, 3.0, 14.0, -2.0, 0.35, 1.0);
+        push_dynamic_box(&mut sim, -2.0, 13.0, 1.0, 0.4, 0.4, 0.4, 1.0, 0.4);
 
         let count = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
