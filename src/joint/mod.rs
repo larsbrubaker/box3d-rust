@@ -1,8 +1,13 @@
-// Port of the joint data model from box3d-cpp-reference/src/joint.h.
-// Lifecycle and plumbing from joint.c; per-type solve lands in later commits.
-//
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
+//! Joints (constraints) between bodies.
+//!
+//! Create typed joints with the `create_*_joint` helpers (distance, motor,
+//! parallel, prismatic, revolute, spherical, weld, wheel, filter), each taking
+//! the matching def from [`crate::types`] (`default_revolute_joint_def`, etc.).
+//!
+//! Port of `joint.h` / `joint.c` (lifecycle, plumbing, and per-type solve).
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
 
 mod api;
 mod distance;

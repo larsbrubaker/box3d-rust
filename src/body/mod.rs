@@ -1,7 +1,14 @@
-// Port of body.h data model and body.c lifecycle / mass / velocity API.
-//
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
+//! Rigid bodies: create, destroy, and configure simulation state.
+//!
+//! Use [`create_body`] with a [`crate::types::BodyDef`] (from
+//! [`crate::types::default_body_def`]) to add a body to a [`crate::world::World`].
+//! Attach collision with [`crate::shape`], then apply forces / set transforms
+//! through the accessors in this module.
+//!
+//! Port of `body.h` / `body.c` (lifecycle, mass, velocity, and query API).
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
 
 mod access;
 mod api;

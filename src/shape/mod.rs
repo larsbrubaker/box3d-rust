@@ -1,16 +1,15 @@
-// Port of the shape module from box3d-cpp-reference/src/shape.h + shape.c.
-//
-// Split to satisfy the 800-line file limit:
-// - dispatch.rs  — per-shape-type dispatch (AABBs, mass, centroid, proxy)
-// - toi.rs       — shape time-of-impact including mesh/height/compound CCD
-// - lifecycle.rs — shape creation (margin, create_shape_internal, typed wrappers)
-// - mutators.rs  — filter / material public getters and setters
-// - api.rs       — public create re-exports
-//
-// This file holds the data model and filter predicates.
-//
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
+//! Collision shapes attached to bodies (sphere, capsule, hull, mesh, …).
+//!
+//! Create shapes with [`create_sphere_shape`], [`create_capsule_shape`],
+//! [`create_hull_shape`], and the mesh/height-field/compound helpers, using a
+//! [`crate::types::ShapeDef`] from [`crate::types::default_shape_def`]. Geometry
+//! primitives live in [`crate::geometry`] and [`crate::hull`].
+//!
+//! Port of `shape.h` / `shape.c`. This file holds the data model and filter
+//! predicates; create/destroy and mutators are re-exported from submodules.
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
 
 use crate::compound::CompoundData;
 use crate::core::NULL_INDEX;

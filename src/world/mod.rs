@@ -1,24 +1,36 @@
-// Port of the world data model from box3d-cpp-reference/src/physics_world.h
-// (b3World, b3TaskContext) plus b3Profile from types.h. Logic from
-// physics_world.c lands across the remaining bring-up commits.
-//
-// Porting decisions (mirroring box2d-rust):
-// - C keeps a global world registry. The Rust `World` is an owned object;
-//   `world_id`/`generation` are kept so body/shape/joint ids remain
-//   bit-compatible with C.
-// - The arena allocator (b3Stack) is per-step scratch; the Rust solver
-//   allocates scratch as Vecs in the step, so there is no stack field.
-// - Manifold block allocators become Vec-owned manifolds on Contact for now;
-//   a pooled allocator can return later if profiling warrants it.
-// - Scheduler/task-system fields are deferred with the single-threaded port;
-//   worker_count is kept and clamped like C.
-// - b3Recording lands with its slice; placeholders omit opaque C pointers.
-// - Hull database is a content-keyed Rc store (verstable map in C).
-// - Pre-solve and custom-filter callbacks keep the C shape as Option<fn> with
-//   a u64 context.
-//
-// SPDX-FileCopyrightText: 2025 Erin Catto
-// SPDX-License-Identifier: MIT
+//! Simulation world: create bodies, shapes, and joints; step; query and cast.
+//!
+//! Start here with [`World::new`] and [`World::step`]. Body/shape/joint creation
+//! lives in [`crate::body`], [`crate::shape`], and [`crate::joint`]. Use
+//! [`crate::types::default_world_def`] (and the other `default_*_def` helpers)
+//! for C-compatible defaults.
+//!
+//! ```rust
+//! use box3d_rust::types::default_world_def;
+//! use box3d_rust::world::World;
+//!
+//! let mut world = World::new(&default_world_def());
+//! world.step(1.0 / 60.0, 1);
+//! ```
+//!
+//! Port of `physics_world.h` / `physics_world.c` (plus `b3Profile` from types.h).
+//!
+//! Porting decisions (mirroring box2d-rust):
+//! - C keeps a global world registry. The Rust [`World`] is an owned object;
+//!   `world_id`/`generation` are kept so body/shape/joint ids remain
+//!   bit-compatible with C.
+//! - The arena allocator (`b3Stack`) is per-step scratch; the Rust solver
+//!   allocates scratch as `Vec`s in the step, so there is no stack field.
+//! - Manifold block allocators become `Vec`-owned manifolds on contacts for now;
+//!   a pooled allocator can return later if profiling warrants it.
+//! - Scheduler/task-system fields are deferred with the single-threaded port;
+//!   `worker_count` is kept and clamped like C.
+//! - Hull database is a content-keyed `Rc` store (verstable map in C).
+//! - Pre-solve and custom-filter callbacks keep the C shape as `Option<fn>` with
+//!   a `u64` context.
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
 
 mod api;
 mod draw;
