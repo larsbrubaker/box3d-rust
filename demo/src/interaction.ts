@@ -113,6 +113,7 @@ export type AttachInteractionOpts = {
   showSolverPanel?: boolean;
   /** Fallback base dt when hertz is unavailable (default 1/60). */
   baseDt?: number;
+  worldOrigin?: [number, number, number];
 };
 
 const _ndc = new THREE.Vector2();
@@ -362,6 +363,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     enableSpawnDelete = true,
     showSolverPanel = true,
     baseDt = 1 / 60,
+    worldOrigin = [0, 0, 0] as [number, number, number],
   } = opts;
 
   controls.classList.add("samples-info-panel");
@@ -757,7 +759,10 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       frameMsEl.textContent = `${lastFrameMs.toFixed(1)} ms`;
       stepCountEl.textContent = `step ${state.stepCount}`;
       const cam = cameraReadout(demo);
-      camPivotEl.textContent = `pivot m (${cam.px.toFixed(1)}, ${cam.py.toFixed(1)}, ${cam.pz.toFixed(1)})`;
+      const px = cam.px + worldOrigin[0];
+      const py = cam.py + worldOrigin[1];
+      const pz = cam.pz + worldOrigin[2];
+      camPivotEl.textContent = `pivot m (${px.toFixed(1)}, ${py.toFixed(1)}, ${pz.toFixed(1)})`;
       camYawEl.textContent = `yaw/pitch (${cam.yaw.toFixed(1)}, ${cam.pitch.toFixed(1)})`;
       camRadiusEl.textContent = `radius m ${cam.radius.toFixed(1)}`;
     }

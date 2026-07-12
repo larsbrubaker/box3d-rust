@@ -20,6 +20,7 @@ const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
   continuous: () => import("./demos/continuous.ts"),
   sensors: () => import("./demos/sensors.ts"),
   queries: () => import("./demos/queries.ts"),
+  "far-pyramid": () => import("./demos/far-pyramid.ts"),
   terrain: () => import("./demos/terrain.ts"),
   character: () => import("./demos/character.ts"),
   roadmap: () => import("./demos/roadmap.ts"),
@@ -83,7 +84,7 @@ function renderHome(container: HTMLElement) {
       </div>
 
       <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">
-        Live now <span class="badge-live">17 demos</span>
+        Live now <span class="badge-live">18 demos</span>
       </h2>
       <div class="feature-grid">
         <a href="#/math" class="feature-card">
@@ -182,6 +183,12 @@ function renderHome(container: HTMLElement) {
           <h3>Queries</h3>
           <p>Animated closest ray cast with hit point and normal.</p>
         </a>
+        <a href="#/far-pyramid" class="feature-card">
+          <span class="card-icon">&#9651;</span>
+          <span class="card-badge badge-live">LIVE</span>
+          <h3>Far Pyramid</h3>
+          <p>World sample — tan box pyramid at 10 000 km from the origin.</p>
+        </a>
         <a href="#/terrain" class="feature-card">
           <span class="card-icon">&#9650;</span>
           <span class="card-badge badge-live">LIVE</span>
@@ -221,7 +228,7 @@ function renderHome(container: HTMLElement) {
             <div class="stat-label">Port version</div>
           </div>
           <div class="stat">
-            <div class="stat-value">17</div>
+            <div class="stat-value">18</div>
             <div class="stat-label">Live demos</div>
           </div>
           <div class="stat">

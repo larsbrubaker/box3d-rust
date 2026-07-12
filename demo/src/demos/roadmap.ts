@@ -15,7 +15,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Continuous", blurb: "Thin Wall, Bounce House, Bullet vs Stack", route: "continuous" },
   { name: "Events", blurb: "Sensor Visit, Hit, Move, … — not yet ported" },
   { name: "Character", blurb: "BasicMover + Village walk", route: "character" },
-  { name: "World", blurb: "Far Stack / Far Pyramid / … — not yet ported" },
+  { name: "World", blurb: "Far Pyramid at 10 000 km — large-world float stress", route: "far-pyramid" },
   { name: "Determinism", blurb: "sample_determinism readout — TBD" },
   { name: "Robustness", blurb: "HighMassRatio, Tiny Pyramid, … — not yet ported" },
   { name: "Benchmark", blurb: "Large Pyramid, Junkyard, Falling Trees", route: "benchmark" },

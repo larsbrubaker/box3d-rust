@@ -225,7 +225,7 @@ export function init(container: HTMLElement) {
     syncMeshesFromPoses(demo.content, pool, poses, { groundIndex: null });
 
     // Color the last mesh (mover) blue; static capsules keep bone palette.
-    const n = Math.floor(poses.length / 15);
+    const n = Math.floor(poses.length / 16);
     if (n > 0) {
       const mover = pool.meshes[n - 1] as THREE.Mesh | undefined;
       if (mover && mover.material) {

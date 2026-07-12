@@ -139,6 +139,25 @@ export interface Box3dWasm {
   bench_counters(): Float32Array;
   bench_debug_draw(flags: number): Float32Array;
 
+  is_double_precision_build(): boolean;
+  world_far_pyramid_offset_km(): number;
+  world_reset_far_pyramid(): number;
+  world_far_pyramid_step(dt: number, sub_steps: number): number;
+  world_far_pyramid_step_count(): number;
+  world_far_pyramid_poses(): Float32Array;
+  world_far_pyramid_body_count(): number;
+  world_far_pyramid_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  world_far_pyramid_mouse_move(px: number, py: number, pz: number): void;
+  world_far_pyramid_mouse_up(): void;
+  world_far_pyramid_mouse_active(): boolean;
+  world_far_pyramid_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  world_far_pyramid_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  world_far_pyramid_counters(): Float32Array;
+  world_far_pyramid_debug_draw(flags: number): Float32Array;
+  world_far_pyramid_set_enable_sleep(flag: boolean): void;
+  world_far_pyramid_set_enable_warm_starting(flag: boolean): void;
+  world_far_pyramid_set_enable_continuous(flag: boolean): void;
+  world_far_pyramid_set_recycle_distance(meters: number): void;
   terrain_reset(mode: number): number;
   terrain_step(dt: number, sub_steps: number): number;
   terrain_poses(): Float32Array;

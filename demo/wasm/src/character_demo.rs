@@ -410,6 +410,7 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
                 c.capsule.radius,
             ],
             local: None,
+            color: 0,
         });
     }
 
@@ -578,6 +579,7 @@ pub fn character_poses() -> Vec<f32> {
         out.push(state.capsule.center2.z);
         out.push(state.capsule.radius);
         out.push(KIND_CAPSULE as f32);
+        out.push(0.0); // color
         debug_assert_eq!(out.len() % POSE_STRIDE, 0);
         out
     })

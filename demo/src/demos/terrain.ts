@@ -101,7 +101,7 @@ export function init(container: HTMLElement) {
     if (frame % 20 === 0) {
       updateReadout(readout, [
         { label: "terrain", value: mode === 0 ? "mesh" : "hf" },
-        { label: "bodies", value: String(Math.floor(poses.length / 15)) },
+        { label: "bodies", value: String(Math.floor(poses.length / 16)) },
         { label: "frame", value: String(frame) },
       ]);
     }

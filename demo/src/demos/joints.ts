@@ -86,7 +86,7 @@ export function init(container: HTMLElement) {
     createInfoBox(
       "<strong>Ball and Chain</strong> — spherical links.<br>" +
         "<strong>Revolute</strong> — hanging plank with limit / spring / motor.<br>" +
-        "<strong>Gear Lift</strong> — meshed gears raise a gate (simplified basin).<br>" +
+        "<strong>Gear Lift</strong> — meshed gears raise a gate over a stairwell basin.<br>" +
         "<strong>Driving</strong> — wheel-joint rover; Arrow keys throttle / steer.",
     ),
   );
@@ -133,8 +133,10 @@ export function init(container: HTMLElement) {
     const wire = wasm.joint_terrain_wireframe();
     if (!wire.length) return;
     const positions = trianglesFromWireframe(wire);
-    terrainMesh = makeTriangleMesh(positions, 0x5a7a62, 0.9);
-    terrainWire = makeWireEdges(wire, 0x2f4035, 0.25);
+    const fill = scene === "gear" ? 0x8fbc8f : 0x5a7a62;
+    const edge = scene === "gear" ? 0x5f8f5f : 0x2f4035;
+    terrainMesh = makeTriangleMesh(positions, fill, 0.9);
+    terrainWire = makeWireEdges(wire, edge, 0.25);
     demo.content.add(terrainMesh);
     demo.content.add(terrainWire);
   }
@@ -175,6 +177,7 @@ export function init(container: HTMLElement) {
         damping: 0.7,
         targetDeg: 0,
       });
+      rebuildTerrain();
     } else {
       wasm.joint_reset_driving();
       wasm.joint_set_drive_params(spinSpeed, maxSpinTorque);
@@ -369,7 +372,7 @@ export function init(container: HTMLElement) {
     ctrl.tickFrame();
     const poses = wasm.joint_poses();
     syncMeshesFromPoses(demo.content, pool, poses, {
-      groundIndex: scene === "driving" ? null : 0,
+      groundIndex: scene === "driving" || scene === "gear" ? null : 0,
     });
 
     if (scene === "driving") {

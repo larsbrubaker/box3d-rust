@@ -1,12 +1,14 @@
-// Shared mesh sync for dynamics demos using the 15-float pose stride.
+// Shared mesh sync for dynamics demos using the 16-float pose stride.
 
 import * as THREE from "three";
 import { COLORS } from "../three-scene.ts";
 
-export const POSE_STRIDE = 15;
+export const POSE_STRIDE = 16;
 export const KIND_BOX = 0;
 export const KIND_SPHERE = 1;
 export const KIND_CAPSULE = 2;
+export const KIND_CYLINDER = 3;
+export const KIND_ICOSAHEDRON = 4;
 
 const _quat = new THREE.Quaternion();
 const _c1 = new THREE.Vector3();
@@ -19,10 +21,12 @@ export type MeshPool = {
   meshes: THREE.Object3D[];
   boxGeo: THREE.BoxGeometry;
   sphereGeo: THREE.SphereGeometry;
+  icoGeo: THREE.IcosahedronGeometry;
   groundMat: THREE.MeshStandardMaterial;
   dynamicMat: THREE.MeshStandardMaterial;
   sensorMat: THREE.MeshStandardMaterial;
   boneMats: THREE.MeshStandardMaterial[];
+  colorMats: Map<number, THREE.MeshStandardMaterial>;
 };
 
 export function createMeshPool(): MeshPool {
@@ -31,6 +35,7 @@ export function createMeshPool(): MeshPool {
     meshes: [],
     boxGeo: new THREE.BoxGeometry(2, 2, 2),
     sphereGeo: new THREE.SphereGeometry(1, 20, 14),
+    icoGeo: new THREE.IcosahedronGeometry(1, 0),
     groundMat: new THREE.MeshStandardMaterial({
       color: 0x9aa3b2,
       roughness: 0.92,
@@ -57,20 +62,29 @@ export function createMeshPool(): MeshPool {
           metalness: 0.1,
         }),
     ),
+    colorMats: new Map(),
   };
 }
 
 export function disposeMeshPool(pool: MeshPool) {
   pool.boxGeo.dispose();
   pool.sphereGeo.dispose();
+  pool.icoGeo.dispose();
   pool.groundMat.dispose();
   pool.dynamicMat.dispose();
   pool.sensorMat.dispose();
   for (const m of pool.boneMats) m.dispose();
+  for (const m of pool.colorMats.values()) m.dispose();
+  pool.colorMats.clear();
   for (const mesh of pool.meshes) {
     mesh.traverse((child) => {
       const m = child as THREE.Mesh;
-      if (m.geometry && m.geometry !== pool.boxGeo && m.geometry !== pool.sphereGeo) {
+      if (
+        m.geometry &&
+        m.geometry !== pool.boxGeo &&
+        m.geometry !== pool.sphereGeo &&
+        m.geometry !== pool.icoGeo
+      ) {
         m.geometry.dispose();
       }
     });
@@ -78,13 +92,29 @@ export function disposeMeshPool(pool: MeshPool) {
   pool.meshes.length = 0;
 }
 
+function coloredMaterial(pool: MeshPool, color: number): THREE.MeshStandardMaterial {
+  let mat = pool.colorMats.get(color);
+  if (!mat) {
+    const metallic = color === 0x008b8b;
+    mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: metallic ? 0.35 : 0.55,
+      metalness: metallic ? 0.85 : 0.08,
+    });
+    pool.colorMats.set(color, mat);
+  }
+  return mat;
+}
+
 function materialFor(
   pool: MeshPool,
   index: number,
   kind: number,
+  color: number,
   sensorIndex: number | null,
   groundIndex: number | null,
 ): THREE.Material {
+  if (color !== 0) return coloredMaterial(pool, color);
   if (sensorIndex !== null && index === sensorIndex) return pool.sensorMat;
   if (groundIndex !== null && index === groundIndex && kind === KIND_BOX) return pool.groundMat;
   if (kind === KIND_CAPSULE) {
@@ -93,9 +123,27 @@ function materialFor(
   return pool.dynamicMat;
 }
 
+function isSharedGeo(pool: MeshPool, geo: THREE.BufferGeometry | undefined): boolean {
+  return geo === pool.boxGeo || geo === pool.sphereGeo || geo === pool.icoGeo;
+}
+
+function disposeIfOwned(pool: MeshPool, obj: THREE.Object3D) {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.geometry && !isSharedGeo(pool, mesh.geometry)) {
+      mesh.geometry.dispose();
+    }
+  });
+}
+
 function makeCapsuleMesh(radius: number, length: number, mat: THREE.Material): THREE.Mesh {
   const cyl = Math.max(1e-4, length);
   return new THREE.Mesh(new THREE.CapsuleGeometry(radius, cyl, 4, 10), mat);
+}
+
+function makeCylinderMesh(radius: number, halfLength: number, mat: THREE.Material): THREE.Mesh {
+  const h = Math.max(1e-4, 2 * halfLength);
+  return new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, h, 20), mat);
 }
 
 export function syncMeshesFromPoses(
@@ -111,18 +159,14 @@ export function syncMeshesFromPoses(
   while (pool.meshes.length > n) {
     const m = pool.meshes.pop()!;
     content.remove(m);
-    m.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (mesh.geometry && mesh.geometry !== pool.boxGeo && mesh.geometry !== pool.sphereGeo) {
-        mesh.geometry.dispose();
-      }
-    });
+    disposeIfOwned(pool, m);
   }
 
   for (let i = 0; i < n; i++) {
     const o = i * POSE_STRIDE;
     const kind = poses[o + 14]!;
-    const mat = materialFor(pool, i, kind, sensorIndex, groundIndex);
+    const color = Math.round(poses[o + 15]!) & 0xffffff;
+    const mat = materialFor(pool, i, kind, color, sensorIndex, groundIndex);
     let obj = pool.meshes[i];
 
     if (kind === KIND_CAPSULE) {
@@ -143,14 +187,16 @@ export function syncMeshesFromPoses(
       const len = _dir.length();
 
       if (!obj || (obj as THREE.Mesh).geometry?.type !== "CapsuleGeometry") {
-        if (obj) content.remove(obj);
+        if (obj) {
+          content.remove(obj);
+          disposeIfOwned(pool, obj);
+        }
         obj = makeCapsuleMesh(radius, len, mat);
         content.add(obj);
         pool.meshes[i] = obj;
       } else {
         const mesh = obj as THREE.Mesh;
         const geo = mesh.geometry as THREE.CapsuleGeometry;
-        // Rebuild if radius/length changed substantially
         const params = geo.parameters;
         if (Math.abs(params.radius - radius) > 1e-4 || Math.abs(params.length - Math.max(1e-4, len)) > 1e-3) {
           geo.dispose();
@@ -166,7 +212,10 @@ export function syncMeshesFromPoses(
     } else if (kind === KIND_SPHERE) {
       const radius = poses[o + 7]!;
       if (!obj || (obj as THREE.Mesh).geometry !== pool.sphereGeo) {
-        if (obj) content.remove(obj);
+        if (obj) {
+          content.remove(obj);
+          disposeIfOwned(pool, obj);
+        }
         obj = new THREE.Mesh(pool.sphereGeo, mat);
         content.add(obj);
         pool.meshes[i] = obj;
@@ -177,10 +226,55 @@ export function syncMeshesFromPoses(
       _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       obj.quaternion.copy(_quat);
       obj.scale.setScalar(radius);
+    } else if (kind === KIND_CYLINDER) {
+      const radius = poses[o + 7]!;
+      const halfLength = poses[o + 8]!;
+      if (!obj || (obj as THREE.Mesh).geometry?.type !== "CylinderGeometry") {
+        if (obj) {
+          content.remove(obj);
+          disposeIfOwned(pool, obj);
+        }
+        obj = makeCylinderMesh(radius, halfLength, mat);
+        content.add(obj);
+        pool.meshes[i] = obj;
+      } else {
+        const mesh = obj as THREE.Mesh;
+        const geo = mesh.geometry as THREE.CylinderGeometry;
+        const params = geo.parameters;
+        const h = Math.max(1e-4, 2 * halfLength);
+        if (Math.abs(params.radiusTop - radius) > 1e-4 || Math.abs(params.height - h) > 1e-3) {
+          geo.dispose();
+          mesh.geometry = new THREE.CylinderGeometry(radius, radius, h, 20);
+        }
+        mesh.material = mat;
+      }
+      obj.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
+      _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+      obj.quaternion.copy(_quat);
+      obj.scale.set(1, 1, 1);
+    } else if (kind === KIND_ICOSAHEDRON) {
+      const radius = poses[o + 7]!;
+      if (!obj || (obj as THREE.Mesh).geometry !== pool.icoGeo) {
+        if (obj) {
+          content.remove(obj);
+          disposeIfOwned(pool, obj);
+        }
+        obj = new THREE.Mesh(pool.icoGeo, mat);
+        content.add(obj);
+        pool.meshes[i] = obj;
+      } else {
+        (obj as THREE.Mesh).material = mat;
+      }
+      obj.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
+      _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+      obj.quaternion.copy(_quat);
+      obj.scale.setScalar(radius);
     } else {
-      // box
       if (!obj || (obj as THREE.Mesh).geometry !== pool.boxGeo) {
-        if (obj) content.remove(obj);
+        if (obj) {
+          content.remove(obj);
+          disposeIfOwned(pool, obj);
+        }
         obj = new THREE.Mesh(pool.boxGeo, mat);
         content.add(obj);
         pool.meshes[i] = obj;

@@ -85,7 +85,7 @@ export function init(container: HTMLElement) {
     if (frame % 20 === 0) {
       updateReadout(readout, [
         { label: "humans", value: String(count) },
-        { label: "bodies", value: String(Math.floor(poses.length / 15)) },
+        { label: "bodies", value: String(Math.floor(poses.length / 16)) },
         { label: "frame", value: String(frame) },
       ]);
     }

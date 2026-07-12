@@ -337,7 +337,13 @@ pub fn joint_chassis_pose() -> Vec<f32> {
 
 #[wasm_bindgen]
 pub fn joint_terrain_wireframe() -> Vec<f32> {
-    with_state(|state| joint_drive::terrain_wireframe(state))
+    with_state(|state| {
+        if !state.terrain_wire.is_empty() {
+            state.terrain_wire.clone()
+        } else {
+            joint_drive::terrain_wireframe(state)
+        }
+    })
 }
 
 #[wasm_bindgen]
