@@ -3,17 +3,17 @@
 const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Geometry", blurb: "Rays, GJK distance, shape queries", route: "geometry" },
   { name: "Manifold", blurb: "Contact points and normals", route: "manifolds" },
-  { name: "Mesh", blurb: "Triangle meshes, casts, AABB", route: "mesh" },
+  { name: "Mesh", blurb: "Triangle meshes, casts, AABB, terrain settle", route: "terrain" },
   { name: "Tree", blurb: "Dynamic AABB tree broad-phase", route: "tree" },
   { name: "Collision", blurb: "Hulls, height fields, casting", route: "hull" },
-  { name: "Compound", blurb: "Compound shapes (extend Bodies/Stacking)", route: "bodies" },
+  { name: "Compound", blurb: "Compound shapes under Bodies", route: "bodies" },
   { name: "Bodies", blurb: "Body types, sleeping, user data", route: "bodies" },
   { name: "Shapes", blurb: "Spheres, capsules, hulls", route: "bodies" },
   { name: "Stacking", blurb: "Pyramids, towers, and piles", route: "stacking" },
   { name: "Joints", blurb: "Revolute, spherical, motor hinge", route: "joints" },
   { name: "Continuous", blurb: "Fast bodies without tunneling", route: "continuous" },
   { name: "Events", blurb: "Contacts, sensors, hit events", route: "sensors" },
-  { name: "Character", blurb: "Movers and platforming" },
+  { name: "Character", blurb: "Movers and platforming", route: "character" },
   { name: "World", blurb: "Queries, gravity, large worlds", route: "queries" },
   { name: "Determinism", blurb: "Cross-platform reproducibility", route: "math" },
   { name: "Robustness", blurb: "Degenerate input, overlap recovery" },
@@ -46,7 +46,8 @@ export function init(container: HTMLElement) {
         <p>
           Each category of the upstream Box3D <code>samples</code> app becomes an interactive
           browser demo as its module lands. <strong>${live} sample categories are LIVE</strong>
-          — including ragdolls, joints, continuous collision, sensors, and queries.
+          — including ragdolls, joints, continuous collision, sensors, queries, terrain settle,
+          and a character mover.
         </p>
       </div>
       <div class="feature-grid">${cards}</div>

@@ -13,14 +13,8 @@ bring-up rules apply to everything below.
 falling-ragdoll scene matches the C scalar reference bit-for-bit in both
 precision modes. Everything below is completeness, not core physics.**
 
-## Parallel tracks
-
-| File | Track | Depends on |
-|---|---|---|
-| [task-11.md](task-11.md) | Demo site samples (TypeScript/wasm; frontend-only) | — |
-
-task-11 is the remaining parallel track. (task-8 API completeness, task-9
-recording/replay/snapshots, and task-10 debug draw are done.)
+Tasks 8–11 (API completeness, recording/replay/snapshots, debug draw, and
+demo samples) are done. Remaining work is polish and release readiness.
 
 ## Benchmarks
 
@@ -30,7 +24,7 @@ recording/replay/snapshots, and task-10 debug draw are done.)
 
 ## Release readiness
 
-Once task 11 lands, the crate is functionally complete. Polish for 0.1:
+The crate is functionally complete. Polish for 0.1:
 
 - [ ] Rustdoc pass over the public API (crate-level docs, module docs on the
       main entry points, doc examples for World/body/shape/joint creation)

@@ -70,6 +70,31 @@ export interface Box3dWasm {
   query_step(dt: number, sub_steps: number): number;
   query_poses(): Float32Array;
   query_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+
+  sim_reset_compound(): number;
+  sim_reset_pyramid(size: number): number;
+  sim_reset_sphere_stack(count: number): number;
+
+  terrain_reset(mode: number): number;
+  terrain_step(dt: number, sub_steps: number): number;
+  terrain_poses(): Float32Array;
+  terrain_wireframe(): Float32Array;
+
+  character_reset(): number;
+  character_set_input(
+    throttle_x: number,
+    throttle_y: number,
+    jump: boolean,
+    sprint: boolean,
+    fwd_x: number,
+    fwd_z: number,
+    right_x: number,
+    right_z: number,
+  ): void;
+  character_step(dt: number, sub_steps: number): number;
+  character_poses(): Float32Array;
+  character_status(): Float32Array;
+  character_terrain_wireframe(): Float32Array;
 }
 
 let wasmModule: Box3dWasm | null = null;

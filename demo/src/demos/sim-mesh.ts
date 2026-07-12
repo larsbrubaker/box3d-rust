@@ -83,9 +83,10 @@ function materialFor(
   index: number,
   kind: number,
   sensorIndex: number | null,
+  groundIndex: number | null,
 ): THREE.Material {
   if (sensorIndex !== null && index === sensorIndex) return pool.sensorMat;
-  if (index === 0 && kind === KIND_BOX) return pool.groundMat;
+  if (groundIndex !== null && index === groundIndex && kind === KIND_BOX) return pool.groundMat;
   if (kind === KIND_CAPSULE) {
     return pool.boneMats[index % pool.boneMats.length]!;
   }
@@ -101,10 +102,11 @@ export function syncMeshesFromPoses(
   content: THREE.Group,
   pool: MeshPool,
   poses: ArrayLike<number>,
-  opts: { sensorIndex?: number | null } = {},
+  opts: { sensorIndex?: number | null; groundIndex?: number | null } = {},
 ) {
   const n = Math.floor(poses.length / POSE_STRIDE);
   const sensorIndex = opts.sensorIndex ?? null;
+  const groundIndex = opts.groundIndex === undefined ? 0 : opts.groundIndex;
 
   while (pool.meshes.length > n) {
     const m = pool.meshes.pop()!;
@@ -120,7 +122,7 @@ export function syncMeshesFromPoses(
   for (let i = 0; i < n; i++) {
     const o = i * POSE_STRIDE;
     const kind = poses[o + 14]!;
-    const mat = materialFor(pool, i, kind, sensorIndex);
+    const mat = materialFor(pool, i, kind, sensorIndex, groundIndex);
     let obj = pool.meshes[i];
 
     if (kind === KIND_CAPSULE) {
