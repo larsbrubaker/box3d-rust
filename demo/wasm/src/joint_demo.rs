@@ -53,6 +53,8 @@ pub(crate) struct JointState {
     pub rear_right: JointId,
     pub hf: Option<HeightFieldData>,
     pub hf_origin: Vec3,
+    /// Precomputed gear-lift basin wireframe segments `[x0,y0,z0,x1,y1,z1]*N`.
+    pub terrain_wire: Vec<f32>,
     pub spin_speed: f32,
     pub throttle_x: f32,
     pub throttle_y: f32,
@@ -98,6 +100,7 @@ pub(crate) fn empty_state(world: World, bodies: Vec<VisBody>, scene: JointScene)
         rear_right: NULL_JOINT_ID,
         hf: None,
         hf_origin: VEC3_ZERO,
+        terrain_wire: Vec::new(),
         spin_speed: 30.0,
         throttle_x: 0.0,
         throttle_y: 0.0,
