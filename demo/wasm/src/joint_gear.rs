@@ -12,7 +12,7 @@ use box3d_rust::math_functions::{
     add, compute_quat_between_unit_vectors, make_quat_from_axis_angle, rotate_vector, Pos, Quat,
     Transform, Vec3, PI, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z, VEC3_ONE, VEC3_ZERO,
 };
-use box3d_rust::mesh::{create_mesh, get_mesh_triangles, get_mesh_vertices, MeshData, MeshDef};
+use box3d_rust::mesh::{create_mesh, MeshData, MeshDef};
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_mesh_shape};
 use box3d_rust::types::{
     default_body_def, default_prismatic_joint_def, default_revolute_joint_def, default_shape_def,
@@ -116,16 +116,7 @@ fn random_quat() -> Quat {
     let u1 = random_float_range(0.0, 1.0);
     let u2 = random_float_range(0.0, 2.0 * PI);
     let u3 = random_float_range(0.0, 2.0 * PI);
-    let sqrt1_minus_u1 = (1.0 - u1).sqrt();
-    let sqrt_u1 = u1.sqrt();
-    Quat {
-        v: Vec3 {
-            x: sqrt1_minus_u1 * u2.sin(),
-            y: sqrt1_minus_u1 * u2.cos(),
-            z: sqrt_u1 * u3.sin(),
-        },
-        s: sqrt_u1 * u3.cos(),
-    }
+    crate::vis::random_quat_from(u1, u2, u3)
 }
 
 fn cyl_z_to_y() -> Quat {
@@ -179,27 +170,7 @@ fn push_cap(
 }
 
 fn mesh_wireframe(mesh: &MeshData) -> Vec<f32> {
-    let verts = get_mesh_vertices(mesh);
-    let tris = get_mesh_triangles(mesh);
-    let mut out = Vec::with_capacity(tris.len() * 18);
-    for t in tris {
-        let vs = [
-            verts[t.index1 as usize],
-            verts[t.index2 as usize],
-            verts[t.index3 as usize],
-        ];
-        for e in 0..3 {
-            let a = vs[e];
-            let b = vs[(e + 1) % 3];
-            out.push(a.x);
-            out.push(a.y);
-            out.push(a.z);
-            out.push(b.x);
-            out.push(b.y);
-            out.push(b.z);
-        }
-    }
-    out
+    crate::vis::mesh_triangle_edges(mesh, VEC3_ONE)
 }
 
 fn create_basin_mesh(world: &mut World, ground: BodyId, bodies: &mut Vec<VisBody>) -> Vec<f32> {

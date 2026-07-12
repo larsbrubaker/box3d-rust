@@ -8,9 +8,7 @@ use crate::village::{self, BuildingInstance};
 use crate::vis::{pos, push_poses, sphere, VisBody, KIND_CAPSULE, POSE_STRIDE};
 use box3d_rust::body::{create_body, get_body_transform};
 use box3d_rust::geometry::{Capsule, CollisionPlane};
-use box3d_rust::height_field::{
-    create_wave, get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
-};
+use box3d_rust::height_field::{create_wave, HeightFieldData};
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
     dot, get_length_and_normalize, length, length_squared, max_float, mul_sv, mul_transforms,
@@ -632,26 +630,10 @@ pub fn character_debug_lines() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn character_terrain_wireframe() -> Vec<f32> {
     with_state(|state| {
-        let mut out = Vec::new();
         let Some(hf) = state.hf.as_ref() else {
-            return out;
+            return Vec::new();
         };
-        let count = get_height_field_triangle_count(hf);
-        for i in 0..count {
-            let tri = get_height_field_triangle(hf, i);
-            let verts = tri.vertices;
-            for e in 0..3 {
-                let a = verts[e];
-                let b = verts[(e + 1) % 3];
-                out.push(a.x + state.hf_origin.x);
-                out.push(a.y + state.hf_origin.y);
-                out.push(a.z + state.hf_origin.z);
-                out.push(b.x + state.hf_origin.x);
-                out.push(b.y + state.hf_origin.y);
-                out.push(b.z + state.hf_origin.z);
-            }
-        }
-        out
+        crate::vis::hf_triangle_edges(hf, state.hf_origin)
     })
 }
 

@@ -5,7 +5,6 @@ import { createButtonGroup, createInfoBox } from "../controls.ts";
 import {
   attachInteraction,
   type InteractWasm,
-  type ParamValues,
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm, type Box3dWasm } from "../wasm.ts";
@@ -15,6 +14,7 @@ import {
   DemoScene,
   makeTriangleMesh,
   makeWireEdges,
+  setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
 
@@ -53,14 +53,16 @@ export function init(container: HTMLElement) {
 
   controls.appendChild(
     createInfoBox(
-      "Scale vs C: Large Pyramid base≈24 (C full=90 / DEBUG=20). Junkyard 2×8×8 rocks " +
-        "(C DEBUG 2×21×21). Trees mesh 40×50 with 6×8 cylinders (C Trees25=600×800, " +
-        "DEBUG 10×22). Sleep disabled on the pyramid like C.",
+      "Counts follow Erin's C samples: Large Pyramid baseCount 20 (C DEBUG; C release " +
+        "90 is a full 3D pyramid of ~hundreds of thousands of bodies). Junkyard uses the " +
+        "full C arena with 2×21×21 = 882 rocks (C DEBUG; release 24 layers). Falling Trees " +
+        "default mesh 150×200 (CreateTrees100) with 10 trees × 22 hulls (C DEBUG bodyCount; " +
+        "release 50). Sleep disabled on the pyramid like C.",
     ),
   );
 
   let mode: Mode = "pyramid";
-  let baseCount = 24;
+  let treeGridSize = 100;
 
   const demo = new DemoScene(canvas, { target: [0, 8, 0], distance: 55, fov: 50 });
   demo.camera.far = 500;
@@ -137,16 +139,15 @@ export function init(container: HTMLElement) {
 
   function setCameraForMode() {
     if (mode === "pyramid") {
-      demo.controls.target.set(0, 8, 0);
-      demo.camera.position.set(18, 22, 48);
+      // sample_benchmark.cpp:30 SetView(40, -10, 110, {0,40,0})
+      setView(demo, 40, -10, 110, [0, 40, 0]);
     } else if (mode === "junkyard") {
-      demo.controls.target.set(0, 10, 0);
-      demo.camera.position.set(45, 40, 55);
+      // sample_benchmark.cpp:1426 SetView(45, 30, 125, zero)
+      setView(demo, 45, 30, 125, [0, 0, 0]);
     } else {
-      demo.controls.target.set(0, 4, -4);
-      demo.camera.position.set(18, 14, 28);
+      // sample_benchmark.cpp:668 SetView(20, 0, 140, {0,15,0})
+      setView(demo, 20, 0, 140, [0, 15, 0]);
     }
-    demo.controls.update();
   }
 
   function rebuildTerrain() {
@@ -162,9 +163,10 @@ export function init(container: HTMLElement) {
 
   function reset() {
     clearVisuals();
-    if (mode === "pyramid") wasm.bench_reset_large_pyramid(baseCount);
+    // C fixes baseCount = 20 in DEBUG; the wasm pins it to 20 regardless of arg.
+    if (mode === "pyramid") wasm.bench_reset_large_pyramid();
     else if (mode === "junkyard") wasm.bench_reset_junkyard();
-    else wasm.bench_reset_trees();
+    else wasm.bench_reset_trees(treeGridSize);
     rebuildTerrain();
     setCameraForMode();
   }
@@ -179,10 +181,28 @@ export function init(container: HTMLElement) {
       "pyramid",
       (v) => {
         mode = v as Mode;
+        treeGrid.style.display = mode === "trees" ? "" : "none";
         reset();
       },
     ),
   );
+
+  // Falling Trees DrawControls: 100/50/25 cm radio (sample_benchmark.cpp:702-719).
+  // gridSize maps to CreateTrees100/50/25 → mesh scale 1/2/4, cellWidth 1/scale.
+  const treeGrid = createButtonGroup(
+    [
+      { label: "100 cm", value: "100" },
+      { label: "50 cm", value: "50" },
+      { label: "25 cm (~1M triangles — slow)", value: "25" },
+    ],
+    "100",
+    (v) => {
+      treeGridSize = Number(v);
+      if (mode === "trees") reset();
+    },
+  );
+  treeGrid.style.display = "none";
+  controls.appendChild(treeGrid);
 
   const ctrl = attachInteraction({
     wasm: interact,
@@ -192,21 +212,6 @@ export function init(container: HTMLElement) {
     onRestart: reset,
     sampleName: "Benchmark",
     sampleCategory: "Benchmark",
-    params: [
-      {
-        type: "slider",
-        key: "base",
-        label: "Pyramid base",
-        min: 10,
-        max: 36,
-        step: 2,
-        default: 24,
-        restart: true,
-      },
-    ],
-    onParamsChange: (values: ParamValues) => {
-      baseCount = Math.round(Number(values.base) || 24);
-    },
   }) as SimControllerWithTick;
 
   reset();

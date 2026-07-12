@@ -8,17 +8,12 @@ export interface Box3dWasm {
   atan2(y: number, x: number): number;
   polygon_points(sides: number, radius: number, angle: number, cx: number, cy: number): Float32Array;
 
-  scene_shape(index: number): Float32Array;
-  ray_cast_scene(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
-  closest_points(px: number, py: number, pz: number): Float32Array;
-
   collide_spheres_demo(bx: number, by: number, bz: number): Float32Array;
   collide_capsules_demo(bx: number, by: number, bz: number, angle: number): Float32Array;
   collide_hull_sphere_demo(bx: number, by: number, bz: number): Float32Array;
   collide_hulls_demo(bx: number, by: number, bz: number, angle: number): Float32Array;
 
   box_hull_edges(hx: number, hy: number, hz: number): Float32Array;
-  create_hull_demo(sides: number, radius: number, height: number): Float32Array;
 
   hf_build_wave(): number;
   hf_wireframe(): Float32Array;
@@ -30,26 +25,21 @@ export interface Box3dWasm {
   mesh_aabb(): Float32Array;
   mesh_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
 
-  tree_reset(count: number): number;
-  tree_proxy_aabbs(): Float32Array;
-  tree_query(cx: number, cy: number, cz: number, h: number): Float32Array;
-  tree_metrics(): Float32Array;
-
-  sim_reset_bodies(): number;
-  sim_reset_stacking(count: number): number;
-  sim_reset_jenga(layers: number): number;
+  sim_reset_stacking(): number;
+  /** `shape`: 0 = hull box, 1 = capsule (C JengaStack DrawControls radio). */
+  sim_reset_jenga(shape: number): number;
   sim_reset_single_box(): number;
   sim_step(dt: number, sub_steps: number): number;
   sim_body_poses(): Float32Array;
   sim_body_count(): number;
 
-  ragdoll_reset(count: number): number;
+  ragdoll_reset(): number;
   ragdoll_set_joint_params(friction: number, hertz: number, damping: number): void;
   ragdoll_step(dt: number, sub_steps: number): number;
   ragdoll_poses(): Float32Array;
   ragdoll_body_count(): number;
 
-  joint_reset_chain(link_count: number): number;
+  joint_reset_chain(): number;
   joint_reset_hinge(): number;
   joint_reset_gear_lift(): number;
   joint_reset_driving(): number;
@@ -66,6 +56,16 @@ export interface Box3dWasm {
   ): void;
   joint_set_drive_input(throttle_x: number, throttle_y: number): void;
   joint_set_drive_params(spin_speed: number, max_spin_torque: number): void;
+  joint_set_driving_suspension(lower: number, upper: number, hertz: number, damping: number): void;
+  joint_set_driving_steering(
+    hertz: number,
+    damping: number,
+    torque: number,
+    lower_deg: number,
+    upper_deg: number,
+  ): void;
+  joint_drive_telemetry(): Float32Array;
+  joint_revolute_energy(): Float32Array;
   joint_step(dt: number, sub_steps: number): number;
   joint_poses(): Float32Array;
   joint_body_count(): number;
@@ -93,9 +93,10 @@ export interface Box3dWasm {
   sensor_poses(): Float32Array;
   sensor_colors(): Float32Array;
   sensor_sensor_indices(): Uint32Array;
+  sensor_topology_version(): number;
   sensor_event_stats(): Float32Array;
 
-  query_reset(): number;
+  query_reset(): void;
   query_step(dt: number, sub_steps: number): number;
   query_poses(): Float32Array;
   query_set_params(cast_type: number, mode: number, radius: number, initial_overlap: number): void;
@@ -118,11 +119,11 @@ export interface Box3dWasm {
   sim_reset_compound_simple(): number;
   sim_reset_compound_spheres(): number;
   sim_reset_compound_hulls(): number;
-  sim_reset_village(grid_count: number): number;
+  sim_reset_village(): number;
   sim_village_buildings(): Float32Array;
   sim_village_stats(): Float32Array;
-  sim_reset_pyramid(size: number): number;
-  sim_reset_sphere_stack(count: number): number;
+  sim_reset_pyramid(): number;
+  sim_reset_sphere_stack(): number;
 
   sim_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   sim_mouse_move(px: number, py: number, pz: number): void;
@@ -142,9 +143,9 @@ export interface Box3dWasm {
   sim_is_recording(): boolean;
   sim_record_start_step(): number;
 
-  bench_reset_large_pyramid(base_count: number): number;
+  bench_reset_large_pyramid(): number;
   bench_reset_junkyard(): number;
-  bench_reset_trees(): number;
+  bench_reset_trees(gridSize: number): number;
   bench_step(dt: number, sub_steps: number): number;
   bench_body_poses(): Float32Array;
   bench_body_count(): number;
@@ -177,10 +178,6 @@ export interface Box3dWasm {
   world_far_pyramid_set_enable_warm_starting(flag: boolean): void;
   world_far_pyramid_set_enable_continuous(flag: boolean): void;
   world_far_pyramid_set_recycle_distance(meters: number): void;
-  terrain_reset(mode: number): number;
-  terrain_step(dt: number, sub_steps: number): number;
-  terrain_poses(): Float32Array;
-  terrain_wireframe(): Float32Array;
 
   character_reset(): number;
   character_reset_ex(mode: number, grid_count: number): number;

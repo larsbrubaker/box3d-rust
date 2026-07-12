@@ -4,14 +4,10 @@ import { loadWasm } from "./wasm.ts";
 
 type DemoInit = (container: HTMLElement) => (() => void) | void;
 const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
-  math: () => import("./demos/math.ts"),
-  geometry: () => import("./demos/geometry.ts"),
   manifolds: () => import("./demos/manifolds.ts"),
   hull: () => import("./demos/hull.ts"),
   "height-field": () => import("./demos/height-field.ts"),
   mesh: () => import("./demos/mesh.ts"),
-  tree: () => import("./demos/tree.ts"),
-  bodies: () => import("./demos/bodies.ts"),
   compound: () => import("./demos/compound.ts"),
   stacking: () => import("./demos/stacking.ts"),
   benchmark: () => import("./demos/benchmark.ts"),
@@ -21,10 +17,12 @@ const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
   sensors: () => import("./demos/sensors.ts"),
   queries: () => import("./demos/queries.ts"),
   "far-pyramid": () => import("./demos/far-pyramid.ts"),
-  terrain: () => import("./demos/terrain.ts"),
   character: () => import("./demos/character.ts"),
   roadmap: () => import("./demos/roadmap.ts"),
 };
+
+/** Live demo routes (everything routable except the roadmap index page). */
+const liveDemoCount = Object.keys(demoModules).filter((r) => r !== "roadmap").length;
 
 let currentCleanup: (() => void) | null = null;
 
@@ -84,21 +82,9 @@ function renderHome(container: HTMLElement) {
       </div>
 
       <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">
-        Live now <span class="badge-live">18 demos</span>
+        Live now <span class="badge-live">${liveDemoCount} demos</span>
       </h2>
       <div class="feature-grid">
-        <a href="#/math" class="feature-card">
-          <span class="card-icon">&#9881;</span>
-          <span class="card-badge badge-live">LIVE</span>
-          <h3>Deterministic Math</h3>
-          <p>Hand-rolled <code>b3Atan2</code> / <code>b3ComputeCosSin</code> — bit-identical across platforms.</p>
-        </a>
-        <a href="#/geometry" class="feature-card">
-          <span class="card-icon">&#10140;</span>
-          <span class="card-badge badge-live">LIVE</span>
-          <h3>Geometry Queries</h3>
-          <p>Ray casts vs sphere, capsule, hull, and AABB, plus GJK closest points.</p>
-        </a>
         <a href="#/manifolds" class="feature-card">
           <span class="card-icon">&#9649;</span>
           <span class="card-badge badge-live">LIVE</span>
@@ -107,33 +93,21 @@ function renderHome(container: HTMLElement) {
         </a>
         <a href="#/hull" class="feature-card">
           <span class="card-icon">&#11042;</span>
-          <span class="card-badge badge-live">LIVE</span>
-          <h3>Hull</h3>
-          <p><code>b3MakeBoxHull</code> and <code>b3CreateHull</code> wireframes from the Rust half-edge mesh.</p>
+          <span class="card-badge badge-planned">PARTIAL</span>
+          <h3>Box Hull</h3>
+          <p><code>b3MakeBoxHull</code> wireframe from the Rust half-edge mesh (Geometry / Box Hull sample).</p>
         </a>
         <a href="#/height-field" class="feature-card">
           <span class="card-icon">&#8776;</span>
-          <span class="card-badge badge-live">LIVE</span>
+          <span class="card-badge badge-planned">PARTIAL</span>
           <h3>Height Field</h3>
-          <p>Wave height field with live ray cast hits from the ported HF module.</p>
+          <p>Wave height field raycast viewer from the ported HF module (C dynamics scene not yet ported).</p>
         </a>
         <a href="#/mesh" class="feature-card">
           <span class="card-icon">&#9638;</span>
-          <span class="card-badge badge-live">LIVE</span>
+          <span class="card-badge badge-planned">PARTIAL</span>
           <h3>Mesh</h3>
-          <p>Box and grid triangle meshes with BVH ray casts and AABB.</p>
-        </a>
-        <a href="#/tree" class="feature-card">
-          <span class="card-icon">&#9752;</span>
-          <span class="card-badge badge-live">LIVE</span>
-          <h3>Dynamic Tree</h3>
-          <p>Broad-phase AABB tree: insert proxies, watch query hits and metrics.</p>
-        </a>
-        <a href="#/bodies" class="feature-card">
-          <span class="card-icon">&#9632;</span>
-          <span class="card-badge badge-live">LIVE</span>
-          <h3>Bodies</h3>
-          <p>Live <code>World::step</code> with gravity, collide, and contact solve.</p>
+          <p>Box and grid triangle-mesh raycast viewers with AABB (C dynamics scene not yet ported).</p>
         </a>
         <a href="#/compound" class="feature-card">
           <span class="card-icon">&#9638;</span>
@@ -175,7 +149,7 @@ function renderHome(container: HTMLElement) {
           <span class="card-icon">&#9673;</span>
           <span class="card-badge badge-live">LIVE</span>
           <h3>Sensors</h3>
-          <p>Sensor Visit, Sensor Hits, and Benchmark Sensor — C Events/Benchmark samples.</p>
+          <p>Sensor Visit + Sensor Hits (Events, exact) plus Benchmark Sensor (Benchmark category).</p>
         </a>
         <a href="#/queries" class="feature-card">
           <span class="card-icon">&#9678;</span>
@@ -188,12 +162,6 @@ function renderHome(container: HTMLElement) {
           <span class="card-badge badge-live">LIVE</span>
           <h3>Far Pyramid</h3>
           <p>World sample — tan box pyramid at 10 000 km from the origin.</p>
-        </a>
-        <a href="#/terrain" class="feature-card">
-          <span class="card-icon">&#9650;</span>
-          <span class="card-badge badge-live">LIVE</span>
-          <h3>Terrain Settle</h3>
-          <p>Bodies settle on a grid mesh or wave height field.</p>
         </a>
         <a href="#/character" class="feature-card">
           <span class="card-icon">&#9823;</span>
@@ -228,7 +196,7 @@ function renderHome(container: HTMLElement) {
             <div class="stat-label">Port version</div>
           </div>
           <div class="stat">
-            <div class="stat-value">18</div>
+            <div class="stat-value">${liveDemoCount}</div>
             <div class="stat-label">Live demos</div>
           </div>
           <div class="stat">

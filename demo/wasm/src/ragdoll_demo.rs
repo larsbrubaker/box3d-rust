@@ -68,7 +68,7 @@ fn rebuild_vis(state: &mut RagdollState) {
     }
 }
 
-fn spawn_humans(state: &mut RagdollState, count: u32) {
+fn spawn_human(state: &mut RagdollState) {
     for human in &mut state.humans {
         if human.is_spawned {
             destroy_human(human, &mut state.world);
@@ -76,23 +76,21 @@ fn spawn_humans(state: &mut RagdollState, count: u32) {
     }
     state.humans.clear();
 
-    let n = count.clamp(1, 8);
-    for i in 0..n {
-        let mut human = Human::default();
-        let x = (i as f32 - 0.5 * (n as f32 - 1.0)) * 0.9;
-        create_human(
-            &mut human,
-            &mut state.world,
-            pos(x, 2.0 + i as f32 * 0.15, 0.0),
-            state.friction,
-            state.hertz,
-            state.damping,
-            i as i32,
-            0,
-            true,
-        );
-        state.humans.push(human);
-    }
+    // C RagdollOnBox::Spawn: exactly one human at {0,2,0}, groupIndex 1,
+    // userData null, colorize false (sample_ragdoll.cpp:35).
+    let mut human = Human::default();
+    create_human(
+        &mut human,
+        &mut state.world,
+        pos(0.0, 2.0, 0.0),
+        state.friction,
+        state.hertz,
+        state.damping,
+        1,
+        0,
+        false,
+    );
+    state.humans.push(human);
     rebuild_vis(state);
 }
 
@@ -106,9 +104,9 @@ fn new_world() -> World {
     World::new(&def)
 }
 
-/// Reset ragdoll scene. `count` is number of humans (1–8).
+/// Reset ragdoll scene (C RagdollOnBox: one human on a ground box).
 #[wasm_bindgen]
-pub fn ragdoll_reset(count: u32) -> u32 {
+pub fn ragdoll_reset() -> u32 {
     STATE.with(|cell| {
         let mut world = new_world();
         let mut ground_def = default_body_def();
@@ -127,7 +125,7 @@ pub fn ragdoll_reset(count: u32) -> u32 {
             hertz: 1.0,
             damping: 0.7,
         };
-        spawn_humans(&mut state, count);
+        spawn_human(&mut state);
         let n = state.bodies.len() as u32;
         *cell.borrow_mut() = Some(state);
         n

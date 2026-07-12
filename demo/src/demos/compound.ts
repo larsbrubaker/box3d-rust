@@ -9,7 +9,7 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { COLORS, DemoScene } from "../three-scene.ts";
+import { COLORS, DemoScene, setView } from "../three-scene.ts";
 import {
   formatVillageStats,
   loadBuildingGeometry,
@@ -22,6 +22,7 @@ const STRIDE = 13;
 
 type Mode = "simple" | "spheres" | "hulls" | "village";
 
+/** Camera helper matching the C samples' `Camera::SetView(yaw, pitch, distance, target)`. */
 export function init(container: HTMLElement) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
@@ -37,8 +38,10 @@ export function init(container: HTMLElement) {
   controls.appendChild(
     createInfoBox(
       "Village ports Erin’s Compound / Village: hull tiles, odd-tile props, and instanced " +
-        "<code>data/meshes/building.obj</code> meshes. C uses gridCount 8 (debug) / 200 (release); " +
-        "browser default is 16 (slider 8–40). Walk it from Character → Village.",
+        "<code>data/meshes/building.obj</code> meshes. Grid is fixed at the C debug value 8 " +
+        "(C release uses 200, too heavy for serial wasm). The C sample also drives a character " +
+        "mover + ray/shape/overlap query sweep through the village — not yet ported here " +
+        "(the walkthrough lives under Character → Village).",
     ),
   );
 
@@ -50,7 +53,6 @@ export function init(container: HTMLElement) {
   controls.appendChild(statsEl);
 
   let mode: Mode = "village";
-  let villageGrid = 16;
 
   const demo = new DemoScene(canvas, { target: [0, 4, 0], distance: 48 });
   demo.camera.far = 800;
@@ -141,28 +143,26 @@ export function init(container: HTMLElement) {
 
   function reset() {
     clearMeshes();
-    if (mode === "simple") wasm.sim_reset_compound_simple();
-    else if (mode === "spheres") wasm.sim_reset_compound_spheres();
-    else if (mode === "hulls") wasm.sim_reset_compound_hulls();
-    else wasm.sim_reset_village(villageGrid);
-
-    if (mode === "village") {
-      const half = villageGrid * 4;
-      demo.controls.target.set(0, 8, 0);
-      demo.camera.position.set(half * 0.55, half * 0.28, half * 0.65);
-      demo.controls.update();
-      syncVillageBuildings();
-    } else {
+    // C SetView(yaw, pitch, distance, target) values from sample_compound.cpp.
+    if (mode === "simple") {
+      wasm.sim_reset_compound_simple();
+      setView(demo, 45, 30, 45, [0, 0, 0]); // SimpleCompound :23
       statsEl.textContent = "";
-      if (mode === "spheres" || mode === "hulls") {
-        demo.controls.target.set(0, 0, 0);
-        demo.camera.position.set(18, 14, 22);
-        demo.controls.update();
-      } else {
-        demo.controls.target.set(0, 1, 0);
-        demo.camera.position.set(10, 8, 14);
-        demo.controls.update();
-      }
+    } else if (mode === "spheres") {
+      wasm.sim_reset_compound_spheres();
+      setView(demo, 45, 30, 45, [0, 0, 0]); // CompoundSpheres :117
+      statsEl.textContent = "";
+    } else if (mode === "hulls") {
+      wasm.sim_reset_compound_hulls();
+      setView(demo, 45, 30, 45, [0, 0, 0]); // CompoundHulls :178
+      statsEl.textContent = "";
+    } else {
+      // C Village grid is fixed at the debug value 8 (release 200 is too heavy).
+      wasm.sim_reset_village();
+      // C Village :499 SetView(45, 10, 5, {0,10,0}) is the mover walkthrough start;
+      // without the character mover the user can orbit/zoom out to survey the village.
+      setView(demo, 45, 10, 5, [0, 10, 0]);
+      syncVillageBuildings();
     }
   }
 
@@ -203,24 +203,10 @@ export function init(container: HTMLElement) {
         default: 4,
         restart: false,
       },
-      {
-        type: "slider",
-        key: "villageGrid",
-        label: "Village grid",
-        min: 8,
-        max: 40,
-        step: 4,
-        default: 16,
-        restart: true,
-      },
     ],
-    onParamsChange: (values: ParamValues, key: string) => {
+    onParamsChange: (values: ParamValues) => {
       subSteps = Number(values.subSteps) || 4;
       ctrl.subSteps = subSteps;
-      if (key === "villageGrid") {
-        villageGrid = Number(values.villageGrid) || 16;
-        if (mode === "village") reset();
-      }
     },
   }) as SimControllerWithTick;
 
@@ -239,7 +225,7 @@ export function init(container: HTMLElement) {
 
     const staticCount =
       mode === "village"
-        ? Math.max(0, n - 3)
+        ? n // C Village is fully static (all compound children)
         : mode === "simple"
           ? 1
           : mode === "spheres" || mode === "hulls"

@@ -7,11 +7,13 @@ import {
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm, type Box3dWasm } from "../wasm.ts";
+import { createCanvasOverlay } from "../controls.ts";
 import { demoPage, runLoop } from "./common.ts";
 import {
   DEBUG_BODY_COLORS,
   DemoScene,
   makeBodyMaterial,
+  setView,
 } from "../three-scene.ts";
 
 const STRIDE = 11;
@@ -39,28 +41,6 @@ function farInteract(wasm: Box3dWasm): InteractWasm {
     sim_set_enable_continuous: (flag) => wasm.world_far_pyramid_set_enable_continuous(flag),
     sim_set_recycle_distance: (m) => wasm.world_far_pyramid_set_recycle_distance(m),
   };
-}
-
-function setView(
-  demo: DemoScene,
-  yawDeg: number,
-  pitchDeg: number,
-  radius: number,
-  pivot: [number, number, number],
-) {
-  const yaw = (yawDeg * Math.PI) / 180;
-  const pitch = (pitchDeg * Math.PI) / 180;
-  const cp = Math.cos(pitch);
-  const fx = Math.sin(yaw) * cp;
-  const fy = Math.sin(pitch);
-  const fz = Math.cos(yaw) * cp;
-  demo.controls.target.set(pivot[0], pivot[1], pivot[2]);
-  demo.camera.position.set(
-    pivot[0] + radius * fx,
-    pivot[1] + radius * fy,
-    pivot[2] + radius * fz,
-  );
-  demo.controls.update();
 }
 
 function makeSkyGradient(): THREE.Texture {
@@ -92,13 +72,10 @@ export function init(container: HTMLElement) {
     { category: "World", samplesShell: true },
   );
 
-  const canvasArea = page.querySelector(".demo-canvas-area") as HTMLElement;
-  const overlay = document.createElement("div");
-  overlay.className = "sample-draw-text";
+  const overlay = createCanvasOverlay(page);
   const dp = wasm.is_double_precision_build() ? "ON" : "OFF";
   const km = wasm.world_far_pyramid_offset_km();
   overlay.innerHTML = `double precision: ${dp}<br>pyramid built ${km.toFixed(0)} km from the world origin`;
-  canvasArea.appendChild(overlay);
 
   const demo = new DemoScene(canvas, {
     target: [0, 20, 0],

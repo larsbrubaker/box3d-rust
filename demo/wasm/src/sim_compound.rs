@@ -4,22 +4,30 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::sim_demo::{
-    capsule_local_from_centers, new_sim, push_dynamic_box, push_dynamic_sphere,
-    stop_recording_if_any, DemoRng, SimBody, SIM,
+    capsule_local_from_centers, new_sim, push_dynamic_sphere, stop_recording_if_any, DemoRng,
+    SimBody, SIM,
 };
 use box3d_rust::body::{create_body, get_body_transform};
-use box3d_rust::compound::{
-    create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundSphereDef,
-};
-use box3d_rust::geometry::{default_surface_material, Capsule, Sphere};
+use box3d_rust::compound::{create_compound, CompoundDef, CompoundHullDef, CompoundSphereDef};
+use box3d_rust::geometry::{default_surface_material, Sphere};
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
-    get_length_and_normalize, make_quat_from_axis_angle, mul_transforms, Pos, Transform, Vec3,
-    QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
+    make_quat_from_axis_angle, mul_transforms, Pos, Quat, Transform, Vec3, QUAT_IDENTITY,
+    VEC3_AXIS_Y,
 };
 use box3d_rust::shape::create_compound_shape;
 use box3d_rust::types::{default_body_def, default_shape_def, BodyType};
+use box3d_rust::world::world_set_contact_recycle_distance;
 use wasm_bindgen::prelude::*;
+
+/// Uniform random quaternion (Shoemake), fed by the demo-local LCG rather than the C
+/// `Random*` stream. The Shoemake math lives in `vis::random_quat_from`.
+fn random_quat(rng: &mut DemoRng) -> Quat {
+    let u1 = rng.range(0.0, 1.0);
+    let u2 = rng.range(0.0, 2.0 * std::f32::consts::PI);
+    let u3 = rng.range(0.0, 2.0 * std::f32::consts::PI);
+    crate::vis::random_quat_from(u1, u2, u3)
+}
 
 /// Compound / Simple â€” matches `sample_compound.cpp` SimpleCompound (single hull + sphere).
 #[wasm_bindgen]
@@ -78,7 +86,12 @@ pub fn sim_reset_compound_simple() -> u32 {
             local: Some(hull_transform),
         });
 
-        push_dynamic_sphere(&mut sim, 0.0, 2.0, 0.0, 0.25, 1.0);
+        // C SimpleCompound :57 disables contact recycling so the dropped sphere
+        // settles cleanly on the tilted compound hull.
+        world_set_contact_recycle_distance(&mut sim.world, 0.0);
+
+        // C :65 uses b3DefaultShapeDef() for the sphere (no rolling resistance).
+        push_dynamic_sphere(&mut sim, 0.0, 2.0, 0.0, 0.25, 0.0);
 
         let count = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
@@ -169,33 +182,19 @@ pub fn sim_reset_compound_hulls() -> u32 {
             };
             extents.push(e);
             box_hulls.push(make_box_hull(e.x, e.y, e.z));
-            let mut axis = rng.vec3_range(
+            // C CompoundHulls :196-197 uses RandomVec3 for position and RandomQuat()
+            // (Shoemake uniform random rotation) for orientation.
+            let p = rng.vec3_range(
                 Vec3 {
-                    x: -1.0,
-                    y: -1.0,
-                    z: -1.0,
+                    x: -h,
+                    y: -h,
+                    z: -h,
                 },
-                Vec3 {
-                    x: 1.0,
-                    y: 1.0,
-                    z: 1.0,
-                },
+                Vec3 { x: h, y: h, z: h },
             );
-            let mut axis_len = 0.0;
-            axis = get_length_and_normalize(&mut axis_len, axis);
-            if axis_len < 1e-4 {
-                axis = VEC3_AXIS_Y;
-            }
             transforms.push(Transform {
-                p: rng.vec3_range(
-                    Vec3 {
-                        x: -h,
-                        y: -h,
-                        z: -h,
-                    },
-                    Vec3 { x: h, y: h, z: h },
-                ),
-                q: make_quat_from_axis_angle(axis, rng.range(0.0, std::f32::consts::TAU)),
+                p,
+                q: random_quat(&mut rng),
             });
         }
 
@@ -239,11 +238,13 @@ pub fn sim_reset_compound_hulls() -> u32 {
 
 /// Compound / Village â€” C `sample_compound.cpp` Village with real `building.obj` meshes.
 ///
-/// C uses `gridCount = 8` (debug) / `200` (release). Browser scale is `grid_count`
-/// clamped to 8..=40 (default 16).
+/// C uses `gridCount = 8` (debug) / `200` (release). 200 buildings Ã— compound is
+/// far too heavy for the serial wasm build, so this fixes the grid at the C debug
+/// value 8. The C sample has no grid control, so this takes no argument.
 #[wasm_bindgen]
-pub fn sim_reset_village(grid_count: u32) -> u32 {
-    let grid = grid_count.clamp(8, 40) as i32;
+pub fn sim_reset_village() -> u32 {
+    // C Village debug build uses gridCount = 8 (release uses 200).
+    let grid = 8i32;
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -287,10 +288,8 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
         sim.village_stats = village.stats;
         sim.village_ground_index = parent_index;
 
-        // A few dynamic drop-ins so the village is interactive like other dynamics demos.
-        push_dynamic_sphere(&mut sim, 0.0, 12.0, 0.0, 0.4, 1.0);
-        push_dynamic_sphere(&mut sim, 3.0, 14.0, -2.0, 0.35, 1.0);
-        push_dynamic_box(&mut sim, -2.0, 13.0, 1.0, 0.4, 0.4, 0.4, 1.0, 0.4);
+        // C Village is fully static (a character mover + query sweep visualization
+        // walks it). No dynamic drop-ins here.
 
         let count = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);

@@ -1,11 +1,10 @@
 // Joints — Ball and Chain, Revolute, Gear Lift, Driving (sample_joint.cpp).
 
 import type * as THREE from "three";
-import { createInfoBox, createSlider } from "../controls.ts";
+import { createCheckbox, createInfoBox, createReadout, createSlider, updateReadout } from "../controls.ts";
 import {
   attachInteraction,
   type InteractWasm,
-  type ParamValues,
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm, type Box3dWasm } from "../wasm.ts";
@@ -14,6 +13,7 @@ import {
   DemoScene,
   makeTriangleMesh,
   makeWireEdges,
+  setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
@@ -35,39 +35,22 @@ function jointAsInteract(wasm: Box3dWasm): InteractWasm {
   };
 }
 
-function applyRevolute(wasm: Box3dWasm, p: ParamValues) {
-  let flags = 0;
-  if (p.limit) flags |= 1;
-  if (p.motor) flags |= 2;
-  if (p.spring) flags |= 4;
-  wasm.joint_set_revolute_params(
-    flags,
-    Number(p.lowerDeg) || -35,
-    Number(p.upperDeg) || 35,
-    Number(p.motorSpeed) || 0,
-    Number(p.motorTorque) || 5000,
-    Number(p.hertz) || 2,
-    Number(p.damping) || 0.7,
-    Number(p.targetDeg) || 0,
-  );
+function makeSection(title: string): HTMLDivElement {
+  const div = document.createElement("div");
+  div.className = "param-panel";
+  const t = document.createElement("div");
+  t.className = "control-section-title";
+  t.textContent = title;
+  div.appendChild(t);
+  return div;
 }
 
-function cameraFromView(
-  demo: DemoScene,
-  yawDeg: number,
-  pitchDeg: number,
-  distance: number,
-  target: [number, number, number],
-) {
-  demo.controls.target.set(target[0], target[1], target[2]);
-  const yaw = (yawDeg * Math.PI) / 180;
-  const pitch = (pitchDeg * Math.PI) / 180;
-  demo.camera.position.set(
-    target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
-    target[1] + distance * Math.sin(pitch),
-    target[2] + distance * Math.cos(pitch) * Math.cos(yaw),
-  );
-  demo.controls.update();
+function subLabel(text: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "control-note";
+  el.style.fontWeight = "600";
+  el.textContent = text;
+  return el;
 }
 
 export function init(container: HTMLElement) {
@@ -77,35 +60,123 @@ export function init(container: HTMLElement) {
     "Joints",
     "Official Joints samples: Ball and Chain, Revolute, Gear Lift, and Driving — " +
       "ported from <code>sample_joint.cpp</code>.",
-    "Pick a sample · drag bodies · Space/S/R · arrows drive",
+    "Pick a sample · drag bodies · P pause / O step / R restart · WASD drives",
     wasm.version(),
     { category: "Joints", samplesShell: true },
   );
 
   controls.appendChild(
     createInfoBox(
-      "<strong>Ball and Chain</strong> — spherical links.<br>" +
+      "<strong>Ball and Chain</strong> — 32 spherical links + heavy ball.<br>" +
         "<strong>Revolute</strong> — hanging plank with limit / spring / motor.<br>" +
         "<strong>Gear Lift</strong> — meshed gears raise a gate over a stairwell basin.<br>" +
-        "<strong>Driving</strong> — wheel-joint rover; Arrow keys throttle / steer.",
+        "<strong>Driving</strong> — wheel-joint rover; WASD (or arrows) throttle / steer.",
     ),
   );
 
   let scene: Scene = "revolute";
-  let links = 12;
-  let spinSpeed = 30;
-  let maxSpinTorque = 5;
   let ctrl!: SimControllerWithTick;
+
+  // --- Per-sample control state (mirrors C member variables / DrawControls) ---
+  const rev = {
+    limit: false,
+    lower: -35,
+    upper: 35,
+    motor: false,
+    torque: 5000,
+    speed: 0,
+    spring: false,
+    hertz: 2,
+    damping: 0.7,
+    target: 0,
+  };
+  const gear = { motor: true, torque: 30000, speed: -0.3 };
+  const drive = {
+    suspMin: -0.2,
+    suspMax: 0.2,
+    suspHertz: 4,
+    suspDamp: 0.7,
+    motorTorque: 5,
+    spinSpeed: 30,
+    steerHertz: 10,
+    steerDamp: 0.7,
+    steerTorque: 5,
+    steerMinDeg: -45,
+    steerMaxDeg: 45,
+  };
+
+  function applyRevolute() {
+    let flags = 0;
+    if (rev.limit) flags |= 1;
+    if (rev.motor) flags |= 2;
+    if (rev.spring) flags |= 4;
+    wasm.joint_set_revolute_params(
+      flags,
+      rev.lower,
+      rev.upper,
+      rev.speed,
+      rev.torque,
+      rev.hertz,
+      rev.damping,
+      rev.target,
+    );
+  }
+  function applyGear() {
+    // Gear driver: motor only (no limit/spring). C GearLift::DrawControls.
+    wasm.joint_set_revolute_params(
+      gear.motor ? 2 : 0,
+      -35,
+      35,
+      gear.speed,
+      gear.torque,
+      2,
+      0.7,
+      0,
+    );
+  }
+  function applyDrivingSuspension() {
+    wasm.joint_set_driving_suspension(drive.suspMin, drive.suspMax, drive.suspHertz, drive.suspDamp);
+  }
+  function applyDrivingMotor() {
+    wasm.joint_set_drive_params(drive.spinSpeed, drive.motorTorque);
+  }
+  function applyDrivingSteering() {
+    wasm.joint_set_driving_steering(
+      drive.steerHertz,
+      drive.steerDamp,
+      drive.steerTorque,
+      drive.steerMinDeg,
+      drive.steerMaxDeg,
+    );
+  }
 
   const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 15 });
   const pool = createMeshPool();
   let terrainMesh: THREE.Mesh | null = null;
   let terrainWire: THREE.LineSegments | null = null;
 
+  // --- Driving keyboard (WASD, arrows aliased). Handler runs before
+  // attachInteraction's; for driving movement keys we swallow the event so S
+  // (single-step) etc. don't fire while steering. ---
   const keys = new Set<string>();
+  const driveKeys = new Set([
+    "KeyW",
+    "KeyA",
+    "KeyS",
+    "KeyD",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+  ]);
   const onKeyDown = (e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     keys.add(e.code);
-    if (scene === "driving" && e.code.startsWith("Arrow")) e.preventDefault();
+    if (scene === "driving" && driveKeys.has(e.code)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
   window.addEventListener("keydown", onKeyDown);
@@ -143,44 +214,32 @@ export function init(container: HTMLElement) {
 
   function setCameraForScene() {
     if (scene === "chain") {
-      demo.controls.target.set(6, -4, 0);
-      demo.camera.position.set(18, 6, 22);
-      demo.controls.update();
+      setView(demo, 180, 15, 50, [0, -20, 0]);
     } else if (scene === "revolute") {
-      cameraFromView(demo, 45, 30, 15, [0, 2, 0]);
+      setView(demo, 45, 30, 15, [0, 2, 0]);
     } else if (scene === "gear") {
-      cameraFromView(demo, 18, 12, 17, [-1.5, 4.5, 0]);
+      setView(demo, 18, 12, 17, [-1.5, 4.5, 0]);
     } else {
-      cameraFromView(demo, 25, 20, 12, [0, 2, 0]);
+      setView(demo, 25, 20, 7, [0, 2, 0]);
     }
   }
 
   function reset() {
     clearTerrain();
     if (scene === "chain") {
-      wasm.joint_reset_chain(links);
+      wasm.joint_reset_chain();
     } else if (scene === "revolute") {
       wasm.joint_reset_hinge();
-      applyRevolute(wasm, ctrl.params);
+      applyRevolute();
     } else if (scene === "gear") {
       wasm.joint_reset_gear_lift();
-      // C defaults: motor on, speed -0.3, torque 30000
-      applyRevolute(wasm, {
-        limit: false,
-        spring: false,
-        motor: true,
-        motorSpeed: -0.3,
-        motorTorque: 30000,
-        lowerDeg: -35,
-        upperDeg: 35,
-        hertz: 2,
-        damping: 0.7,
-        targetDeg: 0,
-      });
+      applyGear();
       rebuildTerrain();
     } else {
       wasm.joint_reset_driving();
-      wasm.joint_set_drive_params(spinSpeed, maxSpinTorque);
+      applyDrivingSuspension();
+      applyDrivingMotor();
+      applyDrivingSteering();
       rebuildTerrain();
     }
     setCameraForScene();
@@ -209,161 +268,187 @@ export function init(container: HTMLElement) {
         default: "revolute",
         restart: true,
       },
-      {
-        type: "slider",
-        key: "links",
-        label: "Chain links",
-        min: 4,
-        max: 20,
-        step: 1,
-        default: 12,
-        restart: true,
-      },
-      {
-        type: "checkbox",
-        key: "limit",
-        label: "Revolute limit",
-        default: false,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "lowerDeg",
-        label: "Lower angle °",
-        min: -180,
-        max: 180,
-        step: 1,
-        default: -35,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "upperDeg",
-        label: "Upper angle °",
-        min: -180,
-        max: 180,
-        step: 1,
-        default: 35,
-        restart: false,
-      },
-      {
-        type: "checkbox",
-        key: "motor",
-        label: "Motor",
-        default: false,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "motorSpeed",
-        label: "Motor speed",
-        min: -10,
-        max: 10,
-        step: 0.1,
-        default: 0,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "motorTorque",
-        label: "Max motor torque",
-        min: 0,
-        max: 50000,
-        step: 100,
-        default: 5000,
-        restart: false,
-      },
-      {
-        type: "checkbox",
-        key: "spring",
-        label: "Spring",
-        default: false,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "hertz",
-        label: "Spring hertz",
-        min: 0,
-        max: 10,
-        step: 0.1,
-        default: 2,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "damping",
-        label: "Spring damping",
-        min: 0,
-        max: 2,
-        step: 0.1,
-        default: 0.7,
-        restart: false,
-      },
-      {
-        type: "slider",
-        key: "targetDeg",
-        label: "Target angle °",
-        min: -180,
-        max: 180,
-        step: 1,
-        default: 0,
-        restart: false,
-      },
     ],
     onParamsChange: (values, key) => {
       if (key === "sample") {
         scene = values.sample as Scene;
-        return;
-      }
-      if (key === "links") {
-        links = Math.round(Number(values.links) || 12);
-        return;
-      }
-      if (scene === "revolute") {
-        applyRevolute(wasm, values);
-      } else if (scene === "gear" && (key === "motor" || key === "motorSpeed" || key === "motorTorque")) {
-        applyRevolute(wasm, {
-          limit: false,
-          spring: false,
-          motor: values.motor ?? true,
-          motorSpeed: Number(values.motorSpeed) || -0.3,
-          motorTorque: Number(values.motorTorque) || 30000,
-          lowerDeg: -35,
-          upperDeg: 35,
-          hertz: 2,
-          damping: 0.7,
-          targetDeg: 0,
-        });
+        updateSceneControls();
       }
     },
   }) as SimControllerWithTick;
 
-  controls.appendChild(
-    createSlider("Drive spin speed", 0, 100, spinSpeed, 1, (v) => {
-      spinSpeed = v;
-      if (scene === "driving") wasm.joint_set_drive_params(spinSpeed, maxSpinTorque);
+  // --- Revolute controls (C RevoluteJoint::DrawControls, gated by checkbox) ---
+  const revSection = makeSection("Revolute");
+  revSection.appendChild(
+    createCheckbox("Limit", rev.limit, (v) => {
+      rev.limit = v;
+      updateRevVis();
+      applyRevolute();
     }),
   );
-  controls.appendChild(
-    createSlider("Drive max torque", 0, 100, maxSpinTorque, 1, (v) => {
-      maxSpinTorque = v;
-      if (scene === "driving") wasm.joint_set_drive_params(spinSpeed, maxSpinTorque);
+  const revLower = createSlider("Lower Angle °", -180, 180, rev.lower, 1, (v) => {
+    rev.lower = Math.min(v, rev.upper);
+    applyRevolute();
+  });
+  const revUpper = createSlider("Upper Angle °", -180, 180, rev.upper, 1, (v) => {
+    rev.upper = Math.max(v, rev.lower);
+    applyRevolute();
+  });
+  revSection.append(revLower, revUpper);
+  revSection.appendChild(
+    createCheckbox("Motor", rev.motor, (v) => {
+      rev.motor = v;
+      updateRevVis();
+      applyRevolute();
     }),
   );
+  const revTorque = createSlider("Max Torque", 0, 50000, rev.torque, 100, (v) => {
+    rev.torque = v;
+    applyRevolute();
+  });
+  const revSpeed = createSlider("Speed", -10, 10, rev.speed, 1, (v) => {
+    rev.speed = v;
+    applyRevolute();
+  });
+  revSection.append(revTorque, revSpeed);
+  revSection.appendChild(
+    createCheckbox("Spring", rev.spring, (v) => {
+      rev.spring = v;
+      updateRevVis();
+      applyRevolute();
+    }),
+  );
+  const revHertz = createSlider("Hertz", 0, 10, rev.hertz, 0.1, (v) => {
+    rev.hertz = v;
+    applyRevolute();
+  });
+  const revDamping = createSlider("Damping", 0, 2, rev.damping, 0.1, (v) => {
+    rev.damping = v;
+    applyRevolute();
+  });
+  const revRotation = createSlider("Rotation °", -180, 180, rev.target, 1, (v) => {
+    rev.target = v;
+    applyRevolute();
+  });
+  revSection.append(revHertz, revDamping, revRotation);
+  controls.appendChild(revSection);
 
+  function updateRevVis() {
+    revLower.style.display = rev.limit ? "" : "none";
+    revUpper.style.display = rev.limit ? "" : "none";
+    revTorque.style.display = rev.motor ? "" : "none";
+    revSpeed.style.display = rev.motor ? "" : "none";
+    revHertz.style.display = rev.spring ? "" : "none";
+    revDamping.style.display = rev.spring ? "" : "none";
+    revRotation.style.display = rev.spring ? "" : "none";
+  }
+
+  // --- Gear Lift controls (C GearLift::DrawControls) ---
+  const gearSection = makeSection("Gear Lift");
+  gearSection.appendChild(
+    createCheckbox("Motor", gear.motor, (v) => {
+      gear.motor = v;
+      applyGear();
+    }),
+  );
+  gearSection.append(
+    createSlider("Max Torque", 0, 100000, gear.torque, 100, (v) => {
+      gear.torque = v;
+      applyGear();
+    }),
+    createSlider("Speed", -0.3, 0.3, gear.speed, 0.01, (v) => {
+      gear.speed = v;
+      applyGear();
+    }),
+  );
+  controls.appendChild(gearSection);
+
+  // --- Driving controls (C Driving::DrawControls) ---
+  const driveSection = makeSection("Driving");
+  driveSection.appendChild(subLabel("Suspension"));
+  driveSection.append(
+    createSlider("Min", -10, 10, drive.suspMin, 0.1, (v) => {
+      drive.suspMin = Math.min(v, drive.suspMax);
+      applyDrivingSuspension();
+    }),
+    createSlider("Max", -10, 10, drive.suspMax, 0.1, (v) => {
+      drive.suspMax = Math.max(v, drive.suspMin);
+      applyDrivingSuspension();
+    }),
+    createSlider("Hertz", 0, 10, drive.suspHertz, 0.1, (v) => {
+      drive.suspHertz = v;
+      applyDrivingSuspension();
+    }),
+    createSlider("Damping", 0, 2, drive.suspDamp, 0.1, (v) => {
+      drive.suspDamp = v;
+      applyDrivingSuspension();
+    }),
+  );
+  driveSection.appendChild(subLabel("Motor"));
+  driveSection.append(
+    createSlider("Max Torque", 0, 100, drive.motorTorque, 1, (v) => {
+      drive.motorTorque = v;
+      applyDrivingMotor();
+    }),
+    createSlider("Speed", 0, 100, drive.spinSpeed, 1, (v) => {
+      drive.spinSpeed = v;
+      applyDrivingMotor();
+    }),
+  );
+  driveSection.appendChild(subLabel("Steering"));
+  driveSection.append(
+    createSlider("Hertz", 0, 10, drive.steerHertz, 0.1, (v) => {
+      drive.steerHertz = v;
+      applyDrivingSteering();
+    }),
+    createSlider("Damping", 0, 2, drive.steerDamp, 0.1, (v) => {
+      drive.steerDamp = v;
+      applyDrivingSteering();
+    }),
+    createSlider("Torque", 0, 20, drive.steerTorque, 0.1, (v) => {
+      drive.steerTorque = v;
+      applyDrivingSteering();
+    }),
+    createSlider("Min Deg", -90, 0, drive.steerMinDeg, 1, (v) => {
+      drive.steerMinDeg = v;
+      applyDrivingSteering();
+    }),
+    createSlider("Max Deg", 0, 90, drive.steerMaxDeg, 1, (v) => {
+      drive.steerMaxDeg = v;
+      applyDrivingSteering();
+    }),
+  );
+  const driveNote = document.createElement("div");
+  driveNote.className = "control-note";
+  driveNote.textContent =
+    "Drive with WASD (or arrow keys). Third-person (T) camera-follow lands in a later batch.";
+  driveSection.appendChild(driveNote);
+  controls.appendChild(driveSection);
+
+  // --- Telemetry / energy HUD (C Render() DrawTextLine) ---
+  const readout = createReadout();
+  controls.appendChild(readout);
+
+  function updateSceneControls() {
+    revSection.style.display = scene === "revolute" ? "" : "none";
+    gearSection.style.display = scene === "gear" ? "" : "none";
+    driveSection.style.display = scene === "driving" ? "" : "none";
+    if (scene === "revolute") updateRevVis();
+    if (scene !== "revolute" && scene !== "driving") readout.innerHTML = "";
+  }
+
+  updateSceneControls();
   reset();
 
-  const readout = controls.querySelector(".info-readout") as HTMLElement;
+  let frame = 0;
   const stop = runLoop(() => {
     if (scene === "driving") {
       let tx = 0;
       let ty = 0;
-      // Arrow keys only — avoids clashing with attachInteraction S=step.
-      if (keys.has("ArrowUp")) tx += 1;
-      if (keys.has("ArrowDown")) tx -= 1;
-      if (keys.has("ArrowLeft")) ty += 1;
-      if (keys.has("ArrowRight")) ty -= 1;
+      if (keys.has("KeyW") || keys.has("ArrowUp")) tx += 1;
+      if (keys.has("KeyS") || keys.has("ArrowDown")) tx -= 1;
+      if (keys.has("KeyA") || keys.has("ArrowLeft")) ty += 1;
+      if (keys.has("KeyD") || keys.has("ArrowRight")) ty -= 1;
       wasm.joint_set_drive_input(tx, ty);
     } else {
       wasm.joint_set_drive_input(0, 0);
@@ -375,7 +460,29 @@ export function init(container: HTMLElement) {
       groundIndex: scene === "driving" || scene === "gear" ? null : 0,
     });
 
-    if (scene === "driving") {
+    frame += 1;
+    // Throttle the telemetry HUD to every 10 frames (matches sensors.ts); camera
+    // tracking below still runs every frame so the driving chase-cam stays smooth.
+    if (scene === "revolute") {
+      if (frame % 10 === 0) {
+        const e = wasm.joint_revolute_energy();
+        updateReadout(readout, [
+          { label: "kinetic energy", value: (e[0] ?? 0).toPrecision(4) },
+          { label: "potential energy", value: (e[1] ?? 0).toPrecision(4) },
+          { label: "total energy", value: (e[2] ?? 0).toPrecision(4) },
+        ]);
+      }
+    } else if (scene === "driving") {
+      if (frame % 10 === 0) {
+        const t = wasm.joint_drive_telemetry();
+        updateReadout(readout, [
+          { label: "speed", value: (t[0] ?? 0).toFixed(1) },
+          { label: "spin speed", value: `${(t[1] ?? 0).toFixed(1)}/${(t[2] ?? 0).toFixed(1)}` },
+          { label: "spin torque", value: `${(t[3] ?? 0).toFixed(1)}/${(t[4] ?? 0).toFixed(1)}` },
+          { label: "steering °", value: `${(t[5] ?? 0).toFixed(1)}/${(t[6] ?? 0).toFixed(1)}` },
+          { label: "steering torque", value: `${(t[7] ?? 0).toFixed(1)}/${(t[8] ?? 0).toFixed(1)}` },
+        ]);
+      }
       const cp = wasm.joint_chassis_pose();
       demo.controls.target.set(cp[0]!, cp[1]! + 0.5, cp[2]!);
     }

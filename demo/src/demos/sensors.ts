@@ -10,36 +10,19 @@ import {
 } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { DemoScene } from "../three-scene.ts";
+import { DemoScene, setView } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
 type Scene = "visit" | "hits" | "benchmark";
-
-function cameraFromView(
-  demo: DemoScene,
-  yawDeg: number,
-  pitchDeg: number,
-  distance: number,
-  target: [number, number, number],
-) {
-  demo.controls.target.set(target[0], target[1], target[2]);
-  const yaw = (yawDeg * Math.PI) / 180;
-  const pitch = (pitchDeg * Math.PI) / 180;
-  demo.camera.position.set(
-    target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
-    target[1] + distance * Math.sin(pitch),
-    target[2] + distance * Math.cos(pitch) * Math.cos(yaw),
-  );
-  demo.controls.update();
-}
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Sensors",
-    "Official Events / Benchmark sensor samples from <code>sample_events.cpp</code> and " +
-      "<code>sample_benchmark.cpp</code>: Sensor Visit, Sensor Hits, and Benchmark Sensor.",
+    "Events sensor samples from <code>sample_events.cpp</code> (Sensor Visit, Sensor Hits — both exact) " +
+      "plus <strong>Benchmark Sensor</strong>, which is a <em>Benchmark-category</em> sample from " +
+      "<code>sample_benchmark.cpp</code> hosted here for convenience.",
     "Pick a sample · Launch (B) on Hits · Restart",
     wasm.version(),
     { category: "Events", samplesShell: true },
@@ -50,8 +33,8 @@ export function init(container: HTMLElement) {
       "<strong>Sensor Visit</strong> — kinematic sensor destroys the visitor on begin-touch.<br>" +
         "<strong>Sensor Hits</strong> — static/kinematic mesh sensors + prismatic capsule; " +
         "launch a bullet sphere (checkbox + <kbd>B</kbd>).<br>" +
-        "<strong>Benchmark Sensor</strong> — 12×12 grid (C is 40×40); lime tint on overlap; " +
-        "bottom active sensors destroy visitors; mid row fuchsia (custom filter skipped).",
+        "<strong>Benchmark Sensor</strong> (Benchmark category, not Events) — full C-scale 40×40 grid; lime tint on overlap; " +
+        "bottom active sensors destroy visitors; mid row fuchsia (custom filter active).",
     ),
   );
 
@@ -100,13 +83,19 @@ export function init(container: HTMLElement) {
   }
 
   function setCamera() {
-    if (scene === "visit") cameraFromView(demo, 0, 30, 20, [0, 5, 0]);
-    else if (scene === "hits") cameraFromView(demo, 0, 30, 40, [0, 5, 0]);
-    else cameraFromView(demo, 0, 0, 100, [0, 40, 0]);
+    if (scene === "visit") setView(demo, 0, 30, 20, [0, 5, 0]);
+    else if (scene === "hits") setView(demo, 0, 30, 40, [0, 5, 0]);
+    else setView(demo, 0, 0, 100, [0, 40, 0]);
   }
+
+  // Cache the sensor-index set (up to ~1600 u32 in the benchmark) and refetch it only when
+  // Rust reports the sensor topology changed, instead of marshaling it every frame.
+  let sensorIndicesCache = new Uint32Array(0);
+  let sensorTopoVersion = -1;
 
   function reset() {
     wasm.sensor_reset(sceneId());
+    sensorTopoVersion = -1; // force a refetch of the sensor-index set after reset
     if (hitsRow) hitsRow.style.display = scene === "hits" ? "" : "none";
     setCamera();
   }
@@ -124,8 +113,13 @@ export function init(container: HTMLElement) {
   let frame = 0;
   const stop = runLoop(() => {
     wasm.sensor_step(1 / 60, 4);
+    const topo = wasm.sensor_topology_version();
+    if (topo !== sensorTopoVersion) {
+      sensorIndicesCache = wasm.sensor_sensor_indices();
+      sensorTopoVersion = topo;
+    }
     syncMeshesFromPoses(demo.content, pool, wasm.sensor_poses(), {
-      sensorIndices: wasm.sensor_sensor_indices(),
+      sensorIndices: sensorIndicesCache,
       colors: wasm.sensor_colors(),
       groundIndex: scene === "hits" ? 0 : null,
     });

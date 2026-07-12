@@ -9,30 +9,12 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { applyBodyColor, DemoScene, makeBodyMaterial } from "../three-scene.ts";
+import { applyBodyColor, DemoScene, makeBodyMaterial, setView } from "../three-scene.ts";
 
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
 
 type Mode = "thin" | "bounce" | "bullet";
-
-function cameraFromView(
-  demo: DemoScene,
-  yawDeg: number,
-  pitchDeg: number,
-  distance: number,
-  target: [number, number, number],
-) {
-  demo.controls.target.set(target[0], target[1], target[2]);
-  const yaw = (yawDeg * Math.PI) / 180;
-  const pitch = (pitchDeg * Math.PI) / 180;
-  demo.camera.position.set(
-    target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
-    target[1] + distance * Math.sin(pitch),
-    target[2] + distance * Math.cos(pitch) * Math.cos(yaw),
-  );
-  demo.controls.update();
-}
 
 export function init(container: HTMLElement) {
   const wasm = getWasm();
@@ -80,11 +62,11 @@ export function init(container: HTMLElement) {
 
   function setCameraForMode() {
     if (mode === "thin") {
-      cameraFromView(demo, 45, 30, 30, [0, 0, 0]);
+      setView(demo, 45, 30, 30, [0, 0, 0]);
     } else if (mode === "bounce") {
-      cameraFromView(demo, 45, 45, 50, [0, 0, 0]);
+      setView(demo, 45, 45, 50, [0, 0, 0]);
     } else {
-      cameraFromView(demo, 15, 20, 30, [0, 2, 0]);
+      setView(demo, 15, 20, 30, [0, 2, 0]);
     }
   }
 

@@ -5,7 +5,6 @@ use wasm_bindgen::prelude::*;
 
 mod benchmark_demo;
 mod character_demo;
-mod geometry_demo;
 mod height_field_demo;
 mod hull_demo;
 mod interact;
@@ -21,8 +20,6 @@ mod sensor_demo;
 mod sim_compound;
 mod sim_continuous;
 mod sim_demo;
-mod terrain_demo;
-mod tree_demo;
 mod village;
 mod vis;
 mod world_demo;

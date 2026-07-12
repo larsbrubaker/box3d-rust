@@ -1,7 +1,8 @@
 //! Shared Compound / Village scene builder (C `sample_compound.cpp` Village).
 //!
-//! Browser-scaled grid (default 8..=40 vs C debug 8 / release 200) plus the real
-//! `building.obj` compound meshes. Physics matches C layout; RNG is demo-local.
+//! Fixed grid at the C debug value 8 (C release uses 200, which is far too heavy
+//! for serial wasm) plus the real `building.obj` compound meshes. Physics matches
+//! C layout; RNG is demo-local (not the C `Random*` stream).
 
 use crate::obj_loader::load_building_mesh;
 use box3d_rust::body::create_body;
@@ -65,9 +66,10 @@ pub struct VillageScene {
 
 /// Build the Village compound ground + building meshes.
 ///
-/// `grid` is clamped to 8..=40 (C uses 8 debug / 200 release).
+/// `grid` must be in 8..=40 (C uses 8 debug / 200 release). Callers own the range:
+/// `sim_reset_village` passes the fixed C debug value 8, and `character_reset_ex`
+/// clamps its wasm `grid_count` argument before reaching here.
 pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
-    let grid = grid.clamp(8, 40);
     let a = 4.0f32;
     let mut rng = DemoRng(0xB111_A6E7);
     let material = default_surface_material();

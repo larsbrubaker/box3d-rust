@@ -2,17 +2,21 @@
 
 use crate::joint_demo::{empty_state, new_world, JointScene, JointState};
 use crate::vis::{pos, sphere, VisBody};
-use box3d_rust::body::{body_set_awake, create_body};
-use box3d_rust::height_field::{
-    create_wave, get_height_field_triangle, get_height_field_triangle_count,
-};
+use box3d_rust::body::{body_get_linear_velocity, body_set_awake, create_body, get_body_transform};
+use box3d_rust::height_field::create_wave;
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::joint::{
-    create_parallel_joint, create_wheel_joint, wheel_joint_set_max_spin_torque,
-    wheel_joint_set_spin_motor_speed, wheel_joint_set_target_steering_angle,
+    create_parallel_joint, create_wheel_joint, wheel_joint_get_spin_speed,
+    wheel_joint_get_spin_torque, wheel_joint_get_steering_angle, wheel_joint_get_steering_torque,
+    wheel_joint_set_max_spin_torque, wheel_joint_set_max_steering_torque,
+    wheel_joint_set_spin_motor_speed, wheel_joint_set_steering_damping_ratio,
+    wheel_joint_set_steering_hertz, wheel_joint_set_steering_limits,
+    wheel_joint_set_suspension_damping_ratio, wheel_joint_set_suspension_hertz,
+    wheel_joint_set_suspension_limits, wheel_joint_set_target_steering_angle,
 };
 use box3d_rust::math_functions::{
-    compute_quat_between_unit_vectors, Vec3, PI, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z,
+    compute_quat_between_unit_vectors, dot, rotate_vector, Vec3, PI, VEC3_AXIS_X, VEC3_AXIS_Y,
+    VEC3_AXIS_Z,
 };
 use box3d_rust::shape::{create_height_field_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
@@ -24,18 +28,22 @@ pub(crate) fn build_driving() -> JointState {
     let mut world = new_world();
     let mut bodies = Vec::new();
 
-    let rows = 33;
-    let cols = 33;
+    // C Driving: b3CreateWave( 50, 50, { 4, 2, 4 }, 0.02, 0.04, false ) with the
+    // ground body placed at { -20, 0, -20 } (sample_joint.cpp:2265, :2272 — not a
+    // centered/derived origin). The height field's local vertices are corner-origin,
+    // so the render offset equals the body position.
+    let rows = 50;
+    let cols = 50;
     let scale = Vec3 {
-        x: 2.0,
-        y: 1.5,
-        z: 2.0,
+        x: 4.0,
+        y: 2.0,
+        z: 4.0,
     };
     let hf = create_wave(rows, cols, scale, 0.02, 0.04, false);
     let hf_origin = Vec3 {
-        x: -0.5 * scale.x * (cols - 1) as f32,
+        x: -20.0,
         y: 0.0,
-        z: -0.5 * scale.z * (rows - 1) as f32,
+        z: -20.0,
     };
 
     let mut ground_def = default_body_def();
@@ -60,6 +68,7 @@ pub(crate) fn build_driving() -> JointState {
     parallel.base.body_id_b = chassis;
     parallel.base.local_frame_a.q = compute_quat_between_unit_vectors(VEC3_AXIS_Z, VEC3_AXIS_Y);
     parallel.base.local_frame_b.q = compute_quat_between_unit_vectors(VEC3_AXIS_Z, VEC3_AXIS_Y);
+    parallel.base.draw_scale = 2.0;
     parallel.base.collide_connected = true;
     parallel.hertz = 0.5;
     parallel.damping_ratio = 1.0;
@@ -178,6 +187,93 @@ pub(crate) fn apply_spin_torque(state: &mut JointState, torque: f32) {
     }
 }
 
+/// Suspension slider callbacks (C Driving::DrawControls "Suspension"): applies the
+/// limits, hertz, and damping ratio to all four wheel joints.
+pub(crate) fn set_suspension(
+    state: &mut JointState,
+    lower: f32,
+    upper: f32,
+    hertz: f32,
+    damping: f32,
+) {
+    for j in [
+        state.front_left,
+        state.front_right,
+        state.rear_left,
+        state.rear_right,
+    ] {
+        if !j.is_non_null() {
+            continue;
+        }
+        wheel_joint_set_suspension_limits(&mut state.world, j, lower, upper);
+        wheel_joint_set_suspension_hertz(&mut state.world, j, hertz);
+        wheel_joint_set_suspension_damping_ratio(&mut state.world, j, damping);
+    }
+}
+
+/// Steering slider callbacks (C Driving::DrawControls "Steering"): applies to the
+/// two front (steered) wheels only. Limits are supplied in radians.
+pub(crate) fn set_steering(
+    state: &mut JointState,
+    hertz: f32,
+    damping: f32,
+    torque: f32,
+    lower_rad: f32,
+    upper_rad: f32,
+) {
+    for j in [state.front_left, state.front_right] {
+        if !j.is_non_null() {
+            continue;
+        }
+        wheel_joint_set_steering_hertz(&mut state.world, j, hertz);
+        wheel_joint_set_steering_damping_ratio(&mut state.world, j, damping);
+        wheel_joint_set_max_steering_torque(&mut state.world, j, torque);
+        wheel_joint_set_steering_limits(&mut state.world, j, lower_rad, upper_rad);
+    }
+}
+
+/// Driving Render() telemetry (sample_joint.cpp:2515-2540). Returns
+/// `[speed, spinL, spinR, spinTorqueL, spinTorqueR, steerDegL, steerDegR,
+/// steerTorqueL, steerTorqueR]`.
+pub(crate) fn telemetry(state: &JointState) -> Vec<f32> {
+    if !state.chassis.is_non_null() {
+        return vec![0.0; 9];
+    }
+    let velocity = body_get_linear_velocity(&state.world, state.chassis);
+    let xf = get_body_transform(&state.world, state.chassis.index1 - 1);
+    let forward = rotate_vector(
+        xf.q,
+        Vec3 {
+            x: -1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+    );
+    let speed = dot(velocity, forward);
+
+    let left_spin = wheel_joint_get_spin_speed(&state.world, state.rear_left);
+    let right_spin = wheel_joint_get_spin_speed(&state.world, state.rear_right);
+    let left_spin_torque = wheel_joint_get_spin_torque(&state.world, state.rear_left);
+    let right_spin_torque = wheel_joint_get_spin_torque(&state.world, state.rear_right);
+    let deg = 180.0 / PI;
+    let steer_deg_left = deg * wheel_joint_get_steering_angle(&state.world, state.front_left);
+    let steer_deg_right = deg * wheel_joint_get_steering_angle(&state.world, state.front_right);
+    let left_steer_torque = wheel_joint_get_steering_torque(&state.world, state.front_left);
+    let right_steer_torque = wheel_joint_get_steering_torque(&state.world, state.front_right);
+
+    vec![
+        speed,
+        left_spin,
+        right_spin,
+        left_spin_torque,
+        right_spin_torque,
+        steer_deg_left,
+        steer_deg_right,
+        left_steer_torque,
+        right_steer_torque,
+    ]
+}
+
 pub(crate) fn pre_step(state: &mut JointState) {
     if !state.chassis.is_non_null() {
         return;
@@ -211,21 +307,5 @@ pub(crate) fn terrain_wireframe(state: &JointState) -> Vec<f32> {
     let Some(ref hf) = state.hf else {
         return Vec::new();
     };
-    let mut out = Vec::new();
-    let count = get_height_field_triangle_count(hf);
-    for i in 0..count {
-        let tri = get_height_field_triangle(hf, i);
-        let verts = tri.vertices;
-        for e in 0..3 {
-            let a = verts[e];
-            let b = verts[(e + 1) % 3];
-            out.push(a.x + state.hf_origin.x);
-            out.push(a.y + state.hf_origin.y);
-            out.push(a.z + state.hf_origin.z);
-            out.push(b.x + state.hf_origin.x);
-            out.push(b.y + state.hf_origin.y);
-            out.push(b.z + state.hf_origin.z);
-        }
-    }
-    out
+    crate::vis::hf_triangle_edges(hf, state.hf_origin)
 }
