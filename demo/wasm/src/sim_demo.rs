@@ -8,8 +8,8 @@ use box3d_rust::compound::{create_compound, CompoundDef, CompoundHullDef};
 use box3d_rust::geometry::{default_surface_material, Sphere};
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
-    make_quat_from_axis_angle, mul_transforms, Pos, Transform, Vec3, VEC3_AXIS_Y, VEC3_AXIS_Z,
-    VEC3_ZERO, QUAT_IDENTITY,
+    make_quat_from_axis_angle, mul_transforms, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y,
+    VEC3_AXIS_Z, VEC3_ZERO,
 };
 use box3d_rust::shape::{create_compound_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
@@ -77,15 +77,7 @@ fn push_dynamic_box(
     });
 }
 
-fn push_dynamic_box_locked(
-    sim: &mut SimState,
-    x: f32,
-    y: f32,
-    z: f32,
-    hx: f32,
-    hy: f32,
-    hz: f32,
-) {
+fn push_dynamic_box_locked(sim: &mut SimState, x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32) {
     let mut body_def = default_body_def();
     body_def.type_ = BodyType::Dynamic;
     body_def.position = Pos {

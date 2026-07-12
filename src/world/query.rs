@@ -196,13 +196,19 @@ pub fn world_cast_ray(
         );
     }
 
-    let tree_stats = cast_ray_impl(world, origin, translation, filter, |id, point, normal, fraction, mid, tri, child| {
-        let user_fraction = fcn(id, point, normal, fraction, mid, tri, child);
-        if let Some(w) = rec.as_mut() {
-            w.append_cast_hit(id, point, normal, fraction, mid, tri, child, user_fraction);
-        }
-        user_fraction
-    });
+    let tree_stats = cast_ray_impl(
+        world,
+        origin,
+        translation,
+        filter,
+        |id, point, normal, fraction, mid, tri, child| {
+            let user_fraction = fcn(id, point, normal, fraction, mid, tri, child);
+            if let Some(w) = rec.as_mut() {
+                w.append_cast_hit(id, point, normal, fraction, mid, tri, child, user_fraction);
+            }
+            user_fraction
+        },
+    );
 
     if let Some(mut w) = rec {
         w.finish_counted();

@@ -24,17 +24,14 @@ demo samples) are done. Remaining work is polish and release readiness.
 
 ## Release readiness
 
-The crate is functionally complete. Polish for 0.1:
+The crate is functionally complete. `0.1.0` is the crates.io release aligned with
+the pinned C reference. Remaining polish:
 
-- [ ] Rustdoc pass over the public API (crate-level docs, module docs on the
-      main entry points, doc examples for World/body/shape/joint creation)
-- [ ] README: quick-start example, docs.rs badge, feature-flag docs
-      (`double-precision`)
-- [ ] Cargo.toml metadata for crates.io (description, keywords, categories,
-      license files, repository)
+- [ ] Rustdoc pass over the public API (module docs on the main entry points,
+      doc examples for World/body/shape/joint creation)
 - [ ] Decide the idiomatic-API question: ship the C-mirror API as-is for 0.1
       (like box2d-rust) or add a thin ergonomic layer — record the decision
-- [ ] Tag v0.1.0 aligned with the pinned C reference version
+- [ ] Git tag `v0.1.0` on the publish commit (if not already tagged)
 
 ## Upstream tracking (recurring)
 

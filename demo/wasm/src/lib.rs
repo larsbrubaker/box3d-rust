@@ -3,8 +3,8 @@
 
 use wasm_bindgen::prelude::*;
 
-mod continuous_demo;
 mod character_demo;
+mod continuous_demo;
 mod geometry_demo;
 mod height_field_demo;
 mod hull_demo;

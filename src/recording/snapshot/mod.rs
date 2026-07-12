@@ -5,6 +5,8 @@
 //! SPDX-License-Identifier: MIT
 
 mod joints;
+mod pod_bodies;
+mod pod_contacts;
 mod pods;
 
 use crate::constants::GRAPH_COLOR_COUNT;
@@ -16,6 +18,8 @@ use crate::sensor::Sensor;
 use crate::types::{default_world_def, BODY_TYPE_COUNT};
 use crate::world::World;
 
+use pod_bodies::*;
+use pod_contacts::*;
 use pods::*;
 
 /// Snapshot image magic 'BNS3'. (B3_SNAP_MAGIC)

@@ -33,7 +33,7 @@ fn query_replay() {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
-            x: i as f32 - 1.5,
+            x: (i as f32 - 1.5) as _,
             y: 3.0,
             z: 0.0,
         };
@@ -276,7 +276,7 @@ fn scrub_backward() {
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
             x: 0.0,
-            y: 2.0 + i as f32 * 1.5,
+            y: (2.0 + i as f32 * 1.5) as _,
             z: 0.0,
         };
         let body_id = create_body(&mut world, &body_def);
@@ -396,7 +396,7 @@ fn seek_with_hull() {
         let mut bd = default_body_def();
         bd.type_ = BodyType::Dynamic;
         bd.position = Pos {
-            x: (i * 4) as f32 - 4.0,
+            x: ((i * 4) as f32 - 4.0) as _,
             y: 5.0,
             z: 0.0,
         };
@@ -455,7 +455,7 @@ fn player_accessors() {
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
             x: 0.0,
-            y: 2.0 + i as f32 * 1.5,
+            y: (2.0 + i as f32 * 1.5) as _,
             z: 0.0,
         };
         let body_id = create_body(&mut world, &body_def);
@@ -621,7 +621,7 @@ fn shape_name_replay() {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
-            x: i as f32,
+            x: i as _,
             y: 1.0,
             z: 0.0,
         };

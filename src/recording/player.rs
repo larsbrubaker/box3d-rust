@@ -90,7 +90,8 @@ impl RecPlayer {
         } else {
             data.len() as u64
         };
-        if header_end64 < 48 || header_end64 > registry_end64 || registry_end64 > data.len() as u64 {
+        if header_end64 < 48 || header_end64 > registry_end64 || registry_end64 > data.len() as u64
+        {
             eprintln!("b3RecPlayer_Create: corrupt offsets");
             return None;
         }
@@ -106,7 +107,8 @@ impl RecPlayer {
         let snap_start = 48usize;
         let snap_size = hdr.snapshot_size as usize;
 
-        let (mut slots, tags) = load_registry_block(&copy, hdr.registry_offset as usize, copy.len());
+        let (mut slots, tags) =
+            load_registry_block(&copy, hdr.registry_offset as usize, copy.len());
 
         let mut world = World::new(&default_world_def());
         if !deserialize_into_shell(
@@ -216,10 +218,10 @@ impl RecPlayer {
                     // WORLDID u32 + F32 dt + I32 subStep
                     let base = cursor + 4; // skip world id
                     if base + 8 <= cursor + payload as usize {
-                        self.recorded_dt = f32::from_le_bytes(data[base..base + 4].try_into().unwrap());
-                        self.recorded_sub_step_count = i32::from_le_bytes(
-                            data[base + 4..base + 8].try_into().unwrap(),
-                        );
+                        self.recorded_dt =
+                            f32::from_le_bytes(data[base..base + 4].try_into().unwrap());
+                        self.recorded_sub_step_count =
+                            i32::from_le_bytes(data[base + 4..base + 8].try_into().unwrap());
                     }
                     first_step = false;
                 }
@@ -296,7 +298,7 @@ impl RecPlayer {
                 }
             }
 
-            let op = self.with_reader(|rdr| dispatch_one(rdr));
+            let op = self.with_reader(dispatch_one);
             if op < 0 {
                 self.at_end = true;
                 return stepped;
@@ -345,7 +347,7 @@ impl RecPlayer {
                 return;
             }
 
-            let op = self.with_reader(|rdr| dispatch_one(rdr));
+            let op = self.with_reader(dispatch_one);
             if op < 0 {
                 self.at_end = true;
                 self.at_pre_step = false;
@@ -373,7 +375,8 @@ impl RecPlayer {
 
     /// (b3RecPlayer_Restart)
     pub fn restart(&mut self) {
-        let snap = self.data[self.frame0_image_start..self.frame0_image_start + self.frame0_image_size]
+        let snap = self.data
+            [self.frame0_image_start..self.frame0_image_start + self.frame0_image_size]
             .to_vec();
         let mut slots = self.reader_slots.clone();
         // Clear live compounds so deserialize rebuilds.
@@ -486,7 +489,10 @@ impl RecPlayer {
         self.frame_queries.len() as i32
     }
 
-    pub fn get_frame_query(&self, index: i32) -> Option<&crate::recording::query_replay::FrameQuery> {
+    pub fn get_frame_query(
+        &self,
+        index: i32,
+    ) -> Option<&crate::recording::query_replay::FrameQuery> {
         self.frame_queries.get(index as usize)
     }
 
@@ -542,8 +548,7 @@ fn load_registry_block(data: &[u8], offset: usize, end: usize) -> (Vec<RegistryS
             _ => GeometryKind::Compound,
         };
         cursor += 1;
-        let byte_count =
-            u32::from_le_bytes(data[cursor..cursor + 4].try_into().unwrap()) as usize;
+        let byte_count = u32::from_le_bytes(data[cursor..cursor + 4].try_into().unwrap()) as usize;
         cursor += 4;
         if cursor + byte_count > end {
             break;

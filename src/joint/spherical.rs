@@ -120,7 +120,11 @@ pub fn spherical_joint_set_twist_limits(
     upper_limit_radians: f32,
 ) {
     crate::recording::with_recording(world, |rec| {
-        rec.write_spherical_joint_set_twist_limits(joint_id, lower_limit_radians, upper_limit_radians);
+        rec.write_spherical_joint_set_twist_limits(
+            joint_id,
+            lower_limit_radians,
+            upper_limit_radians,
+        );
     });
     debug_assert!(is_valid_float(lower_limit_radians) && is_valid_float(upper_limit_radians));
 

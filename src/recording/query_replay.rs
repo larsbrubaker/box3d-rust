@@ -3,11 +3,11 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use crate::distance::ShapeProxy;
 use crate::geometry::{Capsule, PlaneResult};
 use crate::id::ShapeId;
 use crate::math_functions::{Aabb, Plane, Pos, Vec3, POS_ZERO, VEC3_ZERO};
 use crate::recording::dispatch::RecReader;
-use crate::distance::ShapeProxy;
 use crate::types::{QueryFilter, RayResult};
 use crate::world::{
     world_cast_mover, world_cast_ray, world_cast_ray_closest, world_cast_shape,
@@ -46,7 +46,9 @@ fn vec3_differs(a: Vec3, b: Vec3) -> bool {
 fn pos_differs(a: Pos, b: Pos) -> bool {
     #[cfg(feature = "double-precision")]
     {
-        a.x.to_bits() != b.x.to_bits() || a.y.to_bits() != b.y.to_bits() || a.z.to_bits() != b.z.to_bits()
+        a.x.to_bits() != b.x.to_bits()
+            || a.y.to_bits() != b.y.to_bits()
+            || a.z.to_bits() != b.z.to_bits()
     }
     #[cfg(not(feature = "double-precision"))]
     {
@@ -108,7 +110,15 @@ pub fn dispatch_query_overlap_aabb(
     if ctx.cursor != ctx.hits.len() {
         rdr.diverged = true;
     }
-    stash_simple(rdr, RecQueryKind::OverlapAabb, &ctx.hits, aabb, POS_ZERO, VEC3_ZERO, filter);
+    stash_simple(
+        rdr,
+        RecQueryKind::OverlapAabb,
+        &ctx.hits,
+        aabb,
+        POS_ZERO,
+        VEC3_ZERO,
+        filter,
+    );
 }
 
 /// (b3RecDispatch_QueryOverlapShape)
@@ -158,7 +168,15 @@ pub fn dispatch_query_overlap_shape(
     if ctx.cursor != ctx.hits.len() {
         rdr.diverged = true;
     }
-    stash_simple(rdr, RecQueryKind::OverlapShape, &ctx.hits, Aabb::default(), origin, VEC3_ZERO, filter);
+    stash_simple(
+        rdr,
+        RecQueryKind::OverlapShape,
+        &ctx.hits,
+        Aabb::default(),
+        origin,
+        VEC3_ZERO,
+        filter,
+    );
 }
 
 /// (b3RecDispatch_QueryCastRay)
@@ -178,30 +196,44 @@ pub fn dispatch_query_cast_ray(
         hits,
         cursor: 0,
     };
-    world_cast_ray(world, origin, translation, &filter, |id, point, normal, fraction, mid, tri, child| {
-        if ctx.cursor >= ctx.hits.len() {
-            unsafe { mark_diverged(&mut *ctx.rdr) };
-            return 0.0;
-        }
-        let h = &ctx.hits[ctx.cursor];
-        ctx.cursor += 1;
-        if id.index1 != h.id.index1
-            || id.generation != h.id.generation
-            || pos_differs(point, h.point)
-            || vec3_differs(normal, h.normal)
-            || f32_differs(fraction, h.fraction)
-            || mid != h.user_material_id
-            || tri != h.triangle_index
-            || child != h.child_index
-        {
-            unsafe { mark_diverged(&mut *ctx.rdr) };
-        }
-        h.user_return_f
-    });
+    world_cast_ray(
+        world,
+        origin,
+        translation,
+        &filter,
+        |id, point, normal, fraction, mid, tri, child| {
+            if ctx.cursor >= ctx.hits.len() {
+                unsafe { mark_diverged(&mut *ctx.rdr) };
+                return 0.0;
+            }
+            let h = &ctx.hits[ctx.cursor];
+            ctx.cursor += 1;
+            if id.index1 != h.id.index1
+                || id.generation != h.id.generation
+                || pos_differs(point, h.point)
+                || vec3_differs(normal, h.normal)
+                || f32_differs(fraction, h.fraction)
+                || mid != h.user_material_id
+                || tri != h.triangle_index
+                || child != h.child_index
+            {
+                unsafe { mark_diverged(&mut *ctx.rdr) };
+            }
+            h.user_return_f
+        },
+    );
     if ctx.cursor != ctx.hits.len() {
         rdr.diverged = true;
     }
-    stash_simple(rdr, RecQueryKind::CastRay, &ctx.hits, Aabb::default(), origin, translation, filter);
+    stash_simple(
+        rdr,
+        RecQueryKind::CastRay,
+        &ctx.hits,
+        Aabb::default(),
+        origin,
+        translation,
+        filter,
+    );
 }
 
 /// (b3RecDispatch_QueryCastShape)
@@ -252,7 +284,15 @@ pub fn dispatch_query_cast_shape(
     if ctx.cursor != ctx.hits.len() {
         rdr.diverged = true;
     }
-    stash_simple(rdr, RecQueryKind::CastShape, &ctx.hits, Aabb::default(), origin, translation, filter);
+    stash_simple(
+        rdr,
+        RecQueryKind::CastShape,
+        &ctx.hits,
+        Aabb::default(),
+        origin,
+        translation,
+        filter,
+    );
 }
 
 /// (b3RecDispatch_QueryCastRayClosest)
@@ -372,7 +412,15 @@ pub fn dispatch_query_cast_mover(
     if ctx.cursor != ctx.hits.len() || f32_differs(got, rec_fraction) {
         rdr.diverged = true;
     }
-    stash_simple(rdr, RecQueryKind::CastMover, &ctx.hits, Aabb::default(), origin, translation, filter);
+    stash_simple(
+        rdr,
+        RecQueryKind::CastMover,
+        &ctx.hits,
+        Aabb::default(),
+        origin,
+        translation,
+        filter,
+    );
 }
 
 /// (b3RecDispatch_QueryCollideMover)
@@ -451,7 +499,15 @@ pub fn dispatch_query_collide_mover(
     if ctx.cursor != total {
         rdr.diverged = true;
     }
-    stash_simple(rdr, RecQueryKind::CollideMover, &ctx.hits, Aabb::default(), origin, VEC3_ZERO, filter);
+    stash_simple(
+        rdr,
+        RecQueryKind::CollideMover,
+        &ctx.hits,
+        Aabb::default(),
+        origin,
+        VEC3_ZERO,
+        filter,
+    );
 }
 
 fn read_cast_hits(rdr: &mut RecReader<'_>) -> Vec<RecordedHit> {

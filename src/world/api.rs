@@ -272,10 +272,10 @@ pub fn world_get_contact_recycle_distance(world: &World) -> f32 {
 }
 
 /// Set the maximum linear speed. (b3World_SetMaximumLinearSpeed)
-pub fn world_set_maximum_linear_speed(world: &mut World, maximum_linear_speed: f32) {    crate::recording::capture::rec(world, |rec, wid| {
+pub fn world_set_maximum_linear_speed(world: &mut World, maximum_linear_speed: f32) {
+    crate::recording::capture::rec(world, |rec, wid| {
         rec.write_world_set_maximum_linear_speed(wid, maximum_linear_speed);
     });
-
 
     debug_assert!(is_valid_float(maximum_linear_speed) && maximum_linear_speed > 0.0);
 
@@ -640,7 +640,6 @@ pub fn world_get_worker_count(world: &World) -> i32 {
     }
     world.worker_count
 }
-
 
 /// Begin capturing mutations into `recording`. (b3World_StartRecording)
 pub fn world_start_recording(world: &mut World, recording: &mut crate::recording::Recording) {

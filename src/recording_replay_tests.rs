@@ -7,9 +7,7 @@ use crate::body::create_body;
 use crate::geometry::Sphere;
 use crate::hull::{create_hull, make_box_hull};
 use crate::math_functions::{Pos, Vec3, VEC3_ZERO};
-use crate::recording::{
-    validate_replay, Recording, REC_MAGIC,
-};
+use crate::recording::{validate_replay, Recording, REC_MAGIC};
 use crate::shape::{create_hull_shape, create_sphere_shape};
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::{world_set_gravity, world_start_recording, world_stop_recording, World};
@@ -140,7 +138,7 @@ fn hull_dedup() {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
-            x: (i * 3) as f32,
+            x: (i * 3) as _,
             y: 5.0,
             z: 0.0,
         };
@@ -189,7 +187,7 @@ fn mid_stream_no_contacts() {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
-            x: (i * 10) as f32,
+            x: (i * 10) as _,
             y: 50.0,
             z: 0.0,
         };
@@ -244,7 +242,7 @@ fn mid_stream_contacts() {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;
         body_def.position = Pos {
-            x: (i as f32 * 2.0) - 2.0,
+            x: ((i as f32 * 2.0) - 2.0) as _,
             y: 5.0,
             z: 0.0,
         };
@@ -270,4 +268,3 @@ fn mid_stream_contacts() {
 }
 
 include!("recording_replay_tests_extra.rs");
-

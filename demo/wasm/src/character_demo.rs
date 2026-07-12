@@ -12,9 +12,7 @@ use box3d_rust::math_functions::{
     Vec3, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::mover::{clip_vector, solve_planes};
-use box3d_rust::shape::{
-    create_height_field_shape, create_hull_shape, create_sphere_shape,
-};
+use box3d_rust::shape::{create_height_field_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
     default_body_def, default_query_filter, default_shape_def, default_world_def, BodyType,
 };
@@ -87,7 +85,11 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
         state.velocity.x = 0.0;
         state.velocity.z = 0.0;
     } else {
-        let control = if speed < STOP_SPEED { STOP_SPEED } else { speed };
+        let control = if speed < STOP_SPEED {
+            STOP_SPEED
+        } else {
+            speed
+        };
         let drop = control * FRICTION * time_step;
         let new_speed = max_float(0.0, speed - drop);
         state.velocity *= new_speed / speed;
@@ -99,8 +101,8 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
         MAX_SPEED
     };
 
-    let desired_velocity =
-        mul_sv(max_speed * state.throttle_x, state.forward) + mul_sv(max_speed * state.throttle_y, state.right);
+    let desired_velocity = mul_sv(max_speed * state.throttle_x, state.forward)
+        + mul_sv(max_speed * state.throttle_y, state.right);
     let mut desired_speed = 0.0;
     let desired_direction = get_length_and_normalize(&mut desired_speed, desired_velocity);
     let mut desired_velocity = desired_velocity;
@@ -131,8 +133,7 @@ fn solve_move(state: &mut CharacterState, time_step: f32) {
     let ray_origin = offset_pos(state.mover_pos, state.capsule.center1);
     let ray_translation = mul_sv(-ray_length, VEC3_AXIS_Y);
     let filter = default_query_filter();
-    let ray_result =
-        world_cast_ray_closest(&state.world, ray_origin, ray_translation, &filter);
+    let ray_result = world_cast_ray_closest(&state.world, ray_origin, ray_translation, &filter);
 
     if !ray_result.hit {
         state.on_ground = false;

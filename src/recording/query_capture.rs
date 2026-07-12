@@ -3,6 +3,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use crate::distance::ShapeProxy;
 use crate::dynamic_tree::TreeStats;
 use crate::geometry::{Capsule, PlaneResult};
 use crate::id::{ShapeId, WorldId};
@@ -11,7 +12,6 @@ use crate::recording::buffer::RecBuffer;
 use crate::recording::ops::RecOp;
 use crate::recording::session::{world_public_id, Recording};
 use crate::types::{QueryFilter, RayResult};
-use crate::distance::ShapeProxy;
 use crate::world::World;
 
 /// Local buffer that accumulates one query record then commits under the session. (b3RecQueryWriter)

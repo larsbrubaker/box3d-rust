@@ -24,14 +24,8 @@ thread_local! {
 }
 
 enum TerrainKind {
-    Mesh {
-        mesh: MeshData,
-        scale: Vec3,
-    },
-    HeightField {
-        hf: HeightFieldData,
-        origin: Vec3,
-    },
+    Mesh { mesh: MeshData, scale: Vec3 },
+    HeightField { hf: HeightFieldData, origin: Vec3 },
 }
 
 struct TerrainState {

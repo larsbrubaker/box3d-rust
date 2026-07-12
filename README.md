@@ -16,9 +16,8 @@ engine for games — exact behavioral match, including cross-platform determinis
 
 The demo site mirrors the upstream `samples` app via WebAssembly — same light SPA shell as
 our finished [box2d-rust](https://github.com/larsbrubaker/box2d-rust) demos. Collision-layer
-demos are live now (deterministic math, geometry queries, contact manifolds, hull, height
-field, mesh, dynamic tree). Full rigid-body simulation samples arrive once world/body/solver
-land.
+demos and rigid-body simulation samples (including the falling-ragdoll determinism scene) are
+live in the browser.
 
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of
 > Rust graphics and geometry libraries by Lars Brubaker.
@@ -47,13 +46,68 @@ suite.
 | Shape/Body public API (filters, materials, geometry set, per-shape queries) | ✅ | ✅ (test_shape.c, test_body.c) |
 | Determinism: bit-exact vs the C scalar build (both precision modes) | ✅ | ✅ (test_determinism.c) |
 | Large world mode (`double-precision` feature = `BOX3D_DOUBLE_PRECISION`) | ✅ | ✅ (test_large_world.c) |
-| API completeness: introspection accessors, kinematic targets, wind | ⬜ | ⬜ (WorldTest/BodyTest remainders) |
-| Debug draw (b3DebugDraw / b3World_Draw) | ⬜ | ⬜ (authored) |
-| Snapshots and recording/replay | ⬜ | ⬜ (test_recording.c) |
+| API completeness: introspection accessors, kinematic targets, wind | ✅ | ✅ (WorldTest/BodyTest remainders) |
+| Debug draw (b3DebugDraw / b3World_Draw) | ✅ | ✅ (authored) |
+| Snapshots and recording/replay | ✅ | ✅ (test_recording.c) |
 
 Not ported (by design): the task scheduler/worker threads (the port is serial), SIMD
 codepaths (the scalar `BOX3D_DISABLE_SIMD` path is the behavioral reference), and the C
 arena/block allocators (Rust `Vec`s).
+
+## Quick start
+
+```toml
+[dependencies]
+box3d-rust = "0.1"
+# Optional: large-world positions (mirrors BOX3D_DOUBLE_PRECISION)
+# box3d-rust = { version = "0.1", features = ["double-precision"] }
+```
+
+```rust
+use box3d_rust::body::create_body;
+use box3d_rust::geometry::Sphere;
+use box3d_rust::hull::make_box_hull;
+use box3d_rust::shape::{create_hull_shape, create_sphere_shape};
+use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
+use box3d_rust::world::World;
+use box3d_rust::{Pos, VEC3_ZERO};
+
+fn main() {
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+
+    let mut ball_def = default_body_def();
+    ball_def.type_ = BodyType::Dynamic;
+    ball_def.position = Pos {
+        x: 0.0 as _,
+        y: 0.5 as _,
+        z: 0.0 as _,
+    };
+    let ball = create_body(&mut world, &ball_def);
+
+    let shape_def = default_shape_def();
+    let ground_hull = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &shape_def, &ground_hull.base);
+
+    let mut ball_shape = default_shape_def();
+    ball_shape.density = 1.0;
+    create_sphere_shape(
+        &mut world,
+        ball,
+        &ball_shape,
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        },
+    );
+
+    // 60 Hz, 1 sub-step
+    world.step(1.0 / 60.0, 1);
+}
+```
 
 ## Porting principles
 

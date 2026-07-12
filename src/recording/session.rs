@@ -155,7 +155,8 @@ impl Recording {
         debug_assert!(payload.len() < (1 << 24));
         self.buffer.append_u8(opcode);
         let sz = payload.len() as u32;
-        self.buffer.append(&[sz as u8, (sz >> 8) as u8, (sz >> 16) as u8]);
+        self.buffer
+            .append(&[sz as u8, (sz >> 8) as u8, (sz >> 16) as u8]);
         self.buffer.append(payload);
     }
 
