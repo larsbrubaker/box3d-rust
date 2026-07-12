@@ -14,25 +14,33 @@ every demo that follows.
 
 ## 1. Core interaction layer (shared by all demos)
 
-- [ ] Pause / single-step / restart controls with hotkeys (Space, S, R) and a
+**Done (2026-07-12):** shared TS layer (`demo/src/interaction.ts`) + wasm
+`interact`/`sim_*` bindings, wired into Bodies and Stacking.
+
+- [x] Pause / single-step / restart controls with hotkeys (Space, S, R) and a
       time-scale slider — mirror the C sample app's loop controls
-- [ ] Mouse pick & drag: raycast the pointer into the scene
-      (`world_cast_ray_closest`), grab the hit body with a spherical mouse
-      joint, drag on the camera-facing plane, release to fling. Touch
-      equivalent for mobile. This is the single biggest "feels alive" feature
-      of the C samples
-- [ ] Click-to-spawn: shift-click drops a random shape (sphere/box/capsule)
+- [x] Mouse pick & drag: raycast the pointer into the scene
+      (`world_cast_ray_closest`), grab the hit body with a motor joint
+      (C samples use motor + kinematic mouse body; same feel as a spherical
+      mouse joint), drag on the camera-facing plane, release to fling. Touch
+      via pointer events.
+- [x] Click-to-spawn: shift-click drops a random shape (sphere/box/capsule)
       into any dynamics demo; ctrl-click deletes the picked body
-- [ ] Stats overlay: rolling-average step time (ms), body/shape/contact/joint
+- [x] Stats overlay: rolling-average step time (ms), body/shape/contact/joint
       counts, awake vs sleeping counts — the wasm side already exposes the
       counters API
-- [ ] Debug-draw overlay: wire the ported `DebugDraw` through wasm into a
+- [x] Debug-draw overlay: wire the ported `DebugDraw` through wasm into a
       Three.js line renderer with toggles for contact points/normals/impulses,
       joint frames, AABBs, islands, mass axes — the toggle set from
       `b3DebugDraw`
-- [ ] Per-demo parameter panel registry: declarative sliders/checkboxes/
+- [x] Per-demo parameter panel registry: declarative sliders/checkboxes/
       dropdowns per demo (counts, sizes, friction, restitution, gravity...)
       with restart-on-change semantics, like the C ImGui panel
+      (framework + applied to Bodies and Stacking)
+
+**Remaining for section 1:** opt the other dynamics demos (ragdolls, joints,
+continuous, sensors, queries, terrain, character) into `attachInteraction`
+(they still use their own step loops without pick/pause/stats).
 
 ## 2. Visual quality
 

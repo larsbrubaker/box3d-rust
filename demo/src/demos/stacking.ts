@@ -1,13 +1,12 @@
-// Stacking — box stack, pyramid, and sphere stack from World::step.
+// Stacking — box stack, pyramid, and sphere stack with full interaction layer.
 
 import * as THREE from "three";
+import { createButtonGroup, createInfoBox } from "../controls.ts";
 import {
-  createButtonGroup,
-  createInfoBox,
-  createReadout,
-  createSlider,
-  updateReadout,
-} from "../controls.ts";
+  attachInteraction,
+  type ParamValues,
+  type SimControllerWithTick,
+} from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { COLORS, DemoScene } from "../three-scene.ts";
@@ -23,7 +22,7 @@ export function init(container: HTMLElement) {
     "Stacking",
     "Vertical box stack, Pyramid2D, and sphere stack — driven by the ported " +
       "<code>World::step</code> scalar solver (mirrors <code>sample_stacking</code>).",
-    "Drag to orbit · switch scene · adjust count · restart",
+    "Drag body · Shift spawn · Ctrl delete · Space/S/R",
     wasm.version(),
   );
 
@@ -38,36 +37,6 @@ export function init(container: HTMLElement) {
   let stackCount = 12;
   let pyramidSize = 6;
   let sphereCount = 12;
-
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Box Stack", value: "boxes" },
-        { label: "Pyramid", value: "pyramid" },
-        { label: "Spheres", value: "spheres" },
-      ],
-      "boxes",
-      (v) => {
-        mode = v as Mode;
-        reset();
-      },
-    ),
-  );
-
-  const countSlider = createSlider("Count", 4, 20, stackCount, 1, (v) => {
-    const n = Math.round(v);
-    if (mode === "boxes") stackCount = n;
-    else if (mode === "spheres") sphereCount = n;
-    else pyramidSize = Math.min(10, Math.max(2, n));
-    reset();
-  });
-  controls.appendChild(countSlider);
-
-  controls.appendChild(
-    createButtonGroup([{ label: "Restart", value: "restart" }], "restart", () => reset()),
-  );
-  const readout = createReadout();
-  controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { target: [0, 6, 0], distance: 28 });
   const meshes: THREE.Mesh[] = [];
@@ -85,15 +54,38 @@ export function init(container: HTMLElement) {
   });
 
   function clearMeshes() {
-    for (const m of meshes) demo.content.remove(m);
+    for (const m of meshes) {
+      demo.content.remove(m);
+      if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
+    }
     meshes.length = 0;
   }
 
   function ensureMesh(i: number, kind: number): THREE.Mesh {
     let mesh = meshes[i];
     const wantSphere = kind === 1;
+    const wantCapsule = kind === 2;
+
+    if (wantCapsule) {
+      if (!mesh || mesh.geometry.type !== "CapsuleGeometry") {
+        if (mesh) {
+          demo.content.remove(mesh);
+          if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
+        }
+        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), boxMat);
+        demo.content.add(mesh);
+        meshes[i] = mesh;
+      } else {
+        mesh.material = boxMat;
+      }
+      return mesh;
+    }
+
     if (!mesh || (wantSphere && mesh.geometry !== sphereGeo) || (!wantSphere && mesh.geometry !== boxGeo)) {
-      if (mesh) demo.content.remove(mesh);
+      if (mesh) {
+        demo.content.remove(mesh);
+        if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
+      }
       mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, i === 0 ? groundMat : boxMat);
       demo.content.add(mesh);
       meshes[i] = mesh;
@@ -110,12 +102,52 @@ export function init(container: HTMLElement) {
     else wasm.sim_reset_sphere_stack(sphereCount);
   }
 
+  controls.appendChild(
+    createButtonGroup(
+      [
+        { label: "Box Stack", value: "boxes" },
+        { label: "Pyramid", value: "pyramid" },
+        { label: "Spheres", value: "spheres" },
+      ],
+      "boxes",
+      (v) => {
+        mode = v as Mode;
+        reset();
+      },
+    ),
+  );
+
+  const ctrl = attachInteraction({
+    wasm,
+    demo,
+    canvas,
+    controls,
+    onRestart: reset,
+    params: [
+      {
+        type: "slider",
+        key: "count",
+        label: "Count",
+        min: 4,
+        max: 20,
+        step: 1,
+        default: 12,
+        restart: true,
+      },
+    ],
+    onParamsChange: (values: ParamValues) => {
+      const n = Math.round(Number(values.count) || 12);
+      if (mode === "boxes") stackCount = n;
+      else if (mode === "spheres") sphereCount = n;
+      else pyramidSize = Math.min(10, Math.max(2, n));
+    },
+  }) as SimControllerWithTick;
+
   reset();
 
   const quat = new THREE.Quaternion();
-  let frame = 0;
   const stop = runLoop(() => {
-    wasm.sim_step(1 / 60, 4);
+    ctrl.tickFrame();
     const poses = wasm.sim_body_poses();
     const n = Math.floor(poses.length / STRIDE);
     while (meshes.length > n) {
@@ -129,21 +161,28 @@ export function init(container: HTMLElement) {
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       mesh.quaternion.copy(quat);
-      if (kind === 1) mesh.scale.setScalar(poses[o + 7]!);
-      else mesh.scale.set(poses[o + 7]!, poses[o + 8]!, poses[o + 9]!);
-    }
-    frame += 1;
-    if (frame % 20 === 0) {
-      updateReadout(readout, [
-        { label: "scene", value: mode },
-        { label: "bodies", value: String(n) },
-        { label: "frame", value: String(frame) },
-      ]);
+      if (kind === 2) {
+        const radius = poses[o + 7]!;
+        const halfLen = poses[o + 8]!;
+        const geo = mesh.geometry as THREE.CapsuleGeometry;
+        if (
+          Math.abs(geo.parameters.radius - radius) > 1e-4 ||
+          Math.abs(geo.parameters.length - Math.max(1e-4, halfLen * 2)) > 1e-3
+        ) {
+          geo.dispose();
+          mesh.geometry = new THREE.CapsuleGeometry(radius, Math.max(1e-4, halfLen * 2), 4, 10);
+        }
+      } else if (kind === 1) {
+        mesh.scale.setScalar(poses[o + 7]!);
+      } else {
+        mesh.scale.set(poses[o + 7]!, poses[o + 8]!, poses[o + 9]!);
+      }
     }
     demo.render();
-  }, readout);
+  }, controls);
 
   return () => {
+    ctrl.dispose();
     stop();
     demo.dispose();
     boxGeo.dispose();

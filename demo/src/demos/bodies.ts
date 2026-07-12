@@ -1,7 +1,12 @@
-// Bodies — HelloWorld fall + compound ground scene.
+// Bodies — HelloWorld fall + compound ground scene, with full interaction layer.
 
 import * as THREE from "three";
-import { createButtonGroup, createInfoBox, createReadout, updateReadout } from "../controls.ts";
+import { createButtonGroup, createInfoBox } from "../controls.ts";
+import {
+  attachInteraction,
+  type ParamValues,
+  type SimControllerWithTick,
+} from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { COLORS, DemoScene } from "../three-scene.ts";
@@ -17,7 +22,7 @@ export function init(container: HTMLElement) {
     "Bodies",
     "Live <code>World::step</code>: HelloWorld hulls/spheres, or a compound-shape ground " +
       "with falling bodies (mirrors <code>sample_compound</code> Simple).",
-    "Drag to orbit · switch scene · restart",
+    "Drag body · Shift spawn · Ctrl delete · Space/S/R",
     wasm.version(),
   );
 
@@ -29,34 +34,6 @@ export function init(container: HTMLElement) {
   );
 
   let mode: Mode = "bodies";
-  let generation = 0;
-
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Hello World", value: "bodies" },
-        { label: "Compound", value: "compound" },
-      ],
-      "bodies",
-      (v) => {
-        mode = v as Mode;
-        reset();
-      },
-    ),
-  );
-
-  controls.appendChild(
-    createButtonGroup(
-      [{ label: "Restart", value: "restart" }],
-      "restart",
-      () => {
-        generation += 1;
-        reset();
-      },
-    ),
-  );
-  const readout = createReadout();
-  controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 18 });
   const meshes: THREE.Object3D[] = [];
@@ -79,7 +56,17 @@ export function init(container: HTMLElement) {
   });
 
   function clearMeshes() {
-    for (const m of meshes) demo.content.remove(m);
+    for (const m of meshes) {
+      demo.content.remove(m);
+      const mesh = m as THREE.Mesh;
+      if (
+        mesh.geometry &&
+        mesh.geometry !== boxGeo &&
+        mesh.geometry !== sphereGeo
+      ) {
+        mesh.geometry.dispose();
+      }
+    }
     meshes.length = 0;
   }
 
@@ -89,19 +76,58 @@ export function init(container: HTMLElement) {
     else wasm.sim_reset_compound();
   }
 
+  controls.appendChild(
+    createButtonGroup(
+      [
+        { label: "Hello World", value: "bodies" },
+        { label: "Compound", value: "compound" },
+      ],
+      "bodies",
+      (v) => {
+        mode = v as Mode;
+        reset();
+      },
+    ),
+  );
+
+  let subSteps = 4;
+
+  const ctrl = attachInteraction({
+    wasm,
+    demo,
+    canvas,
+    controls,
+    onRestart: reset,
+    params: [
+      {
+        type: "slider",
+        key: "subSteps",
+        label: "Sub-steps",
+        min: 1,
+        max: 8,
+        step: 1,
+        default: 4,
+        restart: false,
+      },
+    ],
+    onParamsChange: (values: ParamValues) => {
+      subSteps = Number(values.subSteps) || 4;
+      ctrl.subSteps = subSteps;
+    },
+  }) as SimControllerWithTick;
+
+  ctrl.subSteps = subSteps;
   reset();
 
   const quat = new THREE.Quaternion();
-  let frame = 0;
   const stop = runLoop(() => {
-    wasm.sim_step(1 / 60, 4);
+    ctrl.tickFrame();
     const poses = wasm.sim_body_poses();
     const n = Math.floor(poses.length / STRIDE);
     while (meshes.length > n) {
       const m = meshes.pop()!;
       demo.content.remove(m);
     }
-    // Compound children are the first static hulls; treat early boxes as ground-colored.
     const compoundHulls = mode === "compound" ? 3 : 1;
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;
@@ -111,12 +137,44 @@ export function init(container: HTMLElement) {
       const hz = poses[o + 9]!;
       let mesh = meshes[i] as THREE.Mesh | undefined;
       const wantSphere = kind === 1;
+      const wantCapsule = kind === 2;
+
+      if (wantCapsule) {
+        const radius = hx;
+        const halfLen = hy;
+        const needNew =
+          !mesh || (mesh.geometry as THREE.CapsuleGeometry)?.type !== "CapsuleGeometry";
+        if (needNew) {
+          if (mesh) demo.content.remove(mesh);
+          mesh = new THREE.Mesh(
+            new THREE.CapsuleGeometry(radius, Math.max(1e-4, halfLen * 2), 4, 10),
+            dynamicMat,
+          );
+          demo.content.add(mesh);
+          meshes[i] = mesh;
+        } else {
+          mesh.material = dynamicMat;
+        }
+        mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
+        quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+        mesh.quaternion.copy(quat);
+        continue;
+      }
+
       if (
         !mesh ||
         (wantSphere && mesh.geometry !== sphereGeo) ||
         (!wantSphere && mesh.geometry !== boxGeo)
       ) {
-        if (mesh) demo.content.remove(mesh);
+        if (mesh) {
+          demo.content.remove(mesh);
+          if (
+            mesh.geometry !== boxGeo &&
+            mesh.geometry !== sphereGeo
+          ) {
+            mesh.geometry.dispose();
+          }
+        }
         const mat =
           !wantSphere && i < compoundHulls
             ? mode === "compound"
@@ -140,19 +198,11 @@ export function init(container: HTMLElement) {
       if (kind === 1) mesh.scale.setScalar(hx);
       else mesh.scale.set(hx, hy, hz);
     }
-    frame += 1;
-    if (frame % 15 === 0) {
-      updateReadout(readout, [
-        { label: "scene", value: mode },
-        { label: "bodies", value: String(n) },
-        { label: "frame", value: String(frame) },
-        { label: "resets", value: String(generation) },
-      ]);
-    }
     demo.render();
-  }, readout);
+  }, controls);
 
   return () => {
+    ctrl.dispose();
     stop();
     demo.dispose();
     boxGeo.dispose();

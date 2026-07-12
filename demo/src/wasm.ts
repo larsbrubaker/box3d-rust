@@ -75,6 +75,15 @@ export interface Box3dWasm {
   sim_reset_pyramid(size: number): number;
   sim_reset_sphere_stack(count: number): number;
 
+  sim_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  sim_mouse_move(px: number, py: number, pz: number): void;
+  sim_mouse_up(): void;
+  sim_mouse_active(): boolean;
+  sim_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  sim_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  sim_counters(): Float32Array;
+  sim_debug_draw(flags: number): Float32Array;
+
   terrain_reset(mode: number): number;
   terrain_step(dt: number, sub_steps: number): number;
   terrain_poses(): Float32Array;

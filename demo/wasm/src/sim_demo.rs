@@ -3,7 +3,8 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use box3d_rust::body::{create_body, get_body_transform};
+use crate::interact::{self, MouseGrab};
+use box3d_rust::body::{create_body, destroy_body, get_body_transform, make_body_id};
 use box3d_rust::compound::{create_compound, CompoundDef, CompoundHullDef};
 use box3d_rust::geometry::{default_surface_material, Sphere};
 use box3d_rust::hull::make_box_hull;
@@ -24,7 +25,7 @@ thread_local! {
 struct SimBody {
     body_index: i32,
     half_extents: [f32; 3],
-    /// 0 = hull box, 1 = sphere (radius in half_extents[0])
+    /// 0 = hull box, 1 = sphere (radius in half_extents[0]), 2 = capsule
     kind: u8,
     /// Optional local transform relative to the body (compound children).
     local: Option<Transform>,
@@ -33,6 +34,7 @@ struct SimBody {
 struct SimState {
     world: World,
     bodies: Vec<SimBody>,
+    grab: MouseGrab,
 }
 
 fn with_sim<R>(f: impl FnOnce(&mut SimState) -> R) -> R {
@@ -163,6 +165,7 @@ pub fn sim_reset_bodies() -> u32 {
         let mut sim = SimState {
             world: new_world(),
             bodies: Vec::new(),
+            grab: MouseGrab::default(),
         };
         add_ground(&mut sim, 10.0);
         push_dynamic_box(&mut sim, 0.0, 4.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.3);
@@ -183,6 +186,7 @@ pub fn sim_reset_compound() -> u32 {
         let mut sim = SimState {
             world: new_world(),
             bodies: Vec::new(),
+            grab: MouseGrab::default(),
         };
 
         let a = 4.0f32;
@@ -278,6 +282,7 @@ pub fn sim_reset_stacking(count: u32) -> u32 {
         let mut sim = SimState {
             world: new_world(),
             bodies: Vec::new(),
+            grab: MouseGrab::default(),
         };
         add_ground(&mut sim, 20.0);
         let a = 0.5f32;
@@ -299,6 +304,7 @@ pub fn sim_reset_pyramid(size: u32) -> u32 {
         let mut sim = SimState {
             world: new_world(),
             bodies: Vec::new(),
+            grab: MouseGrab::default(),
         };
         add_ground(&mut sim, 30.0);
         let a = 0.75f32;
@@ -323,6 +329,7 @@ pub fn sim_reset_sphere_stack(count: u32) -> u32 {
         let mut sim = SimState {
             world: new_world(),
             bodies: Vec::new(),
+            grab: MouseGrab::default(),
         };
         add_ground(&mut sim, 15.0);
         let r = 0.45f32;
@@ -341,6 +348,7 @@ pub fn sim_reset_sphere_stack(count: u32) -> u32 {
 #[wasm_bindgen]
 pub fn sim_step(dt: f32, sub_steps: i32) -> u32 {
     with_sim(|sim| {
+        sim.grab.pre_step(&mut sim.world, dt);
         sim.world.step(dt, sub_steps);
         sim.bodies.len() as u32
     })
@@ -405,4 +413,119 @@ pub fn sim_body_poses() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn sim_body_count() -> u32 {
     with_sim(|sim| sim.bodies.len() as u32)
+}
+
+/// Begin mouse grab along a pick ray.
+/// Returns `[grabbed, px, py, pz]` (grabbed is 0/1; point is the hit when grabbed).
+#[wasm_bindgen]
+pub fn sim_mouse_down(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+    with_sim(|sim| {
+        if sim
+            .grab
+            .begin(&mut sim.world, interact::pos(ox, oy, oz), interact::vec3(tx, ty, tz))
+        {
+            let p = sim.grab.mouse_point;
+            vec![1.0, p.x as f32, p.y as f32, p.z as f32]
+        } else {
+            vec![0.0, 0.0, 0.0, 0.0]
+        }
+    })
+}
+
+/// Move the grab target to a world-space point (camera-facing plane from JS).
+#[wasm_bindgen]
+pub fn sim_mouse_move(px: f32, py: f32, pz: f32) {
+    with_sim(|sim| {
+        sim.grab.move_to(interact::pos(px, py, pz));
+    })
+}
+
+/// Release the mouse grab (body keeps velocity → fling).
+#[wasm_bindgen]
+pub fn sim_mouse_up() {
+    with_sim(|sim| {
+        sim.grab.end(&mut sim.world);
+    })
+}
+
+/// True if a grab is active.
+#[wasm_bindgen]
+pub fn sim_mouse_active() -> bool {
+    with_sim(|sim| sim.grab.is_active())
+}
+
+/// Shift-click spawn: random sphere/box/capsule along the pick ray.
+/// Returns `[ok, body_index, hx, hy, hz, kind]` (ok is 0/1).
+#[wasm_bindgen]
+pub fn sim_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+    with_sim(|sim| {
+        match interact::spawn_random(
+            &mut sim.world,
+            interact::pos(ox, oy, oz),
+            interact::vec3(tx, ty, tz),
+        ) {
+            Some(spawned) => {
+                sim.bodies.push(SimBody {
+                    body_index: spawned.body_index,
+                    half_extents: spawned.half_extents,
+                    kind: spawned.kind,
+                    local: None,
+                });
+                vec![
+                    1.0,
+                    spawned.body_index as f32,
+                    spawned.half_extents[0],
+                    spawned.half_extents[1],
+                    spawned.half_extents[2],
+                    spawned.kind as f32,
+                ]
+            }
+            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    })
+}
+
+/// Ctrl-click delete: destroy the dynamic body under the pick ray. Returns 1 on success.
+#[wasm_bindgen]
+pub fn sim_delete_at_ray(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> u32 {
+    with_sim(|sim| {
+        let index = interact::delete_at_ray(
+            &mut sim.world,
+            &mut sim.grab,
+            interact::pos(ox, oy, oz),
+            interact::vec3(tx, ty, tz),
+        );
+        if index < 0 {
+            return 0;
+        }
+        sim.bodies.retain(|b| b.body_index != index);
+        1
+    })
+}
+
+/// Counters: `[body, shape, contact, joint, island, awake, sleeping]`
+#[wasm_bindgen]
+pub fn sim_counters() -> Vec<f32> {
+    with_sim(|sim| interact::counters_with_sleep(&sim.world).to_vec())
+}
+
+/// Debug-draw geometry for the current flags bitmask. See `interact::DRAW_*`.
+#[wasm_bindgen]
+pub fn sim_debug_draw(flags: u32) -> Vec<f32> {
+    with_sim(|sim| interact::collect_debug_draw(&mut sim.world, flags))
+}
+
+/// Destroy a tracked body by render-list index (unused by UI; available for tests).
+#[wasm_bindgen]
+pub fn sim_destroy_body_index(body_index: i32) -> u32 {
+    with_sim(|sim| {
+        sim.grab.end(&mut sim.world);
+        if !sim.bodies.iter().any(|b| b.body_index == body_index) {
+            return 0;
+        }
+        let id = make_body_id(&sim.world, body_index);
+        destroy_body(&mut sim.world, id);
+        sim.bodies.retain(|b| b.body_index != body_index);
+        1
+    })
 }
