@@ -100,6 +100,8 @@ export interface Box3dWasm {
   sim_reset_compound_spheres(): number;
   sim_reset_compound_hulls(): number;
   sim_reset_village(grid_count: number): number;
+  sim_village_buildings(): Float32Array;
+  sim_village_stats(): Float32Array;
   sim_reset_pyramid(size: number): number;
   sim_reset_sphere_stack(count: number): number;
 
@@ -159,6 +161,8 @@ export interface Box3dWasm {
   character_status(): Float32Array;
   character_debug_lines(): Float32Array;
   character_terrain_wireframe(): Float32Array;
+  character_village_buildings(): Float32Array;
+  character_village_stats(): Float32Array;
 }
 
 let wasmModule: Box3dWasm | null = null;

@@ -2,26 +2,23 @@
 //!
 //! Scene modes:
 //! - `0` BasicMover-style: wave height field, static capsules, boxes, dynamic sphere
-//! - `1` Village walk: browser-scaled compound village tiles + mover (C Village embeds a mover)
+//! - `1` Village walk: real compound Village (building.obj meshes) + mover (C embeds a mover)
 
+use crate::village::{self, BuildingInstance};
 use crate::vis::{pos, push_poses, sphere, VisBody, KIND_CAPSULE, POSE_STRIDE};
-use box3d_rust::body::create_body;
-use box3d_rust::compound::{
-    create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundSphereDef,
-};
-use box3d_rust::geometry::{default_surface_material, Capsule, CollisionPlane, Sphere};
+use box3d_rust::body::{create_body, get_body_transform};
+use box3d_rust::geometry::{Capsule, CollisionPlane};
 use box3d_rust::height_field::{
     create_wave, get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
 };
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
-    dot, get_length_and_normalize, length, length_squared, make_quat_from_axis_angle, max_float,
-    mul_sv, offset_pos, sub_pos, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
+    dot, get_length_and_normalize, length, length_squared, max_float, mul_sv, mul_transforms,
+    offset_pos, sub_pos, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::mover::{clip_vector, solve_planes};
 use box3d_rust::shape::{
-    create_capsule_shape, create_compound_shape, create_height_field_shape, create_hull_shape,
-    create_sphere_shape,
+    create_capsule_shape, create_height_field_shape, create_hull_shape, create_sphere_shape,
 };
 use box3d_rust::types::{
     default_body_def, default_query_filter, default_shape_def, default_world_def, BodyType,
@@ -41,31 +38,6 @@ const MOVER_GRAVITY: f32 = 15.0;
 
 thread_local! {
     static STATE: RefCell<Option<CharacterState>> = const { RefCell::new(None) };
-}
-
-struct DemoRng(u32);
-
-impl DemoRng {
-    fn next_u32(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
-        self.0
-    }
-
-    fn next_f32(&mut self) -> f32 {
-        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
-    }
-
-    fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + (hi - lo) * self.next_f32()
-    }
-
-    fn vec3_range(&mut self, lo: Vec3, hi: Vec3) -> Vec3 {
-        Vec3 {
-            x: self.range(lo.x, hi.x),
-            y: self.range(lo.y, hi.y),
-            z: self.range(lo.z, hi.z),
-        }
-    }
 }
 
 struct CharacterState {
@@ -90,6 +62,9 @@ struct CharacterState {
     pogo_origin: Vec3,
     pogo_end: Vec3,
     pogo_hit: bool,
+    village_buildings: Vec<BuildingInstance>,
+    village_stats: [f32; 7],
+    village_ground_index: i32,
 }
 
 fn with_state<R>(f: impl FnOnce(&mut CharacterState) -> R) -> R {
@@ -403,106 +378,15 @@ fn build_basic_mover(world: &mut World, bodies: &mut Vec<VisBody>) -> (HeightFie
     (hf, hf_origin, start)
 }
 
-fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32) -> Pos {
-    let a = 4.0f32;
-    let mut rng = DemoRng(0xB111_A6E7);
-    let material = default_surface_material();
-    let box_hull = make_box_hull(a, 0.5 * a, a);
+fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32) -> VillageWalk {
+    let village = village::build_village(world, grid);
+    let a = village.tile_half;
+    let parent_index = village.ground_body_index;
 
-    let hull_count = (grid * grid) as usize;
-    let prop_capacity = hull_count / 8 + 1;
-    let mut capsules: Vec<CompoundCapsuleDef> = Vec::with_capacity(prop_capacity);
-    let mut spheres: Vec<CompoundSphereDef> = Vec::with_capacity(prop_capacity);
-    let mut hull_transforms: Vec<Transform> = Vec::with_capacity(hull_count);
-
-    let mut transform = Transform {
-        p: VEC3_ZERO,
-        q: QUAT_IDENTITY,
-    };
-
-    for i in 0..grid {
-        transform.p.x = (2.0 * i as f32 - grid as f32) * a;
-        for j in 0..grid {
-            transform.p.z = (2.0 * j as f32 - grid as f32) * a;
-            transform.p.y = rng.range(-0.25, 0.125) * a;
-
-            if (i & 1) != 0 && (j & 1) != 0 {
-                let base = transform.p;
-                let p1 = base
-                    + rng.vec3_range(
-                        Vec3 { x: -a, y: a, z: -a },
-                        Vec3 {
-                            x: a,
-                            y: 2.0 * a,
-                            z: a,
-                        },
-                    );
-                let p2 = base
-                    + rng.vec3_range(
-                        Vec3 { x: -a, y: a, z: -a },
-                        Vec3 {
-                            x: a,
-                            y: 2.0 * a,
-                            z: a,
-                        },
-                    );
-                let radius = rng.range(0.1, 0.5);
-                if capsules.len() < spheres.len() {
-                    if capsules.len() < prop_capacity {
-                        capsules.push(CompoundCapsuleDef {
-                            capsule: Capsule {
-                                center1: p1,
-                                center2: p2,
-                                radius,
-                            },
-                            material,
-                        });
-                    }
-                } else if spheres.len() < prop_capacity {
-                    spheres.push(CompoundSphereDef {
-                        sphere: Sphere { center: p1, radius },
-                        material,
-                    });
-                }
-            }
-
-            hull_transforms.push(transform);
-        }
-    }
-
-    let hulls: Vec<CompoundHullDef<'_>> = hull_transforms
-        .iter()
-        .map(|xf| CompoundHullDef {
-            hull: &box_hull.base,
-            transform: *xf,
-            material,
-        })
-        .collect();
-
-    let compound = create_compound(&CompoundDef {
-        capsules: &capsules,
-        hulls: &hulls,
-        spheres: &spheres,
-        ..Default::default()
-    })
-    .expect("village compound");
-
-    let mut body_def = default_body_def();
-    body_def.type_ = BodyType::Static;
-    body_def.position = Pos {
-        x: (-1.0) as _,
-        y: (-0.5) as _,
-        z: 2.0 as _,
-    };
-    body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, -1.15 * std::f32::consts::PI);
-    let ground = create_body(world, &body_def);
-    create_compound_shape(world, ground, &default_shape_def(), &compound);
-
-    let parent_index = ground.index1 - 1;
-    for xf in &hull_transforms {
+    for xf in &village.hull_transforms {
         bodies.push(VisBody::box_local(parent_index, a, 0.5 * a, a, *xf));
     }
-    for s in &spheres {
+    for s in &village.spheres {
         bodies.push(VisBody::sphere_local(
             parent_index,
             s.sphere.radius,
@@ -512,8 +396,7 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
             },
         ));
     }
-    for c in &capsules {
-        // Centers are compound-local; body world transform is applied in push_poses.
+    for c in &village.capsules {
         bodies.push(VisBody {
             body_index: parent_index,
             kind: KIND_CAPSULE,
@@ -530,7 +413,19 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
         });
     }
 
-    pos(0.0, 10.0, 0.0)
+    VillageWalk {
+        start: pos(0.0, 10.0, 0.0),
+        buildings: village.buildings,
+        stats: village.stats,
+        ground_index: parent_index,
+    }
+}
+
+struct VillageWalk {
+    start: Pos,
+    buildings: Vec<BuildingInstance>,
+    stats: [f32; 7],
+    ground_index: i32,
 }
 
 /// Reset character scene.
@@ -542,10 +437,17 @@ pub fn character_reset_ex(mode: u32, grid_count: u32) -> u32 {
         let mut bodies = Vec::new();
         let capsule = mover_capsule();
 
+        let mut village_buildings = Vec::new();
+        let mut village_stats = [0.0f32; 7];
+        let mut village_ground_index = -1;
+
         let (hf, hf_origin, start) = if mode == 1 {
-            let grid = grid_count.clamp(8, 16) as i32;
-            let start = build_village_ground(&mut world, &mut bodies, grid);
-            (None, VEC3_ZERO, start)
+            let grid = grid_count.clamp(8, 40) as i32;
+            let walk = build_village_ground(&mut world, &mut bodies, grid);
+            village_buildings = walk.buildings;
+            village_stats = walk.stats;
+            village_ground_index = walk.ground_index;
+            (None, VEC3_ZERO, walk.start)
         } else {
             let (hf, origin, start) = build_basic_mover(&mut world, &mut bodies);
             (Some(hf), origin, start)
@@ -579,6 +481,9 @@ pub fn character_reset_ex(mode: u32, grid_count: u32) -> u32 {
             pogo_origin: VEC3_ZERO,
             pogo_end: VEC3_ZERO,
             pogo_hit: false,
+            village_buildings,
+            village_stats,
+            village_ground_index,
         };
         let n = state.bodies.len() as u32 + 1;
         *cell.borrow_mut() = Some(state);
@@ -746,4 +651,44 @@ pub fn character_terrain_wireframe() -> Vec<f32> {
         }
         out
     })
+}
+
+/// Village building instances in world space (same layout as `sim_village_buildings`).
+#[wasm_bindgen]
+pub fn character_village_buildings() -> Vec<f32> {
+    with_state(|state| {
+        if state.village_ground_index < 0 || state.village_buildings.is_empty() {
+            return Vec::new();
+        }
+        let parent = get_body_transform(&state.world, state.village_ground_index);
+        let parent_xf = Transform {
+            p: Vec3 {
+                x: parent.p.x as f32,
+                y: parent.p.y as f32,
+                z: parent.p.z as f32,
+            },
+            q: parent.q,
+        };
+        let mut out = Vec::with_capacity(state.village_buildings.len() * 10);
+        for b in &state.village_buildings {
+            let world_xf = mul_transforms(parent_xf, b.transform);
+            out.push(world_xf.p.x);
+            out.push(world_xf.p.y);
+            out.push(world_xf.p.z);
+            out.push(world_xf.q.v.x);
+            out.push(world_xf.q.v.y);
+            out.push(world_xf.q.v.z);
+            out.push(world_xf.q.s);
+            out.push(b.scale.x);
+            out.push(b.scale.y);
+            out.push(b.scale.z);
+        }
+        out
+    })
+}
+
+/// Village compound stats (same layout as `sim_village_stats`).
+#[wasm_bindgen]
+pub fn character_village_stats() -> Vec<f32> {
+    with_state(|state| state.village_stats.to_vec())
 }

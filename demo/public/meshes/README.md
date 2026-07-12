@@ -1,0 +1,8 @@
+# Sample mesh assets
+
+Copied from Erin Catto's Box3D samples tree (`box3d-cpp-reference/data/meshes/`).
+
+- **License:** MIT (Copyright 2026 Erin Catto) — see `box3d-cpp-reference/LICENSE`
+- **`building.obj`** — Village / Mesh / Character samples compound building (`SM_Bld_House_01`)
+
+Do not invent replacement geometry; keep these in sync with the pinned C submodule.

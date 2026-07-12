@@ -18,6 +18,8 @@ mod query_demo;
 mod ragdoll_demo;
 mod sensor_demo;
 mod sim_demo;
+mod obj_loader;
+mod village;
 mod terrain_demo;
 mod tree_demo;
 mod vis;

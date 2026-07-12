@@ -15,6 +15,7 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".obj": "text/plain",
 };
 
 function readIndexHtml(): string {

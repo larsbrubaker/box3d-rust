@@ -16,6 +16,12 @@ import {
   trianglesFromWireframe,
 } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
+import {
+  formatVillageStats,
+  loadBuildingGeometry,
+  makeBuildingMaterial,
+  syncBuildingInstances,
+} from "../building-mesh.ts";
 
 type Mode = "mover" | "village";
 
@@ -26,7 +32,7 @@ export function init(container: HTMLElement) {
     "Character Mover",
     "Capsule mover matching upstream <code>Character / Mover</code> (BasicMover): " +
       "WASD, jump, sprint, pogo ground ray, static capsules, and height-field terrain. " +
-      "Village mode walks the compound tile ground from Compound / Village.",
+      "Village mode walks Erin’s Compound / Village (real <code>building.obj</code> meshes).",
     "WASD move · Space jump · Shift sprint · drag to orbit",
     wasm.version(),
     { category: "Character", samplesShell: true },
@@ -40,8 +46,15 @@ export function init(container: HTMLElement) {
     ),
   );
 
+  const statsEl = document.createElement("pre");
+  statsEl.className = "village-stats";
+  statsEl.style.cssText =
+    "margin:0.5rem 0 0;padding:0.5rem 0.65rem;font:12px/1.35 ui-monospace,Consolas,monospace;" +
+    "color:#d4d4d4;background:rgba(0,0,0,0.45);border-radius:4px;white-space:pre-wrap;";
+  controls.appendChild(statsEl);
+
   let mode: Mode = "mover";
-  let villageGrid = 10;
+  let villageGrid = 16;
 
   controls.appendChild(
     createButtonGroup(
@@ -65,13 +78,49 @@ export function init(container: HTMLElement) {
   controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { target: [7.5, 1, 9], distance: 14 });
-  demo.camera.far = 400;
+  demo.camera.far = 800;
   demo.camera.updateProjectionMatrix();
   const pool = createMeshPool();
   // Mover capsule: blue like C DrawSolidCapsule
   pool.dynamicMat.color.setHex(0x2563eb);
   let terrainMesh: THREE.Mesh | null = null;
   let terrainWire: THREE.LineSegments | null = null;
+  const buildingMat = makeBuildingMaterial();
+  let buildingInstanced: THREE.InstancedMesh | null = null;
+  let buildingGeo: THREE.BufferGeometry | null = null;
+
+  void loadBuildingGeometry()
+    .then((geo) => {
+      buildingGeo = geo;
+      if (mode === "village") syncVillageBuildings();
+    })
+    .catch((err) => console.warn("building.obj load failed", err));
+
+  function clearBuildings() {
+    if (buildingInstanced) {
+      demo.content.remove(buildingInstanced);
+      buildingInstanced.dispose();
+      buildingInstanced = null;
+    }
+  }
+
+  function syncVillageBuildings() {
+    clearBuildings();
+    if (mode !== "village" || !buildingGeo) {
+      statsEl.textContent = "";
+      return;
+    }
+    const data = wasm.character_village_buildings();
+    const n = Math.floor(data.length / 10);
+    if (n > 0) {
+      buildingInstanced = new THREE.InstancedMesh(buildingGeo, buildingMat, n);
+      buildingInstanced.castShadow = true;
+      buildingInstanced.receiveShadow = true;
+      syncBuildingInstances(buildingInstanced, data);
+      demo.content.add(buildingInstanced);
+    }
+    statsEl.textContent = formatVillageStats(wasm.character_village_stats());
+  }
 
   // Debug overlay: pogo ray + velocity
   const debugGeo = new THREE.BufferGeometry();
@@ -135,7 +184,10 @@ export function init(container: HTMLElement) {
       const half = villageGrid * 4;
       demo.controls.target.set(0, 8, 0);
       demo.camera.position.set(half * 0.55, half * 0.4, half * 0.65);
+      syncVillageBuildings();
     } else {
+      clearBuildings();
+      statsEl.textContent = "";
       wasm.character_reset_ex(0, 10);
       demo.controls.target.set(7.5, 1, 9);
       demo.camera.position.set(14, 6, 18);
@@ -233,11 +285,13 @@ export function init(container: HTMLElement) {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     clearTerrain();
+    clearBuildings();
     disposeMeshPool(pool);
     debugGeo.dispose();
     debugMat.dispose();
     hitGeo.dispose();
     hitMat.dispose();
+    buildingMat.dispose();
     demo.dispose();
   };
 }

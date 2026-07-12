@@ -17,11 +17,11 @@ below is quality, presentation, and release work — not core physics.**
 
 | File | Track | Depends on |
 |---|---|---|
-| [task-12.md](task-12.md) | Demo excellence: interaction layer (mouse drag, pause/step), visual quality (shadows, colorization), sample-category coverage, site polish | — |
+| [task-12.md](task-12.md) | Demo excellence: **port Erin’s Samples App demos 1:1 (no invented demos)**; interaction layer; visual quality; site polish | — |
 
-The C samples app has ~150 registered samples. Bodies/Stacking/Compound/
-Benchmark/Joints/Character now use the Samples App Info panel shell + key
-marquee scenes; remaining coverage gaps are in task-12.
+The C samples app has **153** `RegisterSample` entries. Goal = faithful ports of
+those samples (Three.js + Rust/WASM rendering). Do not invent new demos.
+Inventory and remaining gaps live in task-12.
 
 ## Upstream tracking (recurring)
 

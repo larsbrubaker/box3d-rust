@@ -49,4 +49,8 @@ cpSync(join(ROOT, "styles"), join(DIST, "styles"), { recursive: true });
 console.log("Copying WASM package...");
 cpSync(join(ROOT, "public/pkg"), join(DIST, "public/pkg"), { recursive: true });
 
+// 5. Copy sample mesh assets (MIT, from box3d-cpp-reference/data/meshes)
+console.log("Copying sample meshes...");
+cpSync(join(ROOT, "public/meshes"), join(DIST, "public/meshes"), { recursive: true });
+
 console.log(`Build complete → ${DIST}`);

@@ -1,25 +1,26 @@
-// Demo Roadmap — upstream sample categories with LIVE / PLANNED badges.
+// Demo Roadmap — Erin’s Samples App categories. Only real RegisterSample ports get LIVE routes.
+// Do not invent demos; placeholders stay PLANNED until the C sample is ported.
 
 const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Geometry", blurb: "Rays, GJK distance, shape queries", route: "geometry" },
   { name: "Manifold", blurb: "Contact points and normals", route: "manifolds" },
-  { name: "Mesh", blurb: "Triangle meshes, casts, AABB, terrain settle", route: "terrain" },
+  { name: "Mesh", blurb: "Triangle meshes / height field (partial)", route: "terrain" },
   { name: "Tree", blurb: "Dynamic AABB tree broad-phase", route: "tree" },
-  { name: "Collision", blurb: "Hulls, height fields, casting", route: "hull" },
-  { name: "Compound", blurb: "Simple, Spheres, Hulls, Village", route: "compound" },
-  { name: "Bodies", blurb: "Body types, sleeping, user data", route: "bodies" },
-  { name: "Shapes", blurb: "Spheres, capsules, hulls", route: "bodies" },
+  { name: "Collision", blurb: "Hulls, height fields, casting (partial)", route: "hull" },
+  { name: "Compound", blurb: "Simple, Spheres, Hulls, Village (building.obj)", route: "compound" },
+  { name: "Bodies", blurb: "Body Type gallery (more samples TBD)", route: "bodies" },
+  { name: "Shapes", blurb: "Inclined Plane, Restitution, Wind, … — not yet ported" },
   { name: "Stacking", blurb: "Jenga, Box Stack, Pyramid2D (planar), Sphere Stack", route: "stacking" },
-  { name: "Joints", blurb: "Revolute, spherical, motor hinge", route: "joints" },
+  { name: "Joints", blurb: "Revolute, Gear Lift, Driving", route: "joints" },
   { name: "Continuous", blurb: "Thin Wall, Bounce House, Bullet vs Stack", route: "continuous" },
-  { name: "Events", blurb: "Contacts, sensors, hit events", route: "sensors" },
+  { name: "Events", blurb: "Sensor Visit, Hit, Move, … — not yet ported" },
   { name: "Character", blurb: "BasicMover + Village walk", route: "character" },
-  { name: "World", blurb: "Queries, gravity, large worlds", route: "queries" },
-  { name: "Determinism", blurb: "Cross-platform reproducibility", route: "math" },
-  { name: "Robustness", blurb: "Degenerate input, overlap recovery" },
+  { name: "World", blurb: "Far Stack / Far Pyramid / … — not yet ported" },
+  { name: "Determinism", blurb: "sample_determinism readout — TBD" },
+  { name: "Robustness", blurb: "HighMassRatio, Tiny Pyramid, … — not yet ported" },
   { name: "Benchmark", blurb: "Large Pyramid, Junkyard, Falling Trees", route: "benchmark" },
-  { name: "Ragdoll", blurb: "Articulated bodies", route: "ragdolls" },
-  { name: "Issues", blurb: "Regression / bug-repro scenes" },
+  { name: "Ragdoll", blurb: "Articulated bodies (partial)", route: "ragdolls" },
+  { name: "Issues", blurb: "Regression / bug-repro scenes — not yet ported" },
 ];
 
 export function init(container: HTMLElement) {
@@ -44,10 +45,9 @@ export function init(container: HTMLElement) {
       <div class="hero">
         <h1>Demo <span>Roadmap</span></h1>
         <p>
-          Each category of the upstream Box3D <code>samples</code> app becomes an interactive
-          browser demo as its module lands. <strong>${live} sample categories are LIVE</strong>
-          — including ragdolls, joints, continuous collision, sensors, queries, terrain settle,
-          and a character mover.
+          Goal: port Erin’s Box3D <code>samples</code> app <strong>1:1</strong> (no invented demos).
+          <strong>${live} categories</strong> have at least one live browser scene; PLANNED means
+          the C <code>RegisterSample</code> gallery is not ported yet. See <code>task-12.md</code>.
         </p>
       </div>
       <div class="feature-grid">${cards}</div>

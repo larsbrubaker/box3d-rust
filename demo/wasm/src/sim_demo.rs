@@ -8,7 +8,7 @@ use box3d_rust::body::{
     body_get_type, create_body, destroy_body, get_body_transform, is_body_awake, make_body_id,
 };
 use box3d_rust::compound::{
-    create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundSphereDef,
+    create_compound, CompoundDef, CompoundHullDef, CompoundSphereDef,
 };
 use box3d_rust::geometry::{default_surface_material, Capsule, Sphere};
 use box3d_rust::hull::{make_box_hull, make_transformed_box_hull};
@@ -97,6 +97,11 @@ struct SimState {
     step_count: i32,
     /// Bullet vs Stack projectile body index, or -1 when none (C `m_bulletId`).
     bullet_body_index: i32,
+    /// Village building instances (compound-local) for Three.js InstancedMesh.
+    village_buildings: Vec<crate::village::BuildingInstance>,
+    /// Village compound stats readout (C DrawTextLine overlays).
+    village_stats: [f32; 7],
+    village_ground_index: i32,
 }
 
 fn new_sim() -> SimState {
@@ -108,6 +113,9 @@ fn new_sim() -> SimState {
         record_start_step: 0,
         step_count: 0,
         bullet_body_index: -1,
+        village_buildings: Vec::new(),
+        village_stats: [0.0; 7],
+        village_ground_index: -1,
     }
 }
 
@@ -493,121 +501,23 @@ pub fn sim_reset_compound_hulls() -> u32 {
     })
 }
 
-/// Compound / Village — tiled compound hull ground + odd-tile sphere/capsule props.
+/// Compound / Village — C `sample_compound.cpp` Village with real `building.obj` meshes.
 ///
-/// C uses `gridCount = 8` (debug) / `200` (release) plus building meshes. Browser scale is
-/// `grid_count` clamped to 8..=16 (default 10); building meshes are omitted (no OBJ loader).
+/// C uses `gridCount = 8` (debug) / `200` (release). Browser scale is `grid_count`
+/// clamped to 8..=40 (default 16).
 #[wasm_bindgen]
 pub fn sim_reset_village(grid_count: u32) -> u32 {
-    let grid = grid_count.clamp(8, 16) as i32;
+    let grid = grid_count.clamp(8, 40) as i32;
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
         }
         let mut sim = new_sim();
+        let village = crate::village::build_village(&mut sim.world, grid);
+        let a = village.tile_half;
+        let parent_index = village.ground_body_index;
 
-        let a = 4.0f32;
-        let mut rng = DemoRng(0xB111_A6E7);
-        let material = default_surface_material();
-        let box_hull = make_box_hull(a, 0.5 * a, a);
-
-        let hull_count = (grid * grid) as usize;
-        let prop_capacity = hull_count / 8 + 1;
-
-        let mut capsules: Vec<CompoundCapsuleDef> = Vec::with_capacity(prop_capacity);
-        let mut spheres: Vec<CompoundSphereDef> = Vec::with_capacity(prop_capacity);
-        let mut hull_transforms: Vec<Transform> = Vec::with_capacity(hull_count);
-
-        let mut transform = Transform {
-            p: VEC3_ZERO,
-            q: QUAT_IDENTITY,
-        };
-
-        for i in 0..grid {
-            transform.p.x = (2.0 * i as f32 - grid as f32) * a;
-            for j in 0..grid {
-                transform.p.z = (2.0 * j as f32 - grid as f32) * a;
-                transform.p.y = rng.range(-0.25, 0.125) * a;
-
-                if (i & 1) != 0 && (j & 1) != 0 {
-                    let p1 = Vec3 {
-                        x: transform.p.x,
-                        y: transform.p.y,
-                        z: transform.p.z,
-                    } + rng.vec3_range(
-                        Vec3 { x: -a, y: a, z: -a },
-                        Vec3 {
-                            x: a,
-                            y: 2.0 * a,
-                            z: a,
-                        },
-                    );
-                    let p2 = Vec3 {
-                        x: transform.p.x,
-                        y: transform.p.y,
-                        z: transform.p.z,
-                    } + rng.vec3_range(
-                        Vec3 { x: -a, y: a, z: -a },
-                        Vec3 {
-                            x: a,
-                            y: 2.0 * a,
-                            z: a,
-                        },
-                    );
-                    let radius = rng.range(0.1, 0.5);
-                    if capsules.len() < spheres.len() {
-                        if capsules.len() < prop_capacity {
-                            capsules.push(CompoundCapsuleDef {
-                                capsule: Capsule {
-                                    center1: p1,
-                                    center2: p2,
-                                    radius,
-                                },
-                                material,
-                            });
-                        }
-                    } else if spheres.len() < prop_capacity {
-                        spheres.push(CompoundSphereDef {
-                            sphere: Sphere { center: p1, radius },
-                            material,
-                        });
-                    }
-                }
-
-                hull_transforms.push(transform);
-            }
-        }
-
-        let hulls: Vec<CompoundHullDef<'_>> = hull_transforms
-            .iter()
-            .map(|xf| CompoundHullDef {
-                hull: &box_hull.base,
-                transform: *xf,
-                material,
-            })
-            .collect();
-
-        let compound = create_compound(&CompoundDef {
-            capsules: &capsules,
-            hulls: &hulls,
-            spheres: &spheres,
-            ..Default::default()
-        })
-        .expect("village compound");
-
-        let mut body_def = default_body_def();
-        body_def.type_ = BodyType::Static;
-        body_def.position = Pos {
-            x: (-1.0) as _,
-            y: (-0.5) as _,
-            z: 2.0 as _,
-        };
-        body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, -1.15 * std::f32::consts::PI);
-        let ground = create_body(&mut sim.world, &body_def);
-        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
-
-        let parent_index = ground.index1 - 1;
-        for xf in &hull_transforms {
+        for xf in &village.hull_transforms {
             sim.bodies.push(SimBody {
                 body_index: parent_index,
                 half_extents: [a, 0.5 * a, a],
@@ -615,7 +525,7 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
                 local: Some(*xf),
             });
         }
-        for s in &spheres {
+        for s in &village.spheres {
             sim.bodies.push(SimBody {
                 body_index: parent_index,
                 half_extents: [s.sphere.radius, s.sphere.radius, s.sphere.radius],
@@ -626,7 +536,7 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
                 }),
             });
         }
-        for c in &capsules {
+        for c in &village.capsules {
             let (local, half) =
                 capsule_local_from_centers(c.capsule.center1, c.capsule.center2, c.capsule.radius);
             sim.bodies.push(SimBody {
@@ -637,6 +547,10 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
             });
         }
 
+        sim.village_buildings = village.buildings;
+        sim.village_stats = village.stats;
+        sim.village_ground_index = parent_index;
+
         // A few dynamic drop-ins so the village is interactive like other dynamics demos.
         push_dynamic_sphere(&mut sim, 0.0, 12.0, 0.0, 0.4, 1.0);
         push_dynamic_sphere(&mut sim, 3.0, 14.0, -2.0, 0.35, 1.0);
@@ -645,6 +559,56 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
         let count = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
         count
+    })
+}
+
+/// Village building instances in world space:
+/// `[px,py,pz, qx,qy,qz,qw, sx,sy,sz] * N` (matches C compound mesh children).
+#[wasm_bindgen]
+pub fn sim_village_buildings() -> Vec<f32> {
+    SIM.with(|cell| {
+        let slot = cell.borrow();
+        let Some(sim) = slot.as_ref() else {
+            return Vec::new();
+        };
+        if sim.village_ground_index < 0 || sim.village_buildings.is_empty() {
+            return Vec::new();
+        }
+        let parent = get_body_transform(&sim.world, sim.village_ground_index);
+        let parent_xf = Transform {
+            p: Vec3 {
+                x: parent.p.x as f32,
+                y: parent.p.y as f32,
+                z: parent.p.z as f32,
+            },
+            q: parent.q,
+        };
+        let mut out = Vec::with_capacity(sim.village_buildings.len() * 10);
+        for b in &sim.village_buildings {
+            let world_xf = mul_transforms(parent_xf, b.transform);
+            out.push(world_xf.p.x);
+            out.push(world_xf.p.y);
+            out.push(world_xf.p.z);
+            out.push(world_xf.q.v.x);
+            out.push(world_xf.q.v.y);
+            out.push(world_xf.q.v.z);
+            out.push(world_xf.q.s);
+            out.push(b.scale.x);
+            out.push(b.scale.y);
+            out.push(b.scale.z);
+        }
+        out
+    })
+}
+
+/// Village compound stats: `[capsules, hulls, meshes, spheres, byte_count, tree_bytes, tree_height]`.
+#[wasm_bindgen]
+pub fn sim_village_stats() -> Vec<f32> {
+    SIM.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|s| s.village_stats.to_vec())
+            .unwrap_or_default()
     })
 }
 

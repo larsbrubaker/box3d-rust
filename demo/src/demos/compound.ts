@@ -10,6 +10,12 @@ import {
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { COLORS, DemoScene } from "../three-scene.ts";
+import {
+  formatVillageStats,
+  loadBuildingGeometry,
+  makeBuildingMaterial,
+  syncBuildingInstances,
+} from "../building-mesh.ts";
 
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
@@ -22,8 +28,7 @@ export function init(container: HTMLElement) {
     container,
     "Compound",
     "Compound shape gallery from <code>sample_compound.cpp</code>: Simple, Spheres, Hulls, " +
-      "and Village (browser-scaled tile grid). Physics via <code>create_compound</code> / " +
-      "<code>create_compound_shape</code>.",
+      "and Village (real <code>building.obj</code> compound meshes from the C samples, MIT).",
     "Drag body · Shift spawn · Ctrl delete · P/O/R",
     wasm.version(),
     { category: "Compound", samplesShell: true },
@@ -31,18 +36,24 @@ export function init(container: HTMLElement) {
 
   controls.appendChild(
     createInfoBox(
-      "Village follows the C compound ground pattern (hull tiles + odd-tile sphere/capsule props). " +
-        "C debug uses gridCount 8 / release 200; here the grid is 8–16. Building meshes are omitted. " +
-        "Walk the village from Character → Village.",
+      "Village ports Erin’s Compound / Village: hull tiles, odd-tile props, and instanced " +
+        "<code>data/meshes/building.obj</code> meshes. C uses gridCount 8 (debug) / 200 (release); " +
+        "browser default is 16 (slider 8–40). Walk it from Character → Village.",
     ),
   );
 
-  let mode: Mode = "simple";
-  let villageGrid = 10;
+  const statsEl = document.createElement("pre");
+  statsEl.className = "village-stats";
+  statsEl.style.cssText =
+    "margin:0.5rem 0 0;padding:0.5rem 0.65rem;font:12px/1.35 ui-monospace,Consolas,monospace;" +
+    "color:#d4d4d4;background:rgba(0,0,0,0.45);border-radius:4px;white-space:pre-wrap;";
+  controls.appendChild(statsEl);
 
-  const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 22 });
-  // Village needs a longer far plane.
-  demo.camera.far = 400;
+  let mode: Mode = "village";
+  let villageGrid = 16;
+
+  const demo = new DemoScene(canvas, { target: [0, 4, 0], distance: 48 });
+  demo.camera.far = 800;
   demo.camera.updateProjectionMatrix();
 
   const meshes: THREE.Object3D[] = [];
@@ -63,20 +74,69 @@ export function init(container: HTMLElement) {
     roughness: 0.45,
     metalness: 0.15,
   });
+  const buildingMat = makeBuildingMaterial();
+  let buildingInstanced: THREE.InstancedMesh | null = null;
+  let buildingGeo: THREE.BufferGeometry | null = null;
+
+  void loadBuildingGeometry()
+    .then((geo) => {
+      buildingGeo = geo;
+      if (mode === "village") reset();
+    })
+    .catch((err) => console.warn("building.obj load failed", err));
+
+  function clearBuildings() {
+    if (buildingInstanced) {
+      demo.content.remove(buildingInstanced);
+      buildingInstanced.dispose();
+      buildingInstanced = null;
+    }
+  }
 
   function clearMeshes() {
     for (const m of meshes) {
       demo.content.remove(m);
-      const mesh = m as THREE.Mesh;
+    }
+    const mesh = meshes[0] as THREE.Mesh | undefined;
+    if (
+      mesh?.geometry &&
+      mesh.geometry !== boxGeo &&
+      mesh.geometry !== sphereGeo
+    ) {
+      // disposed per-mesh below when replaced
+    }
+    for (const m of meshes) {
+      const mm = m as THREE.Mesh;
       if (
-        mesh.geometry &&
-        mesh.geometry !== boxGeo &&
-        mesh.geometry !== sphereGeo
+        mm.geometry &&
+        mm.geometry !== boxGeo &&
+        mm.geometry !== sphereGeo
       ) {
-        mesh.geometry.dispose();
+        mm.geometry.dispose();
       }
     }
     meshes.length = 0;
+    clearBuildings();
+  }
+
+  function syncVillageBuildings() {
+    clearBuildings();
+    if (mode !== "village" || !buildingGeo) {
+      statsEl.textContent = "";
+      return;
+    }
+    const data = wasm.sim_village_buildings();
+    const n = Math.floor(data.length / 10);
+    if (n <= 0) {
+      statsEl.textContent = formatVillageStats(wasm.sim_village_stats());
+      return;
+    }
+    buildingInstanced = new THREE.InstancedMesh(buildingGeo, buildingMat, n);
+    buildingInstanced.castShadow = true;
+    buildingInstanced.receiveShadow = true;
+    syncBuildingInstances(buildingInstanced, data);
+    demo.content.add(buildingInstanced);
+    statsEl.textContent = formatVillageStats(wasm.sim_village_stats());
   }
 
   function reset() {
@@ -88,17 +148,21 @@ export function init(container: HTMLElement) {
 
     if (mode === "village") {
       const half = villageGrid * 4;
-      demo.controls.target.set(0, 4, 0);
-      demo.camera.position.set(half * 0.6, half * 0.35, half * 0.7);
+      demo.controls.target.set(0, 8, 0);
+      demo.camera.position.set(half * 0.55, half * 0.28, half * 0.65);
       demo.controls.update();
-    } else if (mode === "spheres" || mode === "hulls") {
-      demo.controls.target.set(0, 0, 0);
-      demo.camera.position.set(18, 14, 22);
-      demo.controls.update();
+      syncVillageBuildings();
     } else {
-      demo.controls.target.set(0, 1, 0);
-      demo.camera.position.set(10, 8, 14);
-      demo.controls.update();
+      statsEl.textContent = "";
+      if (mode === "spheres" || mode === "hulls") {
+        demo.controls.target.set(0, 0, 0);
+        demo.camera.position.set(18, 14, 22);
+        demo.controls.update();
+      } else {
+        demo.controls.target.set(0, 1, 0);
+        demo.camera.position.set(10, 8, 14);
+        demo.controls.update();
+      }
     }
   }
 
@@ -110,7 +174,7 @@ export function init(container: HTMLElement) {
         { label: "Hulls", value: "hulls" },
         { label: "Village", value: "village" },
       ],
-      "simple",
+      "village",
       (v) => {
         mode = v as Mode;
         reset();
@@ -126,7 +190,7 @@ export function init(container: HTMLElement) {
     canvas,
     controls,
     onRestart: reset,
-    sampleName: "Compound",
+    sampleName: "Village",
     sampleCategory: "Compound",
     params: [
       {
@@ -144,9 +208,9 @@ export function init(container: HTMLElement) {
         key: "villageGrid",
         label: "Village grid",
         min: 8,
-        max: 16,
-        step: 1,
-        default: 10,
+        max: 40,
+        step: 4,
+        default: 16,
         restart: true,
       },
     ],
@@ -154,7 +218,7 @@ export function init(container: HTMLElement) {
       subSteps = Number(values.subSteps) || 4;
       ctrl.subSteps = subSteps;
       if (key === "villageGrid") {
-        villageGrid = Number(values.villageGrid) || 10;
+        villageGrid = Number(values.villageGrid) || 16;
         if (mode === "village") reset();
       }
     },
@@ -192,13 +256,18 @@ export function init(container: HTMLElement) {
       const wantSphere = kind === 1;
       const wantCapsule = kind === 2;
       const isStatic = i < staticCount;
-      const mat = isStatic ? (wantSphere || wantCapsule ? propMat : groundMat) : dynamicMat;
+      const mat = isStatic
+        ? wantSphere || wantCapsule
+          ? propMat
+          : groundMat
+        : dynamicMat;
 
       if (wantCapsule) {
         const radius = hx;
         const halfLen = Math.max(1e-4, hy);
         const needNew =
-          !mesh || (mesh.geometry as THREE.CapsuleGeometry)?.type !== "CapsuleGeometry";
+          !mesh ||
+          (mesh.geometry as THREE.CapsuleGeometry)?.type !== "CapsuleGeometry";
         if (needNew) {
           if (mesh) demo.content.remove(mesh);
           mesh = new THREE.Mesh(
@@ -252,5 +321,6 @@ export function init(container: HTMLElement) {
     groundMat.dispose();
     propMat.dispose();
     dynamicMat.dispose();
+    buildingMat.dispose();
   };
 }
