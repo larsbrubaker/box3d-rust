@@ -1,20 +1,29 @@
-//! Joint demos — Ball and Chain + Revolute motor hinge (sample_joint.cpp).
+//! Joint demos — Ball and Chain, Revolute, Gear Lift, Driving (sample_joint.cpp).
 
+use crate::interact::{self, MouseGrab};
+use crate::joint_drive;
+use crate::joint_gear;
 use crate::vis::{capsule_x, pos, push_poses, sphere, vec3, VisBody};
 use box3d_rust::body::create_body;
 use box3d_rust::hull::make_box_hull;
-use box3d_rust::id::JointId;
+use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
 use box3d_rust::joint::{
-    create_revolute_joint, create_spherical_joint, revolute_joint_enable_motor,
+    create_revolute_joint, create_spherical_joint, joint_wake_bodies, revolute_joint_enable_limit,
+    revolute_joint_enable_motor, revolute_joint_enable_spring, revolute_joint_set_limits,
     revolute_joint_set_max_motor_torque, revolute_joint_set_motor_speed,
+    revolute_joint_set_spring_damping_ratio, revolute_joint_set_spring_hertz,
+    revolute_joint_set_target_angle,
 };
-use box3d_rust::math_functions::{Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY};
+use box3d_rust::math_functions::{
+    Transform, Vec3, DEG_TO_RAD, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
+};
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
     default_body_def, default_revolute_joint_def, default_shape_def, default_spherical_joint_def,
     default_world_def, BodyType,
 };
 use box3d_rust::world::World;
+use box3d_rust::height_field::HeightFieldData;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
@@ -22,16 +31,34 @@ thread_local! {
     static STATE: RefCell<Option<JointState>> = const { RefCell::new(None) };
 }
 
-struct JointState {
-    world: World,
-    bodies: Vec<VisBody>,
-    hinge_joint: Option<JointId>,
-    motor_enabled: bool,
-    motor_speed: f32,
-    motor_torque: f32,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JointScene {
+    Chain,
+    Revolute,
+    GearLift,
+    Driving,
 }
 
-fn with_state<R>(f: impl FnOnce(&mut JointState) -> R) -> R {
+pub(crate) struct JointState {
+    pub world: World,
+    pub bodies: Vec<VisBody>,
+    pub grab: MouseGrab,
+    pub scene: JointScene,
+    /// Revolute hinge or Gear Lift driver.
+    pub control_joint: JointId,
+    pub chassis: BodyId,
+    pub front_left: JointId,
+    pub front_right: JointId,
+    pub rear_left: JointId,
+    pub rear_right: JointId,
+    pub hf: Option<HeightFieldData>,
+    pub hf_origin: Vec3,
+    pub spin_speed: f32,
+    pub throttle_x: f32,
+    pub throttle_y: f32,
+}
+
+pub(crate) fn with_state<R>(f: impl FnOnce(&mut JointState) -> R) -> R {
     STATE.with(|cell| {
         let mut slot = cell.borrow_mut();
         f(slot
@@ -40,7 +67,7 @@ fn with_state<R>(f: impl FnOnce(&mut JointState) -> R) -> R {
     })
 }
 
-fn new_world() -> World {
+pub(crate) fn new_world() -> World {
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,
@@ -50,149 +77,226 @@ fn new_world() -> World {
     World::new(&def)
 }
 
-fn xf_at(px: f32, py: f32, pz: f32) -> Transform {
+pub(crate) fn xf_at(px: f32, py: f32, pz: f32) -> Transform {
     Transform {
         p: vec3(px, py, pz),
         q: QUAT_IDENTITY,
     }
 }
 
+pub(crate) fn empty_state(world: World, bodies: Vec<VisBody>, scene: JointScene) -> JointState {
+    JointState {
+        world,
+        bodies,
+        grab: MouseGrab::default(),
+        scene,
+        control_joint: NULL_JOINT_ID,
+        chassis: NULL_BODY_ID,
+        front_left: NULL_JOINT_ID,
+        front_right: NULL_JOINT_ID,
+        rear_left: NULL_JOINT_ID,
+        rear_right: NULL_JOINT_ID,
+        hf: None,
+        hf_origin: VEC3_ZERO,
+        spin_speed: 30.0,
+        throttle_x: 0.0,
+        throttle_y: 0.0,
+    }
+}
+
+fn install(state: JointState) -> u32 {
+    let count = state.bodies.len() as u32;
+    STATE.with(|cell| {
+        *cell.borrow_mut() = Some(state);
+    });
+    count
+}
+
 /// Ball-and-chain: spherical-linked capsules with a heavy sphere tip.
 #[wasm_bindgen]
 pub fn joint_reset_chain(link_count: u32) -> u32 {
     let n = link_count.clamp(4, 24);
-    STATE.with(|cell| {
-        let mut world = new_world();
-        let mut bodies = Vec::new();
+    let mut world = new_world();
+    let mut bodies = Vec::new();
 
-        let mut body_def = default_body_def();
-        let ground = create_body(&mut world, &body_def);
+    let mut body_def = default_body_def();
+    let ground = create_body(&mut world, &body_def);
 
-        let link_radius = 0.125f32;
-        let link_extent = 0.5f32;
-        let capsule = capsule_x(link_extent, link_radius);
-        let shape_def = default_shape_def();
+    let link_radius = 0.125f32;
+    let link_extent = 0.5f32;
+    let capsule = capsule_x(link_extent, link_radius);
+    let shape_def = default_shape_def();
 
-        body_def.type_ = BodyType::Dynamic;
-        let mut parent = ground;
-        let mut joint_def = default_spherical_joint_def();
-        joint_def.base.local_frame_a = TRANSFORM_IDENTITY;
-        joint_def.base.local_frame_b = xf_at(-link_extent, 0.0, 0.0);
-        joint_def.enable_motor = true;
-        joint_def.max_motor_torque = 10.0;
+    body_def.type_ = BodyType::Dynamic;
+    let mut parent = ground;
+    let mut joint_def = default_spherical_joint_def();
+    joint_def.base.local_frame_a = TRANSFORM_IDENTITY;
+    joint_def.base.local_frame_b = xf_at(-link_extent, 0.0, 0.0);
+    joint_def.enable_motor = true;
+    joint_def.max_motor_torque = 10.0;
 
-        for i in 0..n {
-            body_def.position = pos((1.0 + 2.0 * i as f32) * link_extent, 0.0, 0.0);
-            let child = create_body(&mut world, &body_def);
-            create_capsule_shape(&mut world, child, &shape_def, &capsule);
-            bodies.push(VisBody::capsule_body(child.index1 - 1, &capsule));
-
-            joint_def.base.body_id_a = parent;
-            joint_def.base.body_id_b = child;
-            create_spherical_joint(&mut world, &joint_def);
-
-            joint_def.base.local_frame_a = xf_at(link_extent, 0.0, 0.0);
-            parent = child;
-        }
-
-        let sphere_radius = 1.5f32;
-        body_def.position = pos(
-            (1.0 + 2.0 * n as f32) * link_extent + sphere_radius - link_extent,
-            0.0,
-            0.0,
-        );
-        let tip = create_body(&mut world, &body_def);
-        let sph = sphere(sphere_radius);
-        create_sphere_shape(&mut world, tip, &shape_def, &sph);
-        bodies.push(VisBody::sphere_body(tip.index1 - 1, sphere_radius));
+    for i in 0..n {
+        body_def.position = pos((1.0 + 2.0 * i as f32) * link_extent, 0.0, 0.0);
+        let child = create_body(&mut world, &body_def);
+        create_capsule_shape(&mut world, child, &shape_def, &capsule);
+        bodies.push(VisBody::capsule_body(child.index1 - 1, &capsule));
 
         joint_def.base.body_id_a = parent;
-        joint_def.base.body_id_b = tip;
-        joint_def.base.local_frame_b = xf_at(-sphere_radius, 0.0, 0.0);
+        joint_def.base.body_id_b = child;
         create_spherical_joint(&mut world, &joint_def);
 
-        let count = bodies.len() as u32;
-        *cell.borrow_mut() = Some(JointState {
-            world,
-            bodies,
-            hinge_joint: None,
-            motor_enabled: false,
-            motor_speed: 0.0,
-            motor_torque: 5000.0,
-        });
-        count
-    })
+        joint_def.base.local_frame_a = xf_at(link_extent, 0.0, 0.0);
+        parent = child;
+    }
+
+    let sphere_radius = 1.5f32;
+    body_def.position = pos(
+        (1.0 + 2.0 * n as f32) * link_extent + sphere_radius - link_extent,
+        0.0,
+        0.0,
+    );
+    let tip = create_body(&mut world, &body_def);
+    let sph = sphere(sphere_radius);
+    create_sphere_shape(&mut world, tip, &shape_def, &sph);
+    bodies.push(VisBody::sphere_body(tip.index1 - 1, sphere_radius));
+
+    joint_def.base.body_id_a = parent;
+    joint_def.base.body_id_b = tip;
+    joint_def.base.local_frame_b = xf_at(-sphere_radius, 0.0, 0.0);
+    create_spherical_joint(&mut world, &joint_def);
+
+    install(empty_state(world, bodies, JointScene::Chain))
 }
 
-/// Revolute hinge with motor toggle (sample Revolute Joint).
+/// Revolute hinge matching C `RevoluteJoint` (ground + 0.5×1.5×0.25 plank).
 #[wasm_bindgen]
 pub fn joint_reset_hinge() -> u32 {
-    STATE.with(|cell| {
-        let mut world = new_world();
-        let mut bodies = Vec::new();
+    let mut world = new_world();
+    let mut bodies = Vec::new();
 
-        let mut ground_def = default_body_def();
-        ground_def.position = pos(0.0, -1.0, 0.0);
-        let ground = create_body(&mut world, &ground_def);
-        let shape_def = default_shape_def();
-        let ground_hull = make_box_hull(20.0, 1.0, 20.0);
-        create_hull_shape(&mut world, ground, &shape_def, &ground_hull.base);
-        bodies.push(VisBody::box_body(ground.index1 - 1, 20.0, 1.0, 20.0));
+    // Visual/collision ground (Sample::AddGroundBox).
+    let mut ground_def = default_body_def();
+    ground_def.position = pos(0.0, -1.0, 0.0);
+    let ground = create_body(&mut world, &ground_def);
+    let shape_def = default_shape_def();
+    let ground_hull = make_box_hull(20.0, 1.0, 20.0);
+    create_hull_shape(&mut world, ground, &shape_def, &ground_hull.base);
+    bodies.push(VisBody::box_body(ground.index1 - 1, 20.0, 1.0, 20.0));
 
-        // Anchor body (static reference for joint local frame A)
-        let mut anchor_def = default_body_def();
-        anchor_def.position = pos(0.0, -1.0, 0.0);
-        let anchor = create_body(&mut world, &anchor_def);
+    // Shapeless joint parent body at the same pose (C RevoluteJoint).
+    let mut anchor_def = default_body_def();
+    anchor_def.position = pos(0.0, -1.0, 0.0);
+    let anchor = create_body(&mut world, &anchor_def);
 
-        let mut body_def = default_body_def();
-        body_def.type_ = BodyType::Dynamic;
-        body_def.position = pos(0.0, 4.0, 0.0);
-        let door = create_body(&mut world, &body_def);
-        let door_hull = make_box_hull(0.5, 1.5, 0.25);
-        create_hull_shape(&mut world, door, &shape_def, &door_hull.base);
-        bodies.push(VisBody::box_body(door.index1 - 1, 0.5, 1.5, 0.25));
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = pos(0.0, 4.0, 0.0);
+    let plank = create_body(&mut world, &body_def);
+    let plank_hull = make_box_hull(0.5, 1.5, 0.25);
+    create_hull_shape(&mut world, plank, &shape_def, &plank_hull.base);
+    bodies.push(VisBody::box_body(plank.index1 - 1, 0.5, 1.5, 0.25));
 
-        let mut joint_def = default_revolute_joint_def();
-        joint_def.base.body_id_a = anchor;
-        joint_def.base.body_id_b = door;
-        // Anchor at y=-1; local +6.5 → world hinge at y=5.5 (matches sample Revolute Joint).
-        joint_def.base.local_frame_a = xf_at(0.0, 6.5, 0.0);
-        joint_def.base.local_frame_b = xf_at(0.0, 1.5, 0.0);
-        joint_def.enable_motor = false;
-        joint_def.max_motor_torque = 5000.0;
-        joint_def.motor_speed = 0.0;
-        let joint_id = create_revolute_joint(&mut world, &joint_def);
+    let mut joint_def = default_revolute_joint_def();
+    joint_def.base.body_id_a = anchor;
+    joint_def.base.body_id_b = plank;
+    joint_def.base.local_frame_a = xf_at(0.0, 6.5, 0.0);
+    joint_def.base.local_frame_b = xf_at(0.0, 1.5, 0.0);
+    joint_def.enable_motor = false;
+    joint_def.max_motor_torque = 5000.0;
+    joint_def.motor_speed = 0.0;
+    joint_def.enable_limit = false;
+    joint_def.lower_angle = -35.0 * DEG_TO_RAD;
+    joint_def.upper_angle = 35.0 * DEG_TO_RAD;
+    joint_def.enable_spring = false;
+    joint_def.hertz = 2.0;
+    joint_def.damping_ratio = 0.7;
+    let joint_id = create_revolute_joint(&mut world, &joint_def);
 
-        let count = bodies.len() as u32;
-        *cell.borrow_mut() = Some(JointState {
-            world,
-            bodies,
-            hinge_joint: Some(joint_id),
-            motor_enabled: false,
-            motor_speed: 2.0,
-            motor_torque: 5000.0,
-        });
-        count
-    })
+    let mut state = empty_state(world, bodies, JointScene::Revolute);
+    state.control_joint = joint_id;
+    install(state)
 }
 
 #[wasm_bindgen]
-pub fn joint_set_motor(enabled: bool, speed: f32, torque: f32) {
+pub fn joint_reset_gear_lift() -> u32 {
+    install(joint_gear::build_gear_lift())
+}
+
+#[wasm_bindgen]
+pub fn joint_reset_driving() -> u32 {
+    install(joint_drive::build_driving())
+}
+
+/// Revolute / Gear Lift motor + limit + spring controls.
+/// `flags`: bit0=limit, bit1=motor, bit2=spring.
+#[wasm_bindgen]
+pub fn joint_set_revolute_params(
+    flags: u32,
+    lower_deg: f32,
+    upper_deg: f32,
+    motor_speed: f32,
+    motor_torque: f32,
+    hertz: f32,
+    damping: f32,
+    target_deg: f32,
+) {
     with_state(|state| {
-        state.motor_enabled = enabled;
-        state.motor_speed = speed;
-        state.motor_torque = torque;
-        if let Some(jid) = state.hinge_joint {
-            revolute_joint_enable_motor(&mut state.world, jid, enabled);
-            revolute_joint_set_motor_speed(&mut state.world, jid, speed);
-            revolute_joint_set_max_motor_torque(&mut state.world, jid, torque);
+        let jid = state.control_joint;
+        if !jid.is_non_null() {
+            return;
         }
+        let enable_limit = flags & 1 != 0;
+        let enable_motor = flags & 2 != 0;
+        let enable_spring = flags & 4 != 0;
+        revolute_joint_enable_limit(&mut state.world, jid, enable_limit);
+        revolute_joint_set_limits(
+            &mut state.world,
+            jid,
+            lower_deg * DEG_TO_RAD,
+            upper_deg * DEG_TO_RAD,
+        );
+        revolute_joint_enable_motor(&mut state.world, jid, enable_motor);
+        revolute_joint_set_motor_speed(&mut state.world, jid, motor_speed);
+        revolute_joint_set_max_motor_torque(&mut state.world, jid, motor_torque);
+        revolute_joint_enable_spring(&mut state.world, jid, enable_spring);
+        revolute_joint_set_spring_hertz(&mut state.world, jid, hertz);
+        revolute_joint_set_spring_damping_ratio(&mut state.world, jid, damping);
+        revolute_joint_set_target_angle(&mut state.world, jid, target_deg * DEG_TO_RAD);
+        joint_wake_bodies(&mut state.world, jid);
+    });
+}
+
+/// Legacy motor toggle used by older hinge UI.
+#[wasm_bindgen]
+pub fn joint_set_motor(enabled: bool, speed: f32, torque: f32) {
+    let flags = if enabled { 2 } else { 0 };
+    joint_set_revolute_params(flags, -35.0, 35.0, speed, torque, 2.0, 0.7, 0.0);
+}
+
+/// Driving throttle: x = forward/back, y = steer (matches C Driving::Step).
+#[wasm_bindgen]
+pub fn joint_set_drive_input(throttle_x: f32, throttle_y: f32) {
+    with_state(|state| {
+        state.throttle_x = throttle_x.clamp(-1.0, 1.0);
+        state.throttle_y = throttle_y.clamp(-1.0, 1.0);
+    });
+}
+
+#[wasm_bindgen]
+pub fn joint_set_drive_params(spin_speed: f32, max_spin_torque: f32) {
+    with_state(|state| {
+        state.spin_speed = spin_speed;
+        joint_drive::apply_spin_torque(state, max_spin_torque);
     });
 }
 
 #[wasm_bindgen]
 pub fn joint_step(dt: f32, sub_steps: i32) -> u32 {
     with_state(|state| {
+        state.grab.pre_step(&mut state.world, dt);
+        if state.scene == JointScene::Driving {
+            joint_drive::pre_step(state);
+        }
         state.world.step(dt, sub_steps);
         state.bodies.len() as u32
     })
@@ -210,4 +314,132 @@ pub fn joint_poses() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn joint_body_count() -> u32 {
     with_state(|state| state.bodies.len() as u32)
+}
+
+#[wasm_bindgen]
+pub fn joint_chassis_pose() -> Vec<f32> {
+    with_state(|state| {
+        if !state.chassis.is_non_null() {
+            return vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        }
+        let xf = box3d_rust::body::get_body_transform(&state.world, state.chassis.index1 - 1);
+        vec![
+            xf.p.x as f32,
+            xf.p.y as f32,
+            xf.p.z as f32,
+            xf.q.v.x,
+            xf.q.v.y,
+            xf.q.v.z,
+            xf.q.s,
+        ]
+    })
+}
+
+#[wasm_bindgen]
+pub fn joint_terrain_wireframe() -> Vec<f32> {
+    with_state(|state| joint_drive::terrain_wireframe(state))
+}
+
+#[wasm_bindgen]
+pub fn joint_mouse_down(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+    with_state(|state| {
+        if state
+            .grab
+            .begin(&mut state.world, interact::pos(ox, oy, oz), interact::vec3(tx, ty, tz))
+        {
+            let p = state.grab.mouse_point;
+            vec![1.0, p.x as f32, p.y as f32, p.z as f32]
+        } else {
+            vec![0.0, 0.0, 0.0, 0.0]
+        }
+    })
+}
+
+#[wasm_bindgen]
+pub fn joint_mouse_move(px: f32, py: f32, pz: f32) {
+    with_state(|state| {
+        state.grab.move_to(interact::pos(px, py, pz));
+    });
+}
+
+#[wasm_bindgen]
+pub fn joint_mouse_up() {
+    with_state(|state| {
+        state.grab.end(&mut state.world);
+    });
+}
+
+#[wasm_bindgen]
+pub fn joint_mouse_active() -> bool {
+    with_state(|state| state.grab.is_active())
+}
+
+#[wasm_bindgen]
+pub fn joint_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+    with_state(|state| {
+        match interact::spawn_random(
+            &mut state.world,
+            interact::pos(ox, oy, oz),
+            interact::vec3(tx, ty, tz),
+        ) {
+            Some(spawned) => {
+                let kind = spawned.kind;
+                let hx = spawned.half_extents[0];
+                let hy = spawned.half_extents[1];
+                let hz = spawned.half_extents[2];
+                let idx = spawned.body_index;
+                if kind == 1 {
+                    state.bodies.push(VisBody::sphere_body(idx, hx));
+                } else if kind == 2 {
+                    state.bodies.push(VisBody::capsule_body(
+                        idx,
+                        &box3d_rust::geometry::Capsule {
+                            center1: Vec3 {
+                                x: 0.0,
+                                y: -hy,
+                                z: 0.0,
+                            },
+                            center2: Vec3 {
+                                x: 0.0,
+                                y: hy,
+                                z: 0.0,
+                            },
+                            radius: hx,
+                        },
+                    ));
+                } else {
+                    state.bodies.push(VisBody::box_body(idx, hx, hy, hz));
+                }
+                vec![1.0, idx as f32, hx, hy, hz, kind as f32]
+            }
+            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    })
+}
+
+#[wasm_bindgen]
+pub fn joint_delete_at_ray(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> u32 {
+    with_state(|state| {
+        let index = interact::delete_at_ray(
+            &mut state.world,
+            &mut state.grab,
+            interact::pos(ox, oy, oz),
+            interact::vec3(tx, ty, tz),
+        );
+        if index < 0 {
+            return 0;
+        }
+        state.bodies.retain(|b| b.body_index != index);
+        1
+    })
+}
+
+#[wasm_bindgen]
+pub fn joint_counters() -> Vec<f32> {
+    with_state(|state| interact::counters_with_sleep(&state.world).to_vec())
+}
+
+#[wasm_bindgen]
+pub fn joint_debug_draw(flags: u32) -> Vec<f32> {
+    with_state(|state| interact::collect_debug_draw(&mut state.world, flags))
 }
