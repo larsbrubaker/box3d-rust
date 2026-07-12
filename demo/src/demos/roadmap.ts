@@ -13,7 +13,7 @@ const CATEGORIES: Array<{ name: string; blurb: string; route?: string }> = [
   { name: "Stacking", blurb: "Jenga, Box Stack, Pyramid2D (planar), Sphere Stack", route: "stacking" },
   { name: "Joints", blurb: "Revolute, Gear Lift, Driving", route: "joints" },
   { name: "Continuous", blurb: "Thin Wall, Bounce House, Bullet vs Stack", route: "continuous" },
-  { name: "Events", blurb: "Sensor Visit, Hit, Move, … — not yet ported" },
+  { name: "Events", blurb: "Sensor Visit, Sensor Hits; Benchmark Sensor", route: "sensors" },
   { name: "Character", blurb: "BasicMover + Village walk", route: "character" },
   { name: "World", blurb: "Far Pyramid at 10 000 km — large-world float stress", route: "far-pyramid" },
   { name: "Determinism", blurb: "sample_determinism readout — TBD" },

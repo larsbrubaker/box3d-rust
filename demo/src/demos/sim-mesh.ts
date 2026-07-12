@@ -112,9 +112,11 @@ function materialFor(
   kind: number,
   color: number,
   sensorIndex: number | null,
+  sensorIndices: Set<number> | null,
   groundIndex: number | null,
 ): THREE.Material {
   if (color !== 0) return coloredMaterial(pool, color);
+  if (sensorIndices !== null && sensorIndices.has(index)) return pool.sensorMat;
   if (sensorIndex !== null && index === sensorIndex) return pool.sensorMat;
   if (groundIndex !== null && index === groundIndex && kind === KIND_BOX) return pool.groundMat;
   if (kind === KIND_CAPSULE) {
@@ -150,11 +152,20 @@ export function syncMeshesFromPoses(
   content: THREE.Group,
   pool: MeshPool,
   poses: ArrayLike<number>,
-  opts: { sensorIndex?: number | null; groundIndex?: number | null } = {},
+  opts: {
+    sensorIndex?: number | null;
+    sensorIndices?: ArrayLike<number>;
+    groundIndex?: number | null;
+    colors?: ArrayLike<number>;
+  } = {},
 ) {
   const n = Math.floor(poses.length / POSE_STRIDE);
   const sensorIndex = opts.sensorIndex ?? null;
   const groundIndex = opts.groundIndex === undefined ? 0 : opts.groundIndex;
+  const sensorIndices =
+    opts.sensorIndices !== undefined
+      ? new Set(Array.from(opts.sensorIndices, (v) => Number(v)))
+      : null;
 
   while (pool.meshes.length > n) {
     const m = pool.meshes.pop()!;
@@ -165,8 +176,10 @@ export function syncMeshesFromPoses(
   for (let i = 0; i < n; i++) {
     const o = i * POSE_STRIDE;
     const kind = poses[o + 14]!;
-    const color = Math.round(poses[o + 15]!) & 0xffffff;
-    const mat = materialFor(pool, i, kind, color, sensorIndex, groundIndex);
+    const poseColor = Math.round(poses[o + 15]!) & 0xffffff;
+    const color =
+      opts.colors !== undefined ? (opts.colors[i]! | 0) : poseColor;
+    const mat = materialFor(pool, i, kind, color, sensorIndex, sensorIndices, groundIndex);
     let obj = pool.meshes[i];
 
     if (kind === KIND_CAPSULE) {

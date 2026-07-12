@@ -175,7 +175,7 @@ function renderHome(container: HTMLElement) {
           <span class="card-icon">&#9673;</span>
           <span class="card-badge badge-live">LIVE</span>
           <h3>Sensors</h3>
-          <p>Begin/end touch events as spheres fall through a sensor volume.</p>
+          <p>Sensor Visit, Sensor Hits, and Benchmark Sensor — C Events/Benchmark samples.</p>
         </a>
         <a href="#/queries" class="feature-card">
           <span class="card-icon">&#9678;</span>

@@ -85,9 +85,14 @@ export interface Box3dWasm {
   sim_reset_bullet_vs_stack(): number;
   sim_launch_bullet(): number;
 
-  sensor_reset(): number;
+  sensor_reset(scene: number): number;
+  sensor_set_bullet(flag: boolean): void;
+  sensor_is_bullet(): boolean;
+  sensor_launch(): void;
   sensor_step(dt: number, sub_steps: number): number;
   sensor_poses(): Float32Array;
+  sensor_colors(): Float32Array;
+  sensor_sensor_indices(): Uint32Array;
   sensor_event_stats(): Float32Array;
 
   query_reset(): number;
