@@ -29,6 +29,7 @@ export function init(container: HTMLElement) {
       "Village mode walks the compound tile ground from Compound / Village.",
     "WASD move · Space jump · Shift sprint · drag to orbit",
     wasm.version(),
+    { category: "Character", samplesShell: true },
   );
 
   controls.appendChild(

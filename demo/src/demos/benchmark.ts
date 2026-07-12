@@ -48,6 +48,7 @@ export function init(container: HTMLElement) {
       "ported from <code>benchmarks.c</code> with browser-scaled body counts.",
     "Drag body · Shift spawn · Ctrl delete · Space/S/R",
     wasm.version(),
+    { category: "Benchmark", samplesShell: true },
   );
 
   controls.appendChild(

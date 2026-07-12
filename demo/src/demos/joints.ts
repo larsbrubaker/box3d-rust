@@ -79,6 +79,7 @@ export function init(container: HTMLElement) {
       "ported from <code>sample_joint.cpp</code>.",
     "Pick a sample · drag bodies · Space/S/R · arrows drive",
     wasm.version(),
+    { category: "Joints", samplesShell: true },
   );
 
   controls.appendChild(
