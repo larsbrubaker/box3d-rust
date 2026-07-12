@@ -18,13 +18,11 @@ use crate::geometry::ShapeType;
 use crate::height_field::{get_height_field_material_indices, get_height_field_triangle};
 use crate::manifold::{
     collide_capsule_and_triangle, collide_hull_and_triangle, collide_sphere_and_triangle,
-    make_feature_id, LocalManifold, Manifold, SatCache, SeparatingFeature,
-    TriangleFeature,
+    make_feature_id, LocalManifold, Manifold, SatCache, SeparatingFeature, TriangleFeature,
 };
 use crate::math_functions::{
-    add, clamp_int, dot, inv_mul_world_transforms, make_matrix_from_quat,
-    make_normal_from_points, min_float, min_int, mul_mv, mul_sv, rotate_vector, sub, sub_pos,
-    WorldTransform, VEC3_ZERO,
+    add, clamp_int, dot, inv_mul_world_transforms, make_matrix_from_quat, make_normal_from_points,
+    min_float, min_int, mul_mv, mul_sv, rotate_vector, sub, sub_pos, WorldTransform, VEC3_ZERO,
 };
 use crate::mesh::{
     get_mesh_material_indices, get_mesh_triangle, Mesh, ALL_FLAT_EDGES, FLAT_EDGE1, FLAT_EDGE2,
@@ -107,7 +105,8 @@ pub fn compute_mesh_manifolds(
     let rest_offset = mesh_rest_offset();
 
     let point_buffer_capacity = MAX_POINTS_PER_TRIANGLE * triangle_count;
-    let mut point_buffer = vec![crate::manifold::LocalManifoldPoint::default(); point_buffer_capacity];
+    let mut point_buffer =
+        vec![crate::manifold::LocalManifoldPoint::default(); point_buffer_capacity];
     let mut total_point_count = 0i32;
 
     let mut manifold_buffer = vec![LocalManifold::default(); triangle_count];
@@ -136,9 +135,13 @@ pub fn compute_mesh_manifolds(
 
         let triangle_index = triangle_caches[index].triangle_index;
         let triangle = match &shape_a.geometry {
-            ShapeGeometry::Mesh { data, scale } => {
-                get_mesh_triangle(&Mesh { data, scale: *scale }, triangle_index)
-            }
+            ShapeGeometry::Mesh { data, scale } => get_mesh_triangle(
+                &Mesh {
+                    data,
+                    scale: *scale,
+                },
+                triangle_index,
+            ),
             ShapeGeometry::HeightField(hf) => get_height_field_triangle(hf, triangle_index),
             _ => unreachable!(),
         };
@@ -172,13 +175,7 @@ pub fn compute_mesh_manifolds(
                     unreachable!()
                 };
                 let cache = ensure_simplex(&mut triangle_caches[index].cache);
-                collide_capsule_and_triangle(
-                    &mut local,
-                    point_capacity,
-                    capsule,
-                    &vertices,
-                    cache,
-                );
+                collide_capsule_and_triangle(&mut local, point_capacity, capsule, &vertices, cache);
             }
             ShapeType::Hull => {
                 let ShapeGeometry::Hull(hull) = geom_b else {
@@ -223,8 +220,7 @@ pub fn compute_mesh_manifolds(
             }
 
             local.triangle_index = triangle_index;
-            local.triangle_normal =
-                make_normal_from_points(vertices[0], vertices[1], vertices[2]);
+            local.triangle_normal = make_normal_from_points(vertices[0], vertices[1], vertices[2]);
             local.i1 = triangle.i1;
             local.i2 = triangle.i2;
             local.i3 = triangle.i3;
@@ -481,7 +477,9 @@ pub fn compute_mesh_manifolds(
     for i in 0..cluster_count {
         let cm = &clusters[i];
         let point_count = cm.point_count;
-        debug_assert!(0 < point_count && (point_count as usize) <= crate::constants::MAX_MANIFOLD_POINTS);
+        debug_assert!(
+            0 < point_count && (point_count as usize) <= crate::constants::MAX_MANIFOLD_POINTS
+        );
 
         let cluster_normal = mul_mv(matrix_b, cm.manifold_normal);
         let mut best_dot = NORMAL_MATCH_TOLERANCE;
@@ -556,7 +554,15 @@ pub fn compute_mesh_manifolds(
         }
     }
 
-    apply_mesh_materials(world, contact_id, shape_a, material_map, shape_b, xf_a, xf_b);
+    apply_mesh_materials(
+        world,
+        contact_id,
+        shape_a,
+        material_map,
+        shape_b,
+        xf_a,
+        xf_b,
+    );
 
     true
 }
@@ -590,13 +596,14 @@ fn apply_mesh_materials(
         for i in 0..cluster_count {
             let point_count = world.contacts[contact_id as usize].manifolds[i].point_count;
             for j in 0..point_count {
-                let triangle_index =
-                    world.contacts[contact_id as usize].manifolds[i].points[j as usize]
-                        .triangle_index;
+                let triangle_index = world.contacts[contact_id as usize].manifolds[i].points
+                    [j as usize]
+                    .triangle_index;
 
                 let mut material_index = match &shape_a.geometry {
                     ShapeGeometry::Mesh { data, .. } => {
-                        let mut mi = get_mesh_material_indices(data)[triangle_index as usize] as i32;
+                        let mut mi =
+                            get_mesh_material_indices(data)[triangle_index as usize] as i32;
                         if let Some(map) = material_map {
                             mi = map[mi as usize];
                         }

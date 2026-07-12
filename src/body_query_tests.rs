@@ -27,7 +27,11 @@ fn create_query_world() -> (World, BodyId) {
 
 fn identity_at(x: f32, y: f32, z: f32) -> WorldTransform {
     WorldTransform {
-        p: Pos { x: x as _, y: y as _, z: z as _ },
+        p: Pos {
+            x: x as _,
+            y: y as _,
+            z: z as _,
+        },
         q: QUAT_IDENTITY,
     }
 }
@@ -209,12 +213,7 @@ fn cast_shape_hits_box() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     // Sphere proxy of radius 0.5 cast along +X into a box whose front face is at world x = 4.
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
@@ -246,12 +245,7 @@ fn cast_shape_miss() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
     let body_transform = identity_at(5.0, 0.0, 0.0);
@@ -311,12 +305,7 @@ fn cast_shape_far_from_origin() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
     let origin = Pos {
@@ -352,12 +341,7 @@ fn overlap_true() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     // Proxy sits at the box center.
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
@@ -383,12 +367,7 @@ fn overlap_false() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
     let body_transform = identity_at(5.0, 0.0, 0.0);
@@ -413,12 +392,7 @@ fn overlap_respects_body_transform() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     // Fixed proxy and origin: only the supplied transform decides the overlap.
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
@@ -447,12 +421,7 @@ fn overlap_filter() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     let proxy = make_proxy(&[VEC3_ZERO], 0.5);
     let body_transform = identity_at(0.0, 0.0, 0.0);
@@ -460,14 +429,7 @@ fn overlap_filter() {
     // Geometry overlaps, but a zero mask rejects every category.
     let mut filter = default_query_filter();
     filter.mask_bits = 0;
-    let overlaps = body_overlap_shape(
-        &world,
-        body_id,
-        POS_ZERO,
-        &proxy,
-        &filter,
-        body_transform,
-    );
+    let overlaps = body_overlap_shape(&world, body_id, POS_ZERO, &proxy, &filter, body_transform);
 
     assert!(!overlaps);
 }
@@ -479,12 +441,7 @@ fn mover_touches_box() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(0.5, 0.5, 0.5);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     // Mover core runs above the +Y face; its 0.2 radius reaches 0.1 into it.
     let mover = Capsule {
@@ -516,12 +473,7 @@ fn mover_separated() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(0.5, 0.5, 0.5);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     let mover = Capsule {
         center1: Vec3::new(-0.3, 5.0, 0.0),
@@ -548,12 +500,7 @@ fn mover_rotated_body() {
     let (mut world, body_id) = create_query_world();
 
     let box_hull = make_box_hull(0.5, 0.5, 0.5);
-    create_hull_shape(
-        &mut world,
-        body_id,
-        &default_shape_def(),
-        &box_hull.base,
-    );
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
 
     // Rotating +90 deg about X turns the local +Y face toward world +Z.
     let mover = Capsule {

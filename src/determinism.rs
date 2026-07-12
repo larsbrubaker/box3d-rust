@@ -11,6 +11,8 @@
 //! SPDX-FileCopyrightText: 2022 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+#![allow(clippy::unnecessary_cast)] // Pos is f64 under double-precision
+
 use crate::body::{body_get_transform, create_body};
 use crate::core::{hash, HASH_INIT};
 use crate::human::{create_human, Human, BONE_COUNT};

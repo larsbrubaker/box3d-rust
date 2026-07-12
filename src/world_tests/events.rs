@@ -372,8 +372,12 @@ fn contact_events() {
     };
     let ground_id = create_body(&mut world, &body_def);
     let ground_box = make_box_hull(10.0, 0.5, 10.0);
-    let ground_shape_id =
-        create_hull_shape(&mut world, ground_id, &default_shape_def(), &ground_box.base);
+    let ground_shape_id = create_hull_shape(
+        &mut world,
+        ground_id,
+        &default_shape_def(),
+        &ground_box.base,
+    );
 
     // Dynamic sphere dropped onto the ground; restitution causes bounce so we get end events
     let mut body_def = default_body_def();

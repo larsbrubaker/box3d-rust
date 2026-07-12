@@ -8,11 +8,7 @@ use crate::body::{body_flags, BodyState, IDENTITY_BODY_STATE};
 use crate::core::NULL_INDEX;
 use crate::math_functions::{add, cross, mul_add, mul_mv, mul_mv_sym, mul_sub, mul_sv, sub};
 
-fn warm_start_one(
-    contact_constraint: &ContactConstraint,
-    states: &mut [BodyState],
-    use_sym: bool,
-) {
+fn warm_start_one(contact_constraint: &ContactConstraint, states: &mut [BodyState], use_sym: bool) {
     let index_a = contact_constraint.index_a;
     let index_b = contact_constraint.index_b;
 

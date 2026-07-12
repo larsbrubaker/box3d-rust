@@ -7,9 +7,7 @@
 //! SPDX-License-Identifier: MIT
 
 use super::{ContactCache, MeshContact, TriangleCache};
-use crate::constants::{
-    max_aabb_margin, speculative_distance, MAX_MESH_CONTACT_TRIANGLES,
-};
+use crate::constants::{max_aabb_margin, speculative_distance, MAX_MESH_CONTACT_TRIANGLES};
 use crate::geometry::ShapeType;
 use crate::height_field::query_height_field;
 use crate::math_functions::{
@@ -94,14 +92,14 @@ pub(crate) fn refresh_cache(
 
     // Bounds are in world space. Convert to the local mesh frame.
     let mesh_transform = to_relative_transform(xf_a, POS_ZERO);
-    let local_bounds = aabb_transform(
-        invert_transform(mesh_transform),
-        mesh_contact.query_bounds,
-    );
+    let local_bounds = aabb_transform(invert_transform(mesh_transform), mesh_contact.query_bounds);
 
     let triangle_count = match &shape_a.geometry {
         ShapeGeometry::Mesh { data, scale } => {
-            let mesh = Mesh { data, scale: *scale };
+            let mesh = Mesh {
+                data,
+                scale: *scale,
+            };
             query_mesh_triangles(
                 &mut triangle_indices,
                 triangle_capacity,
@@ -109,12 +107,9 @@ pub(crate) fn refresh_cache(
                 local_bounds,
             )
         }
-        ShapeGeometry::HeightField(hf) => query_height_field_triangles(
-            &mut triangle_indices,
-            triangle_capacity,
-            hf,
-            local_bounds,
-        ),
+        ShapeGeometry::HeightField(hf) => {
+            query_height_field_triangles(&mut triangle_indices, triangle_capacity, hf, local_bounds)
+        }
         _ => unreachable!(),
     };
 
@@ -165,9 +160,7 @@ pub(crate) fn refresh_cache(
     }
 
     mesh_contact.triangle_cache.clear();
-    mesh_contact
-        .triangle_cache
-        .reserve(triangle_count as usize);
+    mesh_contact.triangle_cache.reserve(triangle_count as usize);
     for i in 0..triangle_count {
         let triangle_index = triangle_indices[i as usize];
         if let ShapeGeometry::Mesh { data, .. } = &shape_a.geometry {

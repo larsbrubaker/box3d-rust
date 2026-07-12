@@ -127,8 +127,7 @@ pub fn solve_contacts_convex(
             // Rolling resistance (before twist — Convex order)
             if rolling_resistance > 0.0 {
                 // flip A/B order to negate: rollingMass * (wA - wB)
-                let mut delta_impulse =
-                    mul_mv_sym(contact_constraint.rolling_mass, sub(w_a, w_b));
+                let mut delta_impulse = mul_mv_sym(contact_constraint.rolling_mass, sub(w_a, w_b));
                 let old_impulse = constraint.rolling_impulse;
                 constraint.rolling_impulse = add(old_impulse, delta_impulse);
 

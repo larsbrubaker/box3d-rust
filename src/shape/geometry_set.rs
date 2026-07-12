@@ -5,7 +5,9 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::lifecycle::{compute_shape_margin, destroy_shape_allocation_for_shape_change, get_shape};
+use super::lifecycle::{
+    compute_shape_margin, destroy_shape_allocation_for_shape_change, get_shape,
+};
 use super::mutators::reset_proxy;
 use super::ShapeGeometry;
 use crate::geometry::{Capsule, Sphere};

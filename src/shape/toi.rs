@@ -15,9 +15,7 @@ use crate::core::NULL_INDEX;
 use crate::distance::{
     get_sweep_transform, make_proxy, time_of_impact, ShapeProxy, Sweep, ToiInput, ToiOutput,
 };
-use crate::geometry::{
-    compute_swept_capsule_aabb, compute_swept_sphere_aabb, ShapeType,
-};
+use crate::geometry::{compute_swept_capsule_aabb, compute_swept_sphere_aabb, ShapeType};
 use crate::height_field::query_height_field;
 use crate::hull::{compute_swept_hull_aabb, get_hull_points};
 use crate::math_functions::{
@@ -31,10 +29,7 @@ use crate::mesh::{query_mesh, Mesh};
 pub fn compute_swept_shape_aabb(shape: &Shape, sweep: &Sweep, time: f32) -> Aabb {
     debug_assert!((0.0..=1.0).contains(&time));
     let xf1 = Transform {
-        p: sub(
-            sweep.c1,
-            rotate_vector(sweep.q1, sweep.local_center),
-        ),
+        p: sub(sweep.c1, rotate_vector(sweep.q1, sweep.local_center)),
         q: sweep.q1,
     };
     let xf2 = get_sweep_transform(sweep, time);
@@ -68,12 +63,7 @@ struct MeshImpactContext {
 }
 
 /// Per-triangle callback for mesh / height TOI. (b3MeshTimeOfImpactFcn)
-fn mesh_time_of_impact_fcn(
-    a: Vec3,
-    b: Vec3,
-    c: Vec3,
-    context: &mut MeshImpactContext,
-) -> bool {
+fn mesh_time_of_impact_fcn(a: Vec3, b: Vec3, c: Vec3, context: &mut MeshImpactContext) -> bool {
     // Early out for parallel movement
     let c1 = context.mesh_local_centroid_b1;
     let c2 = context.mesh_local_centroid_b2;
@@ -169,22 +159,15 @@ fn compound_time_of_impact_fcn(
                 is_sensor: false,
             };
 
-            let mesh_world_transform =
-                mul_transforms(context.compound_transform, child.transform);
+            let mesh_world_transform = mul_transforms(context.compound_transform, child.transform);
 
             let sweep_b = &context.toi_input.sweep_b;
             let xf_b1 = Transform {
-                p: sub(
-                    sweep_b.c1,
-                    rotate_vector(sweep_b.q1, sweep_b.local_center),
-                ),
+                p: sub(sweep_b.c1, rotate_vector(sweep_b.q1, sweep_b.local_center)),
                 q: sweep_b.q1,
             };
             let xf_b2 = Transform {
-                p: sub(
-                    sweep_b.c2,
-                    rotate_vector(sweep_b.q2, sweep_b.local_center),
-                ),
+                p: sub(sweep_b.c2, rotate_vector(sweep_b.q2, sweep_b.local_center)),
                 q: sweep_b.q2,
             };
 
@@ -288,24 +271,15 @@ pub fn shape_time_of_impact(
 
         // Assume mesh is static
         let xf_a = Transform {
-            p: sub(
-                sweep_a.c1,
-                rotate_vector(sweep_a.q1, sweep_a.local_center),
-            ),
+            p: sub(sweep_a.c1, rotate_vector(sweep_a.q1, sweep_a.local_center)),
             q: sweep_a.q1,
         };
         let xf_b1 = Transform {
-            p: sub(
-                sweep_b.c1,
-                rotate_vector(sweep_b.q1, sweep_b.local_center),
-            ),
+            p: sub(sweep_b.c1, rotate_vector(sweep_b.q1, sweep_b.local_center)),
             q: sweep_b.q1,
         };
         let xf_b2 = Transform {
-            p: sub(
-                sweep_b.c2,
-                rotate_vector(sweep_b.q2, sweep_b.local_center),
-            ),
+            p: sub(sweep_b.c2, rotate_vector(sweep_b.q2, sweep_b.local_center)),
             q: sweep_b.q2,
         };
 
@@ -343,7 +317,10 @@ pub fn shape_time_of_impact(
 
         match &shape_a.geometry {
             ShapeGeometry::Mesh { data, scale } => {
-                let mesh = Mesh { data, scale: *scale };
+                let mesh = Mesh {
+                    data,
+                    scale: *scale,
+                };
                 query_mesh(&mesh, local_bounds, |a, b, c, _triangle_index| {
                     mesh_time_of_impact_fcn(a, b, c, &mut context)
                 });

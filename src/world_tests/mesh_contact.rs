@@ -3,6 +3,8 @@
 //! Ports `TestMeshDrop` from `test_world.c` / `shared/stability.c`, plus
 //! height-field settle and edge-weld roll coverage.
 
+#![allow(clippy::unnecessary_cast)] // Pos is f64 under double-precision
+
 use crate::body::{body_get_position, create_body};
 use crate::geometry::Sphere;
 use crate::height_field::create_grid;
@@ -89,11 +91,9 @@ fn create_mesh_drop(world: &mut World, origin: Pos) {
                 let angular_velocity = rng.vec3_uniform(-1.0, 1.0);
 
                 body_def.position = Pos {
-                    x: (origin.x as f32
-                        + 0.5 * (i as f32 - 0.5 * grid_count as f32)) as _,
+                    x: (origin.x as f32 + 0.5 * (i as f32 - 0.5 * grid_count as f32)) as _,
                     y: (origin.y as f32 + 5.0) as _,
-                    z: (origin.z as f32
-                        + 0.5 * (j as f32 - 0.5 * grid_count as f32)) as _,
+                    z: (origin.z as f32 + 0.5 * (j as f32 - 0.5 * grid_count as f32)) as _,
                 };
                 body_def.linear_velocity = linear_velocity;
                 body_def.angular_velocity = angular_velocity;
@@ -256,7 +256,10 @@ fn test_mesh_edge_weld_roll() {
         max_y - min_y < 0.75,
         "edge weld roll y span too large: min={min_y} max={max_y}"
     );
-    assert!(last_x > 0.0, "sphere did not roll across the mesh (x={last_x})");
+    assert!(
+        last_x > 0.0,
+        "sphere did not roll across the mesh (x={last_x})"
+    );
 }
 
 /// Hull dropped on a flat welded mesh should settle (isolates hull-vs-mesh path).
