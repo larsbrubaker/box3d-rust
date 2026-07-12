@@ -25,6 +25,7 @@ mod terrain_demo;
 mod tree_demo;
 mod village;
 mod vis;
+mod world_demo;
 
 use box3d_rust::math_functions as m;
 
