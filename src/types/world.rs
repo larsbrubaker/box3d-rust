@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::core::{get_length_units_per_meter, SECRET_COOKIE};
+use crate::debug_draw::{CreateDebugShapeCallback, DestroyDebugShapeCallback};
 use crate::math_functions::Vec3;
 
 /// Optional world capacities that can be used to avoid run-time allocations.
@@ -62,6 +63,12 @@ pub struct WorldDef {
     pub user_data: u64,
     /// Optional capacity hints to avoid run-time allocations.
     pub capacity: Capacity,
+    /// Used to create debug draw shapes when a shape is first drawn.
+    pub create_debug_shape: Option<CreateDebugShapeCallback>,
+    /// Used to destroy debug draw shapes when a shape is modified or destroyed.
+    pub destroy_debug_shape: Option<DestroyDebugShapeCallback>,
+    /// Passed to the debug shape callbacks.
+    pub user_debug_shape_context: u64,
     /// Used internally to detect a valid definition. DO NOT SET.
     pub internal_value: i32,
 }
@@ -87,6 +94,9 @@ pub fn default_world_def() -> WorldDef {
         enable_continuous: true,
         user_data: 0,
         capacity: Capacity::default(),
+        create_debug_shape: None,
+        destroy_debug_shape: None,
+        user_debug_shape_context: 0,
         internal_value: SECRET_COOKIE,
     }
 }

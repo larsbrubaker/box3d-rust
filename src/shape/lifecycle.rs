@@ -395,20 +395,27 @@ pub fn shape_get_hull(world: &World, shape_id: ShapeId) -> Option<&HullData> {
 }
 
 /// Release hull-database ownership when geometry is about to change.
-/// Does not clear materials. (b3DestroyShapeAllocationForShapeChange)
+/// Does not clear materials. (`b3DestroyShapeAllocationForShapeChange`)
 pub(crate) fn destroy_shape_allocation_for_shape_change(world: &mut World, shape_index: i32) {
-    if !matches!(
+    if matches!(
         world.shapes[shape_index as usize].geometry,
         ShapeGeometry::Hull(_)
     ) {
-        return;
+        let geometry = std::mem::replace(
+            &mut world.shapes[shape_index as usize].geometry,
+            ShapeGeometry::default(),
+        );
+        if let ShapeGeometry::Hull(rc) = &geometry {
+            world.hull_database.release(rc);
+        }
     }
-    let geometry = std::mem::replace(
-        &mut world.shapes[shape_index as usize].geometry,
-        ShapeGeometry::default(),
-    );
-    if let ShapeGeometry::Hull(rc) = &geometry {
-        world.hull_database.release(rc);
+
+    let user_shape = world.shapes[shape_index as usize].user_shape;
+    if user_shape != 0 {
+        if let Some(destroy) = world.destroy_debug_shape {
+            destroy(user_shape, world.user_debug_shape_context);
+        }
+        world.shapes[shape_index as usize].user_shape = 0;
     }
 }
 

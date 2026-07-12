@@ -21,12 +21,14 @@
 // SPDX-License-Identifier: MIT
 
 mod api;
+mod draw;
 mod dump;
 mod query;
 mod step;
 mod validate;
 
 pub use api::*;
+pub use draw::*;
 pub use dump::*;
 pub use query::*;
 
@@ -36,6 +38,10 @@ use crate::broad_phase::BroadPhase;
 use crate::constants::CONTACT_MANIFOLD_COUNT_BUCKETS;
 use crate::constraint_graph::ConstraintGraph;
 use crate::contact::Contact;
+use crate::debug_draw::{
+    CreateDebugShapeCallback, DebugLine, DebugPoint, DestroyDebugShapeCallback,
+    DEBUG_LINE_CAPACITY, DEBUG_POINT_CAPACITY,
+};
 use crate::events::{
     BodyMoveEvent, ContactBeginTouchEvent, ContactEndTouchEvent, ContactHitEvent, JointEvent,
     SensorBeginTouchEvent, SensorEndTouchEvent,
@@ -91,7 +97,7 @@ pub struct Profile {
 ///
 /// Arena, debug draw buffers, and false-sharing padding from C are omitted;
 /// the serial port owns step scratch locally.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TaskContext {
     /// Collect per thread sensor continuous hit events.
     pub sensor_hits: Vec<SensorHit>,
@@ -130,6 +136,41 @@ pub struct TaskContext {
     pub recycled_contact_count: i32,
 
     pub manifold_counts: [i32; CONTACT_MANIFOLD_COUNT_BUCKETS],
+
+    /// Solver debug points drawn by `world_draw`. (`b3TaskContext::points`)
+    pub points: [DebugPoint; DEBUG_POINT_CAPACITY],
+    pub point_count: usize,
+
+    /// Solver debug lines drawn by `world_draw`. (`b3TaskContext::lines`)
+    pub lines: [DebugLine; DEBUG_LINE_CAPACITY],
+    pub line_count: usize,
+}
+
+impl Default for TaskContext {
+    fn default() -> Self {
+        TaskContext {
+            sensor_hits: Vec::new(),
+            contact_state_bit_set: BitSet::default(),
+            joint_state_bit_set: BitSet::default(),
+            hit_event_bit_set: BitSet::default(),
+            has_hit_events: false,
+            enlarged_sim_bit_set: BitSet::default(),
+            awake_island_bit_set: BitSet::default(),
+            split_sleep_time: 0.0,
+            split_island_id: 0,
+            sat_call_count: 0,
+            sat_cache_hit_count: 0,
+            distance_iterations: 0,
+            push_back_iterations: 0,
+            root_iterations: 0,
+            recycled_contact_count: 0,
+            manifold_counts: [0; CONTACT_MANIFOLD_COUNT_BUCKETS],
+            points: [DebugPoint::default(); DEBUG_POINT_CAPACITY],
+            point_count: 0,
+            lines: [DebugLine::default(); DEBUG_LINE_CAPACITY],
+            line_count: 0,
+        }
+    }
 }
 
 /// The world struct manages all physics entities, dynamic simulation, and
@@ -239,6 +280,13 @@ pub struct World {
 
     pub custom_filter_fcn: Option<CustomFilterFcn>,
     pub custom_filter_context: u64,
+
+    /// Create GPU/user shapes for debug draw. (`createDebugShape`)
+    pub create_debug_shape: Option<CreateDebugShapeCallback>,
+    /// Destroy GPU/user shapes. (`destroyDebugShape`)
+    pub destroy_debug_shape: Option<DestroyDebugShapeCallback>,
+    /// Context for the debug-shape callbacks. (`userDebugShapeContext`)
+    pub user_debug_shape_context: u64,
 
     pub worker_count: i32,
 
@@ -409,6 +457,9 @@ impl World {
             pre_solve_context: 0,
             custom_filter_fcn: None,
             custom_filter_context: 0,
+            create_debug_shape: def.create_debug_shape,
+            destroy_debug_shape: def.destroy_debug_shape,
+            user_debug_shape_context: def.user_debug_shape_context,
             worker_count: 1,
             user_data: def.user_data,
             inv_h: 0.0,
