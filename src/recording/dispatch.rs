@@ -98,10 +98,6 @@ impl<'a> RecReader<'a> {
     }
 }
 
-fn unimplemented_op(name: &str) {
-    eprintln!("recording replay: unhandled op {name}");
-}
-
 /// Dispatch one framed op. Returns opcode as i32, or -1 when exhausted/broken.
 pub fn dispatch_one(rdr: &mut RecReader<'_>) -> i32 {
     if rdr.cursor >= rdr.size || !rdr.ok {
