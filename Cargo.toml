@@ -15,6 +15,7 @@ documentation = "https://docs.rs/box3d-rust/"
 readme = "README.md"
 keywords = ["physics", "box3d", "3d", "simulation", "gamedev"]
 categories = ["simulation", "game-development", "algorithms"]
+autobenches = false
 exclude = [
     "box3d-cpp-reference/",
     "demo/",
