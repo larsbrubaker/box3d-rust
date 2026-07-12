@@ -18,10 +18,9 @@ precision modes. Everything below is completeness, not core physics.**
 | File | Track | Depends on |
 |---|---|---|
 | [task-9.md](task-9.md) | Recording, replay, world snapshots (last full C subsystem) | can start with snapshots now |
-| [task-11.md](task-11.md) | Demo site samples (TypeScript/wasm; frontend-only) | — |
 
-Both remaining tracks touch disjoint areas and can run on separate machines.
-task-9 is the largest. (task-8 API completeness and task-10 debug draw are done.)
+task-9 is the largest remaining track. (task-8 API completeness, task-10 debug draw,
+and task-11 demo samples are done.)
 
 ## Benchmarks
 
@@ -31,7 +30,7 @@ task-9 is the largest. (task-8 API completeness and task-10 debug draw are done.
 
 ## Release readiness
 
-Once tasks 9 and 11 land, the crate is functionally complete. Polish for 0.1:
+Once task 9 lands, the crate is functionally complete. Polish for 0.1:
 
 - [ ] Rustdoc pass over the public API (crate-level docs, module docs on the
       main entry points, doc examples for World/body/shape/joint creation)

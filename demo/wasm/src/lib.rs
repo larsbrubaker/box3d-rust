@@ -4,6 +4,7 @@
 use wasm_bindgen::prelude::*;
 
 mod continuous_demo;
+mod character_demo;
 mod geometry_demo;
 mod height_field_demo;
 mod hull_demo;
@@ -14,6 +15,7 @@ mod query_demo;
 mod ragdoll_demo;
 mod sensor_demo;
 mod sim_demo;
+mod terrain_demo;
 mod tree_demo;
 mod vis;
 
