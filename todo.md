@@ -9,39 +9,47 @@ Read `CLAUDE.md` first: the pinned C reference is `box3d-cpp-reference/`
 (never upstream), ports must match C behavior exactly, and the dynamics-core
 bring-up rules apply to everything below.
 
+**Milestone note (context, not a task): the determinism gate passed — the
+falling-ragdoll scene matches the C scalar reference bit-for-bit in both
+precision modes. Everything below is completeness, not core physics.**
+
 ## Parallel tracks
 
 | File | Track | Depends on |
 |---|---|---|
-| [task-7.md](task-7.md) | Determinism gate | helpers + large_world done; final `EXPECTED_HASH` unblocked (task-6 on main) |
+| [task-8.md](task-8.md) | API completeness: introspection, kinematic targets, wind | — |
+| [task-9.md](task-9.md) | Recording, replay, world snapshots (last full C subsystem) | task-8 helps (op capture wraps the full API) but can start with snapshots now |
+| [task-10.md](task-10.md) | Debug draw (`b3DebugDraw` + `b3World_Draw`) | — |
+| [task-11.md](task-11.md) | Demo site samples (TypeScript/wasm; frontend-only) | — |
 
-task-4, task-5, and task-6 are complete. task-7 scene helpers and large-world
-tests are on main; only the EXPECTED_HASH / sleep-step gate remains.
-
-## Recording, replay, and snapshots
-
-Start after task-4 (op capture spans the public API surface).
-
-- [ ] Port `world_snapshot.c` (serialize/deserialize world state)
-- [ ] Port `recording.c` + `recording_ops.inl` (op capture)
-- [ ] Port `recording_replay.c` (deterministic replay)
-- [ ] Port `test/test_recording.c`
+All four touch disjoint areas and can run on separate machines. task-9 is the
+largest; task-8 is the smallest and unblocks task-9's op-capture breadth.
 
 ## Benchmarks
 
-After the determinism gate passes (perf work before correctness is wasted).
-
 - [ ] Port `benchmark/` scenes as criterion benches (informs whether the
-      pooled manifold allocator or SIMD ever become worth it)
+      pooled manifold allocator or SIMD ever become worth it — both stay out
+      until benches justify them and bit-exactness is preserved)
 
-## Demo site samples
+## Release readiness
 
-Mirror the C `samples/` categories (WebGL, `demo/`, `bun run build`). The
-physics for all of these exists now except the mesh scenes:
+Once tasks 8–10 land, the crate is functionally complete. Polish for 0.1:
 
-- [ ] Joint samples (hinge chain, ragdoll — human.c ported)
-- [ ] Sensor sample
-- [ ] Bullet/CCD sample
-- [ ] Query/raycast visualizer
-- [ ] Character mover playground
-- [ ] Mesh/height-field terrain scene
+- [ ] Rustdoc pass over the public API (crate-level docs, module docs on the
+      main entry points, doc examples for World/body/shape/joint creation)
+- [ ] README: quick-start example, docs.rs badge, feature-flag docs
+      (`double-precision`)
+- [ ] Cargo.toml metadata for crates.io (description, keywords, categories,
+      license files, repository)
+- [ ] Decide the idiomatic-API question: ship the C-mirror API as-is for 0.1
+      (like box2d-rust) or add a thin ergonomic layer — record the decision
+- [ ] Tag v0.1.0 aligned with the pinned C reference version
+
+## Upstream tracking (recurring)
+
+Upstream Box3D moves fast (released June 2026; submodule pinned at `540ea38`).
+After release readiness:
+
+- [ ] Diff the pinned submodule against the latest upstream tag; triage new
+      commits into port-worthy fixes vs features; bump the pin and re-run the
+      determinism gate (expected values may change with upstream fixes)

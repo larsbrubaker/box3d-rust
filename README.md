@@ -23,7 +23,7 @@ land.
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of
 > Rust graphics and geometry libraries by Lars Brubaker.
 
-## Status: Full pipeline stepping (joints, CCD, sensors, queries)
+## Status: Determinism gate passed — bit-exact with the C reference
 
 Box3D was released by Erin Catto in June 2026. The pinned reference source lives in the
 `box3d-cpp-reference/` submodule (v0.1.0+, `540ea38`), and this port follows the same
@@ -41,13 +41,15 @@ suite.
 | Dynamics: body/shape lifecycle, contact lifecycle, constraint graph, solver sets | ✅ | ✅ (test_body + authored world tests) |
 | Dynamics: islands — link, merge, split, sleep/wake | ✅ | ✅ (authored sleep/split tests) |
 | Joints: distance, motor, parallel, prismatic, revolute, spherical, weld, wheel | ✅ | ✅ (test_joint.c) |
-| Solver: serial contact solve, sub-step pipeline, sleeping, CCD/bullets, sensors, hit events | ✅ | 🟨 (test_world.c mostly ported; mesh-dependent tests pending) |
-| Narrow phase: mesh/height-field contacts (mesh_contact.c) | ⬜ | ⬜ (TestMeshDrop) |
-| World API: queries, casts, explode, character mover | ✅ | 🟨 (test_mover.c ✅; test_body_query.c deferred on shape API) |
-| Shape API remainder: enable flags, geometry set, per-shape queries | ⬜ | ⬜ (test_shape.c remainder) |
-| Determinism: hand-rolled trig, bit-exact vs the C build | ⬜ | ⬜ (test_determinism.c) |
+| Solver: serial contact solve, sub-step pipeline, sleeping, CCD/bullets, sensors, hit events | ✅ | ✅ (test_world.c) |
+| Narrow phase: mesh/height-field contacts (mesh_contact.c) | ✅ | ✅ (TestMeshDrop + authored) |
+| World API: queries, casts, explode, character mover | ✅ | ✅ (test_body_query.c, test_mover.c) |
+| Shape/Body public API (filters, materials, geometry set, per-shape queries) | ✅ | ✅ (test_shape.c, test_body.c) |
+| Determinism: bit-exact vs the C scalar build (both precision modes) | ✅ | ✅ (test_determinism.c) |
+| Large world mode (`double-precision` feature = `BOX3D_DOUBLE_PRECISION`) | ✅ | ✅ (test_large_world.c) |
+| API completeness: introspection accessors, kinematic targets, wind | ⬜ | ⬜ (WorldTest/BodyTest remainders) |
+| Debug draw (b3DebugDraw / b3World_Draw) | ⬜ | ⬜ (authored) |
 | Snapshots and recording/replay | ⬜ | ⬜ (test_recording.c) |
-| Large world mode (`double-precision` feature = `BOX3D_DOUBLE_PRECISION`) | ⬜ | ⬜ (test_large_world.c) |
 
 Not ported (by design): the task scheduler/worker threads (the port is serial), SIMD
 codepaths (the scalar `BOX3D_DISABLE_SIMD` path is the behavioral reference), and the C
