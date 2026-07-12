@@ -430,11 +430,7 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
                 let base = transform.p;
                 let p1 = base
                     + rng.vec3_range(
-                        Vec3 {
-                            x: -a,
-                            y: a,
-                            z: -a,
-                        },
+                        Vec3 { x: -a, y: a, z: -a },
                         Vec3 {
                             x: a,
                             y: 2.0 * a,
@@ -443,11 +439,7 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
                     );
                 let p2 = base
                     + rng.vec3_range(
-                        Vec3 {
-                            x: -a,
-                            y: a,
-                            z: -a,
-                        },
+                        Vec3 { x: -a, y: a, z: -a },
                         Vec3 {
                             x: a,
                             y: 2.0 * a,
@@ -468,10 +460,7 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
                     }
                 } else if spheres.len() < prop_capacity {
                     spheres.push(CompoundSphereDef {
-                        sphere: Sphere {
-                            center: p1,
-                            radius,
-                        },
+                        sphere: Sphere { center: p1, radius },
                         material,
                     });
                 }
@@ -511,13 +500,7 @@ fn build_village_ground(world: &mut World, bodies: &mut Vec<VisBody>, grid: i32)
 
     let parent_index = ground.index1 - 1;
     for xf in &hull_transforms {
-        bodies.push(VisBody::box_local(
-            parent_index,
-            a,
-            0.5 * a,
-            a,
-            *xf,
-        ));
+        bodies.push(VisBody::box_local(parent_index, a, 0.5 * a, a, *xf));
     }
     for s in &spheres {
         bodies.push(VisBody::sphere_local(

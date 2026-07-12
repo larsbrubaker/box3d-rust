@@ -190,7 +190,11 @@ pub(crate) fn pre_step(state: &mut JointState) {
 
     let max_steering = 0.25 * PI;
     wheel_joint_set_target_steering_angle(&mut state.world, state.front_left, max_steering * steer);
-    wheel_joint_set_target_steering_angle(&mut state.world, state.front_right, max_steering * steer);
+    wheel_joint_set_target_steering_angle(
+        &mut state.world,
+        state.front_right,
+        max_steering * steer,
+    );
     wheel_joint_set_spin_motor_speed(
         &mut state.world,
         state.rear_left,

@@ -5,6 +5,7 @@ use crate::joint_drive;
 use crate::joint_gear;
 use crate::vis::{capsule_x, pos, push_poses, sphere, vec3, VisBody};
 use box3d_rust::body::create_body;
+use box3d_rust::height_field::HeightFieldData;
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
 use box3d_rust::joint::{
@@ -23,7 +24,6 @@ use box3d_rust::types::{
     default_world_def, BodyType,
 };
 use box3d_rust::world::World;
-use box3d_rust::height_field::HeightFieldData;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
@@ -343,10 +343,11 @@ pub fn joint_terrain_wireframe() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn joint_mouse_down(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     with_state(|state| {
-        if state
-            .grab
-            .begin(&mut state.world, interact::pos(ox, oy, oz), interact::vec3(tx, ty, tz))
-        {
+        if state.grab.begin(
+            &mut state.world,
+            interact::pos(ox, oy, oz),
+            interact::vec3(tx, ty, tz),
+        ) {
             let p = state.grab.mouse_point;
             vec![1.0, p.x as f32, p.y as f32, p.z as f32]
         } else {

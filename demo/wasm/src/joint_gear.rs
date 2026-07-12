@@ -8,8 +8,8 @@ use box3d_rust::hull::{create_hull, create_rock, make_box_hull};
 use box3d_rust::id::BodyId;
 use box3d_rust::joint::{create_prismatic_joint, create_revolute_joint};
 use box3d_rust::math_functions::{
-    add, compute_quat_between_unit_vectors, make_quat_from_axis_angle, rotate_vector, Pos, Transform,
-    Vec3, PI, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z,
+    add, compute_quat_between_unit_vectors, make_quat_from_axis_angle, rotate_vector, Pos,
+    Transform, Vec3, PI, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z,
 };
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape};
 use box3d_rust::types::{
@@ -66,21 +66,56 @@ fn add_teeth(world: &mut World, body_id: BodyId, tooth_center_radius: f32, z_cen
 
     for i in 0..count {
         let q = make_quat_from_axis_angle(VEC3_AXIS_Z, i as f32 * delta);
-        let mut center = rotate_vector(q, Vec3 {
-            x: tooth_center_radius,
-            y: 0.0,
-            z: 0.0,
-        });
+        let mut center = rotate_vector(
+            q,
+            Vec3 {
+                x: tooth_center_radius,
+                y: 0.0,
+                z: 0.0,
+            },
+        );
         center.z = z_center;
         let local = [
-            Vec3 { x: -hx, y: -base_half, z: -hz },
-            Vec3 { x: -hx, y: base_half, z: -hz },
-            Vec3 { x: -hx, y: base_half, z: hz },
-            Vec3 { x: -hx, y: -base_half, z: hz },
-            Vec3 { x: hx, y: -tip_half, z: -hz },
-            Vec3 { x: hx, y: tip_half, z: -hz },
-            Vec3 { x: hx, y: tip_half, z: hz },
-            Vec3 { x: hx, y: -tip_half, z: hz },
+            Vec3 {
+                x: -hx,
+                y: -base_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: -hx,
+                y: base_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: -hx,
+                y: base_half,
+                z: hz,
+            },
+            Vec3 {
+                x: -hx,
+                y: -base_half,
+                z: hz,
+            },
+            Vec3 {
+                x: hx,
+                y: -tip_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: hx,
+                y: tip_half,
+                z: -hz,
+            },
+            Vec3 {
+                x: hx,
+                y: tip_half,
+                z: hz,
+            },
+            Vec3 {
+                x: hx,
+                y: -tip_half,
+                z: hz,
+            },
         ];
         let points: Vec<Vec3> = local
             .iter()
@@ -115,7 +150,12 @@ fn build_gear_body(
     add_teeth(world, body_id, tooth_center_radius, GEAR_Z);
 
     let r = tooth_center_radius + TOOTH_HALF_WIDTH;
-    bodies.push(VisBody::box_body(body_id.index1 - 1, r, r, GEAR_Z + GEAR_HALF_DEPTH));
+    bodies.push(VisBody::box_body(
+        body_id.index1 - 1,
+        r,
+        r,
+        GEAR_Z + GEAR_HALF_DEPTH,
+    ));
     body_id
 }
 
@@ -281,10 +321,7 @@ fn create_debris(world: &mut World, bodies: &mut Vec<VisBody>) {
         for j in 0..6 {
             let z = -1.0 + 0.35 * (j as f32 % 5.0);
             body_def.position = pos(x, y, z);
-            body_def.rotation = make_quat_from_axis_angle(
-                VEC3_AXIS_Y,
-                0.3 * (i + j) as f32,
-            );
+            body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, 0.3 * (i + j) as f32);
             let body_id = create_body(world, &body_def);
             create_hull_shape(world, body_id, &shape_def, &rock);
             bodies.push(VisBody::sphere_body(body_id.index1 - 1, ROCK_RADIUS));

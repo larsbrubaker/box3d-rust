@@ -15,7 +15,9 @@ use box3d_rust::joint::{create_motor_joint, destroy_joint, joint_is_valid};
 use box3d_rust::math_functions::{
     length, Aabb, Pos, Transform, Vec3, WorldTransform, QUAT_IDENTITY, VEC3_ZERO,
 };
-use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape, shape_get_body};
+use box3d_rust::shape::{
+    create_capsule_shape, create_hull_shape, create_sphere_shape, shape_get_body,
+};
 use box3d_rust::types::{
     default_body_def, default_motor_joint_def, default_query_filter, default_shape_def, BodyType,
 };
@@ -80,12 +82,7 @@ impl MouseGrab {
 
     /// Begin a grab: raycast, create kinematic mouse body + motor joint.
     /// Returns true if a dynamic body was grabbed.
-    pub fn begin(
-        &mut self,
-        world: &mut World,
-        origin: Pos,
-        translation: Vec3,
-    ) -> bool {
+    pub fn begin(&mut self, world: &mut World, origin: Pos, translation: Vec3) -> bool {
         self.end(world);
 
         let filter = default_query_filter();
@@ -259,7 +256,12 @@ pub fn spawn_random(world: &mut World, origin: Pos, translation: Vec3) -> Option
 }
 
 /// Destroy the dynamic body under a pick ray. Returns the destroyed body index, or -1.
-pub fn delete_at_ray(world: &mut World, grab: &mut MouseGrab, origin: Pos, translation: Vec3) -> i32 {
+pub fn delete_at_ray(
+    world: &mut World,
+    grab: &mut MouseGrab,
+    origin: Pos,
+    translation: Vec3,
+) -> i32 {
     grab.end(world);
 
     let filter = default_query_filter();
@@ -420,9 +422,33 @@ impl DebugDraw for CollectDraw {
                 z: p.z as _,
             }
         };
-        self.draw_segment(origin, end(Vec3 { x: scale, y: 0.0, z: 0.0 }), HexColor(0xFF4444));
-        self.draw_segment(origin, end(Vec3 { x: 0.0, y: scale, z: 0.0 }), HexColor(0x44FF44));
-        self.draw_segment(origin, end(Vec3 { x: 0.0, y: 0.0, z: scale }), HexColor(0x4444FF));
+        self.draw_segment(
+            origin,
+            end(Vec3 {
+                x: scale,
+                y: 0.0,
+                z: 0.0,
+            }),
+            HexColor(0xFF4444),
+        );
+        self.draw_segment(
+            origin,
+            end(Vec3 {
+                x: 0.0,
+                y: scale,
+                z: 0.0,
+            }),
+            HexColor(0x44FF44),
+        );
+        self.draw_segment(
+            origin,
+            end(Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: scale,
+            }),
+            HexColor(0x4444FF),
+        );
     }
 
     fn draw_box(&mut self, extents: Vec3, transform: WorldTransform, color: HexColor) {

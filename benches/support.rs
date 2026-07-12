@@ -252,8 +252,7 @@ pub fn create_many_pyramids() -> World {
 
     for _i in 0..row_count {
         for j in 0..column_count {
-            let center_x =
-                -ground_extent + j as f32 * (base_width + 2.0 * extent) + 2.0 * extent;
+            let center_x = -ground_extent + j as f32 * (base_width + 2.0 * extent) + 2.0 * extent;
             create_small_pyramid(&mut world, base_count, extent, center_x, base_z);
         }
         base_z += delta_z;

@@ -12,8 +12,8 @@
 use crate::interact::{self, MouseGrab};
 use box3d_rust::body::{
     body_apply_mass_from_shapes, body_get_world_center, body_set_angular_velocity,
-    body_set_linear_velocity, body_set_target_transform, create_body, destroy_body, get_body_transform,
-    make_body_id,
+    body_set_linear_velocity, body_set_target_transform, create_body, destroy_body,
+    get_body_transform, make_body_id,
 };
 use box3d_rust::hull::{create_cylinder, create_rock, make_box_hull, make_offset_box_hull};
 use box3d_rust::id::BodyId;
@@ -204,26 +204,46 @@ pub fn bench_reset_junkyard() -> u32 {
         );
 
         let walls = [
-            (1.0f32, wall_h, wall, Vec3 {
-                x: -wall,
-                y: wall_h,
-                z: 0.0,
-            }),
-            (1.0, wall_h, wall, Vec3 {
-                x: wall,
-                y: wall_h,
-                z: 0.0,
-            }),
-            (wall, wall_h, 1.0, Vec3 {
-                x: 0.0,
-                y: wall_h,
-                z: -wall,
-            }),
-            (wall, wall_h, 1.0, Vec3 {
-                x: 0.0,
-                y: wall_h,
-                z: wall,
-            }),
+            (
+                1.0f32,
+                wall_h,
+                wall,
+                Vec3 {
+                    x: -wall,
+                    y: wall_h,
+                    z: 0.0,
+                },
+            ),
+            (
+                1.0,
+                wall_h,
+                wall,
+                Vec3 {
+                    x: wall,
+                    y: wall_h,
+                    z: 0.0,
+                },
+            ),
+            (
+                wall,
+                wall_h,
+                1.0,
+                Vec3 {
+                    x: 0.0,
+                    y: wall_h,
+                    z: -wall,
+                },
+            ),
+            (
+                wall,
+                wall_h,
+                1.0,
+                Vec3 {
+                    x: 0.0,
+                    y: wall_h,
+                    z: wall,
+                },
+            ),
         ];
         for (hx, hy, hz, offset) in walls {
             let hull = make_offset_box_hull(hx, hy, hz, offset);
@@ -349,8 +369,8 @@ pub fn bench_reset_trees() -> u32 {
         let x_count = 40i32;
         let z_count = 50i32;
         let cell_width = 1.0f32;
-        let mesh = create_wave_mesh(x_count, z_count, cell_width, 0.4, 0.05, 0.1)
-            .expect("wave mesh");
+        let mesh =
+            create_wave_mesh(x_count, z_count, cell_width, 0.4, 0.05, 0.1).expect("wave mesh");
 
         let mut ground_def = default_body_def();
         ground_def.position = Pos {

@@ -70,10 +70,7 @@ fn capsule_local_from_centers(c1: Vec3, c2: Vec3, radius: f32) -> (Transform, [f
     } else {
         QUAT_IDENTITY
     };
-    (
-        Transform { p: mid, q },
-        [radius, 0.5 * len, radius],
-    )
+    (Transform { p: mid, q }, [radius, 0.5 * len, radius])
 }
 
 thread_local! {
@@ -361,11 +358,7 @@ pub fn sim_reset_compound_spheres() -> u32 {
                     y: -h,
                     z: -h,
                 },
-                Vec3 {
-                    x: h,
-                    y: h,
-                    z: h,
-                },
+                Vec3 { x: h, y: h, z: h },
             );
             let radius = rng.range(0.01 * h, 0.05 * h);
             spheres.push(CompoundSphereDef {
@@ -452,11 +445,7 @@ pub fn sim_reset_compound_hulls() -> u32 {
                         y: -h,
                         z: -h,
                     },
-                    Vec3 {
-                        x: h,
-                        y: h,
-                        z: h,
-                    },
+                    Vec3 { x: h, y: h, z: h },
                 ),
                 q: make_quat_from_axis_angle(axis, rng.range(0.0, std::f32::consts::TAU)),
             });
@@ -542,11 +531,7 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
                         y: transform.p.y,
                         z: transform.p.z,
                     } + rng.vec3_range(
-                        Vec3 {
-                            x: -a,
-                            y: a,
-                            z: -a,
-                        },
+                        Vec3 { x: -a, y: a, z: -a },
                         Vec3 {
                             x: a,
                             y: 2.0 * a,
@@ -558,11 +543,7 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
                         y: transform.p.y,
                         z: transform.p.z,
                     } + rng.vec3_range(
-                        Vec3 {
-                            x: -a,
-                            y: a,
-                            z: -a,
-                        },
+                        Vec3 { x: -a, y: a, z: -a },
                         Vec3 {
                             x: a,
                             y: 2.0 * a,
@@ -583,10 +564,7 @@ pub fn sim_reset_village(grid_count: u32) -> u32 {
                         }
                     } else if spheres.len() < prop_capacity {
                         spheres.push(CompoundSphereDef {
-                            sphere: Sphere {
-                                center: p1,
-                                radius,
-                            },
+                            sphere: Sphere { center: p1, radius },
                             material,
                         });
                     }
@@ -768,6 +746,56 @@ pub fn sim_reset_sphere_stack(count: u32) -> u32 {
     })
 }
 
+/// Jenga Stack sample (mirrors `JengaStack` hull mode). `layers` is row count (C uses 40).
+/// Alternating X/Z placement — the clearly 3D stacking showcase (no motion locks).
+#[wasm_bindgen]
+pub fn sim_reset_jenga(layers: u32) -> u32 {
+    let n = layers.clamp(2, 24);
+    SIM.with(|cell| {
+        if let Some(prev) = cell.borrow_mut().as_mut() {
+            stop_recording_if_any(prev);
+        }
+        let mut sim = new_sim();
+        add_ground(&mut sim, 60.0);
+
+        let mut shape_def = default_shape_def();
+        shape_def.base_material.rolling_resistance = 0.01;
+        let hull = make_box_hull(2.5, 0.25, 0.25);
+        let half_pi = 0.5 * std::f32::consts::PI;
+
+        for i in 0..n {
+            let alpha = if (i & 1) == 1 { 0.0 } else { half_pi };
+            let x = if (i & 1) == 0 { 1.75 } else { 0.0 };
+            let z = if (i & 1) == 0 { 0.0 } else { 1.75 };
+            let y = 0.5 * i as f32 + 0.25;
+            let rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, alpha);
+
+            for &(px, pz) in &[(x, z), (-x, -z)] {
+                let mut body_def = default_body_def();
+                body_def.type_ = BodyType::Dynamic;
+                body_def.position = Pos {
+                    x: px as _,
+                    y: y as _,
+                    z: pz as _,
+                };
+                body_def.rotation = rotation;
+                let body_id = create_body(&mut sim.world, &body_def);
+                create_hull_shape(&mut sim.world, body_id, &shape_def, &hull.base);
+                sim.bodies.push(SimBody {
+                    body_index: body_id.index1 - 1,
+                    half_extents: [2.5, 0.25, 0.25],
+                    kind: 0,
+                    local: None,
+                });
+            }
+        }
+
+        let total = sim.bodies.len() as u32;
+        *cell.borrow_mut() = Some(sim);
+        total
+    })
+}
+
 /// Advance the simulation. Returns body count.
 #[wasm_bindgen]
 pub fn sim_step(dt: f32, sub_steps: i32) -> u32 {
@@ -853,10 +881,11 @@ pub fn sim_body_count() -> u32 {
 #[wasm_bindgen]
 pub fn sim_mouse_down(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     with_sim(|sim| {
-        if sim
-            .grab
-            .begin(&mut sim.world, interact::pos(ox, oy, oz), interact::vec3(tx, ty, tz))
-        {
+        if sim.grab.begin(
+            &mut sim.world,
+            interact::pos(ox, oy, oz),
+            interact::vec3(tx, ty, tz),
+        ) {
             let p = sim.grab.mouse_point;
             vec![1.0, p.x as f32, p.y as f32, p.z as f32]
         } else {
