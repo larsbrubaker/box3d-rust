@@ -39,6 +39,22 @@ export function createButton(label: string, onClick: () => void, active = false)
   return btn;
 }
 
+export function createCheckbox(
+  label: string,
+  checked: boolean,
+  onChange: (val: boolean) => void,
+): HTMLElement {
+  const wrap = document.createElement("label");
+  wrap.className = "control-checkbox";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.addEventListener("change", () => onChange(input.checked));
+  wrap.appendChild(input);
+  wrap.appendChild(document.createTextNode(label));
+  return wrap;
+}
+
 export function createButtonGroup(
   buttons: { label: string; value: string }[],
   defaultValue: string,

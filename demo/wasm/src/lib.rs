@@ -8,6 +8,7 @@ mod continuous_demo;
 mod geometry_demo;
 mod height_field_demo;
 mod hull_demo;
+mod interact;
 mod joint_demo;
 mod manifold_demo;
 mod mesh_demo;

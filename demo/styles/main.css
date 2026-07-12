@@ -719,6 +719,35 @@ body {
   box-shadow: var(--shadow);
 }
 
+.stats-overlay {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+
+.control-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin: 8px 0 10px;
+}
+
+.param-panel {
+  margin-bottom: 8px;
+}
+
 .canvas-hint {
   position: absolute;
   top: 12px;
