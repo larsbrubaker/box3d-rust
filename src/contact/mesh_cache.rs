@@ -65,13 +65,8 @@ pub(crate) fn refresh_cache(
         shape_a.shape_type() == ShapeType::Mesh || shape_a.shape_type() == ShapeType::Height
     );
 
-    // If the dynamic body didn't move out of the cached query bounds we are done.
-    // Exception: an empty cache must be refreshed — otherwise a speculative AABB
-    // overlap that queried zero triangles can stick until the body leaves the
-    // enlarged bounds, letting thin shapes fall through.
-    if !mesh_contact.triangle_cache.is_empty()
-        && aabb_contains(mesh_contact.query_bounds, bounds)
-    {
+    // If the dynamic body didn't move out of the cached query bounds we are done!
+    if aabb_contains(mesh_contact.query_bounds, bounds) {
         if let ShapeGeometry::Mesh { data, .. } = &shape_a.geometry {
             for cache in &mesh_contact.triangle_cache {
                 debug_assert!(

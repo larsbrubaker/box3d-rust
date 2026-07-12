@@ -1,7 +1,7 @@
-//! Scalar Mesh contact constraint kernels from contact_solver.c.
+//! Contact constraint kernels from contact_solver.c.
 //!
-//! Both graph-color convex contacts and mesh/overflow contacts route through
-//! these kernels (serial port; float order matches the C Mesh path).
+//! Graph-color convex contacts use the Convex kernels (scalar form of the
+//! wide SIMD path). Mesh and overflow contacts use the Mesh kernels.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -9,6 +9,7 @@
 mod prepare;
 mod restitution;
 mod solve;
+mod solve_convex;
 mod store;
 mod warm_start;
 
@@ -20,10 +21,11 @@ use crate::math_functions::{
 use crate::solver::Softness;
 
 pub use prepare::prepare_color_contacts;
-pub use restitution::apply_restitution;
+pub use restitution::{apply_restitution, apply_restitution_convex};
 pub use solve::solve_contacts;
+pub use solve_convex::solve_contacts_convex;
 pub use store::{flag_hit_events, store_impulses};
-pub use warm_start::warm_start_contacts;
+pub use warm_start::{warm_start_contacts, warm_start_contacts_convex};
 
 /// (b3ManifoldConstraintPoint)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

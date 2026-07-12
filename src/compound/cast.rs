@@ -5,7 +5,7 @@
 
 use super::types::{get_compound_child, ChildGeometry, CompoundData, MAX_COMPOUND_MESH_MATERIALS};
 use crate::constants::MAX_SHAPE_CAST_POINTS;
-use crate::distance::{CastOutput, ShapeProxy};
+use crate::distance::{CastOutput, ShapeProxy, Sweep};
 use crate::dynamic_tree::BoxCastInput;
 use crate::geometry::{
     overlap_capsule, overlap_sphere, ray_cast_capsule, ray_cast_sphere, shape_cast_capsule,
@@ -15,7 +15,7 @@ use crate::hull::{overlap_hull, ray_cast_hull, shape_cast_hull};
 use crate::math_functions::{
     aabb_transform, add, inv_rotate_vector, inv_transform_point, invert_transform, make_aabb,
     make_matrix_from_quat, max, min, min_int, mul_mv, mul_transforms, rotate_vector, sub,
-    transform_point, Aabb, Transform, Vec3,
+    transform_point, Aabb, Transform, Vec3, VEC3_ZERO,
 };
 use crate::mesh::{overlap_mesh, ray_cast_mesh, shape_cast_mesh};
 
@@ -212,4 +212,20 @@ pub fn shape_cast_compound(shape: &CompoundData, input: &ShapeCastInput) -> Cast
     );
 
     result
+}
+
+/// Static compound-child sweep for TOI (child fixed in compound frame).
+/// `xf = compoundTransform * childTransform`. (b3MakeCompoundChildSweep)
+pub fn make_compound_child_sweep(
+    compound_transform: Transform,
+    child_transform: Transform,
+) -> Sweep {
+    let xf = mul_transforms(compound_transform, child_transform);
+    Sweep {
+        local_center: VEC3_ZERO,
+        c1: xf.p,
+        c2: xf.p,
+        q1: xf.q,
+        q2: xf.q,
+    }
 }

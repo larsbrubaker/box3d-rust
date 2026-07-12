@@ -167,8 +167,11 @@ pub fn prepare_one_contact(
     constraint
 }
 
-/// Prepare both convex contact ids and mesh specs into one constraint Vec.
-/// (b3PrepareContacts_Mesh — serial over a color's contact lists)
+/// Prepare convex then mesh contacts into one constraint Vec.
+///
+/// Returns the convex prefix length so the solver can dispatch Convex vs Mesh
+/// kernels. Matches C's per-color order: wide/convex blocks then mesh blocks.
+/// (b3PrepareContacts_Convex + b3PrepareContacts_Mesh — serial)
 pub fn prepare_color_contacts(
     constraints: &mut Vec<ContactConstraint>,
     convex_ids: &[i32],
@@ -177,7 +180,7 @@ pub fn prepare_color_contacts(
     sims: &[BodySim],
     states: &[BodyState],
     context: &StepContext,
-) {
+) -> usize {
     let warm_start_scale = if context.enable_warm_starting {
         1.0
     } else {
@@ -200,6 +203,8 @@ pub fn prepare_color_contacts(
         ));
     }
 
+    let convex_count = constraints.len();
+
     for spec in mesh_specs {
         let contact = &contacts[spec.contact_id as usize];
         debug_assert!(contact.contact_id == spec.contact_id);
@@ -211,4 +216,6 @@ pub fn prepare_color_contacts(
             warm_start_scale,
         ));
     }
+
+    convex_count
 }

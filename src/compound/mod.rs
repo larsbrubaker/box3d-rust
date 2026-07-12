@@ -10,7 +10,8 @@
 //! - `cast`      — AABB, overlap, ray cast, shape cast
 //! - `query`     — AABB query, collide mover
 //!
-//! Deferred: compound time-of-impact (`#if 0` in C), world shape attach.
+//! Deferred: world shape attach. Compound CCD TOI lives in `shape::toi`
+//! (matching the live path in C `shape.c`; compound.c's copy is `#if 0`).
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -21,7 +22,10 @@ mod query;
 mod serialize;
 mod types;
 
-pub use cast::{compute_compound_aabb, overlap_compound, ray_cast_compound, shape_cast_compound};
+pub use cast::{
+    compute_compound_aabb, make_compound_child_sweep, overlap_compound, ray_cast_compound,
+    shape_cast_compound,
+};
 pub use create::{create_compound, destroy_compound};
 pub use query::{collide_mover_and_compound, query_compound};
 pub use serialize::{convert_bytes_to_compound, convert_compound_to_bytes};

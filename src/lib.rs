@@ -141,6 +141,7 @@ mod world_api_tests;
 mod large_world_tests;
 
 #[cfg(test)]
+mod determinism_tests;
 
 #[cfg(test)]
 mod tests {

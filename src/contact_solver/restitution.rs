@@ -1,4 +1,4 @@
-//! Apply restitution impulses. (b3ApplyRestitution_Mesh)
+//! Apply restitution impulses (Mesh and Convex kernels).
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -6,16 +6,19 @@
 use super::ContactConstraint;
 use crate::body::{body_flags, BodyState, IDENTITY_BODY_STATE};
 use crate::core::NULL_INDEX;
-use crate::math_functions::{add, cross, dot, max_float, mul_add, mul_mv, mul_sub, mul_sv, sub};
+use crate::math_functions::{
+    add, cross, dot, max_float, mul_add, mul_mv, mul_mv_sym, mul_sub, mul_sv, sub, Matrix3, Vec3,
+};
 use crate::solver::StepContext;
 
-/// (b3ApplyRestitution_Mesh)
-pub fn apply_restitution(
+fn apply_restitution_one(
     constraints: &mut [ContactConstraint],
     states: &mut [BodyState],
     context: &StepContext,
+    use_sym: bool,
 ) {
     let threshold = context.restitution_threshold;
+    let mul: fn(Matrix3, Vec3) -> Vec3 = if use_sym { mul_mv_sym } else { mul_mv };
 
     for contact_constraint in constraints.iter_mut() {
         let restitution = contact_constraint.restitution;
@@ -80,9 +83,9 @@ pub fn apply_restitution(
 
                 let p = mul_sv(impulse, normal);
                 v_a = mul_sub(v_a, m_a, p);
-                w_a = sub(w_a, mul_mv(i_a, cross(r_a, p)));
+                w_a = sub(w_a, mul(i_a, cross(r_a, p)));
                 v_b = mul_add(v_b, m_b, p);
-                w_b = add(w_b, mul_mv(i_b, cross(r_b, p)));
+                w_b = add(w_b, mul(i_b, cross(r_b, p)));
             }
 
             if (state_a.flags & body_flags::DYNAMIC_FLAG) != 0 {
@@ -98,4 +101,22 @@ pub fn apply_restitution(
             }
         }
     }
+}
+
+/// (b3ApplyRestitution_Mesh)
+pub fn apply_restitution(
+    constraints: &mut [ContactConstraint],
+    states: &mut [BodyState],
+    context: &StepContext,
+) {
+    apply_restitution_one(constraints, states, context, false);
+}
+
+/// Scalar form of `b3ApplyRestitution_Convex` (symmetric inertia multiply).
+pub fn apply_restitution_convex(
+    constraints: &mut [ContactConstraint],
+    states: &mut [BodyState],
+    context: &StepContext,
+) {
+    apply_restitution_one(constraints, states, context, true);
 }

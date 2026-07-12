@@ -2,6 +2,7 @@
 //
 // Split to satisfy the 800-line file limit:
 // - dispatch.rs  — per-shape-type dispatch (AABBs, mass, centroid, proxy)
+// - toi.rs       — shape time-of-impact including mesh/height/compound CCD
 // - lifecycle.rs — shape creation (margin, create_shape_internal, typed wrappers)
 // - mutators.rs  — filter / material public getters and setters
 // - api.rs       — public create re-exports
@@ -265,6 +266,7 @@ mod geometry_set;
 pub(crate) mod lifecycle;
 mod mutators;
 mod query;
+mod toi;
 
 pub use accessors::*;
 pub use api::*;
@@ -272,3 +274,4 @@ pub use dispatch::*;
 pub use geometry_set::*;
 pub use mutators::*;
 pub use query::*;
+pub use toi::*;

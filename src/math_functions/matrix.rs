@@ -31,6 +31,26 @@ pub fn mul_mv(m: Matrix3, a: Vec3) -> Vec3 {
     }
 }
 
+/// Symmetric matrix × vector matching `b3MulMVW` under `B3_SIMD_NONE`.
+///
+/// Uses the upper triangle of a column-major [`Matrix3`] (`cx.x/y/z`, `cy.y/z`,
+/// `cz.z`) and the wide association `cxx*x + (cxy*y + cxz*z)`. The Convex
+/// contact solver stores `invIA`/`invIB`/`rollingMass` this way; using full
+/// [`mul_mv`] diverges bit-for-bit when inertia is not perfectly symmetric.
+pub fn mul_mv_sym(m: Matrix3, a: Vec3) -> Vec3 {
+    let cxx = m.cx.x;
+    let cxy = m.cx.y;
+    let cxz = m.cx.z;
+    let cyy = m.cy.y;
+    let cyz = m.cy.z;
+    let czz = m.cz.z;
+    Vec3 {
+        x: cxx * a.x + (cxy * a.y + cxz * a.z),
+        y: cxy * a.x + (cyy * a.y + cyz * a.z),
+        z: cxz * a.x + (cyz * a.y + czz * a.z),
+    }
+}
+
 /// Negate a matrix.
 pub fn negate_mat3(a: Matrix3) -> Matrix3 {
     Matrix3 {
@@ -279,6 +299,17 @@ pub fn mul_mv2(m: Mat2, a: Vec2) -> Vec2 {
     Vec2 {
         x: m.cx.x * a.x + m.cy.x * a.y,
         y: m.cx.y * a.x + m.cy.y * a.y,
+    }
+}
+
+/// Symmetric 2×2 × vector matching `b3MulMV2W` (`cxx=cx.x`, `cxy=cx.y`, `cyy=cy.y`).
+pub fn mul_mv2_sym(m: Mat2, a: Vec2) -> Vec2 {
+    let cxx = m.cx.x;
+    let cxy = m.cx.y;
+    let cyy = m.cy.y;
+    Vec2 {
+        x: cxx * a.x + cxy * a.y,
+        y: cxy * a.x + cyy * a.y,
     }
 }
 
