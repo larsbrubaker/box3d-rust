@@ -8,6 +8,7 @@ import {
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 
@@ -16,7 +17,7 @@ const STRIDE = 13;
 
 type Mode = "thin" | "bounce" | "bullet";
 
-const CONTINUOUS_MODES: Mode[] = ["thin", "bounce", "bullet"];
+export const SCENES: Mode[] = ["thin", "bounce", "bullet"];
 const CONTINUOUS_NAMES: Record<Mode, string> = {
   thin: "Thin Wall",
   bounce: "Bounce House",
@@ -25,6 +26,8 @@ const CONTINUOUS_NAMES: Record<Mode, string> = {
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("continuous", SCENES);
   const { canvas, controls } = demoPage(
     container,
     "Continuous",
@@ -45,7 +48,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   );
 
   let mode: Mode =
-    initialScene && CONTINUOUS_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "thin";
+    initialScene && SCENES.includes(initialScene as Mode) ? (initialScene as Mode) : "thin";
   let launchRow: HTMLElement | null = null;
 
   const demo = new DemoScene(canvas, {

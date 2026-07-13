@@ -37,6 +37,9 @@ jobs:
       - name: Install demo dependencies
         run: cd demo && bun install
 
+      - name: Test demo (registry <-> scenes guard)
+        run: cd demo && bun test
+
       - name: Build static site
         run: cd demo && bun run build
 

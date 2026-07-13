@@ -257,25 +257,41 @@ pub fn hf_triangle_edges(hf: &HeightFieldData, origin: Vec3) -> Vec<f32> {
 /// Each triangle contributes its 3 edges (shared edges are duplicated). `scale`
 /// multiplies every vertex component; pass `VEC3_ONE` for unscaled output.
 pub fn mesh_triangle_edges(mesh: &MeshData, scale: Vec3) -> Vec<f32> {
+    mesh_triangle_edges_offset(
+        mesh,
+        scale,
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+    )
+}
+
+/// Like [`mesh_triangle_edges`] but adds `offset` to every vertex *after* scaling
+/// (`vert * scale + offset`), for placing a mesh wireframe at a tile position or
+/// under a large-world base frame. The far-world and determinism ground grids use
+/// this; the near-origin call sites pass a zero offset via [`mesh_triangle_edges`].
+pub fn mesh_triangle_edges_offset(mesh: &MeshData, scale: Vec3, offset: Vec3) -> Vec<f32> {
     let verts = get_mesh_vertices(mesh);
     let tris = get_mesh_triangles(mesh);
     let mut edges = Vec::with_capacity(tris.len() * 18);
     for tri in tris {
         let pts = [
             Vec3 {
-                x: verts[tri.index1 as usize].x * scale.x,
-                y: verts[tri.index1 as usize].y * scale.y,
-                z: verts[tri.index1 as usize].z * scale.z,
+                x: verts[tri.index1 as usize].x * scale.x + offset.x,
+                y: verts[tri.index1 as usize].y * scale.y + offset.y,
+                z: verts[tri.index1 as usize].z * scale.z + offset.z,
             },
             Vec3 {
-                x: verts[tri.index2 as usize].x * scale.x,
-                y: verts[tri.index2 as usize].y * scale.y,
-                z: verts[tri.index2 as usize].z * scale.z,
+                x: verts[tri.index2 as usize].x * scale.x + offset.x,
+                y: verts[tri.index2 as usize].y * scale.y + offset.y,
+                z: verts[tri.index2 as usize].z * scale.z + offset.z,
             },
             Vec3 {
-                x: verts[tri.index3 as usize].x * scale.x,
-                y: verts[tri.index3 as usize].y * scale.y,
-                z: verts[tri.index3 as usize].z * scale.z,
+                x: verts[tri.index3 as usize].x * scale.x + offset.x,
+                y: verts[tri.index3 as usize].y * scale.y + offset.y,
+                z: verts[tri.index3 as usize].z * scale.z + offset.z,
             },
         ];
         for e in 0..3 {
@@ -285,6 +301,20 @@ pub fn mesh_triangle_edges(mesh: &MeshData, scale: Vec3) -> Vec<f32> {
         }
     }
     edges
+}
+
+/// The first capsule shape on a body, used to build a capsule `VisBody` for a
+/// human bone (shared by the Ragdoll, Determinism, and Far Ragdolls scenes).
+pub fn capsule_from_body(world: &World, body_index: i32) -> Option<Capsule> {
+    let mut sid = world.bodies[body_index as usize].head_shape_id;
+    while sid != box3d_rust::core::NULL_INDEX {
+        let shape = &world.shapes[sid as usize];
+        if let box3d_rust::shape::ShapeGeometry::Capsule(c) = &shape.geometry {
+            return Some(*c);
+        }
+        sid = shape.next_shape_id;
+    }
+    None
 }
 
 /// Uniform random quaternion, ported bit-for-bit from the C samples' `RandomQuat`

@@ -2,7 +2,11 @@
 
 import { createButtonGroup, createInfoBox, createReadout, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
+
+/** Scene keys for this multi-scene page (registry `scene` values for `mesh`). */
+export const SCENES = ["box", "grid"] as const;
 import {
   COLORS,
   DemoScene,
@@ -18,6 +22,8 @@ import {
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("mesh", SCENES);
   const initialMesh = initialScene === "grid" ? "grid" : "box";
   const { canvas, controls } = demoPage(
     container,

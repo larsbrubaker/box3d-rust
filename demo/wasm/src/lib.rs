@@ -4,7 +4,9 @@
 use wasm_bindgen::prelude::*;
 
 mod benchmark_demo;
+mod bodies_demo;
 mod character_demo;
+mod determinism_demo;
 mod draw_data;
 mod height_field_demo;
 mod hull_demo;
@@ -17,7 +19,11 @@ mod mesh_demo;
 mod obj_loader;
 mod query_demo;
 mod ragdoll_demo;
+mod rng;
 mod sensor_demo;
+#[macro_use]
+mod shell;
+mod shapes_demo;
 mod sim_compound;
 mod sim_continuous;
 mod sim_demo;

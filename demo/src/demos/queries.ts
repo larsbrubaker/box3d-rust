@@ -9,7 +9,7 @@ import {
 } from "../controls.ts";
 import {
   attachInteraction,
-  type InteractWasm,
+  makeInteractAdapter,
   type ParamValues,
   type SimControllerWithTick,
 } from "../interaction.ts";
@@ -45,28 +45,6 @@ const SHAPE_MESH = 4;
 const SHAPE_HEIGHT = 2;
 
 const HIT_COLORS = [0xdc2626, 0x16a34a, 0x2563eb];
-
-function queryAsInteract(wasm: CastWorldWasm): InteractWasm {
-  // `query_debug_text` is a per-demo export the Rust agent may add; guard it.
-  const queryDebugText = (wasm as unknown as { query_debug_text?: () => string }).query_debug_text;
-  return {
-    sim_step: (dt, n) => wasm.query_step(dt, n),
-    sim_body_poses: () => wasm.query_poses(),
-    sim_mouse_down: (ox, oy, oz, tx, ty, tz) => wasm.query_mouse_down(ox, oy, oz, tx, ty, tz),
-    sim_mouse_move: (px, py, pz) => wasm.query_mouse_move(px, py, pz),
-    sim_mouse_up: () => wasm.query_mouse_up(),
-    sim_mouse_active: () => wasm.query_mouse_active(),
-    sim_spawn_random: (ox, oy, oz, tx, ty, tz) => wasm.query_spawn_random(ox, oy, oz, tx, ty, tz),
-    sim_delete_at_ray: (ox, oy, oz, tx, ty, tz) => wasm.query_delete_at_ray(ox, oy, oz, tx, ty, tz),
-    sim_counters: () => wasm.query_counters(),
-    sim_debug_draw: (flags) => wasm.query_debug_draw(flags),
-    // Debug-flag mask + draw scales are GLOBAL wasm exports; forward them so the
-    // View menu / panel drive the Cast World overlay too.
-    sim_set_debug_flags: (m) => wasm.sim_set_debug_flags(m),
-    sim_set_draw_scales: (j, f) => wasm.sim_set_draw_scales(j, f),
-    sim_debug_text: queryDebugText ? () => queryDebugText.call(wasm) : undefined,
-  };
-}
 
 function applyParams(wasm: CastWorldWasm, p: ParamValues) {
   const castType =
@@ -386,7 +364,7 @@ export function init(container: HTMLElement) {
   }
 
   ctrl = attachInteraction({
-    wasm: queryAsInteract(wasm),
+    wasm: makeInteractAdapter(wasm, "query"),
     demo,
     canvas,
     controls,

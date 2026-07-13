@@ -114,6 +114,9 @@ pub(crate) fn empty_state(world: World, bodies: Vec<VisBody>, scene: JointScene)
 }
 
 fn install(state: JointState) -> u32 {
+    // Restore the base Sample launch-speed scale (5.0) on every scene reset; all
+    // joint scene resets funnel through install(). Overrides re-apply after reset.
+    crate::interact::reset_launch_speed_scale();
     let count = state.bodies.len() as u32;
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(state);

@@ -160,7 +160,7 @@ export class DemoScene {
 
   private readonly ambient: THREE.AmbientLight;
   private readonly ground: THREE.Mesh;
-  private readonly shadowExtent: number;
+  private shadowExtent: number;
 
   private readonly env: SkyEnvironment;
   private composer: EffectComposer | null = null;
@@ -340,6 +340,25 @@ export class DemoScene {
 
     // Debug view outputs.
     this.applyDebugView(s.debugView);
+  }
+
+  /**
+   * Resize the directional shadow-camera frustum (world units). Multi-scene
+   * pages that share one DemoScene across scenes with very different footprints
+   * (e.g. World's 80-unit Far Pyramid vs the 60-unit far scenes) call this on
+   * scene switch so shadows stay tight without re-instantiating the scene.
+   */
+  setShadowExtent(extent: number) {
+    if (extent === this.shadowExtent) return;
+    this.shadowExtent = extent;
+    const cam = this.keyLight.shadow.camera;
+    cam.near = 0.5;
+    cam.far = extent * 4;
+    cam.left = -extent;
+    cam.right = extent;
+    cam.top = extent;
+    cam.bottom = -extent;
+    cam.updateProjectionMatrix();
   }
 
   private updateShadowSystem(shadows: boolean) {

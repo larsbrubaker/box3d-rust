@@ -1,16 +1,14 @@
 //! Ragdoll demo — CreateHuman on a ground box (sample Ragdoll / Box).
 
-use crate::vis::{pos, push_poses, VisBody};
+use crate::vis::{capsule_from_body, pos, push_poses, VisBody};
 use box3d_rust::body::create_body;
-use box3d_rust::core::NULL_INDEX;
-use box3d_rust::geometry::Capsule;
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::human::{
     create_human, destroy_human, human_set_joint_damping_ratio, human_set_joint_friction_torque,
     human_set_joint_spring_hertz, Human, BONE_COUNT,
 };
 use box3d_rust::math_functions::Vec3;
-use box3d_rust::shape::{create_hull_shape, ShapeGeometry};
+use box3d_rust::shape::create_hull_shape;
 use box3d_rust::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use box3d_rust::world::World;
 use std::cell::RefCell;
@@ -36,18 +34,6 @@ fn with_state<R>(f: impl FnOnce(&mut RagdollState) -> R) -> R {
             .as_mut()
             .expect("ragdoll not initialized — call ragdoll_reset first"))
     })
-}
-
-fn capsule_from_body(world: &World, body_index: i32) -> Option<Capsule> {
-    let mut sid = world.bodies[body_index as usize].head_shape_id;
-    while sid != NULL_INDEX {
-        let shape = &world.shapes[sid as usize];
-        if let ShapeGeometry::Capsule(c) = &shape.geometry {
-            return Some(*c);
-        }
-        sid = shape.next_shape_id;
-    }
-    None
 }
 
 fn rebuild_vis(state: &mut RagdollState) {

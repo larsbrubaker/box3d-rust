@@ -80,6 +80,9 @@ fn with_bench<R>(f: impl FnOnce(&mut BenchState) -> R) -> R {
 }
 
 fn new_world() -> World {
+    // Restore the base Sample launch-speed scale (5.0) on every scene reset (each
+    // bench reset builds one world through here); overrides re-apply after reset.
+    crate::interact::reset_launch_speed_scale();
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,

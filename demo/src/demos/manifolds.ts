@@ -2,6 +2,7 @@
 
 import { createButtonGroup, createInfoBox, createReadout, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import {
   COLORS,
@@ -18,8 +19,13 @@ import {
 
 const KIND_NAMES = ["spheres", "capsules", "hull-sphere", "hull-hull"];
 
+// Scene keys are the KIND_NAMES indices ("0".."3"), matching the registry.
+export const SCENES = KIND_NAMES.map((_, i) => String(i));
+
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("manifolds", SCENES);
   const { canvas, controls } = demoPage(
     container,
     "Contact Manifolds",

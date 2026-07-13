@@ -8,6 +8,7 @@ import {
   updateReadout,
 } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import {
   DemoScene,
@@ -26,10 +27,14 @@ import {
 
 type Mode = "mover" | "village";
 
-const CHARACTER_MODES: Mode[] = ["mover", "village"];
+export const SCENES: Mode[] = ["mover", "village"];
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  // Only "mover" is a RegisterSample entry; "village" is an internal walkthrough
+  // view of the Compound/Village sample, so it is whitelisted as `extra`.
+  assertRouteScenes("character", SCENES, ["village"]);
   const { canvas, controls } = demoPage(
     container,
     "Character Mover",
@@ -57,7 +62,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   controls.appendChild(statsEl);
 
   let mode: Mode =
-    initialScene && CHARACTER_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "mover";
+    initialScene && SCENES.includes(initialScene as Mode) ? (initialScene as Mode) : "mover";
   let villageGrid = 16;
 
   controls.appendChild(

@@ -1,6 +1,7 @@
 //! Gear Lift sample — faithful port of C `GearLift` from `sample_joint.cpp`.
 
 use crate::joint_demo::{empty_state, new_world, JointScene, JointState};
+use crate::rng::XorShift32;
 use crate::vis::{pos, vec3, VisBody};
 use box3d_rust::body::{body_get_local_point, create_body};
 use box3d_rust::debug_draw::HexColor;
@@ -86,30 +87,27 @@ const BASIN_POINTS: [(f32, f32); 32] = [
     (-11.3000, 7.1917),
 ];
 
-const RAND_LIMIT: u32 = 32767;
 thread_local! {
     static RANDOM_SEED: Cell<u32> = const { Cell::new(12345) };
 }
 
-fn random_int() -> i32 {
+/// Draw from the shared [`XorShift32`] over this module's thread-local seed cell,
+/// running `f` on the reconstructed generator and storing its seed back.
+fn with_rng<R>(f: impl FnOnce(&mut XorShift32) -> R) -> R {
     RANDOM_SEED.with(|seed| {
-        let mut x = seed.get();
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        seed.set(x);
-        (x % (RAND_LIMIT + 1)) as i32
+        let mut rng = XorShift32::with_seed(seed.get());
+        let out = f(&mut rng);
+        seed.set(rng.seed());
+        out
     })
 }
 
 fn random_int_range(lo: i32, hi: i32) -> i32 {
-    lo + random_int() % (hi - lo + 1)
+    with_rng(|rng| rng.range_int(lo, hi))
 }
 
 fn random_float_range(lo: f32, hi: f32) -> f32 {
-    let r = (random_int() as u32 & RAND_LIMIT) as f32;
-    let r = r / RAND_LIMIT as f32;
-    (hi - lo) * r + lo
+    with_rng(|rng| rng.range(lo, hi))
 }
 
 fn random_quat() -> Quat {

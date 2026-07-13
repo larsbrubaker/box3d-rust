@@ -100,6 +100,34 @@ export interface Box3dWasm {
   sensor_topology_version(): number;
   sensor_event_stats(): Float32Array;
 
+  // --- Shapes category (sample_shapes.cpp) ---
+  shapes_reset(scene: number): number;
+  shapes_reset_restitution(box_shape: boolean): number;
+  shapes_reset_wind(shape_type: number, count: number): number;
+  shapes_reset_conveyor(obj_text: string): number;
+  shapes_set_wind_live(wind_x: number, drag: number, lift: number): void;
+  shapes_set_invoke(invoke: boolean): void;
+  shapes_create_static(): void;
+  shapes_destroy_static(): void;
+  shapes_static_exists(): boolean;
+  shapes_step(dt: number, sub_steps: number): number;
+  shapes_poses(): Float32Array;
+  shapes_styles(): Uint32Array;
+  shapes_debug_text(): string;
+  shapes_debug_draw(flags: number): Float32Array;
+  shapes_counters(): Float32Array;
+  shapes_wind_arrow(): Float32Array;
+  shapes_conveyor_mesh(): Float32Array;
+  shapes_conveyor_colors(): Uint32Array;
+  shapes_conveyor_velocity_lines(): Float32Array;
+  shapes_body_count(): number;
+  shapes_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  shapes_mouse_move(px: number, py: number, pz: number): void;
+  shapes_mouse_up(): void;
+  shapes_mouse_active(): boolean;
+  shapes_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  shapes_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+
   query_reset(): void;
   query_step(dt: number, sub_steps: number): number;
   query_poses(): Float32Array;
@@ -142,6 +170,10 @@ export interface Box3dWasm {
   sim_set_debug_flags(mask: number): void;
   /** Global joint/force draw scales for the debug overlay. */
   sim_set_draw_scales(joint_scale: number, force_scale: number): void;
+  /** Override the active scene's projectile launch-speed scale (`m_launchSpeedScale`).
+   *  Scene resets restore the base default of 5.0, so call this after a reset when
+   *  the matching C sample overrides it (e.g. Compound Village = 2.0). */
+  sim_set_launch_speed_scale(scale: number): void;
   /** Debug text labels for the current view mask, as a JSON array of
    *  `{x,y,z,color,text}`. The flags come from `sim_set_debug_flags`. */
   sim_debug_text(): string;
@@ -171,6 +203,37 @@ export interface Box3dWasm {
   bench_counters(): Float32Array;
   bench_debug_draw(flags: number): Float32Array;
 
+  // --- Bodies category (sample_bodies.cpp; demo/wasm/src/bodies_demo.rs) ---
+  bodies_reset(scene: number): number;
+  bodies_step(dt: number, sub_steps: number): number;
+  bodies_poses(): Float32Array;
+  bodies_styles(): Uint32Array;
+  bodies_counters(): Float32Array;
+  bodies_debug_draw(flags: number): Float32Array;
+  bodies_debug_text(): string;
+  /** HUD readout line for Gyroscopic Torque (world center of mass); "" otherwise. */
+  bodies_hud(): string;
+  /** Per-scene always-on overlay geometry `[segCount, ptCount, ...segs(7), ...pts(5)]`. */
+  bodies_overlay(): Float32Array;
+  /** Cast solid proxy shapes `[count, then per shape: kind, c1(3), c2(3), radius, colorBits]`. */
+  bodies_cast_shapes(): Float32Array;
+  bodies_set_type(t: number): void;
+  bodies_set_enabled(flag: boolean): void;
+  bodies_enable_link(flag: boolean): void;
+  bodies_enable_ball(flag: boolean): void;
+  bodies_teleport(): void;
+  bodies_explode(): void;
+  bodies_set_magnitude(m: number): void;
+  bodies_cast_track_down(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): void;
+  bodies_cast_track_move(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): void;
+  bodies_cast_track_up(): void;
+  bodies_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  bodies_mouse_move(px: number, py: number, pz: number): void;
+  bodies_mouse_up(): void;
+  bodies_mouse_active(): boolean;
+  bodies_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  bodies_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+
   is_double_precision_build(): boolean;
   world_far_pyramid_offset_km(): number;
   world_reset_far_pyramid(): number;
@@ -181,7 +244,6 @@ export interface Box3dWasm {
   /** `[groundStyle, boxStyle]` — the packed engine style words for the Far
    *  Pyramid ground + boxes (consumed by the renderer agent). */
   world_far_pyramid_style_pair(): Uint32Array;
-  world_far_pyramid_body_count(): number;
   world_far_pyramid_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   world_far_pyramid_mouse_move(px: number, py: number, pz: number): void;
   world_far_pyramid_mouse_up(): void;
@@ -194,6 +256,61 @@ export interface Box3dWasm {
   world_far_pyramid_set_enable_warm_starting(flag: boolean): void;
   world_far_pyramid_set_enable_continuous(flag: boolean): void;
   world_far_pyramid_set_recycle_distance(meters: number): void;
+
+  // --- World / Determinism ---
+  // Far Stack / Far Ragdolls / Far Mesh Drop share one generic `world_far_*`
+  // scene (only one is active at a time); the page calls the matching reset.
+  // Every position crossing the boundary is already shifted into the scene's
+  // base frame (16-float `vis` pose stride, ground wireframe, debug draw/text).
+  world_far_reset_stack(offset_km: number): number;
+  world_far_reset_ragdolls(): number;
+  world_far_reset_mesh_drop(): number;
+  world_far_step(dt: number, sub_steps: number): number;
+  world_far_step_count(): number;
+  world_far_poses(): Float32Array;
+  world_far_styles(): Uint32Array;
+  /** Ground mesh triangle edges in the base frame (empty for Far Stack). */
+  world_far_ground_wireframe(): Float32Array;
+  world_far_offset_km(): number;
+  /** Far Mesh Drop failure latch (`m_failed`); false for the other scenes. */
+  world_far_mesh_drop_failed(): boolean;
+  world_far_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  world_far_mouse_move(px: number, py: number, pz: number): void;
+  world_far_mouse_up(): void;
+  world_far_mouse_active(): boolean;
+  world_far_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  world_far_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  world_far_counters(): Float32Array;
+  world_far_debug_draw(flags: number): Float32Array;
+  world_far_debug_text(): string;
+  world_far_set_enable_sleep(flag: boolean): void;
+  world_far_set_enable_warm_starting(flag: boolean): void;
+  world_far_set_enable_continuous(flag: boolean): void;
+  world_far_set_recycle_distance(meters: number): void;
+
+  // Falling Ragdolls determinism soak (`sample_determinism.cpp`).
+  determinism_reset(): number;
+  determinism_step(dt: number, sub_steps: number): number;
+  determinism_step_count(): number;
+  determinism_poses(): Float32Array;
+  determinism_styles(): Uint32Array;
+  determinism_ground_wireframe(): Float32Array;
+  determinism_done(): boolean;
+  determinism_sleep_step(): number;
+  determinism_hash(): number;
+  determinism_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  determinism_mouse_move(px: number, py: number, pz: number): void;
+  determinism_mouse_up(): void;
+  determinism_mouse_active(): boolean;
+  determinism_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  determinism_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  determinism_counters(): Float32Array;
+  determinism_debug_draw(flags: number): Float32Array;
+  determinism_debug_text(): string;
+  determinism_set_enable_sleep(flag: boolean): void;
+  determinism_set_enable_warm_starting(flag: boolean): void;
+  determinism_set_enable_continuous(flag: boolean): void;
+  determinism_set_recycle_distance(meters: number): void;
 
   character_reset(): number;
   character_reset_ex(mode: number, grid_count: number): number;
