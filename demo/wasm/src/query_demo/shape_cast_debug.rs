@@ -224,13 +224,8 @@ mod tests {
             max[1] = max[1].max(p.y);
             max[2] = max[2].max(p.z);
         }
-        let extent = (max[0] - min[0])
-            .max(max[1] - min[1])
-            .max(max[2] - min[2]);
-        assert!(
-            extent > 2000.0,
-            "expected large-world extent, got {extent}"
-        );
+        let extent = (max[0] - min[0]).max(max[1] - min[1]).max(max[2] - min[2]);
+        assert!(extent > 2000.0, "expected large-world extent, got {extent}");
 
         // The cast itself must hit — this is the whole point of the repro.
         assert!(s.hit, "ShapeCastDebug cast should hit");

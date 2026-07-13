@@ -207,11 +207,7 @@ fn compute_cast(world: &World, initial_overlap: bool) -> Vec<f32> {
     );
 
     // C Step: fraction = count > 0 ? fractions[0] : 1.0
-    let fraction = if ctx.count > 0 {
-        ctx.fractions[0]
-    } else {
-        1.0
-    };
+    let fraction = if ctx.count > 0 { ctx.fractions[0] } else { 1.0 };
 
     let mut out = vec![c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, radius];
     if ctx.count > 0 {

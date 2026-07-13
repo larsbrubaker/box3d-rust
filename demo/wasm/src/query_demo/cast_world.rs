@@ -770,7 +770,11 @@ mod tests {
     #[test]
     fn reset_starts_empty_with_default_ray() {
         query_reset();
-        assert_eq!(query_step(1.0 / 60.0, 4), 0, "C CastWorld starts with no bodies");
+        assert_eq!(
+            query_step(1.0 / 60.0, 4),
+            0,
+            "C CastWorld starts with no bodies"
+        );
 
         let data = query_cast();
         assert!(data.len() >= 9);
