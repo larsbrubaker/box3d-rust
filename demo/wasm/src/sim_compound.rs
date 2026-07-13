@@ -8,8 +8,7 @@
 
 use crate::rng::XorShift32;
 use crate::sim_demo::{
-    capsule_local_from_centers, new_sim, push_dynamic_sphere, stop_recording_if_any, DemoRng,
-    SimBody, SIM,
+    capsule_local_from_centers, new_sim, push_dynamic_sphere, stop_recording_if_any, SimBody, SIM,
 };
 use box3d_rust::body::{create_body, get_body_transform};
 use box3d_rust::compound::{
@@ -295,7 +294,9 @@ pub fn sim_reset_tile_floor() -> u32 {
         let box_hull = make_box_hull(a, 0.5 * a, a);
         let material = default_surface_material();
 
-        let mut rng = DemoRng(0x7113_F100);
+        // C `TileFloor` (:247) resets `g_randomSeed = 12345` in the Sample ctor,
+        // then each tile consumes one `RandomFloatRange(-0.5, 0.25) * a` (:276).
+        let mut rng = XorShift32::with_seed(12345);
         let mut transforms: Vec<Transform> = Vec::with_capacity((GRID_COUNT * GRID_COUNT) as usize);
         for i in 0..GRID_COUNT {
             let x = (2.0 * i as f32 - GRID_COUNT as f32) * a;
@@ -399,7 +400,9 @@ pub fn sim_reset_mesh_tile() -> u32 {
         let material = default_surface_material();
         let box_mesh = create_box_mesh(VEC3_ZERO, extents, true).expect("box mesh");
 
-        let mut rng = DemoRng(0x1E5A_7113);
+        // C `MeshTile` (:365) resets `g_randomSeed = 12345` in the Sample ctor,
+        // then each tile consumes one `RandomFloatRange(-0.5, 0.25) * a` (:395).
+        let mut rng = XorShift32::with_seed(12345);
         let materials = [material];
         let mut local_transforms: Vec<Transform> =
             Vec::with_capacity((GRID_COUNT * GRID_COUNT) as usize);
@@ -738,4 +741,74 @@ pub fn sim_village_stats() -> Vec<f32> {
             .map(|s| s.village_stats.to_vec())
             .unwrap_or_default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    //! Guards Compound Tile Floor / Mesh Tile placement against drifting off the
+    //! C `g_randomSeed` XorShift stream (`RAND_SEED = 12345`). Both C samples call
+    //! `RandomFloatRange(-0.5, 0.25) * a` once per nested `(i, j)` tile.
+
+    use super::*;
+    use crate::rng::XorShift32;
+    use crate::sim_demo::sim_body_poses;
+
+    /// Local Y offsets for a `grid_count²` tile grid with `a = 4`, matching the
+    /// C nested-loop order in `sample_compound.cpp` TileFloor / MeshTile.
+    fn expected_tile_ys(grid_count: i32) -> Vec<f32> {
+        let a = 4.0f32;
+        let mut rng = XorShift32::with_seed(12345);
+        let mut ys = Vec::with_capacity((grid_count * grid_count) as usize);
+        for _i in 0..grid_count {
+            for _j in 0..grid_count {
+                ys.push(rng.range(-0.5, 0.25) * a);
+            }
+        }
+        ys
+    }
+
+    #[test]
+    fn mesh_tile_y_offsets_match_xorshift_12345() {
+        let expected = expected_tile_ys(2);
+        // Known XorShift32(12345) sequence for the first four draws (a=4).
+        assert!((expected[0] - 0.730_002_75).abs() < 1e-5);
+        assert!((expected[1] - (-1.773_033_8)).abs() < 1e-5);
+        assert!((expected[2] - (-1.633_777_9)).abs() < 1e-5);
+        assert!((expected[3] - (-0.455_092_0)).abs() < 1e-5);
+
+        let count = sim_reset_mesh_tile();
+        assert_eq!(count, 4, "Mesh Tile has four static box-mesh children");
+
+        let poses = sim_body_poses();
+        assert_eq!(poses.len(), 4 * 13);
+        // Ground body is at the origin, so world Y == local Y.
+        for (i, &ey) in expected.iter().enumerate() {
+            let py = poses[i * 13 + 1];
+            assert!(
+                (py - ey).abs() < 1e-5,
+                "mesh tile {i} Y={py}, expected {ey} from XorShift32(12345)"
+            );
+        }
+    }
+
+    #[test]
+    fn tile_floor_y_offsets_match_xorshift_12345() {
+        let expected = expected_tile_ys(50);
+        assert_eq!(expected.len(), 2500);
+
+        let count = sim_reset_tile_floor();
+        assert_eq!(count, 1, "Tile Floor exposes only the dynamic sphere as a SimBody");
+
+        let transforms = sim_tile_transforms();
+        assert_eq!(transforms.len(), 2500 * 7);
+        // C places the ground at {{ -2, 1, -3 }, identity}, so world Y = 1 + local Y.
+        for (i, &ey) in expected.iter().enumerate() {
+            let py = transforms[i * 7 + 1];
+            let want = 1.0 + ey;
+            assert!(
+                (py - want).abs() < 1e-5,
+                "tile floor {i} world Y={py}, expected {want} (1 + local {ey})"
+            );
+        }
+    }
 }

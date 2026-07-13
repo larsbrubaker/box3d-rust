@@ -152,19 +152,19 @@ export const SAMPLES: SampleEntry[] = [
     ["Capsule Cast Ray", "live", "queries", "capsule-cast-ray"],
   ]),
   ...cat("Compound", "sample_compound.cpp", [
-    ["Simple", "partial", "compound", "simple"],
+    // Live: scene matches C SimpleCompound (static hull compound + dynamic sphere).
+    ["Simple", "live", "compound", "simple"],
     // Live: 20 compound spheres placed from the shared g_randomSeed XorShift stream
     // (seed 12345), bit-identical to the C sample's RandomVec3 / RandomFloatRange order.
     ["Spheres", "live", "compound", "spheres"],
     // Live: 20 compound box hulls placed from the shared g_randomSeed XorShift stream
     // (seed 12345), matching the C RandomFloatRange / RandomVec3 / RandomQuat order.
     ["Hulls", "live", "compound", "hulls"],
-    // Partial: physics matches C (2500-hull compound + dropped sphere), but the
-    // static tiles are rendered as one instanced mesh and the placement RNG is
-    // demo-local (not the C Random* stream).
-    ["Tile Floor", "partial", "compound", "tile-floor"],
-    // Partial: 4 box-mesh compound tiles matching C; placement RNG is demo-local.
-    ["Mesh Tile", "partial", "compound", "mesh-tile"],
+    // Live: physics + placement RNG match C (XorShift g_randomSeed=12345); static
+    // tiles render as one instanced mesh (visual-equivalent to C per-hull draw).
+    ["Tile Floor", "live", "compound", "tile-floor"],
+    // Live: 4 box-mesh compound tiles with C-exact XorShift Y offsets (seed 12345).
+    ["Mesh Tile", "live", "compound", "mesh-tile"],
     // Live: the embedded character mover + sweeping ray/shape/overlap query are
     // ported (WASD walkthrough), and prop/building placement now consumes the shared
     // g_randomSeed XorShift stream (seed 12345) in C order. Grid is fixed at the C
