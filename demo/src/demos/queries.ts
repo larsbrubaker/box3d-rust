@@ -44,10 +44,12 @@ import {
   makeCapsule,
   makeSolidBox,
   makeSphere,
+  makeTriangleMesh,
   makeWireBox,
   makeWireEdges,
   setView,
   solidMat,
+  trianglesFromWireframe,
 } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
@@ -1272,19 +1274,26 @@ function initLongRayCast(container: HTMLElement) {
 // --- Initial Overlap -------------------------------------------------------
 
 function initInitialOverlap(container: HTMLElement) {
-  const { wasm, canvas, controls, demo, readout } = makeViewer(container, {
+  const { wasm, controls, demo, readout } = makeViewer(container, {
     name: "Initial Overlap",
     desc:
-      "Official Collision sample <strong>Initial Overlap</strong> — a zero-length capsule " +
-      "shape-cast against a mesh; the toggle decides whether a touching start reports a hit.",
+      "Official Collision sample <strong>Initial Overlap</strong> — a capsule is shape-cast " +
+      "with <em>zero translation</em> against a rotated quad mesh. The cast only reports a " +
+      "hit when the capsule already overlaps the mesh and the <code>initial overlap</code> " +
+      "flag is on (C <code>RayCastClosestCallback</code>).",
     hint: "Toggle initial overlap",
     target: [0, 0, 0],
     distance: 10,
   });
   controls.appendChild(
     createInfoBox(
-      "<strong>Initial Overlap</strong> — with the toggle on, an already-overlapping cast " +
-        "reports the contact (red capsule + witness point); off, it is ignored.",
+      "<strong>What this demonstrates</strong><br>" +
+        "Box3D's shape cast can detect that the cast proxy already overlaps the world at " +
+        "fraction 0 (initial overlap). With the checkbox on, that contact is accepted " +
+        "(red capsule + alice-blue witness). With it off, fraction-0 hits are ignored — " +
+        "useful when you only want later contacts along a real sweep.<br><br>" +
+        "Geometry matches C: static body rotated 10° about Z, scaled quad mesh " +
+        "(4 verts / 2 tris), capsule at (−2.1, −0.8, 0.95) with half-height 1 and radius 0.25.",
     ),
   );
 
@@ -1292,8 +1301,13 @@ function initInitialOverlap(container: HTMLElement) {
     createCheckbox("initial overlap", true, (v) => wasm.io_set_initial_overlap(v ? 1 : 0)),
   );
 
+  const hud = document.createElement("div");
+  hud.className = "info-readout";
+  controls.appendChild(hud);
+
   const ov = new Overlay(demo.dynamic);
   let wire: THREE.LineSegments | null = null;
+  let solid: THREE.Mesh | null = null;
 
   wasm.io_reset();
   setView(demo, -140, 10, 10, [0, 0, 0]);
@@ -1302,31 +1316,49 @@ function initInitialOverlap(container: HTMLElement) {
     if (!wire) {
       const w = wasm.io_surface_wireframe();
       if (w.length) {
+        // C Sample::Render draws the mesh solid; keep wire edges for silhouette.
+        solid = makeTriangleMesh(trianglesFromWireframe(w), CC.cyan, 0.55);
         wire = makeWireEdges(w, CC.cyan);
+        demo.dynamic.add(solid);
         demo.dynamic.add(wire);
       }
     }
     ov.clear();
     ov.add(makeAxes(1));
     const d = wasm.io_cast();
-    const c1 = [d[0]!, d[1]!, d[2]!];
-    const c2 = [d[3]!, d[4]!, d[5]!];
+    // [c1(3), c2(3), radius, hit, fraction, px,py,pz, nx,ny,nz]
+    const c1 = [d[0]!, d[1]!, d[2]!] as [number, number, number];
+    const c2 = [d[3]!, d[4]!, d[5]!] as [number, number, number];
     const r = d[6]!;
     const hit = d[7]! > 0.5;
-    // green capsule always; red overlaid when overlapping.
-    ov.add(makeCapsule(c1 as [number, number, number], c2 as [number, number, number], r, hit ? CC.red : CC.green, 0.6));
+    const fraction = d[8]!;
+    // C: green capsule always, then red overlaid on hit (zero translation → same pose).
+    ov.add(makeCapsule(c1, c2, r, CC.green, 0.55));
     if (hit) {
-      const pt = [d[8]!, d[9]!, d[10]!];
-      const nrm = [d[11]!, d[12]!, d[13]!];
-      ov.line(pt, [pt[0]! + 0.5 * nrm[0]!, pt[1]! + 0.5 * nrm[1]!, pt[2]! + 0.5 * nrm[2]!], CC.aliceBlue);
+      ov.add(makeCapsule(c1, c2, r, CC.red, 0.7));
+      const pt = [d[9]!, d[10]!, d[11]!];
+      const nrm = [d[12]!, d[13]!, d[14]!];
+      ov.line(
+        pt,
+        [pt[0]! + 0.5 * nrm[0]!, pt[1]! + 0.5 * nrm[1]!, pt[2]! + 0.5 * nrm[2]!],
+        CC.aliceBlue,
+      );
       ov.point(pt, CC.aliceBlue, 8);
     }
+    hud.textContent = hit
+      ? `hit · fraction = ${fraction.toFixed(4)}`
+      : `miss · fraction = ${fraction.toFixed(4)}`;
     demo.render();
   }, readout);
 
   return () => {
     stop();
     ov.dispose();
+    if (solid) {
+      demo.dynamic.remove(solid);
+      solid.geometry.dispose();
+      (solid.material as THREE.Material).dispose();
+    }
     if (wire) {
       demo.dynamic.remove(wire);
       wire.geometry.dispose();
