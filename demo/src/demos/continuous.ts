@@ -1,6 +1,11 @@
 // Continuous — the full sample_continuous.cpp suite: Thin Wall, Bounce House,
 // Spinning Stick, Bullet vs Stack, Needle Mesh, Mesh Drop, Mesh Drop Unit Test,
 // Hump Mesh, Is Fast, and Stall. Fast bodies exercising continuous collision.
+//
+// Parametric kinds 0/1/3 (box/sphere/cylinder) render as per-kind InstancedMeshes
+// with unit geometries + matrix scale and per-instance engine-style colors
+// (applyInstancedStyles), matching the Stacking / Benchmark path. Capsules
+// (kind 2) keep individual meshes — non-uniform scale on a unit capsule is wrong.
 
 import * as THREE from "three";
 import {
@@ -18,6 +23,7 @@ import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
 import { demoPage, makeStyleGate, runLoop } from "./common.ts";
 import {
+  applyInstancedStyles,
   applyShapeStyle,
   DemoScene,
   makeShapeMaterial,
@@ -84,6 +90,11 @@ const CAMERAS: Record<Mode, [number, number, number, [number, number, number]]> 
   "is-fast": [0, 15, 50, [0, 15, 0]],
   stall: [130, 15, 15, [0, 2, 0]],
 };
+
+/** Kinds that share a unit geometry and go through InstancedMesh + matrix scale. */
+function isInstancedKind(kind: number): boolean {
+  return kind === 0 || kind === 1 || kind === 3;
+}
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
@@ -168,19 +179,67 @@ export function init(container: HTMLElement, initialScene?: string) {
     }
   }
 
-  // Each mesh owns its material — engine style words color bodies per-body.
-  const meshes: THREE.Mesh[] = [];
+  // --- Individual meshes for capsules (kind 2) ---
+  const meshes: (THREE.Mesh | null)[] = [];
+
+  // --- InstancedMesh path for kinds 0 / 1 / 3 (unit geo + matrix scale) ---
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+  const cylGeo = new THREE.CylinderGeometry(1, 1, 2, 16);
+  const kindGeo: Record<number, THREE.BufferGeometry> = {
+    0: boxGeo,
+    1: sphereGeo,
+    3: cylGeo,
+  };
+  const instByKind = new Map<number, THREE.InstancedMesh>();
+  const matByKind = new Map<number, THREE.MeshStandardMaterial>();
+
+  const _m = new THREE.Matrix4();
+  const _p = new THREE.Vector3();
+  const _q = new THREE.Quaternion();
+  const _s = new THREE.Vector3();
+  const bucketMats: Map<number, THREE.Matrix4[]> = new Map();
+  const bucketStyles: Map<number, number[]> = new Map();
+
+  function ensureInstanced(kind: number, count: number): THREE.InstancedMesh {
+    let inst = instByKind.get(kind);
+    if (inst && inst.instanceMatrix.count >= count) return inst;
+    if (inst) {
+      demo.content.remove(inst);
+      inst.dispose();
+    }
+    let mat = matByKind.get(kind);
+    if (!mat) {
+      mat = makeShapeMaterial();
+      matByKind.set(kind, mat);
+    }
+    inst = new THREE.InstancedMesh(kindGeo[kind]!, mat, Math.max(count, 64));
+    inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    instByKind.set(kind, inst);
+    demo.content.add(inst);
+    return inst;
+  }
+
+  function clearInstanced() {
+    for (const inst of instByKind.values()) {
+      demo.content.remove(inst);
+      inst.dispose();
+    }
+    instByKind.clear();
+  }
 
   function disposeMesh(m: THREE.Mesh) {
     demo.content.remove(m);
-    if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
+    m.geometry.dispose();
     (m.material as THREE.Material).dispose();
   }
 
   function clearMeshes() {
-    for (const m of meshes) disposeMesh(m);
+    for (const m of meshes) {
+      if (m) disposeMesh(m);
+    }
     meshes.length = 0;
   }
 
@@ -189,44 +248,16 @@ export function init(container: HTMLElement, initialScene?: string) {
     setView(demo, yaw, pitch, dist, target);
   }
 
-  function ensureMesh(i: number, kind: number, bodyType: number): THREE.Mesh {
+  /** Individual mesh path for capsule (2) only. */
+  function ensureMesh(i: number, kind: number): THREE.Mesh {
     let mesh = meshes[i];
-    const wantSphere = kind === 1;
-    const wantCapsule = kind === 2;
-    const wantCylinder = kind === 3;
 
-    if (wantCapsule) {
-      if (!mesh || mesh.geometry.type !== "CapsuleGeometry") {
-        if (mesh) disposeMesh(mesh);
-        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), makeShapeMaterial());
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        demo.content.add(mesh);
-        meshes[i] = mesh;
-      }
-      return mesh;
-    }
-
-    if (wantCylinder) {
-      if (!mesh || mesh.geometry.type !== "CylinderGeometry") {
-        if (mesh) disposeMesh(mesh);
-        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 16), makeShapeMaterial());
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        demo.content.add(mesh);
-        meshes[i] = mesh;
-      }
-      return mesh;
-    }
-
-    if (
-      !mesh ||
-      (wantSphere && mesh.geometry !== sphereGeo) ||
-      (!wantSphere && mesh.geometry !== boxGeo)
-    ) {
+    // kind === 2 (capsule)
+    if (!mesh || mesh.userData.kind !== 2) {
       if (mesh) disposeMesh(mesh);
-      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, makeShapeMaterial());
-      mesh.castShadow = bodyType !== 0;
+      mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), makeShapeMaterial());
+      mesh.userData.kind = 2;
+      mesh.castShadow = true;
       mesh.receiveShadow = true;
       demo.content.add(mesh);
       meshes[i] = mesh;
@@ -308,6 +339,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   }
 
   function reset() {
+    clearInstanced();
     clearMeshes();
     autoGenerate = false;
     sawMovement = false;
@@ -396,6 +428,10 @@ export function init(container: HTMLElement, initialScene?: string) {
   reset();
 
   const quat = new THREE.Quaternion();
+  // Tracks the last style buffer the gate handed back. When the pile is settled
+  // the gate returns the very same cached array (referential identity), so an
+  // unchanged reference means the per-instance colors need no re-upload this frame.
+  let prevStyles: Uint32Array | undefined;
   const stop = runLoop(() => {
     const stepped = ctrl.tickFrame();
     // Mesh Drop "Auto Generate": regenerate once the pile settles (moveCount == 0),
@@ -411,50 +447,89 @@ export function init(container: HTMLElement, initialScene?: string) {
     const poses = wasm.sim_body_poses();
     const awake = wasm.sim_counters()[5] ?? 0;
     const styles = styleGate(awake, () => wasm.sim_body_styles());
+    const stylesChanged = styles !== prevStyles;
+    prevStyles = styles;
     const n = Math.floor(poses.length / STRIDE);
     while (meshes.length > n) {
-      disposeMesh(meshes.pop()!);
+      const m = meshes.pop();
+      if (m) disposeMesh(m);
     }
+
+    for (const arr of bucketMats.values()) arr.length = 0;
+    for (const arr of bucketStyles.values()) arr.length = 0;
+
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;
       const kind = poses[o + 10]!;
-      const bodyType = poses[o + 11]! | 0;
-      const mesh = ensureMesh(i, kind, bodyType);
+
+      if (isInstancedKind(kind)) {
+        // Slot flipped from capsule mesh → instanced: dispose the stale mesh.
+        const stale = meshes[i];
+        if (stale) {
+          disposeMesh(stale);
+          meshes[i] = null;
+        }
+        _p.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
+        _q.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
+        const a0 = poses[o + 7]!;
+        const a1 = poses[o + 8]!;
+        const a2 = poses[o + 9]!;
+        if (kind === 0) _s.set(a0, a1, a2);
+        else if (kind === 3) _s.set(a0, a1, a0); // radius, halfLen, radius on unit cyl
+        else _s.set(a0, a0, a0); // sphere
+        _m.compose(_p, _q, _s);
+
+        let mats = bucketMats.get(kind);
+        if (!mats) {
+          mats = [];
+          bucketMats.set(kind, mats);
+        }
+        let sts = bucketStyles.get(kind);
+        if (!sts) {
+          sts = [];
+          bucketStyles.set(kind, sts);
+        }
+        mats.push(_m.clone());
+        sts.push(styles[i] ?? 0);
+        continue;
+      }
+
+      // Capsule (2) — individual mesh.
+      const mesh = ensureMesh(i, kind);
       applyShapeStyle(mesh, styles[i]!);
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       mesh.quaternion.copy(quat);
-      if (kind === 2) {
-        const radius = poses[o + 7]!;
-        const halfLen = poses[o + 8]!;
-        const geo = mesh.geometry as THREE.CapsuleGeometry;
-        if (
-          Math.abs(geo.parameters.radius - radius) > 1e-4 ||
-          Math.abs(geo.parameters.length - Math.max(1e-4, halfLen * 2)) > 1e-3
-        ) {
-          geo.dispose();
-          mesh.geometry = new THREE.CapsuleGeometry(radius, Math.max(1e-4, halfLen * 2), 4, 10);
-        }
-        mesh.scale.set(1, 1, 1);
-      } else if (kind === 3) {
-        const radius = poses[o + 7]!;
-        const halfLen = poses[o + 8]!;
-        const geo = mesh.geometry as THREE.CylinderGeometry;
-        const h = Math.max(1e-4, halfLen * 2);
-        if (
-          Math.abs(geo.parameters.radiusTop - radius) > 1e-4 ||
-          Math.abs(geo.parameters.height - h) > 1e-3
-        ) {
-          geo.dispose();
-          mesh.geometry = new THREE.CylinderGeometry(radius, radius, h, 16);
-        }
-        mesh.scale.set(1, 1, 1);
-      } else if (kind === 1) {
-        mesh.scale.setScalar(poses[o + 7]!);
-      } else {
-        mesh.scale.set(poses[o + 7]!, poses[o + 8]!, poses[o + 9]!);
+      // kind === 2 capsule: rebuild geo when radius / half-length drift.
+      const radius = poses[o + 7]!;
+      const halfLen = poses[o + 8]!;
+      const geo = mesh.geometry as THREE.CapsuleGeometry;
+      if (
+        Math.abs(geo.parameters.radius - radius) > 1e-4 ||
+        Math.abs(geo.parameters.length - Math.max(1e-4, halfLen * 2)) > 1e-3
+      ) {
+        geo.dispose();
+        mesh.geometry = new THREE.CapsuleGeometry(radius, Math.max(1e-4, halfLen * 2), 4, 10);
+      }
+      mesh.scale.set(1, 1, 1);
+    }
+
+    // Hide any instanced kind not present this frame; fill the rest.
+    for (const [kind, inst] of instByKind) {
+      const mats = bucketMats.get(kind);
+      if (!mats || mats.length === 0) {
+        inst.count = 0;
       }
     }
+    for (const [kind, mats] of bucketMats) {
+      if (mats.length === 0) continue;
+      const inst = ensureInstanced(kind, mats.length);
+      for (let i = 0; i < mats.length; i++) inst.setMatrixAt(i, mats[i]!);
+      inst.count = mats.length;
+      inst.instanceMatrix.needsUpdate = true;
+      applyInstancedStyles(inst, bucketStyles.get(kind)!, mats.length, 0, stylesChanged);
+    }
+
     demo.render();
   }, controls);
 
@@ -462,10 +537,13 @@ export function init(container: HTMLElement, initialScene?: string) {
     window.removeEventListener("keydown", onKeyDown);
     ctrl.dispose();
     stop();
+    clearInstanced();
     clearMeshes();
     clearGround();
     demo.dispose();
     boxGeo.dispose();
     sphereGeo.dispose();
+    cylGeo.dispose();
+    for (const mat of matByKind.values()) mat.dispose();
   };
 }
