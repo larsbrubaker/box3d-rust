@@ -5,6 +5,7 @@ import * as THREE from "three";
 import {
   createButton,
   createButtonGroup,
+  createCanvasOverlay,
   createCheckbox,
   createInfoBox,
   createSlider,
@@ -17,7 +18,7 @@ import {
 } from "../interaction.ts";
 import { getWasm, type Box3dWasm } from "../wasm.ts";
 
-/** Cast World exports (not yet on Box3dWasm until wasm.ts is regenerated). */
+/** Cast World exports (also declared on Box3dWasm; local alias keeps the demo typed). */
 type CastWorldWasm = Box3dWasm & {
   query_set_params(cast_type: number, mode: number, radius: number, initial_overlap: number): void;
   query_set_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): void;
@@ -62,6 +63,14 @@ const SHAPE_HEIGHT = 2;
 
 const HIT_COLORS = [0xdc2626, 0x16a34a, 0x2563eb];
 
+/** C CastWorld::Step DrawTextLine mode blurbs (`sample_collision.cpp`). */
+const CAST_MODE_LINES: Record<string, string> = {
+  any: "Cast mode: any - check for obstruction - unsorted",
+  closest: "Cast mode: closest - find closest shape along the cast",
+  multiple: "Cast mode: multiple - gather multiple shapes - unsorted",
+  sorted: "Cast mode: sorted - gather multiple shapes sorted by closeness",
+};
+
 function applyParams(wasm: CastWorldWasm, p: ParamValues) {
   const castType =
     p.castType === "sphere" ? 1 : p.castType === "capsule" ? 2 : p.castType === "box" ? 3 : 0;
@@ -92,21 +101,27 @@ function pickRay(
 
 function initCastWorld(container: HTMLElement) {
   const wasm = getWasm() as CastWorldWasm;
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, page } = demoPage(
     container,
     "Queries",
     "Official Collision sample <strong>Cast World</strong> from <code>sample_collision.cpp</code> — " +
-      "ray / sphere / capsule / box casts with Any / Closest / Multiple / Sorted modes.",
-    "Ctrl+click aim · click select · spawn via buttons · P/O/R",
+      "starts empty; spawn with Spheres / Capsules / Hulls / Meshes / Height Field, then cast " +
+      "(Ray / Sphere / Capsule / Box) in Any / Closest / Multiple / Sorted modes.",
+    "Starts empty — click Spheres/Capsules/… · Ctrl+click aim · P/O/R",
     wasm.version(),
     { category: "Collision", samplesShell: true },
   );
 
+  // C DrawTextLine HUD over the canvas (Ctrl aim, yellow ignore note, mode, materials).
+  const hud = createCanvasOverlay(page);
+
   controls.appendChild(
     createInfoBox(
-      "<strong>Cast World</strong> — Ctrl + left mouse aims the cast through the cursor. " +
-        "Shapes outlined in yellow AABBs are ignored by the cast (ignore user_data). " +
-        "Spawn spheres / capsules / hulls / meshes / height fields; gravity scale is 0.",
+      "<strong>Cast World</strong> — starts empty (matches the C sample constructor). " +
+        "Click <strong>Spheres</strong> / <strong>Capsules</strong> / <strong>Hulls</strong> / " +
+        "<strong>Meshes</strong> / <strong>Height Field</strong> to spawn shapes (gravity scale 0). " +
+        "Ctrl + left mouse aims the cast through the cursor. " +
+        "Shapes outlined in yellow AABBs are ignored by the cast.",
     ),
   );
 
@@ -116,7 +131,7 @@ function initCastWorld(container: HTMLElement) {
   demo.camera.updateProjectionMatrix();
   const pool = createMeshPool();
 
-  // Cast visualization
+  // Cast visualization — aqua segment + green origin always visible after reset (C Step).
   const rayGeo = new THREE.BufferGeometry();
   const rayPos = new Float32Array(6);
   rayGeo.setAttribute("position", new THREE.BufferAttribute(rayPos, 3));
@@ -135,7 +150,7 @@ function initCastWorld(container: HTMLElement) {
 
   let ignoreBoxes: THREE.LineSegments | null = null;
   let surfaceWire: THREE.LineSegments | null = null;
-  let castProxy: THREE.Object3D | null = null;
+  const castProxies: THREE.Object3D[] = [];
 
   function clearHitViz() {
     for (const m of hitMeshes) {
@@ -151,17 +166,17 @@ function initCastWorld(container: HTMLElement) {
     hitMeshes.length = 0;
   }
 
-  function clearCastProxy() {
-    if (castProxy) {
-      demo.dynamic.remove(castProxy);
-      castProxy.traverse((o) => {
+  function clearCastProxies() {
+    for (const obj of castProxies) {
+      demo.dynamic.remove(obj);
+      obj.traverse((o) => {
         if (o instanceof THREE.Mesh) {
           o.geometry.dispose();
           (o.material as THREE.Material).dispose();
         }
       });
-      castProxy = null;
     }
+    castProxies.length = 0;
   }
 
   function syncIgnoreAabbs() {
@@ -228,6 +243,24 @@ function initCastWorld(container: HTMLElement) {
     demo.dynamic.add(surfaceWire);
   }
 
+  function updateHud(data: Float32Array) {
+    const count = data[0] | 0;
+    const modeKey = String(ctrl.params.mode ?? "closest");
+    const modeLine = CAST_MODE_LINES[modeKey] ?? CAST_MODE_LINES.closest!;
+    const lines = [
+      "Ctrl + left mouse to cast through cursor",
+      "Shapes drawn in yellow boxes are ignored by the ray",
+      modeLine,
+    ];
+    for (let i = 0; i < count; i++) {
+      const o = 9 + i * 9;
+      const material = data[o + 7]! | 0;
+      const triangle = data[o + 8]! | 0;
+      lines.push(`material = ${material}, triangle = ${triangle}`);
+    }
+    hud.innerHTML = lines.join("<br>");
+  }
+
   function updateCastViz() {
     const data = wasm.query_cast();
     const count = data[0] | 0;
@@ -252,7 +285,7 @@ function initCastWorld(container: HTMLElement) {
     originMarker.position.set(ox, oy, oz);
 
     clearHitViz();
-    clearCastProxy();
+    clearCastProxies();
 
     const makeProxy = (frac: number, color: number, alpha = 0.5) => {
       const px = ox + frac * tx;
@@ -283,7 +316,7 @@ function initCastWorld(container: HTMLElement) {
       if (obj) {
         obj.position.set(px, py, pz);
         demo.dynamic.add(obj);
-        castProxy = obj;
+        castProxies.push(obj);
       }
     };
 
@@ -319,13 +352,16 @@ function initCastWorld(container: HTMLElement) {
         hitGroup.add(nLine);
         hitMeshes.push(nLine);
 
-        if (i === 0 && castType !== 0) {
+        // C draws a shape proxy at every hit (not only the first).
+        if (castType !== 0) {
           makeProxy(frac, color, 0.45);
         }
       }
     } else if (castType !== 0) {
       makeProxy(1, 0x9ca3af, 0.35);
     }
+
+    updateHud(data);
   }
 
   function reset() {
@@ -367,7 +403,7 @@ function initCastWorld(container: HTMLElement) {
   );
   controls.appendChild(spawnRow);
 
-  // Radius slider shown when sphere/capsule cast (mirrors C ImGui).
+  // Radius slider shown when sphere/capsule cast (mirrors C ImGui; sole radius control).
   const radiusSlider = createSlider("Radius", 0.1, 2.0, 0.5, 0.1, (v) => {
     ctrl.params.radius = v;
     applyParams(wasm, ctrl.params);
@@ -417,16 +453,6 @@ function initCastWorld(container: HTMLElement) {
         restart: false,
       },
       {
-        type: "slider",
-        key: "radius",
-        label: "Radius",
-        min: 0.1,
-        max: 2,
-        step: 0.1,
-        default: 0.5,
-        restart: false,
-      },
-      {
         type: "checkbox",
         key: "initialOverlap",
         label: "Initial Overlap",
@@ -440,8 +466,8 @@ function initCastWorld(container: HTMLElement) {
     },
   }) as SimControllerWithTick;
 
-  // Hide duplicate radius param slider from attachInteraction panel — we keep the C-style one.
-  // (attachInteraction still tracks params.radius for applyParams.)
+  // Radius lives on the C-style slider above (not duplicated in attachInteraction params).
+  ctrl.params.radius = 0.5;
   updateRadiusVisibility();
 
   // Ctrl-click aim: onCtrlClick is not on AttachInteractionOpts yet, so handle locally.
@@ -481,7 +507,7 @@ function initCastWorld(container: HTMLElement) {
     stop();
     canvas.removeEventListener("pointerdown", onPointerDown, true);
     clearHitViz();
-    clearCastProxy();
+    clearCastProxies();
     if (ignoreBoxes) {
       demo.dynamic.remove(ignoreBoxes);
       ignoreBoxes.geometry.dispose();
