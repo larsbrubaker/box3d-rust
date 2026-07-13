@@ -17,6 +17,14 @@ import type { DemoScene } from "./three-scene.ts";
 import { makeFatLineMaterial, updateFatLineResolution } from "./render/lines.ts";
 import { demoBus, emitInitialState, viewFlags } from "./bus.ts";
 import { VIEW_BITS, OVERLAY_MASK, TEXT_MASK } from "./view-flags.ts";
+import {
+  type SampleEntry,
+  cSourceUrl,
+  entryHref,
+  findByRouteName,
+  firstEntryForRoute,
+  neighborOf,
+} from "./registry.ts";
 
 /** Wasm bindings needed by the interaction layer (sim_* today; other demos can adapt). */
 export type InteractWasm = {
@@ -673,8 +681,13 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   const infoHead = document.createElement("div");
   infoHead.className = "samples-info-head";
   infoHead.innerHTML = `
-    <div class="sample-name">${escapeHtml(sampleName)}</div>
+    <div class="sample-title-row">
+      <button class="sample-nav-btn sample-prev" type="button" title="Previous sample ([)" aria-label="Previous sample">◀</button>
+      <div class="sample-name">${escapeHtml(sampleName)}</div>
+      <button class="sample-nav-btn sample-next" type="button" title="Next sample (])" aria-label="Next sample">▶</button>
+    </div>
     <div class="sample-category">${escapeHtml(sampleCategory)}</div>
+    <a class="sample-csource" target="_blank" rel="noopener" hidden>C source ↗</a>
     <div class="sample-paused" hidden>PAUSED <span class="sample-paused-hint">(P)</span></div>
     <div class="sample-sep"></div>
     <div class="sample-stats">
@@ -696,6 +709,45 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   const camPivotEl = infoHead.querySelector(".cam-pivot") as HTMLElement;
   const camYawEl = infoHead.querySelector(".cam-yaw") as HTMLElement;
   const camRadiusEl = infoHead.querySelector(".cam-radius") as HTMLElement;
+
+  // --- Prev/next sample buttons + C-source link (C-sorted registry order) ---
+  // These share `NAVIGABLE_SAMPLES` ordering with the `[`/`]` keys and the Sim
+  // menu (all route through registry.neighborOf), so the button, key, and menu
+  // walks are one order. `activeEntry` tracks the *displayed* sample — updated by
+  // setSampleName when a multi-scene page's in-page selector switches scenes
+  // (which does not change the hash) — so the C-source link and the ◀/▶ walk
+  // always reflect what is on screen. The route is fixed for the page's lifetime.
+  const route = currentRoute();
+  const prevBtn = infoHead.querySelector(".sample-prev") as HTMLButtonElement;
+  const nextBtn = infoHead.querySelector(".sample-next") as HTMLButtonElement;
+  const cSourceLink = infoHead.querySelector(".sample-csource") as HTMLAnchorElement;
+  let activeEntry: SampleEntry | undefined =
+    findByRouteName(route, sampleName) ?? firstEntryForRoute(route);
+
+  const refreshSampleMeta = (): void => {
+    if (activeEntry) {
+      cSourceLink.href = cSourceUrl(activeEntry);
+      cSourceLink.textContent = `C source: ${activeEntry.cSource} ↗`;
+      cSourceLink.hidden = false;
+    } else {
+      cSourceLink.hidden = true;
+    }
+    const prev = neighborOf(activeEntry, -1);
+    const next = neighborOf(activeEntry, 1);
+    prevBtn.disabled = prev == null || prev === activeEntry;
+    nextBtn.disabled = next == null || next === activeEntry;
+  };
+  refreshSampleMeta();
+
+  const gotoNeighbor = (dir: -1 | 1): void => {
+    const entry = neighborOf(activeEntry, dir);
+    if (!entry || entry === activeEntry) return;
+    window.location.hash = entryHref(entry);
+    // Emit for parity with the menu / keyboard paths (same bus events).
+    demoBus.emit(dir === 1 ? "sim.nextSample" : "sim.prevSample", { entry });
+  };
+  prevBtn.addEventListener("click", () => gotoNeighbor(-1));
+  nextBtn.addEventListener("click", () => gotoNeighbor(1));
 
   // --- Parameter panel ---
   let paramDispose = () => {};
@@ -1174,6 +1226,11 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   };
   withTick.setSampleName = (name) => {
     sampleNameEl.textContent = name;
+    // Re-resolve the displayed entry so the C-source link + ◀/▶ walk follow an
+    // in-page scene switch (no hash change fires for those). Fall back to the
+    // route's first entry so single-scene pages stay pinned to their sample.
+    activeEntry = findByRouteName(route, name) ?? firstEntryForRoute(route);
+    refreshSampleMeta();
   };
 
   state.dispose = () => {
@@ -1200,6 +1257,12 @@ function escapeHtml(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** The `<route>` segment of the current `#/<route>/<slug>` hash ("" at home). */
+function currentRoute(): string {
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  return raw.split("/").filter(Boolean)[0] ?? "";
 }
 
 export type SimControllerWithTick = SimController & {

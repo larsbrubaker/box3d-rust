@@ -406,6 +406,51 @@ export function firstEntryForRoute(route: string): SampleEntry | undefined {
 }
 
 /**
+ * Resolve a route + C sample name to its entry. Multi-scene pages call
+ * `setSampleName(SCENE_LABEL[scene])` when the in-page selector switches scenes;
+ * the label is the registry `name`, so this maps the displayed scene back to its
+ * entry (used to keep the Info-panel C-source link / prev-next in sync without a
+ * hash change). A route can host more than one category (e.g. `sensors` hosts
+ * both Events samples and the Benchmark "Sensor"), so match on name within route.
+ */
+export function findByRouteName(route: string, name: string): SampleEntry | undefined {
+  return SAMPLES_SORTED.find((s) => s.route === route && s.name === name);
+}
+
+/** Canonical deep-link hash for an entry (`#/<route>/<slug>`). */
+export function entryHref(entry: SampleEntry): string {
+  return `#/${entry.route}/${entry.slug}`;
+}
+
+/**
+ * The neighbor of `entry` in the C-sorted navigable order (`NAVIGABLE_SAMPLES`),
+ * clamped at the ends. `dir` = -1 previous, +1 next. When `entry` is undefined
+ * (not currently on a navigable sample) the walk starts just past the matching
+ * end so the first press lands on the first/last sample. Shared by the Sim menu,
+ * the `[`/`]` keys, and the Info-panel ◀/▶ buttons so all three walk one order.
+ */
+export function neighborOf(entry: SampleEntry | undefined, dir: -1 | 1): SampleEntry | null {
+  const list = NAVIGABLE_SAMPLES;
+  if (list.length === 0) return null;
+  let idx = entry ? list.findIndex((s) => s.route === entry.route && s.slug === entry.slug) : -1;
+  if (idx === -1) idx = dir === 1 ? -1 : list.length;
+  const next = Math.min(list.length - 1, Math.max(0, idx + dir));
+  return list[next] ?? null;
+}
+
+/**
+ * The pinned box3d-cpp-reference submodule commit (full hash), matching
+ * `git -C box3d-cpp-reference rev-parse HEAD`. Used to build stable "C source"
+ * links into the exact upstream sources this port mirrors.
+ */
+export const CPP_REFERENCE_COMMIT = "540ea387b0c02bf714fbfdcc8fb88c039c35fe6f";
+
+/** Upstream GitHub URL for the C sample file an entry was ported from, at the pin. */
+export function cSourceUrl(entry: SampleEntry): string {
+  return `https://github.com/erincatto/box3d/blob/${CPP_REFERENCE_COMMIT}/samples/${entry.cSource}`;
+}
+
+/**
  * Registry entries hosted by a multi-scene page `route`, in registry (C sort)
  * order — the live/partial entries that own a working scene. A page can build its
  * selector straight from this instead of a private table, or keep its typed scene

@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, existsSync, statSync, rmSync } from "fs";
 import { join, extname } from "path";
+import { versionDefines } from "./build-version.ts";
 
 const PORT = parseInt(process.env.PORT || "3000");
 const ROOT = import.meta.dir;
@@ -44,6 +45,8 @@ async function buildDevBundle(): Promise<void> {
     format: "esm",
     sourcemap: "inline",
     naming: "[dir]/[name].[ext]",
+    // Embed crate version + git hash for the sidebar footer (src/version.ts).
+    define: versionDefines(ROOT),
   });
 
   if (!result.success) {
