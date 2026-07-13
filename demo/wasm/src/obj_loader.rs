@@ -99,12 +99,16 @@ pub(crate) fn parse_obj(obj_text: &str, scale: f32, z_up: bool) -> TempMesh {
 }
 
 /// Build collision [`MeshData`] from a [`TempMesh`] with the given BVH controls.
+///
+/// When `degenerate_triangle_indices` is provided, degenerate triangle indices
+/// are written into it (up to its length), matching C `b3CreateMesh(..., out, capacity)`.
 pub(crate) fn build_mesh_from_temp(
     temp: &TempMesh,
     use_median_split: bool,
     identify_edges: bool,
     weld_vertices: bool,
     weld_tolerance: f32,
+    degenerate_triangle_indices: Option<&mut [i32]>,
 ) -> Option<MeshData> {
     let def = MeshDef {
         vertices: temp.vertices.clone(),
@@ -115,7 +119,7 @@ pub(crate) fn build_mesh_from_temp(
         use_median_split,
         identify_edges,
     };
-    create_mesh(&def, None)
+    create_mesh(&def, degenerate_triangle_indices)
 }
 
 /// Parse a Wavefront OBJ buffer straight into collision [`MeshData`] (parse +
@@ -140,6 +144,7 @@ pub fn create_mesh_data_from_obj(
         identify_edges,
         weld_vertices,
         0.002,
+        None,
     )
 }
 

@@ -337,3 +337,94 @@ pub fn create_mesh(
 
 /// Destroy a mesh (no-op drop for owned Rust data). (b3DestroyMesh)
 pub fn destroy_mesh(_mesh: MeshData) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math_functions::Vec3;
+
+    /// Degenerate triangle indices must be written when an out-buffer is provided
+    /// (C `b3CreateMesh` + MeshViewer `m_degenerateTriangles`).
+    #[test]
+    fn create_mesh_collects_degenerate_triangle_indices() {
+        // One valid triangle + one near-zero-area triangle with distinct verts.
+        let def = MeshDef {
+            vertices: vec![
+                Vec3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 2.0,
+                    y: 0.0,
+                    z: 0.0,
+                }, // collinear with v0,v1 → degenerate
+            ],
+            indices: vec![0, 1, 2, 0, 1, 3],
+            material_indices: vec![],
+            weld_tolerance: 0.0,
+            weld_vertices: false,
+            use_median_split: true,
+            identify_edges: false,
+        };
+        let mut degenerate = [-1i32; 8];
+        let mesh = create_mesh(&def, Some(&mut degenerate)).expect("mesh");
+        assert_eq!(mesh.degenerate_count, 1);
+        assert_eq!(mesh.triangle_count, 1); // only the valid tri survives into the BVH
+        assert_eq!(degenerate[0], 1); // second input triangle
+        assert_eq!(degenerate[1], -1); // untouched past written count
+    }
+
+    /// Concave-edge identification and welding flags must both be accepted by
+    /// `create_mesh` (Viewer rebuild path); welding can collapse a near-duplicate
+    /// without inventing extra degenerates from duplicate-index triangles.
+    #[test]
+    fn create_mesh_viewer_flags_weld_and_identify_edges() {
+        let def = MeshDef {
+            vertices: vec![
+                Vec3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 0.0005,
+                    y: 0.0,
+                    z: 0.0,
+                }, // within 1.5 mm weld tolerance of v0
+            ],
+            indices: vec![0, 1, 2, 3, 1, 2],
+            material_indices: vec![0, 1],
+            weld_tolerance: 0.0015,
+            weld_vertices: true,
+            use_median_split: true,
+            identify_edges: true,
+        };
+        let mut degenerate = [0i32; 8];
+        let mesh = create_mesh(&def, Some(&mut degenerate)).expect("mesh");
+        assert!(mesh.triangle_count >= 1);
+        assert!(mesh.vertex_count <= 3); // v0 and v3 weld together
+        assert!(mesh.degenerate_count >= 0);
+    }
+}

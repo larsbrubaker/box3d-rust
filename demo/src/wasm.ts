@@ -74,6 +74,8 @@ export interface Box3dWasm {
   mesh_stats(): Float32Array;
   mesh_viewer_height(): number;
   mesh_viewer_nodes(level: number): Float32Array;
+  /** Stride 16: triIdx, i1,i2,i3, cx,cy,cz, v1,v2,v3 (C MeshViewer degenerate labels). */
+  mesh_viewer_degenerates(): Float32Array;
   mesh_benchmark_build(): number;
 
   sim_reset_stacking(): number;
