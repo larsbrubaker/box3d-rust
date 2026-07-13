@@ -428,7 +428,7 @@ pub fn query_reset() {
     RAND_SEED.with(|s| s.set(12345));
     // Restore the base Sample launch-speed scale (5.0) on scene reset; a scene
     // that overrides it re-applies its value after the reset returns.
-    crate::interact::reset_launch_speed_scale();
+    crate::interact::reset_scene_scales();
     STATE.with(|cell| {
         let mut def = default_world_def();
         def.gravity = Vec3 {

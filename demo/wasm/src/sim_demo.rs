@@ -102,9 +102,10 @@ pub(crate) struct SimState {
 }
 
 pub(crate) fn new_sim() -> SimState {
-    // Restore the base Sample launch-speed scale (5.0) on every scene reset;
-    // a scene that overrides it re-applies its value after the reset returns.
-    interact::reset_launch_speed_scale();
+    // Restore the base Sample launch-speed scale (5.0) and the default debug-draw
+    // joint/force scales on every scene reset; a scene that overrides either
+    // re-applies its value after the reset returns.
+    interact::reset_scene_scales();
     SimState {
         world: new_world(),
         bodies: Vec::new(),

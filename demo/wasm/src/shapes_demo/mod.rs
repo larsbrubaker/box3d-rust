@@ -143,7 +143,7 @@ pub(crate) fn new_world() -> World {
     // Restore the base Sample launch-speed scale (5.0) on every scene reset, at the
     // shared `new_world` seam (matching the other demo categories). No Shapes scene
     // overrides the scale, so every builder routes through here.
-    interact::reset_launch_speed_scale();
+    interact::reset_scene_scales();
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,

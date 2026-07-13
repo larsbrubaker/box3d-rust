@@ -42,16 +42,16 @@ routes + several invented controls (removal in flight, batch 1).
 | Compound | 6 | 0 | 4 | 2 | Simple/Spheres/Hulls/Village partial; Tile Floor, Mesh Tile missing; Village has invented dynamic bodies + lost its embedded mover/query viz |
 | Bodies | 9 | 8 | 1 | 0 | ported batch 3a; Cast partial (translucent cast proxies / plane quads simplified) |
 | Character | 4 | 0 | 1 | 3 | Mover partial (filler boxes instead of test_map01/stairs/torus/door); CapsulePlane, MoverOverlap, Rigid Body missing |
-| Stacking | 14 | 0 | 5 | 9 | friction 0.3 vs C 0.6 (Single Box, Box Stack); density 1.0 vs 1000; invented count sliders; 4/5 cameras wrong; Jenga capsule mode missing |
-| Continuous | 10 | 3 | 0 | 7 | Thin Wall, Bounce House, Bullet vs Stack **exact** |
-| Joints | 16 | 1 | 3 | 12 | Gear Lift **exact**; Revolute near-exact; Ball and Chain r=1.5 vs 2.0 + invented count slider (C: 32 fixed); Driving wave 33×33 vs 50×50, camera 12 vs 7, arrows vs WASD |
-| Ragdoll | 4 | 0 | 1 | 3 | Box contaminated by invented multi-human slider (C: 1 human, colorize false) |
+| Stacking | 14 | 5 | 9 | 0 | batch 1 exact-value fixes + batch 3b ports; cylinder-scale scenes partial pending a CloneAndTransformHull port |
+| Continuous | 10 | 8 | 2 | 0 | batch 3b; Mesh Drop (ticks-seed/auto-regen) and Stall (stall-threshold API not surfaced) partial |
+| Joints | 16 | 13 | 3 | 0 | batch 3b: 12 new live incl. C Wheel slider bug reproduced; Ball and Chain/Driving/Revolute remain partial-labeled |
+| Ragdoll | 4 | 4 | 0 | 0 | batch 3b: Mesh/Pile (20 humans)/Incline ported; multi-scene page |
 | Benchmark | 17 | 0 | 4 | 13 | 3 scaled with wrong cameras; Junkyard diverges on ~every value; Benchmark Sensor mis-filed under Events, 12×12 vs 40×40, filter callback dropped |
 | World | 4 | 4 | 0 | 0 | ported batch 3a; `#/world` page, old `#/far-pyramid` deep links alias |
 | Determinism | 1 | 1 | 0 | 0 | ported batch 3a; sleep step + world hash HUD (2×2×2 humans, C has no debug/release split) |
 | Replay | 1 | 0 | 0 | 1 | Replay viewer — needs `b3RecPlayer` wasm bindings |
 | Shapes | 12 | 12 | 0 | 0 | ported batch 3a; conveyor.obj shipped (MIT attribution), stamp order gate-tested |
-| Events | 6 | 2 | 0 | 4 | Sensor Visit + Sensor Hits **exact**; category falsely advertised LIVE |
+| Events | 6 | 6 | 0 | 0 | batch 3b: Hit/Move/Joint/Persistent Contact ported; Joint break via grab/throw shell |
 | Issues | 7 | 0 | 0 | 7 | honestly PLANNED |
 | Robustness | 4 | 0 | 0 | 4 | honestly PLANNED |
 | Collision | 12 | 1 | 0 | 11 | **Cast World exact** except invented 10-sphere pre-spawn |
@@ -131,9 +131,17 @@ the accepted stand-in.
   `demo/tests/registry.test.ts` (bun test in deploy workflow).
   Known-state: the wasm crate never built under `double-precision`
   (pre-existing f32 demo code); library green under both.
-- **Batch 3b (next)** — extend existing pages: Joints (12 missing),
-  Stacking (9), Continuous (7) + Ragdoll (3), Events (4 — Hit, Move, Joint,
-  Persistent Contact).
+- **Batch 3b — Joints (12) + Stacking (9) + Continuous (7) + Ragdoll (3) +
+  Events (4): DONE** (branch `demo-samples-batch3b`). Post-review fixes:
+  stacking_scenes/ split, C Wheel damping bug reproduced (sample_joint.cpp
+  :1463), Incline timer 1/hertz, Events Joint grab/throw shell, shared
+  TextLabelOverlay export, makeStyleGate on all pages (ragdoll_counters
+  added), vis::mesh_triangle_edges_transform, draw-scale leak fixed with
+  reset_scene_scales() at every world seam, mesh-drop ground-wireframe
+  stale-edge contract fixed (NaN console error root-caused: THREE on
+  empty/stale buffers, never Rust NaN — 6 finiteness tests added).
+  Engine gaps noted: CloneAndTransformHull and Get/SetStallThreshold not
+  surfaced (two partial scenes).
 - **Batch 3c** — Collision (11), Mesh (6+3 rebuilds, ship .obj assets),
   Manifold (5+4 rebuilds), Geometry (4+1), Benchmark (13).
 - **Batch 3d** — Character (3 + Mover rebuild), Robustness (4), Issues (7),

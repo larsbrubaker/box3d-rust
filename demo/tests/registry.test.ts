@@ -20,6 +20,7 @@ import { SCENES as determinism } from "../src/demos/determinism.ts";
 import { SCENES as joints } from "../src/demos/joints.ts";
 import { SCENES as manifolds } from "../src/demos/manifolds.ts";
 import { SCENES as mesh } from "../src/demos/mesh.ts";
+import { SCENES as ragdolls } from "../src/demos/ragdolls.ts";
 import { SCENES as sensors } from "../src/demos/sensors.ts";
 import { SCENES as shapes } from "../src/demos/shapes.ts";
 import { SCENES as stacking } from "../src/demos/stacking.ts";
@@ -41,6 +42,7 @@ const PAGES: Record<string, { scenes: readonly string[]; extra?: readonly string
   joints: { scenes: joints },
   manifolds: { scenes: manifolds },
   mesh: { scenes: mesh },
+  ragdolls: { scenes: ragdolls },
   sensors: { scenes: sensors },
   shapes: { scenes: shapes },
   stacking: { scenes: stacking },

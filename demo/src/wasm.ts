@@ -36,6 +36,10 @@ export interface Box3dWasm {
   sim_body_count(): number;
 
   ragdoll_reset(): number;
+  /** Reset to a ragdoll scene: 0 Box, 1 Mesh, 2 Pile, 3 Incline. */
+  ragdoll_reset_scene(scene: number): number;
+  /** Baked world-space ground-mesh wireframe for the current scene (empty for Box). */
+  ragdoll_ground_wireframe(): Float32Array;
   ragdoll_set_joint_params(friction: number, hertz: number, damping: number): void;
   ragdoll_step(dt: number, sub_steps: number): number;
   ragdoll_poses(): Float32Array;
@@ -46,6 +50,113 @@ export interface Box3dWasm {
   joint_reset_hinge(): number;
   joint_reset_gear_lift(): number;
   joint_reset_driving(): number;
+  // Batch-3b scenes (sample_joint.cpp).
+  joint_reset_distance(
+    count: number,
+    hertz: number,
+    damping: number,
+    length_v: number,
+    tension: number,
+    compression: number,
+    min_length: number,
+    max_length: number,
+    enable_spring: boolean,
+    enable_limit: boolean,
+  ): number;
+  joint_set_distance_params(
+    length_v: number,
+    enable_spring: boolean,
+    tension: number,
+    compression: number,
+    hertz: number,
+    damping: number,
+    enable_limit: boolean,
+    min_length: number,
+    max_length: number,
+  ): void;
+  joint_reset_filter(): number;
+  joint_reset_motor(): number;
+  joint_motor_set_params(speed: number, max_force: number, max_torque: number): void;
+  joint_motor_apply_impulse(): void;
+  joint_motor_readout(): Float32Array;
+  joint_reset_top_down_friction(): number;
+  joint_explode(): void;
+  joint_reset_prismatic(): number;
+  joint_set_prismatic_params(
+    flags: number,
+    lower: number,
+    upper: number,
+    max_force: number,
+    speed: number,
+    hertz: number,
+    damping: number,
+    target: number,
+  ): void;
+  joint_reset_spherical(): number;
+  joint_set_spherical_params(
+    flags: number,
+    cone_deg: number,
+    lower_twist_deg: number,
+    upper_twist_deg: number,
+    max_torque: number,
+    vel_x: number,
+    vel_y: number,
+    vel_z: number,
+    hertz: number,
+    damping: number,
+    rot_x: number,
+    rot_y: number,
+    rot_z: number,
+  ): void;
+  joint_reset_parallel(): number;
+  joint_set_parallel_params(hertz: number, damping: number): void;
+  joint_reset_weld(): number;
+  joint_set_weld_params(
+    lin_hertz: number,
+    lin_damp: number,
+    ang_hertz: number,
+    ang_damp: number,
+  ): void;
+  joint_reset_wheel(): number;
+  joint_set_wheel_params(
+    flags: number,
+    susp_min: number,
+    susp_max: number,
+    max_spin_torque: number,
+    spin_speed: number,
+    susp_hertz: number,
+    susp_damp: number,
+    steer_hertz: number,
+    steer_damp: number,
+    target_deg: number,
+    steer_min_deg: number,
+    steer_max_deg: number,
+  ): void;
+  joint_wheel_steering_angle(): number;
+  joint_reset_door(
+    magnitude: number,
+    two_joints: boolean,
+    hertz: number,
+    damping: number,
+  ): number;
+  joint_door_impulse(): void;
+  joint_door_set_magnitude(magnitude: number): void;
+  joint_door_set_limit(enable: boolean): void;
+  joint_door_set_two_joints(two_joints: boolean): void;
+  joint_door_set_tuning(hertz: number, damping: number): void;
+  joint_door_readout(): Float32Array;
+  joint_reset_bridge(): number;
+  joint_set_bridge_gravity(scale: number): void;
+  joint_reset_motion_locks(): number;
+  joint_set_motion_locks(
+    linear_x: boolean,
+    linear_y: boolean,
+    linear_z: boolean,
+    angular_x: boolean,
+    angular_y: boolean,
+    angular_z: boolean,
+  ): void;
+  joint_motion_lock_impulse(): void;
   joint_set_motor(enabled: boolean, speed: number, torque: number): void;
   joint_set_revolute_params(
     flags: number,
@@ -88,6 +199,28 @@ export interface Box3dWasm {
   sim_reset_bounce_house(): number;
   sim_reset_bullet_vs_stack(): number;
   sim_launch_bullet(): number;
+  // Continuous batch 2 (continuous_scenes.rs).
+  sim_reset_spinning_stick(): number;
+  sim_reset_needle_mesh(): number;
+  sim_reset_mesh_drop(): number;
+  sim_reset_mesh_drop_unit(): number;
+  sim_reset_hump_mesh(): number;
+  sim_reset_is_fast(): number;
+  sim_reset_stall(): number;
+  /** Baked world-space ground-mesh wireframe for the current scene (empty for box-only scenes). */
+  sim_cont_ground_wireframe(): Float32Array;
+  /** Fire the Stall rock bullet (C `Stall::Launch`). */
+  sim_cont_stall_launch(): number;
+  /** Mesh Drop "Type" combo: 0 box, 1 capsule, 2 cylinder, 3 sphere. */
+  sim_cont_mesh_drop_set_type(shape: number): number;
+  /** Mesh Drop "Amplitude" slider (0..1); rebuilds ground + grid. */
+  sim_cont_mesh_drop_set_amplitude(amplitude: number): number;
+  /** Mesh Drop "Generate" button; reseeds and rebuilds the grid. */
+  sim_cont_mesh_drop_generate(): number;
+  /** Bodies that moved on the last step (`b3BodyEvents.moveCount`) — drives Auto Generate. */
+  sim_cont_mesh_drop_move_count(): number;
+  /** Minimum tracked-body mass-center height (Mesh Drop Unit Test failure readout). */
+  sim_cont_min_body_height(): number;
 
   sensor_reset(scene: number): number;
   sensor_set_bullet(flag: boolean): void;
@@ -99,6 +232,15 @@ export interface Box3dWasm {
   sensor_sensor_indices(): Uint32Array;
   sensor_topology_version(): number;
   sensor_event_stats(): Float32Array;
+  /** Packed overlay `[segCount, ptCount, ...segs(7), ...pts(5)]` (DebugDrawOverlay layout);
+   *  Hit + Persistent Contact event markers. `[0, 0]` for the other scenes. */
+  sensor_overlay(): Float32Array;
+  /** JSON `[{x,y,z,color,text}]` 3D debug-text labels (C `DrawString3D`); `"[]"` if none. */
+  sensor_debug_text(): string;
+  /** JSON `[{label,value}]` HUD readout rows for the Events scenes; `"[]"` for the sensor scenes. */
+  sensor_hud(): string;
+  /** Ground mesh triangle edges for Hit / Persistent Contact (empty for box-ground scenes). */
+  sensor_ground_wireframe(): Float32Array;
 
   // --- Shapes category (sample_shapes.cpp) ---
   shapes_reset(scene: number): number;
@@ -157,6 +299,22 @@ export interface Box3dWasm {
   sim_village_stats(): Float32Array;
   sim_reset_pyramid(): number;
   sim_reset_sphere_stack(): number;
+
+  // --- Stacking batch 3b (sample_stacking.cpp) ---
+  sim_reset_card_house_thick(): number;
+  sim_reset_card_house(): number;
+  sim_reset_capsule_stack(): number;
+  sim_reset_cylinder(): number;
+  sim_reset_cylinder_stack(): number;
+  sim_reset_dominoes(): number;
+  sim_reset_wedge(): number;
+  sim_reset_arch(): number;
+  sim_reset_double_domino(): number;
+  /** Per-body local hull triangle geometry for the arbitrary-hull stacking scenes
+   *  (Cylinder, Cylinder Stack, Wedge, Arch). Layout: for each body in
+   *  `sim_body_poses` order, a `floatCount` value then `floatCount` triangle-vertex
+   *  floats (`0` for non-hull bodies). */
+  sim_hull_geometry(): Float32Array;
 
   sim_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   sim_mouse_move(px: number, py: number, pz: number): void;
@@ -352,12 +510,30 @@ export const DRIVE_TELEMETRY = {
   steerTorqueR: 8,
 } as const;
 
-/** Layout of `joint_revolute_energy()` — demo/wasm/src/joint_demo.rs `joint_revolute_energy()`. */
+/** Layout of `joint_revolute_energy()` — demo/wasm/src/joint_demo/mod.rs `joint_revolute_energy()`. */
 export const REVOLUTE_ENERGY = {
   length: 3,
   kinetic: 0,
   potential: 1,
   total: 2,
+} as const;
+
+/** Layout of `joint_motor_readout()` — demo/wasm/src/joint_demo/basic.rs. */
+export const MOTOR_READOUT = {
+  length: 2,
+  force: 0,
+  torque: 1,
+} as const;
+
+/** Layout of `joint_door_readout()` — demo/wasm/src/joint_demo/structures.rs. */
+export const DOOR_READOUT = {
+  length: 6,
+  error1: 0,
+  error2: 1,
+  hasTwo: 2,
+  pointX: 3,
+  pointY: 4,
+  pointZ: 5,
 } as const;
 
 /** Layout of `sensor_event_stats()` — demo/wasm/src/sensor_demo.rs `sensor_event_stats()`. */

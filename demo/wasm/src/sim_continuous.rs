@@ -18,6 +18,9 @@ use wasm_bindgen::prelude::*;
 /// Continuous / Thin Wall â€” `sample_continuous.cpp` ThinWall.
 #[wasm_bindgen]
 pub fn sim_reset_thin_wall() -> u32 {
+    // Box ground: clear the shared continuous ground wireframe so this scene never
+    // exposes a prior mesh scene's stale edges (see continuous_scenes contract).
+    crate::continuous_scenes::clear_ground_edges();
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -151,6 +154,8 @@ pub fn sim_reset_thin_wall() -> u32 {
 /// Continuous / Bounce House â€” `sample_continuous.cpp` BounceHouse.
 #[wasm_bindgen]
 pub fn sim_reset_bounce_house() -> u32 {
+    // Box ground: clear the shared continuous ground wireframe (see thin-wall note).
+    crate::continuous_scenes::clear_ground_edges();
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -262,6 +267,8 @@ pub fn sim_reset_bounce_house() -> u32 {
 /// Continuous / Bullet vs Stack â€” `sample_continuous.cpp` BulletVersusStack.
 #[wasm_bindgen]
 pub fn sim_reset_bullet_vs_stack() -> u32 {
+    // Box ground: clear the shared continuous ground wireframe (see thin-wall note).
+    crate::continuous_scenes::clear_ground_edges();
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);

@@ -205,7 +205,7 @@ fn with_state<R>(f: impl FnOnce(&mut BodiesState) -> R) -> R {
 
 /// Standard demo world: gravity (0, -10, 0). (C AddGroundBox worlds use the default.)
 pub fn new_world() -> World {
-    interact::reset_launch_speed_scale();
+    interact::reset_scene_scales();
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,
