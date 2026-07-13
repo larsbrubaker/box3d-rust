@@ -132,7 +132,10 @@ export const SAMPLES: SampleEntry[] = [
     // Live: 32×32 floor grid (C DEBUG; release 1000² disclosed in SCENE_INFO / too
     // heavy for serial wasm).
     ["Large World", "live", "benchmark", "large-world"],
-    ["Hull", "partial", "benchmark", "hull"],
+    // Live: Step create/clone trial loops ported at C DEBUG 200 (release 2000
+    // disclosed on the page). Timing uses performance.now() around the wasm
+    // trial exports (no b3GetTicks in wasm), matching Height Field / Tree.
+    ["Hull", "live", "benchmark", "hull"],
     // Live: gridCount 10 (C DEBUG; release 25 disclosed in SCENE_INFO / too heavy for
     // serial wasm).
     ["Chains", "live", "benchmark", "chains"],

@@ -8,7 +8,7 @@ use crate::vis::mesh_triangle_edges;
 use crate::vis::VisBody;
 use box3d_rust::body::create_body;
 use box3d_rust::geometry::{Capsule, Sphere};
-use box3d_rust::hull::{clone_and_transform_hull, create_hull};
+use box3d_rust::hull::{clone_and_transform_hull, create_hull, destroy_hull, HullData};
 use box3d_rust::id::{BodyId, ShapeId};
 use box3d_rust::joint::create_spherical_joint;
 use box3d_rust::math_functions::{
@@ -264,9 +264,21 @@ pub(crate) fn step_chains(scene: &mut BenchScene) {
 // Hull
 // ---------------------------------------------------------------------------
 
+/// C DEBUG trial count (`BenchmarkHull::Step` :1069). Release uses 2000; the
+/// browser keeps **200** like other benches (serial wasm feasibility).
+pub(crate) const HULL_TRIALS: i32 = 200;
+
+/// Live Hull state (`BenchmarkHull`) — point cloud + source hull for the Step
+/// create/clone trial loops.
+pub(crate) struct HullState {
+    pub points: Vec<Vec3>,
+    pub hull: HullData,
+    pub scale: Vec3,
+}
+
 /// Twin-deduped wireframe edges of a hull (shared [`crate::vis::hull_edges`]),
 /// with every vertex shifted by `offset` for side-by-side placement.
-fn hull_edges(hull: &box3d_rust::hull::HullData, offset: Vec3) -> Vec<f32> {
+fn hull_edges(hull: &HullData, offset: Vec3) -> Vec<f32> {
     let mut out = crate::vis::hull_edges(hull);
     for chunk in out.chunks_mut(3) {
         chunk[0] += offset.x;
@@ -282,8 +294,10 @@ fn hull_edges(hull: &box3d_rust::hull::HullData, offset: Vec3) -> Vec<f32> {
 /// **Port note:** the mirror hull is produced by `b3CloneAndTransformHull`
 /// (`clone_and_transform_hull`) with identity transform and scale `{-1,1,1}`,
 /// exactly as C does — this reflects the source hull (reversing edge winding) and
-/// recomputes its geometry. Timing is not reported (serial wasm has no
-/// `b3GetTicks`); the readout shows trial count + surface areas instead.
+/// recomputes its geometry. The Step create/clone trial loops use C DEBUG
+/// [`HULL_TRIALS`] (200); release 2000 is disclosed on the page. Timing of those
+/// loops is measured page-side with `performance.now()` (wasm has no
+/// `b3GetTicks`), matching Height Field / Tree Benchmark.
 pub(crate) fn build_hull() -> BenchScene {
     let world = new_world();
     let mut scene = empty_scene(world, Vec::new(), BenchKind::Hull);
@@ -336,6 +350,84 @@ pub(crate) fn build_hull() -> BenchScene {
         },
     );
 
-    scene.hull_trials = 2000; // C release trial count (informational).
+    scene.hull_trials = HULL_TRIALS;
+    scene.hull = Some(HullState {
+        points,
+        hull,
+        scale,
+    });
     scene
+}
+
+/// C `BenchmarkHull::Step` create-trial loop (:1071–1076). Returns mean surface
+/// area over [`HULL_TRIALS`] creates (and updates `scene.hull_area`).
+pub(crate) fn run_hull_create_trials(scene: &mut BenchScene) -> f32 {
+    let trials = scene.hull_trials;
+    let Some(hull_state) = scene.hull.take() else {
+        return 0.0;
+    };
+    let count = hull_state.points.len() as i32;
+    let mut area = 0.0f32;
+    for _ in 0..trials {
+        let hull = create_hull(&hull_state.points, count).expect("hull create trial");
+        area += hull.surface_area;
+        destroy_hull(hull);
+    }
+    let mean = area / trials as f32;
+    scene.hull_area = mean;
+    scene.hull = Some(hull_state);
+    mean
+}
+
+/// C `BenchmarkHull::Step` clone-trial loop (:1081–1086). Returns mean scaled
+/// surface area over [`HULL_TRIALS`] clones (and updates `scene.hull_clone_area`).
+pub(crate) fn run_hull_clone_trials(scene: &mut BenchScene) -> f32 {
+    let trials = scene.hull_trials;
+    let Some(hull_state) = scene.hull.take() else {
+        return 0.0;
+    };
+    let mut scaled_area = 0.0f32;
+    for _ in 0..trials {
+        let hull = clone_and_transform_hull(&hull_state.hull, TRANSFORM_IDENTITY, hull_state.scale)
+            .expect("hull clone trial");
+        scaled_area += hull.surface_area;
+        destroy_hull(hull);
+    }
+    let mean = scaled_area / trials as f32;
+    scene.hull_clone_area = mean;
+    scene.hull = Some(hull_state);
+    mean
+}
+
+/// Run both Step trial loops (create then clone). Used by the unit test; the
+/// live demo times each loop separately via [`super::bench_hull_create_trials`] /
+/// [`super::bench_hull_clone_trials`].
+#[cfg(test)]
+fn step_hull(scene: &mut BenchScene) {
+    run_hull_create_trials(scene);
+    run_hull_clone_trials(scene);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hull_create_and_clone_trials_run_without_panic() {
+        let mut scene = build_hull();
+        assert_eq!(scene.hull_trials, HULL_TRIALS);
+        assert!(scene.hull.is_some());
+
+        let create_area = run_hull_create_trials(&mut scene);
+        let clone_area = run_hull_clone_trials(&mut scene);
+        assert!(create_area > 0.0, "create mean area should be positive");
+        assert!(clone_area > 0.0, "clone mean area should be positive");
+        assert_eq!(scene.hull_area, create_area);
+        assert_eq!(scene.hull_clone_area, clone_area);
+
+        // Full Step path (both loops) also completes.
+        step_hull(&mut scene);
+        assert!(scene.hull_area > 0.0);
+        assert!(scene.hull_clone_area > 0.0);
+    }
 }

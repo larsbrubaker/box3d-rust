@@ -141,7 +141,10 @@ const SCENE_INFO: Record<Scene, string> = {
     "Washer: gridCount 8 (C DEBUG; C release 20³ = 8000 cubes). A kinematic drum (real 36 wall + 4 rib hulls) tumbles the cubes.",
   "large-world":
     "Large World: 32×32 = 1024 static floor boxes at the origin (a broad-phase move-buffer stress test; C DEBUG grid, release 1000² = 1M is infeasible) with 16 dropped spheres.",
-  hull: "Hull: a pure geometry demo — 64 random points hulled (green) and its mirror-scaled clone (yellow). No physics bodies.",
+  hull:
+    "Hull: 64 random points hulled (green) + mirror-scaled clone (yellow). " +
+    "Each step runs create/clone trials × 200 (C DEBUG; C release 2000). " +
+    "Timing via performance.now() around the wasm trial loops (no b3GetTicks in wasm).",
   chains: "Chains: gridCount 10 (C DEBUG; C release 25 = 2500 jointed capsules). Spherical-joint chains driven by noisy wind over a wave mesh.",
   destruction:
     "Destruction: gridCount 6, extent 0.75 (C DEBUG; C release 20 / 2.5). The block grid is re-spawned and re-exploded every 80 steps.",
@@ -489,10 +492,23 @@ export function init(container: HTMLElement, initialScene?: string) {
   }
 
   function renderHullReadout() {
-    const info = wasm.bench_hull_info();
+    // C BenchmarkHull::Step — create then clone trial loops, timed separately.
+    // Page-side performance.now() stands in for b3GetTicks / b3GetMilliseconds.
+    const trials = (wasm.bench_hull_info()[0] ?? 200) | 0;
+    const t0 = performance.now();
+    const createArea = wasm.bench_hull_create_trials();
+    const createMs = performance.now() - t0;
+    const t1 = performance.now();
+    const cloneArea = wasm.bench_hull_clone_trials();
+    const cloneMs = performance.now() - t1;
+    const createUs = trials > 0 ? (1000 * createMs) / trials : 0;
+    const cloneUs = trials > 0 ? (1000 * cloneMs) / trials : 0;
+    const ratio = cloneMs > 0 ? createMs / cloneMs : 0;
     overlay.innerHTML =
-      `trials = ${info[0] ?? 0}<br>area = ${(info[1] ?? 0).toFixed(2)} (green), ` +
-      `${(info[2] ?? 0).toFixed(2)} (yellow)`;
+      `trials = ${trials}<br>` +
+      `createTime (us) = ${createUs.toFixed(2)}, area = ${createArea.toFixed(2)}<br>` +
+      `cloneTime (us) = ${cloneUs.toFixed(2)}, area = ${cloneArea.toFixed(2)}<br>` +
+      `createTime / cloneTime = ${ratio.toFixed(2)}`;
   }
 
   // Tracks the last style buffer the gate handed back. When the pile is settled
@@ -500,7 +516,9 @@ export function init(container: HTMLElement, initialScene?: string) {
   // unchanged reference means the per-instance colors need no re-upload this frame.
   let prevStyles: Uint32Array | undefined;
   const stop = runLoop(() => {
-    ctrl.tickFrame();
+    // Hull create/clone trials live in C BenchmarkHull::Step — only when a
+    // sim step actually runs (tickFrame returns true), not every rAF while paused.
+    const stepped = ctrl.tickFrame();
     const poses = wasm.bench_poses() as Float32Array;
     const awake = wasm.bench_counters()[5] ?? 0;
     const styles = styleGate(awake, () => wasm.bench_styles() as Uint32Array);
@@ -508,7 +526,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     prevStyles = styles;
 
     if (scene === "hull") {
-      renderHullReadout();
+      if (stepped) renderHullReadout();
     } else if (POOL_SCENES.has(scene)) {
       syncMeshesFromPoses(demo.content, pool, poses, { styles });
     } else {
