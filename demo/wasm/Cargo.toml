@@ -12,9 +12,11 @@ crate-type = ["cdylib"]
 box3d-rust = { path = "../.." }
 wasm-bindgen = "0.2"
 
+# Re-enabled after b82cebcc set `wasm-opt = false` with no rationale (Continuous
+# commit). Binaryen `wasm-opt` is not on every Windows PATH; `build-wasm.ps1`
+# falls back to `--no-opt` when missing. CI (ubuntu) runs wasm-opt normally.
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+wasm-opt = ["-O3"]
 
 [lints]
 workspace = true
-

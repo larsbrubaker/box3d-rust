@@ -83,3 +83,8 @@ len_zero = "allow"
 [lints]
 workspace = true
 
+# Demo wasm + native release builds: maximize throughput (fat LTO, single CGU).
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
