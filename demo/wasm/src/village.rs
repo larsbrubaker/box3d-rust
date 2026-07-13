@@ -51,7 +51,7 @@ pub struct VillageScene {
 /// Build the Village compound ground + building meshes.
 ///
 /// `grid` is the C `gridCount` (C uses 8 debug / 200 release). The sole caller,
-/// `sim_reset_village` (`sim_compound.rs:516`), passes the fixed C debug value 8 —
+/// `sim_reset_village` (`sim_village.rs`), passes the fixed C debug value 8 —
 /// the 200-wide release grid is far too heavy for the serial wasm build.
 pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
     let a = 4.0f32;

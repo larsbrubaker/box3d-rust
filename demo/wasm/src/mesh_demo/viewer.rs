@@ -69,22 +69,8 @@ fn pack_degenerate_draw(temp: &TempMesh, degenerate_indices: &[i32], count: i32)
         let cy = (1.0 / 3.0) * (v1.y + v2.y + v3.y);
         let cz = (1.0 / 3.0) * (v1.z + v2.z + v3.z);
         out.extend_from_slice(&[
-            tri as f32,
-            i1 as f32,
-            i2 as f32,
-            i3 as f32,
-            cx,
-            cy,
-            cz,
-            v1.x,
-            v1.y,
-            v1.z,
-            v2.x,
-            v2.y,
-            v2.z,
-            v3.x,
-            v3.y,
-            v3.z,
+            tri as f32, i1 as f32, i2 as f32, i3 as f32, cx, cy, cz, v1.x, v1.y, v1.z, v2.x, v2.y,
+            v2.z, v3.x, v3.y, v3.z,
         ]);
     }
     out

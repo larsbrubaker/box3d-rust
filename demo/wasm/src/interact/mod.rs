@@ -13,9 +13,7 @@ use box3d_rust::body::{
 };
 use box3d_rust::geometry::Sphere;
 use box3d_rust::hull::create_cylinder;
-use box3d_rust::human::{
-    create_human, human_set_bullet, human_set_velocity, Human, BONE_COUNT,
-};
+use box3d_rust::human::{create_human, human_set_bullet, human_set_velocity, Human, BONE_COUNT};
 use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
 use box3d_rust::joint::{create_motor_joint, destroy_joint, joint_is_valid};
 use box3d_rust::math_functions::{
@@ -348,11 +346,7 @@ pub fn spawn_projectile(
     }
 }
 
-fn spawn_sphere_projectile(
-    world: &mut World,
-    origin: Pos,
-    direction: Vec3,
-) -> Option<SpawnedBody> {
+fn spawn_sphere_projectile(world: &mut World, origin: Pos, direction: Vec3) -> Option<SpawnedBody> {
     // Projectile launch speed: `20.0 * m_launchSpeedScale` (`sample.cpp` :1243).
     let mut body_def = default_body_def();
     body_def.type_ = BodyType::Dynamic;
@@ -411,9 +405,7 @@ fn spawn_human_projectile(world: &mut World, origin: Pos, direction: Vec3) -> Ve
     // Human_SetBullet(true), Human_SetVelocity((10 * scale) * dir).
     let position = spawn_position(origin, direction);
     let mut human = Human::default();
-    create_human(
-        &mut human, world, position, 1.0, 1.0, 1.0, 0, 0, true,
-    );
+    create_human(&mut human, world, position, 1.0, 1.0, 1.0, 0, 0, true);
     human_set_bullet(&human, world, true);
     human_set_velocity(&human, world, scaled_velocity(direction, 10.0));
 

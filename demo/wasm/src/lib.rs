@@ -32,6 +32,7 @@ mod shapes_demo;
 mod sim_compound;
 mod sim_continuous;
 mod sim_demo;
+mod sim_village;
 mod stacking_scenes;
 mod tree_demo;
 mod village;

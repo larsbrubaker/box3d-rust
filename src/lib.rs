@@ -242,6 +242,5 @@ mod tests {
     #[test]
     fn version_matches_cargo_manifest() {
         assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
-        assert!(!VERSION.is_empty());
     }
 }
