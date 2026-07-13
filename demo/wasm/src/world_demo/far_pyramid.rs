@@ -42,6 +42,9 @@ fn with_far<R>(f: impl FnOnce(&mut FarState) -> R) -> R {
 }
 
 fn new_world() -> World {
+    // Restore the base Sample launch-speed scale (5.0) on every scene reset (the
+    // far-world reset builds its world through here); overrides re-apply after.
+    crate::interact::reset_launch_speed_scale();
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,
@@ -67,60 +70,6 @@ fn to_world(base: Pos, rx: f32, ry: f32, rz: f32) -> Pos {
             z: rz,
         },
     )
-}
-
-fn shift_debug_draw(data: &mut [f32], base: Pos) {
-    if data.len() < 2 {
-        return;
-    }
-    let seg_count = data[0] as usize;
-    let point_count = data[1] as usize;
-    let mut o = 2;
-    for _ in 0..seg_count {
-        if o + 7 > data.len() {
-            break;
-        }
-        let p1 = sub_pos(
-            Pos {
-                x: data[o] as _,
-                y: data[o + 1] as _,
-                z: data[o + 2] as _,
-            },
-            base,
-        );
-        data[o] = p1.x;
-        data[o + 1] = p1.y;
-        data[o + 2] = p1.z;
-        let p2 = sub_pos(
-            Pos {
-                x: data[o + 3] as _,
-                y: data[o + 4] as _,
-                z: data[o + 5] as _,
-            },
-            base,
-        );
-        data[o + 3] = p2.x;
-        data[o + 4] = p2.y;
-        data[o + 5] = p2.z;
-        o += 7;
-    }
-    for _ in 0..point_count {
-        if o + 5 > data.len() {
-            break;
-        }
-        let p = sub_pos(
-            Pos {
-                x: data[o] as _,
-                y: data[o + 1] as _,
-                z: data[o + 2] as _,
-            },
-            base,
-        );
-        data[o] = p.x;
-        data[o + 1] = p.y;
-        data[o + 2] = p.z;
-        o += 5;
-    }
 }
 
 #[wasm_bindgen]
@@ -258,10 +207,6 @@ pub fn world_far_pyramid_style_pair() -> Vec<u32> {
     })
 }
 #[wasm_bindgen]
-pub fn world_far_pyramid_body_count() -> u32 {
-    with_far(|s| s.bodies.len() as u32)
-}
-#[wasm_bindgen]
 pub fn world_far_pyramid_mouse_down(
     ox: f32,
     oy: f32,
@@ -358,9 +303,11 @@ pub fn world_far_pyramid_counters() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn world_far_pyramid_debug_draw(_flags: u32) -> Vec<f32> {
     with_far(|state| {
-        let mut data = interact::collect_debug_draw(&mut state.world);
-        shift_debug_draw(&mut data, state.base);
-        data
+        // Subtract the scene base at collection (in `b3Pos` space) via the shared
+        // large-world draw-origin mechanism, instead of reconstructing from the
+        // already-truncated f32 buffer.
+        let base = state.base;
+        interact::with_draw_base(base, || interact::collect_debug_draw(&mut state.world))
     })
 }
 #[wasm_bindgen]

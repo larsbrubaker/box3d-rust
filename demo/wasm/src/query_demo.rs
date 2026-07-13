@@ -1,6 +1,7 @@
 //! Collision / Cast World - faithful port of `sample_collision.cpp` CastWorld.
 
 use crate::interact::{self, MouseGrab};
+use crate::rng::XorShift32;
 use crate::vis::{hf_triangle_edges, mesh_triangle_edges, pos, push_poses, vec3, VisBody};
 use box3d_rust::body::{body_compute_aabb, create_body, destroy_body, get_body_transform};
 use box3d_rust::distance::ShapeProxy;
@@ -38,7 +39,6 @@ const CAST_CAPSULE: i32 = 2;
 const CAST_BOX: i32 = 3;
 
 const HIT_STRIDE: usize = 9;
-const RAND_LIMIT: u32 = 32767;
 
 thread_local! {
     static STATE: RefCell<Option<QueryState>> = const { RefCell::new(None) };
@@ -105,15 +105,13 @@ fn with_state<R>(f: impl FnOnce(&mut QueryState) -> R) -> R {
 }
 
 /// XorShift like C `RandomFloatRange` / `shared/utils.h` (not `box3d_rust::human`).
+/// Draws from the shared [`XorShift32`] over this module's thread-local seed cell.
 fn random_float_range(lo: f32, hi: f32) -> f32 {
     RAND_SEED.with(|seed| {
-        let mut x = seed.get();
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        seed.set(x);
-        let r = (x % (RAND_LIMIT + 1)) as f32 / RAND_LIMIT as f32;
-        (hi - lo) * r + lo
+        let mut rng = XorShift32::with_seed(seed.get());
+        let v = rng.range(lo, hi);
+        seed.set(rng.seed());
+        v
     })
 }
 
@@ -428,6 +426,9 @@ fn destroy_one_body(state: &mut QueryState) {
 #[wasm_bindgen]
 pub fn query_reset() {
     RAND_SEED.with(|s| s.set(12345));
+    // Restore the base Sample launch-speed scale (5.0) on scene reset; a scene
+    // that overrides it re-applies its value after the reset returns.
+    crate::interact::reset_launch_speed_scale();
     STATE.with(|cell| {
         let mut def = default_world_def();
         def.gravity = Vec3 {

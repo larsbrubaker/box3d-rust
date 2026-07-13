@@ -2,6 +2,7 @@
 //! and Benchmark Sensor (sample_benchmark.cpp, 40×40 — the C value; the sample has
 //! no debug split for `m_columnCount`/`m_rowCount`).
 
+use crate::rng::XorShift32;
 use crate::vis::{pos, push_poses, sphere, vec3, VisBody};
 use box3d_rust::body::{
     body_get_local_point, body_get_position, body_set_linear_velocity, create_body, destroy_body,
@@ -32,7 +33,6 @@ use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
 const RAND_SEED: u32 = 12345;
-const RAND_LIMIT: u32 = 32767;
 const ACTIVE_SENSOR_COLOR: u32 = 0x505050;
 const ACTIVE_USER_DATA: u64 = 1;
 // C sample_benchmark.cpp: m_columnCount = m_rowCount = 40 (no BENCHMARK_DEBUG split).
@@ -57,25 +57,6 @@ fn bench_sensor_filter(shape_a: ShapeId, shape_b: ShapeId, _context: u64) -> boo
         let set = set.borrow();
         !(set.contains(&shape_a.index1) || set.contains(&shape_b.index1))
     })
-}
-
-struct XorShift32(u32);
-impl XorShift32 {
-    fn with_seed(seed: u32) -> Self {
-        Self(seed)
-    }
-    fn next_int(&mut self) -> i32 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        (x % (RAND_LIMIT + 1)) as i32
-    }
-    fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        let r = (self.next_int() as u32 & RAND_LIMIT) as f32 / RAND_LIMIT as f32;
-        (hi - lo) * r + lo
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

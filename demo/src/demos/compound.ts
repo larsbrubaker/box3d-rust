@@ -8,6 +8,7 @@ import {
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 import {
@@ -22,11 +23,13 @@ const STRIDE = 13;
 
 type Mode = "simple" | "spheres" | "hulls" | "village";
 
-const COMPOUND_MODES: Mode[] = ["simple", "spheres", "hulls", "village"];
+export const SCENES: Mode[] = ["simple", "spheres", "hulls", "village"];
 
 /** Camera helper matching the C samples' `Camera::SetView(yaw, pitch, distance, target)`. */
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("compound", SCENES);
   const { canvas, controls } = demoPage(
     container,
     "Compound",
@@ -55,7 +58,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   controls.appendChild(statsEl);
 
   let mode: Mode =
-    initialScene && COMPOUND_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "village";
+    initialScene && SCENES.includes(initialScene as Mode) ? (initialScene as Mode) : "village";
 
   const demo = new DemoScene(canvas, { target: [0, 4, 0], distance: 48 });
   demo.camera.far = 800;

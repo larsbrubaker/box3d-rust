@@ -11,6 +11,29 @@
 // (the first one at :203; the live one at :1022 is kept), Ragdoll "Pose". The
 // Replay viewer is registered through a non-RegisterSample path (g_replayIndex)
 // and is not represented here.
+//
+// ---------------------------------------------------------------------------
+// Single-registration pattern (registry ↔ multi-scene page link)
+// ---------------------------------------------------------------------------
+// This registry is the ONE source of truth for the category→sample tree AND for
+// the scene key each sample maps to inside its hosting page. A multi-scene page
+// (stacking, compound, continuous, joints, sensors, benchmark, manifolds, mesh,
+// character) never keeps a second, private list that has to be edited in lockstep
+// with this file. Instead it validates its internal scene table against the
+// registry at page-init with `assertRouteScenes(route, [...its scene keys])`,
+// which `console.error`s the moment the two drift apart — no silent default
+// fallback (see `scenesFor` / `assertRouteScenes` below).
+//
+// To add a sample a category agent does exactly TWO things:
+//   1. Add ONE `RegisterSample`-mirroring entry here (name, status, route?,
+//      scene?), placed in its category `cat(...)` block.
+//   2. Implement that `scene` in the page named by `route` (its reset/camera/
+//      controls) and include the scene key in the array passed to
+//      `assertRouteScenes`.
+// Nothing else needs to stay in sync: the tree, Samples menu, prev/next order,
+// deep links, and home grid all derive from this array. If step 2 is forgotten
+// (or a scene key is renamed on only one side) the page logs a loud error at
+// init instead of quietly landing on the wrong scene.
 
 export type SampleStatus = "live" | "partial" | "planned";
 
@@ -60,15 +83,15 @@ function cat(category: string, cSource: string, specs: Spec[]): SampleEntry[] {
  */
 export const SAMPLES: SampleEntry[] = [
   ...cat("Bodies", "sample_bodies.cpp", [
-    ["Body Type", "planned"],
-    ["Spinning Book", "planned"],
-    ["Gyroscopic Torque", "planned"],
-    ["Weeble", "planned"],
-    ["Disable", "planned"],
-    ["Cast", "planned"],
-    ["Kinematic", "planned"],
-    ["Lock Mixing", "planned"],
-    ["Fixed Rotation", "planned"],
+    ["Body Type", "live", "bodies", "body-type"],
+    ["Spinning Book", "live", "bodies", "spinning-book"],
+    ["Gyroscopic Torque", "live", "bodies", "gyroscopic-torque"],
+    ["Weeble", "live", "bodies", "weeble"],
+    ["Disable", "live", "bodies", "disable"],
+    ["Cast", "partial", "bodies", "cast"],
+    ["Kinematic", "live", "bodies", "kinematic"],
+    ["Lock Mixing", "live", "bodies", "lock-mixing"],
+    ["Fixed Rotation", "live", "bodies", "fixed-rotation"],
   ]),
   ...cat("Benchmark", "sample_benchmark.cpp", [
     ["Large Pyramid", "partial", "benchmark", "pyramid"],
@@ -130,7 +153,7 @@ export const SAMPLES: SampleEntry[] = [
     ["Stall", "planned"],
   ]),
   ...cat("Determinism", "sample_determinism.cpp", [
-    ["Falling Ragdolls", "planned"],
+    ["Falling Ragdolls", "live", "determinism", "falling-ragdolls"],
   ]),
   ...cat("Events", "sample_events.cpp", [
     ["Sensor Visit", "live", "sensors", "visit"],
@@ -209,18 +232,18 @@ export const SAMPLES: SampleEntry[] = [
     ["Overflow Color Pile", "planned"],
   ]),
   ...cat("Shapes", "sample_shapes.cpp", [
-    ["Inclined Plane", "planned"],
-    ["Rolling Resistance", "planned"],
-    ["High Resistance", "planned"],
-    ["Isotropic Friction", "planned"],
-    ["Slide Twist", "planned"],
-    ["Restitution", "planned"],
-    ["Static Invoke", "planned"],
-    ["Conveyor Belt", "planned"],
-    ["Conveyor Mesh", "planned"],
-    ["Wind", "planned"],
-    ["Wind Drop", "planned"],
-    ["Wind Flap", "planned"],
+    ["Inclined Plane", "live", "shapes", "inclined-plane"],
+    ["Rolling Resistance", "live", "shapes", "rolling-resistance"],
+    ["High Resistance", "live", "shapes", "high-resistance"],
+    ["Isotropic Friction", "live", "shapes", "isotropic-friction"],
+    ["Slide Twist", "live", "shapes", "slide-twist"],
+    ["Restitution", "live", "shapes", "restitution"],
+    ["Static Invoke", "live", "shapes", "static-invoke"],
+    ["Conveyor Belt", "live", "shapes", "conveyor-belt"],
+    ["Conveyor Mesh", "live", "shapes", "conveyor-mesh"],
+    ["Wind", "live", "shapes", "wind"],
+    ["Wind Drop", "live", "shapes", "wind-drop"],
+    ["Wind Flap", "live", "shapes", "wind-flap"],
   ]),
   ...cat("Stacking", "sample_stacking.cpp", [
     ["Card House Thick", "planned"],
@@ -239,10 +262,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Pyramid2D", "partial", "stacking", "pyramid"],
   ]),
   ...cat("World", "sample_world.cpp", [
-    ["Far Stack", "planned"],
-    ["Far Pyramid", "live", "far-pyramid"],
-    ["Far Ragdolls", "planned"],
-    ["Far Mesh Drop", "planned"],
+    ["Far Stack", "live", "world", "far-stack"],
+    ["Far Pyramid", "live", "world", "far-pyramid"],
+    ["Far Ragdolls", "live", "world", "far-ragdolls"],
+    ["Far Mesh Drop", "live", "world", "far-mesh-drop"],
   ]),
   ...cat("Tree", "sample_tree.cpp", [
     ["Benchmark", "planned"],
@@ -326,4 +349,60 @@ export function findByRouteSlug(route: string, slug: string): SampleEntry | unde
 /** First routable entry whose page uses `route` (fallback when only a route is given). */
 export function firstEntryForRoute(route: string): SampleEntry | undefined {
   return SAMPLES_SORTED.find((s) => s.route === route);
+}
+
+/**
+ * Registry entries hosted by a multi-scene page `route`, in registry (C sort)
+ * order — the live/partial entries that own a working scene. A page can build its
+ * selector straight from this instead of a private table, or keep its typed scene
+ * table and validate it with {@link assertRouteScenes}. Entries whose `scene` is
+ * undefined (single-scene routes) are still returned so callers can tell a route
+ * apart from a genuinely multi-scene one.
+ *
+ * Internal to the registry (only {@link assertRouteScenes} consumes it); pages
+ * validate their scene table via `assertRouteScenes` rather than reading this.
+ */
+function scenesFor(route: string): SampleEntry[] {
+  return NAVIGABLE_SAMPLES.filter((s) => s.route === route);
+}
+
+/**
+ * Dev self-check for a multi-scene page: assert the page implements exactly the
+ * scenes the registry declares for `route`. Logs `console.error` on any drift so
+ * a mismatch is loud at page-init (never a silent default fallback):
+ *   - a registry entry whose `scene` the page does not implement (a RegisterSample
+ *     row was added but the scene forgotten, or one side was renamed), and
+ *   - a page scene with no matching registry entry — `extra` whitelists internal
+ *     scenes intentionally not backed by a RegisterSample (e.g. Character's
+ *     Village walkthrough, a second view of the Compound/Village sample).
+ *
+ * In a shipped build with no drift this logs nothing; a fired error is a real
+ * registry↔page bug. Returns the registry scene keys for the route (handy when a
+ * page wants to drive its selector from the registry too).
+ */
+export function assertRouteScenes(
+  route: string,
+  implemented: readonly string[],
+  extra: readonly string[] = [],
+): string[] {
+  const registryScenes = scenesFor(route)
+    .map((e) => e.scene)
+    .filter((s): s is string => s != null);
+  const impl = new Set(implemented);
+  const allowed = new Set<string>([...registryScenes, ...extra]);
+  for (const s of registryScenes) {
+    if (!impl.has(s)) {
+      console.error(
+        `[registry] route "${route}": registry declares scene "${s}" but the page does not implement it`,
+      );
+    }
+  }
+  for (const s of implemented) {
+    if (!allowed.has(s)) {
+      console.error(
+        `[registry] route "${route}": page implements scene "${s}" with no matching registry entry`,
+      );
+    }
+  }
+  return registryScenes;
 }

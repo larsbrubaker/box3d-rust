@@ -7,6 +7,7 @@ import {
   type SimControllerWithTick,
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 
@@ -15,10 +16,12 @@ const STRIDE = 13;
 
 type Mode = "jenga" | "boxes" | "pyramid" | "spheres" | "single";
 
-const STACKING_MODES: Mode[] = ["jenga", "boxes", "pyramid", "spheres", "single"];
+export const SCENES: Mode[] = ["jenga", "boxes", "pyramid", "spheres", "single"];
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("stacking", SCENES);
   const { canvas, controls, page } = demoPage(
     container,
     "Stacking",
@@ -42,7 +45,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   // Jenga is the 3D showcase; Pyramid2D must never be the default (it looks like a 2D sim).
   // A deep link (`#/stacking/<slug>`) can request a specific scene via initialScene.
   let mode: Mode =
-    initialScene && STACKING_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "jenga";
+    initialScene && SCENES.includes(initialScene as Mode) ? (initialScene as Mode) : "jenga";
   // C JengaStack DrawControls radio: Hull (default) or Capsule.
   let jengaShape: "hull" | "capsule" = "hull";
 

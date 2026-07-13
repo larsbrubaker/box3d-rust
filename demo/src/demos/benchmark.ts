@@ -4,10 +4,11 @@ import * as THREE from "three";
 import { createButtonGroup, createInfoBox } from "../controls.ts";
 import {
   attachInteraction,
-  type InteractWasm,
+  makeInteractAdapter,
   type SimControllerWithTick,
 } from "../interaction.ts";
-import { getWasm, type Box3dWasm } from "../wasm.ts";
+import { getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import {
   COLORS,
@@ -22,27 +23,17 @@ const STRIDE = 11;
 
 type Mode = "pyramid" | "junkyard" | "trees";
 
-/** Adapt bench_* wasm exports to the shared InteractWasm surface. */
-function benchInteract(wasm: Box3dWasm): InteractWasm {
-  return {
-    sim_step: (dt, ss) => wasm.bench_step(dt, ss),
-    sim_body_poses: () => wasm.bench_body_poses(),
-    sim_mouse_down: (ox, oy, oz, tx, ty, tz) => wasm.bench_mouse_down(ox, oy, oz, tx, ty, tz),
-    sim_mouse_move: (px, py, pz) => wasm.bench_mouse_move(px, py, pz),
-    sim_mouse_up: () => wasm.bench_mouse_up(),
-    sim_mouse_active: () => wasm.bench_mouse_active(),
-    sim_spawn_random: (ox, oy, oz, tx, ty, tz) => wasm.bench_spawn_random(ox, oy, oz, tx, ty, tz),
-    sim_delete_at_ray: (ox, oy, oz, tx, ty, tz) => wasm.bench_delete_at_ray(ox, oy, oz, tx, ty, tz),
-    sim_counters: () => wasm.bench_counters(),
-    sim_debug_draw: (flags) => wasm.bench_debug_draw(flags),
-  };
-}
-
-const BENCH_MODES: Mode[] = ["pyramid", "junkyard", "trees"];
+export const SCENES: Mode[] = ["pyramid", "junkyard", "trees"];
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
-  const interact = benchInteract(wasm);
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("benchmark", SCENES);
+  // `bench_body_poses` is the odd one out (every other prefix uses `<p>_poses`),
+  // so override it; the factory maps the rest of the bench_* family by prefix.
+  const interact = makeInteractAdapter(wasm, "bench", {
+    sim_body_poses: () => wasm.bench_body_poses(),
+  });
   const { canvas, controls } = demoPage(
     container,
     "Benchmark",
@@ -64,7 +55,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   );
 
   let mode: Mode =
-    initialScene && BENCH_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "pyramid";
+    initialScene && SCENES.includes(initialScene as Mode) ? (initialScene as Mode) : "pyramid";
   let treeGridSize = 100;
 
   const demo = new DemoScene(canvas, { target: [0, 8, 0], distance: 55, fov: 50 });

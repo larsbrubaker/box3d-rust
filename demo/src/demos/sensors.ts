@@ -9,16 +9,20 @@ import {
   updateReadout,
 } from "../controls.ts";
 import { getWasm, SENSOR_EVENT_STATS } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { DemoScene, setView } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
 type Scene = "visit" | "hits" | "benchmark";
 
-const SENSOR_SCENES: Scene[] = ["visit", "hits", "benchmark"];
+export const SCENES: Scene[] = ["visit", "hits", "benchmark"];
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  // Benchmark Sensor is a Benchmark-category sample hosted on this route.
+  assertRouteScenes("sensors", SCENES);
   const { canvas, controls } = demoPage(
     container,
     "Sensors",
@@ -41,7 +45,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   );
 
   let scene: Scene =
-    initialScene && SENSOR_SCENES.includes(initialScene as Scene) ? (initialScene as Scene) : "visit";
+    initialScene && SCENES.includes(initialScene as Scene) ? (initialScene as Scene) : "visit";
   let hitsRow: HTMLElement | null = null;
 
   controls.appendChild(

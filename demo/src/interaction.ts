@@ -2,6 +2,9 @@
 // pause/step/restart, pick-drag, spawn/delete, Solver/Recording, debug-draw.
 
 import * as THREE from "three";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import type { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import {
   createButton,
   createButtonGroup,
@@ -11,6 +14,7 @@ import {
   createTextInput,
 } from "./controls.ts";
 import type { DemoScene } from "./three-scene.ts";
+import { makeFatLineMaterial, updateFatLineResolution } from "./render/lines.ts";
 import { demoBus, emitInitialState, viewFlags } from "./bus.ts";
 import { VIEW_BITS, OVERLAY_MASK, TEXT_MASK } from "./view-flags.ts";
 
@@ -48,6 +52,78 @@ export type InteractWasm = {
 // The 16-bit view-flag mask (bit order, defaults, labels) lives in the shared
 // leaf view-flags.ts. VIEW_BITS/OVERLAY_MASK/TEXT_MASK are imported above; this
 // module keys the panel + menu into that one table via the `view.flag` bus.
+
+/**
+ * Build an {@link InteractWasm} adapter for a per-demo export family by prefix.
+ *
+ * Every category's wasm module exposes the same method set under its own prefix
+ * (`bodies_step`, `shapes_step`, `joint_step`, …). Hand-writing that mapping in
+ * each page duplicated ~15 lines seven times and repeatedly forgot to forward
+ * the *global* debug-flag / draw-scale setters (they are not prefixed — one
+ * `sim_set_debug_flags` drives whichever demo is mounted). This factory does the
+ * mapping once via bracket access, ALWAYS forwards the two global setters, and
+ * pulls in the optional per-prefix methods (`*_step_count`, `*_set_enable_*`,
+ * `*_debug_text`, recording) only when the export actually exists — so a demo
+ * that lacks `set_enable_sleep` simply omits it, exactly like the old hand
+ * adapters. `overrides` wins over the generated mapping (used by the World page
+ * to route between the Far Pyramid and generic `world_far_*` families, and by
+ * Benchmark whose poses export is the odd `bench_body_poses`).
+ */
+export function makeInteractAdapter(
+  wasm: object,
+  prefix: string,
+  overrides: Partial<InteractWasm> = {},
+): InteractWasm {
+  // Dynamic export bag: bracket access is intentional here (one factory over
+  // every prefix), so an `any`-valued record is the right typing seam.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bag = wasm as Record<string, (...args: any[]) => any> & {
+    sim_set_debug_flags?: (mask: number) => void;
+    sim_set_draw_scales?: (joint: number, force: number) => void;
+  };
+  const name = (suffix: string) => `${prefix}_${suffix}`;
+  const has = (suffix: string) => typeof bag[name(suffix)] === "function";
+  const call = (suffix: string) => bag[name(suffix)];
+
+  const adapter: InteractWasm = {
+    sim_step: (dt, ss) => call("step")(dt, ss),
+    sim_body_poses: () => call("poses")(),
+    sim_mouse_down: (ox, oy, oz, tx, ty, tz) => call("mouse_down")(ox, oy, oz, tx, ty, tz),
+    sim_mouse_move: (px, py, pz) => call("mouse_move")(px, py, pz),
+    sim_mouse_up: () => call("mouse_up")(),
+    sim_mouse_active: () => call("mouse_active")(),
+    sim_spawn_random: (ox, oy, oz, tx, ty, tz) => call("spawn_random")(ox, oy, oz, tx, ty, tz),
+    sim_delete_at_ray: (ox, oy, oz, tx, ty, tz) => call("delete_at_ray")(ox, oy, oz, tx, ty, tz),
+    sim_counters: () => call("counters")(),
+    sim_debug_draw: (flags) => call("debug_draw")(flags),
+  };
+
+  // Global (non-prefixed) setters — one shared pair per wasm module. Always
+  // forward them when present so the View menu / panel drive this demo's overlay.
+  if (typeof bag.sim_set_debug_flags === "function") {
+    adapter.sim_set_debug_flags = (m) => bag.sim_set_debug_flags!(m);
+  }
+  if (typeof bag.sim_set_draw_scales === "function") {
+    adapter.sim_set_draw_scales = (j, f) => bag.sim_set_draw_scales!(j, f);
+  }
+
+  // Optional per-prefix methods: included only when the demo exports them.
+  if (has("step_count")) adapter.sim_step_count = () => call("step_count")();
+  if (has("set_enable_sleep")) adapter.sim_set_enable_sleep = (v) => call("set_enable_sleep")(v);
+  if (has("set_enable_warm_starting"))
+    adapter.sim_set_enable_warm_starting = (v) => call("set_enable_warm_starting")(v);
+  if (has("set_enable_continuous"))
+    adapter.sim_set_enable_continuous = (v) => call("set_enable_continuous")(v);
+  if (has("set_recycle_distance"))
+    adapter.sim_set_recycle_distance = (m) => call("set_recycle_distance")(m);
+  if (has("start_recording")) adapter.sim_start_recording = () => call("start_recording")();
+  if (has("stop_recording")) adapter.sim_stop_recording = () => call("stop_recording")();
+  if (has("is_recording")) adapter.sim_is_recording = () => call("is_recording")();
+  if (has("record_start_step")) adapter.sim_record_start_step = () => call("record_start_step")();
+  if (has("debug_text")) adapter.sim_debug_text = () => call("debug_text")();
+
+  return { ...adapter, ...overrides };
+}
 
 /** A single visibility predicate: the param shows only while `values[key] === equals`. */
 export type ParamVisibility = { key: string; equals: boolean | number | string };
@@ -289,15 +365,32 @@ export function createParamPanel(
   };
 }
 
-/** Three.js line/point overlay fed by `sim_debug_draw`. */
+/**
+ * Three.js line/point overlay fed by `sim_debug_draw`. Segments render as fat
+ * `LineSegments2` at C's 1.5px default (`draw.h`:16-20) so joint frames / contact
+ * overlays read with real thickness; plain `THREE.LineSegments` ignores linewidth
+ * on most platforms. Per-vertex colors come straight from the engine's packed
+ * segment colors (`LineMaterial` vertexColors). Points stay as `THREE.Points`.
+ */
 export class DebugDrawOverlay {
-  private lines: THREE.LineSegments | null = null;
+  private lines: LineSegments2 | null = null;
   private points: THREE.Points | null = null;
   private readonly group: THREE.Group;
+  // One shared fat-line material (a ShaderMaterial — compile it once, not per
+  // frame). Geometry is rebuilt each frame; its `resolution` uniform is refreshed
+  // from the renderer's drawing-buffer size so px thickness stays correct across
+  // canvas resizes without a separate observer.
+  private readonly lineMaterial: LineMaterial;
+  private readonly _res = new THREE.Vector2();
 
   constructor(private readonly demo: DemoScene) {
     this.group = new THREE.Group();
     this.demo.dynamic.add(this.group);
+    this.lineMaterial = makeFatLineMaterial({
+      thickness: 1.5, // C debug default (draw.h DrawColorLine / lineWidth)
+      vertexColors: true,
+      opacity: 0.9,
+    });
   }
 
   update(data: ArrayLike<number>) {
@@ -322,16 +415,16 @@ export class DebugDrawOverlay {
         positions.push(x1, y1, z1, x2, y2, z2);
         colors.push(rgb[0], rgb[1], rgb[2], rgb[0], rgb[1], rgb[2]);
       }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-      const mat = new THREE.LineBasicMaterial({
-        vertexColors: true,
-        depthTest: true,
-        transparent: true,
-        opacity: 0.9,
-      });
-      this.lines = new THREE.LineSegments(geo, mat);
+      // Keep the material's pixel->clip resolution current (covers resizes too).
+      const size = this.demo.renderer.getDrawingBufferSize(this._res);
+      updateFatLineResolution(this.lineMaterial, size.x, size.y);
+      const geo = new LineSegmentsGeometry();
+      geo.setPositions(positions);
+      geo.setColors(colors);
+      this.lines = new LineSegments2(geo, this.lineMaterial);
+      // Fat lines cover the whole cloud; skip frustum culling on the tight
+      // per-segment bounds the addon would otherwise compute.
+      this.lines.frustumCulled = false;
       this.group.add(this.lines);
     }
 
@@ -363,21 +456,24 @@ export class DebugDrawOverlay {
   }
 
   clear() {
-    while (this.group.children.length > 0) {
-      const obj = this.group.children[0]!;
-      this.group.remove(obj);
-      const mesh = obj as THREE.LineSegments | THREE.Points;
-      mesh.geometry?.dispose();
-      const mat = mesh.material;
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else mat?.dispose();
+    // Dispose per-frame geometry (and the Points material), but keep the shared
+    // fat-line material alive across frames — it is disposed in dispose().
+    if (this.lines) {
+      this.group.remove(this.lines);
+      this.lines.geometry.dispose();
+      this.lines = null;
     }
-    this.lines = null;
-    this.points = null;
+    if (this.points) {
+      this.group.remove(this.points);
+      this.points.geometry.dispose();
+      (this.points.material as THREE.Material).dispose();
+      this.points = null;
+    }
   }
 
   dispose() {
     this.clear();
+    this.lineMaterial.dispose();
     this.demo.dynamic.remove(this.group);
   }
 }
@@ -531,8 +627,12 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     enableSpawnDelete = true,
     showSolverPanel = true,
     baseDt = 1 / 60,
-    worldOrigin = [0, 0, 0] as [number, number, number],
   } = opts;
+
+  // worldOrigin / sampleName are per-scene on multi-scene pages (e.g. World's Far
+  // Pyramid sits at [1e7,0,0] with its own name), so keep them mutable and expose
+  // setters on the returned controller rather than baking them in once.
+  let worldOrigin: [number, number, number] = opts.worldOrigin ?? [0, 0, 0];
 
   controls.classList.add("samples-info-panel");
 
@@ -1065,8 +1165,16 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     return stepped;
   }
 
+  const sampleNameEl = infoHead.querySelector(".sample-name") as HTMLElement;
+
   const withTick = state as SimControllerWithTick;
   withTick.tickFrame = tickFrame;
+  withTick.setWorldOrigin = (o) => {
+    worldOrigin = o;
+  };
+  withTick.setSampleName = (name) => {
+    sampleNameEl.textContent = name;
+  };
 
   state.dispose = () => {
     for (const off of unsubscribers) off();
@@ -1094,4 +1202,10 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export type SimControllerWithTick = SimController & { tickFrame: () => boolean };
+export type SimControllerWithTick = SimController & {
+  tickFrame: () => boolean;
+  /** Update the camera-readout world origin (per-scene on multi-scene pages). */
+  setWorldOrigin: (origin: [number, number, number]) => void;
+  /** Update the Info-panel sample name (per-scene on multi-scene pages). */
+  setSampleName: (name: string) => void;
+};

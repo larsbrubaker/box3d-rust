@@ -4,12 +4,13 @@ import type * as THREE from "three";
 import { createInfoBox, createReadout, updateReadout } from "../controls.ts";
 import {
   attachInteraction,
-  type InteractWasm,
+  makeInteractAdapter,
   type ParamDef,
   type ParamValues,
   type SimControllerWithTick,
 } from "../interaction.ts";
-import { DRIVE_TELEMETRY, REVOLUTE_ENERGY, getWasm, type Box3dWasm } from "../wasm.ts";
+import { DRIVE_TELEMETRY, REVOLUTE_ENERGY, getWasm } from "../wasm.ts";
+import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
 import {
   DemoScene,
@@ -22,32 +23,12 @@ import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh
 
 type Scene = "chain" | "revolute" | "gear" | "driving";
 
-const SCENES: Scene[] = ["chain", "revolute", "gear", "driving"];
-
-function jointAsInteract(wasm: Box3dWasm): InteractWasm {
-  // `joint_debug_text` is a per-demo export the Rust agent may add; guard it.
-  const jointDebugText = (wasm as unknown as { joint_debug_text?: () => string }).joint_debug_text;
-  return {
-    sim_step: (dt, n) => wasm.joint_step(dt, n),
-    sim_body_poses: () => wasm.joint_poses(),
-    sim_mouse_down: (ox, oy, oz, tx, ty, tz) => wasm.joint_mouse_down(ox, oy, oz, tx, ty, tz),
-    sim_mouse_move: (px, py, pz) => wasm.joint_mouse_move(px, py, pz),
-    sim_mouse_up: () => wasm.joint_mouse_up(),
-    sim_mouse_active: () => wasm.joint_mouse_active(),
-    sim_spawn_random: (ox, oy, oz, tx, ty, tz) => wasm.joint_spawn_random(ox, oy, oz, tx, ty, tz),
-    sim_delete_at_ray: (ox, oy, oz, tx, ty, tz) => wasm.joint_delete_at_ray(ox, oy, oz, tx, ty, tz),
-    sim_counters: () => wasm.joint_counters(),
-    sim_debug_draw: (flags) => wasm.joint_debug_draw(flags),
-    // Debug-flag mask + draw scales are GLOBAL wasm exports (shared across every
-    // demo); forward them so the View menu / panel drive the joint overlay too.
-    sim_set_debug_flags: (m) => wasm.sim_set_debug_flags(m),
-    sim_set_draw_scales: (j, f) => wasm.sim_set_draw_scales(j, f),
-    sim_debug_text: jointDebugText ? () => jointDebugText.call(wasm) : undefined,
-  };
-}
+export const SCENES: Scene[] = ["chain", "revolute", "gear", "driving"];
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  // Self-check the scene table against the registry (see registry.ts pattern).
+  assertRouteScenes("joints", SCENES);
   const { canvas, controls } = demoPage(
     container,
     "Joints",
@@ -281,7 +262,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   ];
 
   ctrl = attachInteraction({
-    wasm: jointAsInteract(wasm),
+    wasm: makeInteractAdapter(wasm, "joint"),
     demo,
     canvas,
     controls,
