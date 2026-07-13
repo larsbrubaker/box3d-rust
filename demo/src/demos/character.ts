@@ -35,6 +35,18 @@ type Scene = "capsule-plane" | "mover-overlap" | "mover" | "rigid-body";
 
 export const SCENES: Scene[] = ["capsule-plane", "mover-overlap", "mover", "rigid-body"];
 
+/** C `m_showDebug` default (`sample_character.cpp:1488`). */
+export const RIGID_BODY_SHOW_DEBUG_DEFAULT = true;
+
+/**
+ * Whether character debug overlays should render this frame.
+ * Rigid Body gates `DrawDebug` behind `showDebug` (C Step :1609-1612); other
+ * scenes always draw their own overlays.
+ */
+export function shouldDrawCharacterDebug(scene: Scene, showDebug: boolean): boolean {
+  return scene !== "rigid-body" || showDebug;
+}
+
 const isDrag = (s: Scene) => s === "capsule-plane" || s === "mover-overlap";
 const isWalker = (s: Scene) => s === "mover" || s === "rigid-body";
 
@@ -71,6 +83,8 @@ export function init(container: HTMLElement, initialScene?: string) {
     initialScene && SCENES.includes(initialScene as Scene) ? (initialScene as Scene) : "capsule-plane";
   let thirdPerson = false;
   let clipVelocity = true;
+  // C RigidBodyCharacter `m_showDebug` (sample_character.cpp:1488 / :1609-1612 / :1639).
+  let showDebug = RIGID_BODY_SHOW_DEBUG_DEFAULT;
 
   const info = createInfoBox("");
   controls.appendChild(info);
@@ -107,9 +121,14 @@ export function init(container: HTMLElement, initialScene?: string) {
     if (!v && pointerLocked) document.exitPointerLock?.();
     updateLookHint();
   });
+  const debugRow = createCheckbox("Debug (V)", showDebug, (v) => {
+    showDebug = v;
+  });
+  const debugInput = debugRow.querySelector("input") as HTMLInputElement | null;
   controls.appendChild(solveBtn);
   controls.appendChild(clipRow);
   controls.appendChild(thirdRow);
+  controls.appendChild(debugRow);
 
   const readout = createReadout();
   controls.appendChild(readout);
@@ -219,6 +238,11 @@ export function init(container: HTMLElement, initialScene?: string) {
       wasm.character_set_third_person(thirdPerson);
       if (!thirdPerson && pointerLocked) document.exitPointerLock?.();
       updateLookHint();
+    }
+    // C RigidBodyCharacter::Keyboard KEY_V → toggle m_showDebug (:1511-1514).
+    if (e.code === "KeyV" && scene === "rigid-body") {
+      showDebug = !showDebug;
+      if (debugInput) debugInput.checked = showDebug;
     }
     if (moveKeys.includes(e.code)) e.preventDefault();
   };
@@ -357,6 +381,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     solveBtn.style.display = scene === "capsule-plane" ? "" : "none";
     clipRow.style.display = scene === "mover" ? "" : "none";
     thirdRow.style.display = isWalker(scene) ? "" : "none";
+    debugRow.style.display = scene === "rigid-body" ? "" : "none";
     const hints: Record<Scene, string> = {
       "capsule-plane":
         "Drag the green capsule into the box; yellow marks the returned planes. " +
@@ -370,8 +395,8 @@ export function init(container: HTMLElement, initialScene?: string) {
         "Click the canvas to focus keys.",
       "rigid-body":
         "The s&box dynamic character (green feet box + blue capsule) with trace-based step-up over " +
-        "the obstacle course. Purple velocity, orange wish, yellow mass center. <b>Click to look</b> " +
-        "(FPS mouse-look, Esc releases); the camera boom won't clip walls you back into.",
+        "the obstacle course. Purple velocity, orange wish, yellow mass center (V toggles). " +
+        "<b>Click to look</b> (FPS mouse-look, Esc releases); the camera boom won't clip walls you back into.",
     };
     info.innerHTML = hints[scene];
     updateLookHint();
@@ -463,8 +488,14 @@ export function init(container: HTMLElement, initialScene?: string) {
         styles: wasm.character_styles(),
       });
 
-      updateSegments(wasm.character_debug_segments());
-      updatePoints(wasm.character_debug_points());
+      // C gates Rigid Body DrawDebug behind m_showDebug (:1609-1612); clear overlays when off.
+      if (shouldDrawCharacterDebug(scene, showDebug)) {
+        updateSegments(wasm.character_debug_segments());
+        updatePoints(wasm.character_debug_points());
+      } else {
+        updateSegments(new Float32Array());
+        updatePoints(new Float32Array());
+      }
 
       lastStatus = wasm.character_status();
 
