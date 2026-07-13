@@ -701,6 +701,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     <div class="sample-sep"></div>
     <div class="sample-stats">
       <div class="sample-stat frame-ms">0.0 ms</div>
+      <div class="sample-stat step-ms">step 0.0 ms</div>
       <div class="sample-stat step-count">step 0</div>
     </div>
     <div class="sample-sep"></div>
@@ -714,6 +715,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   controls.appendChild(infoHead);
   const pauseBadge = infoHead.querySelector(".sample-paused") as HTMLElement;
   const frameMsEl = infoHead.querySelector(".frame-ms") as HTMLElement;
+  const stepMsEl = infoHead.querySelector(".step-ms") as HTMLElement;
   const stepCountEl = infoHead.querySelector(".step-count") as HTMLElement;
   const camPivotEl = infoHead.querySelector(".cam-pivot") as HTMLElement;
   const camYawEl = infoHead.querySelector(".cam-yaw") as HTMLElement;
@@ -930,20 +932,26 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   const dbg = createCollapsingSection("Debug draw", false);
   controls.appendChild(dbg.root);
 
-  // A curated subset of the View-menu flags, surfaced as native checkboxes. Each
-  // toggle initializes from the shared `viewFlags` state and emits `view.flag`
-  // (the same event the menu uses) so the menu tick, the mask, and any other
-  // subscriber all stay in lockstep. The `view.flag` subscriber below writes the
-  // checkbox back when the change originates in the menu.
+  // Side-panel checkboxes for the overlay bits (C Controls window). Mirrors the
+  // View menu — every mask bit except shapes/transparent (solid-mesh path) and
+  // anchorA (radio pair in the View menu). Each toggle initializes from the
+  // shared `viewFlags` state and emits `view.flag` so the menu tick, the mask,
+  // and any other subscriber stay in lockstep. The `view.flag` subscriber below
+  // writes the checkbox back when the change originates in the menu.
   const panelFlagDefs: { label: string; viewKey: string }[] = [
-    { label: "Contacts", viewKey: "contacts" },
-    { label: "Contact normals", viewKey: "contactNormals" },
-    { label: "Contact forces", viewKey: "contactForces" },
     { label: "Joints", viewKey: "joints" },
     { label: "Joint frames", viewKey: "jointExtras" },
     { label: "AABBs", viewKey: "bounds" },
     { label: "Mass axes", viewKey: "mass" },
+    { label: "Sleep", viewKey: "sleep" },
+    { label: "Body names", viewKey: "bodyNames" },
+    { label: "Graph colors", viewKey: "graphColors" },
     { label: "Islands", viewKey: "islands" },
+    { label: "Contacts", viewKey: "contacts" },
+    { label: "Contact normals", viewKey: "contactNormals" },
+    { label: "Contact features", viewKey: "contactFeatures" },
+    { label: "Contact forces", viewKey: "contactForces" },
+    { label: "Friction forces", viewKey: "frictionForces" },
   ];
   const panelCheckboxes = new Map<string, HTMLInputElement>();
   for (const f of panelFlagDefs) {
@@ -966,6 +974,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       <tr><td>R</td><td>Restart sample</td></tr>
       <tr><td>[ / ]</td><td>Prev / next sample</td></tr>
       <tr><td>F</td><td>Frame selection</td></tr>
+      <tr><td>M</td><td>Diagnostics</td></tr>
       <tr><td>Tab</td><td>Hide / show UI</td></tr>
       <tr><td>Left-click</td><td>Select body</td></tr>
       <tr><td>Ctrl + click</td><td>Grab body</td></tr>
@@ -976,6 +985,42 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       <tr><td>Scroll</td><td>Zoom</td></tr>
     </table>
   `;
+
+  // --- Diagnostics drawer (C Sample::DrawMetrics / M key) -------------------
+  // Counters tab only: wasm exposes body/shape/contact/joint/island + awake /
+  // sleeping via sim_counters. The C Profile tab (per-phase ms ring buffer) is
+  // not wired through wasm yet, so it is omitted rather than stubbed.
+  const metrics = document.createElement("div");
+  metrics.className = "sample-metrics";
+  metrics.hidden = true;
+  metrics.innerHTML = `
+    <div class="sample-metrics-head">Diagnostics <span class="sample-metrics-hint">(M)</span></div>
+    <div class="sample-metrics-body">
+      <div class="sample-metrics-row"><span>bodies</span><span class="m-bodies">0</span></div>
+      <div class="sample-metrics-row"><span>shapes</span><span class="m-shapes">0</span></div>
+      <div class="sample-metrics-row"><span>contacts</span><span class="m-contacts">0</span></div>
+      <div class="sample-metrics-row"><span>joints</span><span class="m-joints">0</span></div>
+      <div class="sample-metrics-row"><span>islands</span><span class="m-islands">0</span></div>
+      <div class="sample-metrics-row"><span>awake / sleeping</span><span class="m-awake">0 / 0</span></div>
+    </div>
+  `;
+  // Anchor under the canvas area when present; otherwise under the controls' page.
+  const canvasArea =
+    (canvas.closest(".demo-canvas-area") as HTMLElement | null) ??
+    (controls.closest(".demo-page") as HTMLElement | null) ??
+    controls;
+  canvasArea.appendChild(metrics);
+  const mBodies = metrics.querySelector(".m-bodies") as HTMLElement;
+  const mShapes = metrics.querySelector(".m-shapes") as HTMLElement;
+  const mContacts = metrics.querySelector(".m-contacts") as HTMLElement;
+  const mJoints = metrics.querySelector(".m-joints") as HTMLElement;
+  const mIslands = metrics.querySelector(".m-islands") as HTMLElement;
+  const mAwake = metrics.querySelector(".m-awake") as HTMLElement;
+  let metricsOpen = false;
+  const setMetricsOpen = (open: boolean) => {
+    metricsOpen = open;
+    metrics.hidden = !open;
+  };
 
   const debugOverlay = new DebugDrawOverlay(demo);
   const textOverlay = new TextLabelOverlay(demo);
@@ -1150,6 +1195,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     }),
     demoBus.on("sim.restart", () => state.restart()),
     demoBus.on("sim.frame", () => frameSelection()),
+    demoBus.on("ui.metrics", () => setMetricsOpen(!metricsOpen)),
     demoBus.on("view.flag", ({ name, value }) => {
       setViewBit(name, value);
       pushDebugFlags();
@@ -1222,7 +1268,9 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
 
     frame += 1;
     if (frame % 2 === 0) {
+      // Full-frame wall-clock vs physics-only EMA — makes render/draw overhead visible.
       frameMsEl.textContent = `${lastFrameMs.toFixed(1)} ms`;
+      stepMsEl.textContent = `step ${state.stepMsAvg.toFixed(1)} ms`;
       stepCountEl.textContent = `step ${state.stepCount}`;
       const cam = cameraReadout(demo);
       const px = cam.px + worldOrigin[0];
@@ -1231,6 +1279,16 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       camPivotEl.textContent = `pivot m (${px.toFixed(1)}, ${py.toFixed(1)}, ${pz.toFixed(1)})`;
       camYawEl.textContent = `yaw/pitch (${cam.yaw.toFixed(1)}, ${cam.pitch.toFixed(1)})`;
       camRadiusEl.textContent = `radius m ${cam.radius.toFixed(1)}`;
+      if (metricsOpen) {
+        // Layout: [body, shape, contact, joint, island, awake_dynamic, sleeping_dynamic]
+        const c = wasm.sim_counters();
+        mBodies.textContent = `${(c[0] ?? 0) | 0}`;
+        mShapes.textContent = `${(c[1] ?? 0) | 0}`;
+        mContacts.textContent = `${(c[2] ?? 0) | 0}`;
+        mJoints.textContent = `${(c[3] ?? 0) | 0}`;
+        mIslands.textContent = `${(c[4] ?? 0) | 0}`;
+        mAwake.textContent = `${(c[5] ?? 0) | 0} / ${(c[6] ?? 0) | 0}`;
+      }
     }
 
     return stepped;
@@ -1264,6 +1322,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     debugOverlay.dispose();
     textOverlay.dispose();
     paramDispose();
+    metrics.remove();
     demo.controls.enabled = true;
   };
 

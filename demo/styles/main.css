@@ -1306,6 +1306,53 @@ body {
   background: #5c6778;
 }
 
+/* Bottom Diagnostics drawer (C Sample::DrawMetrics / M). */
+.demo-page.samples-shell .sample-metrics {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 40;
+  max-width: min(520px, calc(100% - 16px));
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(26, 27, 29, 0.92);
+  border: 1px solid #343b46;
+  color: #e5e8ed;
+  font-family: var(--font);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.demo-page.samples-shell .sample-metrics-head {
+  font-weight: 600;
+  color: #6199cc;
+  margin-bottom: 6px;
+}
+
+.demo-page.samples-shell .sample-metrics-hint {
+  font-weight: 400;
+  color: #8b93a1;
+  margin-left: 4px;
+}
+
+.demo-page.samples-shell .sample-metrics-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 16px;
+}
+
+.demo-page.samples-shell .sample-metrics-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #c5cad3;
+}
+
+.demo-page.samples-shell .sample-metrics-row span:last-child {
+  color: #9ad27a;
+  font-variant-numeric: tabular-nums;
+}
 
 .demo-page.samples-shell .sample-draw-text {
   position: absolute;

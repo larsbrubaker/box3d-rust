@@ -22,6 +22,8 @@ export interface DemoEventMap {
   "sim.frame": void;
   "sim.prevSample": { entry: SampleEntry | null };
   "sim.nextSample": { entry: SampleEntry | null };
+  /** Toggle the bottom Diagnostics drawer (C showMetrics / M key). */
+  "ui.metrics": void;
   "view.flag": { name: string; value: boolean };
   "view.scale": { name: string; value: number };
   "render.setting": { key: string; value: number | boolean };

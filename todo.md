@@ -27,6 +27,10 @@ documented in `demo/src/registry.ts` — only these:
 6. Tree / Benchmark — fetch/performance.now/portable save format
 7. Replay / Viewer — query search index + keyframe-policy skipped
 
+About content lives on the home page. Separate `#/math` and `#/roadmap`
+About routes are deliberately not added (and not removed if ever present):
+home About covers product context without inventing extra SPA pages.
+
 No further actionable demo-excellence task file for completable fidelity
 gaps.**
 
