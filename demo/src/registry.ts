@@ -124,7 +124,8 @@ export const SAMPLES: SampleEntry[] = [
     // Live: 10 trees × 22 tapering hulls (C DEBUG bodyCount; release 50 disclosed in
     // SCENE_INFO / too heavy for serial wasm).
     ["Falling Trees", "live", "benchmark", "trees"],
-    ["Sensor", "partial", "sensors", "benchmark"],
+    // Live: full C 40×40 counts; camera matches C SetView(0, 0, 250, {0, 110, 0}).
+    ["Sensor", "live", "sensors", "benchmark"],
     // Live: gridCount 8 (C DEBUG; release 20³ = 8000 disclosed in SCENE_INFO / too
     // heavy for serial wasm). Drum draws its real 36 wall + 4 rib hulls.
     ["Washer", "live", "benchmark", "washer"],

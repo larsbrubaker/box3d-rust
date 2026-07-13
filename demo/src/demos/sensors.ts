@@ -154,7 +154,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     else if (scene === "move") setView(demo, 0, 30, 40, [0, 5, 0]);
     else if (scene === "joint") setView(demo, 0, 30, 40, [0, 5, 0]);
     else if (scene === "persistent") setView(demo, 0, 30, 40, [0, 5, 0]);
-    else setView(demo, 0, 0, 100, [0, 40, 0]); // benchmark
+    else setView(demo, 0, 0, 250, [0, 110, 0]); // benchmark: sample_benchmark.cpp ~746 SetView(0, 0, 250, {0, 110, 0})
   }
 
   // Move / Joint draw a box ground (pose index 0); Hit / Persistent draw a mesh
