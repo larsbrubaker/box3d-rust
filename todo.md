@@ -14,10 +14,13 @@ bit-exact with the C scalar reference in both precision modes. Everything
 below is quality, presentation, and release work — not core physics.**
 
 **Demo track note (context, not a task): Samples App coverage is complete.
-Remaining `partial` registry rows are intentional browser/policy disclosures
-documented in `demo/src/registry.ts` (benchmark debug counts, pointer-lock,
-dump-loader mechanism, scaled/scoped mesh samples, Tree/Replay browser limits,
-Time of Impact label). No further actionable demo-excellence task file.**
+Benchmark DEBUG-count samples are now `live` under the Village precedent
+(release scale stays disclosed in SCENE_INFO). Remaining `partial` registry
+rows are intentional browser/policy disclosures documented in
+`demo/src/registry.ts` (Benchmark Sensor camera gap, Hull Step trial loop,
+pointer-lock, dump-loader mechanism, scaled/scoped mesh samples, Tree/Replay
+browser limits, Time of Impact label). No further actionable demo-excellence
+task file.**
 
 ## Upstream tracking (recurring)
 
