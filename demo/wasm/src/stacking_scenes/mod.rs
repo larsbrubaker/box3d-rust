@@ -124,39 +124,6 @@ fn install<F: FnOnce(&mut SimState)>(build: F) -> u32 {
 // Hull triangulation for the arbitrary-hull render path
 // --------------------------------------------------------------------------
 
-/// Triangulate a convex hull's faces into a flat, non-indexed
-/// `[x,y,z, x,y,z, ...]` triangle-vertex list in hull-local space. Each face is
-/// fan-triangulated from its first vertex; the CCW half-edge winding yields
-/// outward-facing triangles (JS `computeVertexNormals` then flat-shades them).
-fn hull_triangles(hull: &HullData) -> Vec<f32> {
-    let mut out = Vec::new();
-    let edges = &hull.edges;
-    let points = &hull.points;
-    for face in &hull.faces[..hull.face_count as usize] {
-        let start = face.edge;
-        // Collect the ordered vertex indices around this face.
-        let mut ring: Vec<u8> = Vec::new();
-        let mut e = start;
-        loop {
-            ring.push(edges[e as usize].origin);
-            e = edges[e as usize].next;
-            if e == start {
-                break;
-            }
-        }
-        if ring.len() < 3 {
-            continue;
-        }
-        let v0 = points[ring[0] as usize];
-        for i in 1..ring.len() - 1 {
-            let vi = points[ring[i] as usize];
-            let vj = points[ring[i + 1] as usize];
-            out.extend_from_slice(&[v0.x, v0.y, v0.z, vi.x, vi.y, vi.z, vj.x, vj.y, vj.z]);
-        }
-    }
-    out
-}
-
 /// Per-body local hull geometry for the current scene, aligned to
 /// `sim_body_poses` order. Layout: for each body, one `floatCount` value
 /// followed by `floatCount` triangle-vertex floats (`0` for non-hull bodies).
@@ -174,7 +141,7 @@ pub fn sim_hull_geometry() -> Vec<f32> {
             let mut tris: Vec<f32> = Vec::new();
             while sid != NULL_INDEX {
                 if let ShapeGeometry::Hull(h) = &sim.world.shapes[sid as usize].geometry {
-                    tris = hull_triangles(h);
+                    tris = crate::vis::hull_triangles(h);
                     break;
                 }
                 sid = sim.world.shapes[sid as usize].next_shape_id;

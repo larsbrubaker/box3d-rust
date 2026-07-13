@@ -16,6 +16,7 @@ use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::height_field::{
     get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
 };
+use box3d_rust::hull::{get_hull_edges, get_hull_faces, get_hull_points, HullData};
 use box3d_rust::math_functions::{
     mul_transforms, transform_point, Pos, Quat, Transform, Vec3, QUAT_IDENTITY,
 };
@@ -325,6 +326,63 @@ pub fn mesh_triangle_edges_transform(
         }
     }
     edges
+}
+
+/// Fan-triangulate a convex hull's faces into a flat, non-indexed
+/// `[x,y,z, x,y,z, ...]` triangle-vertex list in hull-local space. Each face ring
+/// is fanned from its first vertex; the CCW half-edge winding yields
+/// outward-facing triangles (JS `computeVertexNormals` then flat-shades them),
+/// matching C `DrawHull` (draw.c:100). Shared by the stacking hull render path and
+/// the geometry viewers.
+pub fn hull_triangles(hull: &HullData) -> Vec<f32> {
+    let points = get_hull_points(hull);
+    let edges = get_hull_edges(hull);
+    let faces = get_hull_faces(hull);
+    let mut out = Vec::new();
+    for face in faces {
+        let start = face.edge;
+        // Collect the ordered vertex indices around this face.
+        let mut ring: Vec<usize> = Vec::new();
+        let mut e = start;
+        loop {
+            ring.push(edges[e as usize].origin as usize);
+            e = edges[e as usize].next;
+            if e == start {
+                break;
+            }
+        }
+        if ring.len() < 3 {
+            continue;
+        }
+        let v0 = points[ring[0]];
+        for i in 1..ring.len() - 1 {
+            let vi = points[ring[i]];
+            let vj = points[ring[i + 1]];
+            out.extend_from_slice(&[v0.x, v0.y, v0.z, vi.x, vi.y, vi.z, vj.x, vj.y, vj.z]);
+        }
+    }
+    out
+}
+
+/// Wireframe edges of a convex hull as interleaved endpoints
+/// `[x0,y0,z0, x1,y1,z1, ...]` in hull-local space. Half-edges come in twin pairs,
+/// so each undirected edge is emitted once (when its index is below its twin's),
+/// matching C `DrawHull` (draw.c:107). Callers that need a placement offset add it
+/// to the returned vertices.
+pub fn hull_edges(hull: &HullData) -> Vec<f32> {
+    let points = get_hull_points(hull);
+    let edges = get_hull_edges(hull);
+    let mut out = Vec::with_capacity(edges.len() * 3);
+    for i in 0..edges.len() {
+        let twin = edges[i].twin as usize;
+        if i >= twin {
+            continue;
+        }
+        let p1 = points[edges[i].origin as usize];
+        let p2 = points[edges[twin].origin as usize];
+        out.extend_from_slice(&[p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+    }
+    out
 }
 
 /// The first capsule shape on a body, used to build a capsule `VisBody` for a

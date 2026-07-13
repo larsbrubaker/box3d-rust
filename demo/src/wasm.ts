@@ -8,22 +8,73 @@ export interface Box3dWasm {
   atan2(y: number, x: number): number;
   polygon_points(sides: number, radius: number, angle: number, cx: number, cy: number): Float32Array;
 
-  collide_spheres_demo(bx: number, by: number, bz: number): Float32Array;
-  collide_capsules_demo(bx: number, by: number, bz: number, angle: number): Float32Array;
-  collide_hull_sphere_demo(bx: number, by: number, bz: number): Float32Array;
-  collide_hulls_demo(bx: number, by: number, bz: number, angle: number): Float32Array;
+  /** Select a manifold viewer (scene 0..=8, C order) and return its scene descriptor. */
+  manifold_reset(scene: number): Float32Array;
+  /** Push shape B's mouse-driven world transform (position + quaternion x,y,z,w). */
+  manifold_set_transform_b(
+    px: number, py: number, pz: number,
+    qx: number, qy: number, qz: number, qw: number,
+  ): void;
+  /** Set the "Use cache" checkbox and manual-feature radio (0 auto,1 faceA,2 faceB,3 edgePair). */
+  manifold_set_cache(use_cache: boolean, manual_feature: number): void;
+  /** Recompute the manifold in the current pose; returns it packed in world space. */
+  manifold_step(): Float32Array;
 
-  box_hull_edges(hx: number, hy: number, hz: number): Float32Array;
+  // --- Geometry category (sample_geometry.cpp; demo/wasm/src/geometry_demo.rs).
+  // Each returns packed hull blocks (see geometry_demo.rs module docs): a leading
+  // hull-block count, then per block an 8-float header
+  // `[surfaceArea, volume, innerRadius, vertexCount, faceCount, uniqueEdges,
+  //   triFloatLen, wireFloatLen]` followed by its triangle then wire floats.
+  geometry_box_hull(
+    hx: number, hy: number, hz: number,
+    cx: number, cy: number, cz: number,
+    rx: number, ry: number, rz: number,
+    sx: number, sy: number, sz: number,
+  ): Float32Array;
+  geometry_hull(): Float32Array;
+  geometry_hull_reduction(kind: number, count: number): Float32Array;
+  geometry_hull_transform(
+    sx: number, sy: number, sz: number,
+    rx: number, ry: number, rz: number,
+    px: number, py: number, pz: number,
+  ): Float32Array;
+  /** Capsule Mass: two hull blocks (capsule hull, box hull) then
+   *  `[capLen, capRadius, massHull, massCap, massBox, ixx×3, iyy×3, izz×3]`. */
+  geometry_capsule_mass(sides: number): Float32Array;
 
-  hf_build_wave(): number;
+  // --- Height Field (sample_mesh.cpp HeightField; demo/wasm/src/height_field_demo.rs).
+  hf_reset(rowCount: number, columnCount: number, amplitude: number, holes: boolean): number;
   hf_wireframe(): Float32Array;
-  hf_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  hf_info(): Float32Array;
+  hf_cast(
+    ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, radius: number,
+  ): Float32Array;
 
-  mesh_build_box(): Float32Array;
-  mesh_build_grid(): Float32Array;
-  mesh_wireframe(): Float32Array;
-  mesh_aabb(): Float32Array;
-  mesh_ray_cast(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  // --- Mesh category (sample_mesh.cpp; demo/wasm/src/mesh_demo/). demo_shell +
+  // world-toggle exports (mesh_mouse_*, mesh_spawn_random, mesh_delete_at_ray,
+  // mesh_counters, mesh_debug_draw/text, mesh_set_enable_*) are reached through
+  // makeInteractAdapter's bracket access and are not re-declared here.
+  mesh_reset(scene: number, shapeType: number, scaleX: number, scaleZ: number): number;
+  mesh_reset_reflection(scaleX: number, scaleY: number, scaleZ: number): number;
+  mesh_reset_hollow_box(): number;
+  mesh_reset_voxel(objText: string): number;
+  mesh_reset_viewer(
+    objText: string, medianSplit: boolean, concaveEdges: boolean, weldVertices: boolean,
+    weldToleranceMm: number,
+  ): number;
+  mesh_reset_benchmark(obj1: string, obj2: string, obj3: string, obj4: string): number;
+  mesh_set_shape(shapeType: number): void;
+  mesh_step(dt: number, subSteps: number): number;
+  mesh_poses(): Float32Array;
+  mesh_styles(): Uint32Array;
+  mesh_counters(): Float32Array;
+  mesh_body_count(): number;
+  mesh_ground_wireframe(): Float32Array;
+  mesh_voxel_hull_wireframe(): Float32Array;
+  mesh_stats(): Float32Array;
+  mesh_viewer_height(): number;
+  mesh_viewer_nodes(level: number): Float32Array;
+  mesh_benchmark_build(): number;
 
   sim_reset_stacking(): number;
   /** `shape`: 0 = hull box, 1 = capsule (C JengaStack DrawControls radio). */
@@ -290,6 +341,69 @@ export interface Box3dWasm {
   query_counters(): Float32Array;
   query_debug_draw(flags: number): Float32Array;
 
+  // Collision / Ray Curtain (sample_collision.cpp RayCurtain).
+  rc_reset(): void;
+  rc_step(dt: number, sub_steps: number): void;
+  rc_poses(): Float32Array;
+  rc_surface_wireframe(): Float32Array;
+  rc_rays(): Float32Array;
+
+  // Collision / Mesh Scale (MeshScale).
+  msc_reset(): void;
+  msc_set_params(sx: number, sy: number, sz: number, start_y: number, start_z: number, sphere_cast: number): void;
+  msc_wireframe(): Float32Array;
+  msc_cast(): Float32Array;
+
+  // Collision / Shape Cast (ShapeCast).
+  sc_reset(): void;
+  sc_step(dt: number, sub_steps: number): void;
+  sc_set_offset(y: number, z: number): void;
+  sc_set_initial_overlap(flag: number): void;
+  sc_poses(): Float32Array;
+  sc_surface_wireframe(): Float32Array;
+  sc_casts(): Float32Array;
+
+  // Collision / Overlap World (OverlapWorld).
+  ow_reset(): void;
+  ow_step(dt: number, sub_steps: number): void;
+  ow_set_offset(offset: number): void;
+  ow_poses(): Float32Array;
+  ow_surface_wireframe(): Float32Array;
+  ow_overlaps(): Float32Array;
+
+  // Collision / Long Ray Cast (LongRayCast).
+  lrc_reset(): void;
+  lrc_set_params(ray_length_km: number, cone_angle: number): void;
+  lrc_poses(): Float32Array;
+  lrc_surface_wireframe(): Float32Array;
+  lrc_step(): Float32Array;
+
+  // Collision / Initial Overlap (InitialOverlap).
+  io_reset(): void;
+  io_set_initial_overlap(flag: number): void;
+  io_surface_wireframe(): Float32Array;
+  io_cast(): Float32Array;
+
+  // Collision / Shape Cast Debug (ShapeCastDebug).
+  scd_data(): Float32Array;
+
+  // Collision / Distance Debug (DistanceDebug).
+  dd_data(simplex_index: number): Float32Array;
+
+  // Collision / Shape Distance (ShapeDistance).
+  sd_reset(): void;
+  sd_set_params(type_a: number, type_b: number, radius_a: number, radius_b: number, use_cache: number, show_indices: number, draw_simplex: number): void;
+  sd_set_transform_b(px: number, py: number, pz: number, qx: number, qy: number, qz: number, qw: number): void;
+  sd_step(simplex_index: number): Float32Array;
+
+  // Collision / Time of Impact (TimeOfImpact).
+  toi_data(type_a: number, type_b: number): Float32Array;
+
+  // Collision / Capsule Cast Ray (CapsuleCastRay).
+  ccray_reset(): void;
+  ccray_poses(): Float32Array;
+  ccray_cast(): Float32Array;
+
   sim_reset_compound(): number;
   sim_reset_compound_simple(): number;
   sim_reset_compound_spheres(): number;
@@ -346,12 +460,32 @@ export interface Box3dWasm {
   sim_record_start_step(): number;
 
   bench_reset_large_pyramid(): number;
-  bench_reset_junkyard(): number;
+  bench_reset_wide_pyramid(): number;
+  bench_reset_many_pyramids(): number;
+  bench_reset_rain(): number;
+  bench_reset_joint_grid(): number;
+  bench_reset_falling_boxes(): number;
+  bench_reset_candy_cups(): number;
+  bench_reset_explosion(): number;
+  bench_reset_height_field(): number;
   bench_reset_trees(gridSize: number): number;
+  bench_reset_washer(): number;
+  bench_reset_large_world(): number;
+  bench_reset_hull(): number;
+  bench_reset_chains(): number;
+  bench_reset_destruction(): number;
+  bench_reset_junkyard(): number;
   bench_step(dt: number, sub_steps: number): number;
-  bench_body_poses(): Float32Array;
-  bench_body_count(): number;
+  bench_poses(): Float32Array;
+  bench_styles(): Uint32Array;
   bench_mesh_wireframe(): Float32Array;
+  bench_hull_wireframe_b(): Float32Array;
+  bench_hull_info(): Float32Array;
+  bench_washer_drum(): Float32Array;
+  bench_set_explosion_magnitude(impulse: number): void;
+  bench_explode(): void;
+  bench_set_height_field_radius(radius: number): void;
+  bench_height_field_cast(): Float32Array;
   bench_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   bench_mouse_move(px: number, py: number, pz: number): void;
   bench_mouse_up(): void;
@@ -360,6 +494,11 @@ export interface Box3dWasm {
   bench_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   bench_counters(): Float32Array;
   bench_debug_draw(flags: number): Float32Array;
+  bench_debug_text(): string;
+  bench_set_enable_sleep(flag: boolean): void;
+  bench_set_enable_warm_starting(flag: boolean): void;
+  bench_set_enable_continuous(flag: boolean): void;
+  bench_set_recycle_distance(meters: number): void;
 
   // --- Bodies category (sample_bodies.cpp; demo/wasm/src/bodies_demo.rs) ---
   bodies_reset(scene: number): number;

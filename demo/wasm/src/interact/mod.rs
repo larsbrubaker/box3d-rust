@@ -338,28 +338,6 @@ pub fn sim_set_launch_speed_scale(scale: f32) {
     set_launch_speed_scale(scale);
 }
 
-/// Raycast closest hit for demos that only need hit info.
-/// Returns `[hit, px, py, pz, nx, ny, nz, fraction]` (hit is 0/1).
-#[allow(dead_code)]
-pub fn ray_closest(world: &World, origin: Pos, translation: Vec3) -> [f32; 8] {
-    let filter = default_query_filter();
-    let r = world_cast_ray_closest(world, origin, translation, &filter);
-    if r.hit {
-        [
-            1.0,
-            r.point.x as f32,
-            r.point.y as f32,
-            r.point.z as f32,
-            r.normal.x,
-            r.normal.y,
-            r.normal.z,
-            r.fraction,
-        ]
-    } else {
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    }
-}
-
 /// Helper: build Pos/Vec3 from floats.
 pub fn pos(x: f32, y: f32, z: f32) -> Pos {
     Pos {

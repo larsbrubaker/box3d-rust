@@ -1,9 +1,14 @@
 // Sample registry — one entry per C `RegisterSample( category, name, … )` in
 // box3d-cpp-reference/samples/sample_*.cpp. This is the single source of truth
 // for the category→sample tree, the Samples menu, prev/next ordering, and the
-// registry-derived home page. Statuses are honest: `live` means a route+scene
-// exists and matches the C sample; `partial` means a route exists but diverges
-// (wrong counts/cameras/controls per task-12.md); `planned` has no route yet.
+// registry-derived home page. Statuses are honest, per this convention:
+//   `live`    — a route+scene exists and matches the C sample's scene, values,
+//               controls, and camera with no undisclosed divergence.
+//   `partial` — a route exists but has a *disclosed* divergence from C (e.g. a
+//               scaled-down body/row count, a missing library API worked around,
+//               or a corrected label). The divergence is noted at its entry here
+//               and/or on the page.
+//   `planned` — no route yet.
 //
 // Enumerated from the pinned submodule (v0.1.0+, 540ea38). 150 active entries
 // across 19 categories. Three upstream RegisterSample calls are `#if 0`'d and
@@ -95,21 +100,21 @@ export const SAMPLES: SampleEntry[] = [
   ]),
   ...cat("Benchmark", "sample_benchmark.cpp", [
     ["Large Pyramid", "partial", "benchmark", "pyramid"],
-    ["Wide Pyramid", "planned"],
-    ["Many Pyramids", "planned"],
-    ["Rain", "planned"],
-    ["Joint Grid", "planned"],
-    ["Falling Boxes", "planned"],
-    ["Candy Cups", "planned"],
-    ["Explosion", "planned"],
-    ["Height Field", "planned"],
+    ["Wide Pyramid", "live", "benchmark", "wide-pyramid"],
+    ["Many Pyramids", "partial", "benchmark", "many-pyramids"],
+    ["Rain", "partial", "benchmark", "rain"],
+    ["Joint Grid", "partial", "benchmark", "joint-grid"],
+    ["Falling Boxes", "live", "benchmark", "falling-boxes"],
+    ["Candy Cups", "partial", "benchmark", "candy-cups"],
+    ["Explosion", "live", "benchmark", "explosion"],
+    ["Height Field", "live", "benchmark", "height-field"],
     ["Falling Trees", "partial", "benchmark", "trees"],
     ["Sensor", "partial", "sensors", "benchmark"],
-    ["Washer", "planned"],
-    ["Large World", "planned"],
-    ["Hull", "planned"],
-    ["Chains", "planned"],
-    ["Destruction", "planned"],
+    ["Washer", "partial", "benchmark", "washer"],
+    ["Large World", "partial", "benchmark", "large-world"],
+    ["Hull", "partial", "benchmark", "hull"],
+    ["Chains", "partial", "benchmark", "chains"],
+    ["Destruction", "partial", "benchmark", "destruction"],
     ["Junkyard", "partial", "benchmark", "junkyard"],
   ]),
   ...cat("Character", "sample_character.cpp", [
@@ -119,18 +124,26 @@ export const SAMPLES: SampleEntry[] = [
     ["Rigid Body", "planned"],
   ]),
   ...cat("Collision", "sample_collision.cpp", [
-    ["Ray Curtain", "planned"],
-    ["Cast World", "live", "queries"],
-    ["Mesh Scale", "planned"],
-    ["Shape Cast", "planned"],
-    ["Overlap World", "planned"],
-    ["Long Ray Cast", "planned"],
-    ["Initial Overlap", "planned"],
-    ["Shape Cast Debug", "planned"],
-    ["Distance Debug", "planned"],
-    ["Shape Distance", "planned"],
-    ["Time of Impact", "planned"],
-    ["Capsule Cast Ray", "planned"],
+    ["Ray Curtain", "live", "queries", "ray-curtain"],
+    ["Cast World", "live", "queries", "cast-world"],
+    // Partial: the scene recreates the mesh shape at each new scale rather than
+    // mutating the live shape in place via C's b3Shape_SetMesh (no in-place setter
+    // ported); the cast geometry and values are otherwise exact.
+    ["Mesh Scale", "partial", "queries", "mesh-scale"],
+    ["Shape Cast", "live", "queries", "shape-cast"],
+    ["Overlap World", "live", "queries", "overlap-world"],
+    // Partial: collision uses the real `create_rock` hull (exact), but the rock is
+    // *rendered* as an icosahedron stand-in rather than drawing the actual hull
+    // surface — a disclosed visual-only divergence from the C sample.
+    ["Long Ray Cast", "partial", "queries", "long-ray-cast"],
+    ["Initial Overlap", "live", "queries", "initial-overlap"],
+    ["Shape Cast Debug", "live", "queries", "shape-cast-debug"],
+    ["Distance Debug", "live", "queries", "distance-debug"],
+    ["Shape Distance", "live", "queries", "shape-distance"],
+    // Partial: the on-screen label corrects a mislabel in the C sample's overlay
+    // text (a disclosed, intentional deviation from the C sample's wording).
+    ["Time of Impact", "partial", "queries", "time-of-impact"],
+    ["Capsule Cast Ray", "live", "queries", "capsule-cast-ray"],
   ]),
   ...cat("Compound", "sample_compound.cpp", [
     ["Simple", "partial", "compound", "simple"],
@@ -167,11 +180,11 @@ export const SAMPLES: SampleEntry[] = [
     ["Sensor Hits", "live", "sensors", "hits"],
   ]),
   ...cat("Geometry", "sample_geometry.cpp", [
-    ["Box Hull", "partial", "hull"],
-    ["Hull", "planned"],
-    ["Hull Reduction", "planned"],
-    ["Hull Transform", "planned"],
-    ["Capsule Mass", "planned"],
+    ["Box Hull", "live", "geometry", "box-hull"],
+    ["Hull", "live", "geometry", "hull"],
+    ["Hull Reduction", "live", "geometry", "hull-reduction"],
+    ["Hull Transform", "live", "geometry", "hull-transform"],
+    ["Capsule Mass", "live", "geometry", "capsule-mass"],
   ]),
   ...cat("Issues", "sample_issues.cpp", [
     ["Dump Loader", "planned"],
@@ -201,26 +214,33 @@ export const SAMPLES: SampleEntry[] = [
     ["Gear Lift", "live", "joints", "gear"],
   ]),
   ...cat("Manifold", "sample_manifold.cpp", [
-    ["Sphere vs Sphere", "partial", "manifolds", "0"],
-    ["Capsule vs Sphere", "planned"],
-    ["Hull vs Sphere", "partial", "manifolds", "2"],
-    ["Triangle vs Sphere", "planned"],
-    ["Capsule vs Capsule", "partial", "manifolds", "1"],
-    ["Capsule vs Hull", "planned"],
-    ["Triangle vs Capsule", "planned"],
-    ["Hull vs Hull", "partial", "manifolds", "3"],
-    ["Triangle vs Hull", "planned"],
+    ["Sphere vs Sphere", "live", "manifolds", "sphere-sphere"],
+    ["Capsule vs Sphere", "live", "manifolds", "capsule-sphere"],
+    ["Hull vs Sphere", "live", "manifolds", "hull-sphere"],
+    ["Triangle vs Sphere", "live", "manifolds", "triangle-sphere"],
+    ["Capsule vs Capsule", "live", "manifolds", "capsule-capsule"],
+    ["Capsule vs Hull", "live", "manifolds", "capsule-hull"],
+    ["Triangle vs Capsule", "live", "manifolds", "triangle-capsule"],
+    ["Hull vs Hull", "live", "manifolds", "hull-hull"],
+    ["Triangle vs Hull", "live", "manifolds", "triangle-hull"],
   ]),
   ...cat("Mesh", "sample_mesh.cpp", [
-    ["Grid", "partial", "mesh", "grid"],
-    ["Big Box", "planned"],
-    ["Box", "partial", "mesh", "box"],
-    ["Reflection", "planned"],
+    ["Grid", "live", "mesh", "grid"],
+    ["Big Box", "live", "mesh", "big-box"],
+    ["Box", "live", "mesh", "box"],
+    ["Reflection", "live", "mesh", "reflection"],
+    // Height Field lives on its own single-scene route: row/column counts are
+    // scaled down from the C 400/10 for browser render feasibility (disclosed on
+    // the page), and both the ray and sphere shape-cast branches are ported.
     ["Height Field", "partial", "height-field"],
-    ["Viewer", "planned"],
-    ["Creation Benchmark", "planned"],
-    ["Voxel", "planned"],
-    ["Hollow Box", "planned"],
+    // Viewer ports the wireframe + per-level BVH AABB inspector + build stats, but
+    // scopes out the degenerate-triangle labels and the concave/weld checkboxes.
+    ["Viewer", "partial", "mesh", "viewer"],
+    // Creation Benchmark builds the four meshes on demand and reports the minimum
+    // wall time (page-side timing rather than C's per-step b3GetTicks reduction).
+    ["Creation Benchmark", "partial", "mesh", "creation-benchmark"],
+    ["Voxel", "live", "mesh", "voxel"],
+    ["Hollow Box", "live", "mesh", "hollow-box"],
   ]),
   ...cat("Ragdoll", "sample_ragdoll.cpp", [
     ["Box", "live", "ragdolls", "box"],
@@ -255,7 +275,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Capsule Stack", "partial", "stacking", "capsule-stack"],
     ["Single Box", "partial", "stacking", "single"],
     ["Cylinder", "partial", "stacking", "cylinder"],
-    ["Cylinder Stack", "partial", "stacking", "cylinder-stack"],
+    // Live: builds each body via `b3CloneAndTransformHull` of one base cylinder
+    // (identity transform + per-instance scale), exactly as C's
+    // `b3CreateTransformedHullShape` does; camera/forceScale/values all match.
+    ["Cylinder Stack", "live", "stacking", "cylinder-stack"],
     ["Box Stack", "partial", "stacking", "boxes"],
     ["Jenga Stack", "partial", "stacking", "jenga"],
     ["Dominoes", "partial", "stacking", "dominoes"],

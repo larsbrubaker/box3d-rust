@@ -17,9 +17,11 @@ import { SCENES as character } from "../src/demos/character.ts";
 import { SCENES as compound } from "../src/demos/compound.ts";
 import { SCENES as continuous } from "../src/demos/continuous.ts";
 import { SCENES as determinism } from "../src/demos/determinism.ts";
+import { SCENES as geometry } from "../src/demos/geometry.ts";
 import { SCENES as joints } from "../src/demos/joints.ts";
 import { SCENES as manifolds } from "../src/demos/manifolds.ts";
 import { SCENES as mesh } from "../src/demos/mesh.ts";
+import { SCENES as queries } from "../src/demos/queries.ts";
 import { SCENES as ragdolls } from "../src/demos/ragdolls.ts";
 import { SCENES as sensors } from "../src/demos/sensors.ts";
 import { SCENES as shapes } from "../src/demos/shapes.ts";
@@ -39,9 +41,11 @@ const PAGES: Record<string, { scenes: readonly string[]; extra?: readonly string
   compound: { scenes: compound },
   continuous: { scenes: continuous },
   determinism: { scenes: determinism },
+  geometry: { scenes: geometry },
   joints: { scenes: joints },
   manifolds: { scenes: manifolds },
   mesh: { scenes: mesh },
+  queries: { scenes: queries },
   ragdolls: { scenes: ragdolls },
   sensors: { scenes: sensors },
   shapes: { scenes: shapes },

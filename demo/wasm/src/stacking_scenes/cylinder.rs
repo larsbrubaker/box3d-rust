@@ -7,8 +7,8 @@
 
 use super::{install, pos, push_box_rot, push_hull};
 use crate::sim_demo::add_ground;
-use box3d_rust::hull::{create_cylinder, create_hull, HullData};
-use box3d_rust::math_functions::{cos, sin, Vec3, PI, QUAT_IDENTITY};
+use box3d_rust::hull::{clone_and_transform_hull, create_cylinder, create_hull};
+use box3d_rust::math_functions::{Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY};
 use wasm_bindgen::prelude::*;
 
 // --------------------------------------------------------------------------
@@ -40,40 +40,19 @@ pub fn sim_reset_cylinder() -> u32 {
 // Cylinder Stack (sample_stacking.cpp:366)
 // --------------------------------------------------------------------------
 
-/// Generate a cylinder hull with a per-instance `scale` baked into its points,
-/// reproducing the geometry that C's `b3CreateTransformedHullShape` bakes with an
-/// identity transform. (The library has no transformed-hull-shape entry point yet,
-/// so the scaled point cloud is fed straight to `b3CreateHull`, which rebuilds the
-/// same convex solid.)
-fn scaled_cylinder(height: f32, radius: f32, y_offset: f32, sides: i32, scale: Vec3) -> HullData {
-    let point_count = 2 * sides;
-    let mut points = Vec::with_capacity(point_count as usize);
-    let mut alpha = 0.0f32;
-    let delta_alpha = 2.0 * PI / sides as f32;
-    for _ in 0..sides {
-        let s = sin(alpha);
-        let c = cos(alpha);
-        points.push(Vec3 {
-            x: radius * c * scale.x,
-            y: y_offset * scale.y,
-            z: radius * s * scale.z,
-        });
-        points.push(Vec3 {
-            x: radius * c * scale.x,
-            y: (y_offset + height) * scale.y,
-            z: radius * s * scale.z,
-        });
-        alpha += delta_alpha;
-    }
-    create_hull(&points, point_count).expect("scaled cylinder hull")
-}
-
 /// Cylinder Stack (sample_stacking.cpp:366). 10 15-sided cylinders with the four
 /// per-instance scales cycled by `i % 4`. C sets `forceScale = 0.001`.
+///
+/// C builds one base cylinder hull and installs each body via
+/// `b3CreateTransformedHullShape( bodyId, &shapeDef, m_hull, b3Transform_identity,
+/// scales[i % 4] )` (sample_stacking.cpp:398). Internally that bakes the identity
+/// transform + non-uniform scale into fresh hull data with `b3CloneAndTransformHull`
+/// (shape.c:142), so the port clones the base hull the same way per instance.
 #[wasm_bindgen]
 pub fn sim_reset_cylinder_stack() -> u32 {
     install(|sim| {
         add_ground(sim, 10.0);
+        let hull = create_cylinder(1.0, 0.5, 0.0, 15).expect("cylinder hull");
         let scales = [
             Vec3 {
                 x: 1.0,
@@ -97,12 +76,14 @@ pub fn sim_reset_cylinder_stack() -> u32 {
             },
         ];
         for i in 0..10 {
-            let hull = scaled_cylinder(1.0, 0.5, 0.0, 15, scales[(i % 4) as usize]);
+            let baked =
+                clone_and_transform_hull(&hull, TRANSFORM_IDENTITY, scales[(i % 4) as usize])
+                    .expect("transformed cylinder hull");
             push_hull(
                 sim,
                 pos(0.0, 0.0 + 1.1 * i as f32, 0.0),
                 QUAT_IDENTITY,
-                &hull,
+                &baked,
                 1000.0,
                 0.6,
                 0.0,

@@ -42,11 +42,11 @@ routes + several invented controls (removal in flight, batch 1).
 | Compound | 6 | 0 | 4 | 2 | Simple/Spheres/Hulls/Village partial; Tile Floor, Mesh Tile missing; Village has invented dynamic bodies + lost its embedded mover/query viz |
 | Bodies | 9 | 8 | 1 | 0 | ported batch 3a; Cast partial (translucent cast proxies / plane quads simplified) |
 | Character | 4 | 0 | 1 | 3 | Mover partial (filler boxes instead of test_map01/stairs/torus/door); CapsulePlane, MoverOverlap, Rigid Body missing |
-| Stacking | 14 | 5 | 9 | 0 | batch 1 exact-value fixes + batch 3b ports; cylinder-scale scenes partial pending a CloneAndTransformHull port |
+| Stacking | 14 | 6 | 8 | 0 | Cylinder Stack upgraded to clone_and_transform_hull (live); cylinders render as faceted hulls |
 | Continuous | 10 | 8 | 2 | 0 | batch 3b; Mesh Drop (ticks-seed/auto-regen) and Stall (stall-threshold API not surfaced) partial |
 | Joints | 16 | 13 | 3 | 0 | batch 3b: 12 new live incl. C Wheel slider bug reproduced; Ball and Chain/Driving/Revolute remain partial-labeled |
 | Ragdoll | 4 | 4 | 0 | 0 | batch 3b: Mesh/Pile (20 humans)/Incline ported; multi-scene page |
-| Benchmark | 17 | 0 | 4 | 13 | 3 scaled with wrong cameras; Junkyard diverges on ~every value; Benchmark Sensor mis-filed under Events, 12×12 vs 40×40, filter callback dropped |
+| Benchmark | 17 | 8 | 9 | 0 | batch 3c: all 16 scenes; heavy ones on C debug counts (disclosed); instanceColor engine recolor live |
 | World | 4 | 4 | 0 | 0 | ported batch 3a; `#/world` page, old `#/far-pyramid` deep links alias |
 | Determinism | 1 | 1 | 0 | 0 | ported batch 3a; sleep step + world hash HUD (2×2×2 humans, C has no debug/release split) |
 | Replay | 1 | 0 | 0 | 1 | Replay viewer — needs `b3RecPlayer` wasm bindings |
@@ -54,10 +54,10 @@ routes + several invented controls (removal in flight, batch 1).
 | Events | 6 | 6 | 0 | 0 | batch 3b: Hit/Move/Joint/Persistent Contact ported; Joint break via grab/throw shell |
 | Issues | 7 | 0 | 0 | 7 | honestly PLANNED |
 | Robustness | 4 | 0 | 0 | 4 | honestly PLANNED |
-| Collision | 12 | 1 | 0 | 11 | **Cast World exact** except invented 10-sphere pre-spawn |
-| Geometry | 5 | 0 | 1 | 4 | Box Hull partial (missing c/r/s sliders + dual-hull compare); `#/geometry` "Geometry Queries" is invented — remove |
-| Manifold | 9 | 0 | 4 | 5 | all 4 present use wrong radii/extents/transforms/camera; cursor-follow instead of drag-translate/Shift-rotate; no cache/feature radios; triangle manifolds absent |
-| Mesh | 9 | 0 | 3 | 6 | mesh/height-field are static raycast viewers with invented params, not the C dynamics scenes; `#/terrain` framing invented; only `building.obj` shipped of 8 needed assets |
+| Collision | 12 | 9 | 3 | 0 | batch 3c: 11 ported; Mesh Scale/Long Ray Cast/Time of Impact partial (disclosed) |
+| Geometry | 5 | 5 | 0 | 0 | batch 3c: #/geometry page (+#/hull alias); clone_and_transform_hull ported into src/ with 6 tests |
+| Manifold | 9 | 9 | 0 | 0 | batch 3c: all 9 b3Collide* exercised; C drag/Shift-rotate + cache/feature radios |
+| Mesh | 9 | 6 | 3 | 0 | batch 3c: real dynamics scenes + voxel/collision assets shipped; Height Field/Viewer/Creation Benchmark scaled/scoped (disclosed) |
 | Tree | 1 | 0 | 0 | 1 | `#/tree` toy is invented (C: bounds-file benchmark, 1024 queries, profiling) |
 
 Also invented: `#/math` canvas demo (no C sample), home-page "18 demos" claim,
@@ -142,8 +142,18 @@ the accepted stand-in.
   empty/stale buffers, never Rust NaN — 6 finiteness tests added).
   Engine gaps noted: CloneAndTransformHull and Get/SetStallThreshold not
   surfaced (two partial scenes).
-- **Batch 3c** — Collision (11), Mesh (6+3 rebuilds, ship .obj assets),
-  Manifold (5+4 rebuilds), Geometry (4+1), Benchmark (13).
+- **Batch 3c — Collision (11) + Mesh (9) + Manifold (9) + Geometry (5) +
+  Benchmark (13 + instanceColor): DONE** (branch `demo-samples-batch3c`).
+  Library port: `clone_and_transform_hull` (hull.c:2265) with 6 tests —
+  Cylinder Stack upgraded to the true C path. Review fixes: vis::hull_
+  triangles/hull_edges consolidation, instanced-color upload gating,
+  cached static casts, shared OBJ parse->build split, registry status
+  convention documented + Collision statuses reconciled, and the
+  site-wide computeBoundingSphere NaN root-caused (makeWireEdges offset
+  param misused as opacity by ~8 callers -> NaN indices; param
+  repurposed, verified NaN-free on a 14-route sweep).
+  Carry-over for 3d: Benchmark Hull mirrored hull still uses a negated
+  point cloud with a stale comment - upgrade to clone_and_transform_hull.
 - **Batch 3d** — Character (3 + Mover rebuild), Robustness (4), Issues (7),
   Tree (1), Compound (2 + Village mover/query-viz restoration),
   Replay (1, needs player bindings).
