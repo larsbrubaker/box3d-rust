@@ -516,7 +516,9 @@ export function init(container: HTMLElement, initialScene?: string) {
   // unchanged reference means the per-instance colors need no re-upload this frame.
   let prevStyles: Uint32Array | undefined;
   const stop = runLoop(() => {
-    ctrl.tickFrame();
+    // Hull create/clone trials live in C BenchmarkHull::Step — only when a
+    // sim step actually runs (tickFrame returns true), not every rAF while paused.
+    const stepped = ctrl.tickFrame();
     const poses = wasm.bench_poses() as Float32Array;
     const awake = wasm.bench_counters()[5] ?? 0;
     const styles = styleGate(awake, () => wasm.bench_styles() as Uint32Array);
@@ -524,7 +526,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     prevStyles = styles;
 
     if (scene === "hull") {
-      renderHullReadout();
+      if (stepped) renderHullReadout();
     } else if (POOL_SCENES.has(scene)) {
       syncMeshesFromPoses(demo.content, pool, poses, { styles });
     } else {
