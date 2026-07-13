@@ -3,6 +3,29 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## 0.2.0
+
+### Breaking
+
+- `CustomFilterFcn` is now `fn(&World, ShapeId, ShapeId, u64) -> bool` (previously
+  `fn(ShapeId, ShapeId, u64) -> bool`), matching C's `b3CustomFilterFcn`, whose
+  callback can read shape state mid-step.
+  **Migration:** add `&World` as the first parameter of your filter callback. The
+  world reference gives callbacks the same shape-state access C callbacks have,
+  e.g. `shape_get_user_data(world, id)`.
+
+### Added
+
+- `shape_set_mesh` (`b3Shape_SetMesh` port) to replace the mesh geometry of an
+  existing mesh shape.
+- `set_stall_threshold` / `get_stall_threshold` (`b3Set/GetStallThreshold` port).
+- Tests for the above.
+
+### Demos
+
+- All 20 sample categories now render at full fidelity or honestly-disclosed
+  partial coverage. Camera right-drag fix, plus arrow-key aliases for navigation.
+
 ## 0.1.2
 
 Additive-only public API and tooling; no behavioral changes to existing APIs.
