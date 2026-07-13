@@ -3,7 +3,13 @@
 //! Fixed grid at the C debug value 8 (C release uses 200, which is far too heavy
 //! for serial wasm) plus the real `building.obj` compound meshes. Physics matches
 //! C layout; RNG is demo-local (not the C `Random*` stream).
+//!
+//! Also hosts the Compound Village character mover + sweeping query visualization
+//! (see [`VillageMover`]).
 
+#![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
+
+use crate::mover_shared::{self, MoverBody, MoverDraw, MoverParams, JUMP_SPEED};
 use crate::obj_loader::load_building_mesh;
 use box3d_rust::body::create_body;
 use box3d_rust::compound::{
@@ -13,11 +19,12 @@ use box3d_rust::compound::{
 use box3d_rust::geometry::{default_surface_material, Capsule, Sphere, SurfaceMaterial};
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::math_functions::{
-    make_quat_from_axis_angle, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
+    get_length_and_normalize, make_quat_from_axis_angle, mul_sv, offset_pos, sub_pos, Pos,
+    Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::shape::create_compound_shape;
-use box3d_rust::types::{default_body_def, default_shape_def, BodyType};
-use box3d_rust::world::World;
+use box3d_rust::types::{default_body_def, default_query_filter, default_shape_def, BodyType};
+use box3d_rust::world::{world_cast_ray_closest, world_cast_shape, world_overlap_shape, World};
 
 /// Tiny LCG for village prop / building placement (demo-only; not C Random*).
 pub struct DemoRng(pub u32);
@@ -66,9 +73,9 @@ pub struct VillageScene {
 
 /// Build the Village compound ground + building meshes.
 ///
-/// `grid` must be in 8..=40 (C uses 8 debug / 200 release). Callers own the range:
-/// `sim_reset_village` passes the fixed C debug value 8, and `character_reset_ex`
-/// clamps its wasm `grid_count` argument before reaching here.
+/// `grid` is the C `gridCount` (C uses 8 debug / 200 release). The sole caller,
+/// `sim_reset_village` (`sim_compound.rs:516`), passes the fixed C debug value 8 —
+/// the 200-wide release grid is far too heavy for the serial wasm build.
 pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
     let a = 4.0f32;
     let mut rng = DemoRng(0xB111_A6E7);
@@ -247,5 +254,316 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
         buildings,
         tile_half: a,
         stats,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Village character mover (C `sample_compound.cpp` Village embeds a CharacterMover)
+// ---------------------------------------------------------------------------
+//
+// This is the same kinematic `CharacterMover` the Character page uses: both the
+// `VillageMover` here and `character_demo`'s `MoverController` delegate the whole
+// integration (friction, accelerate, pogo spring, plane slide, dynamic-body push,
+// clip) to the one shared port in [`crate::mover_shared`]. The Village mover only
+// differs in its inputs: it collides with everything (default query filters), has
+// no shapes to ignore, and always clips its velocity.
+
+/// Compound Village character mover + the C sweeping query visualization.
+pub struct VillageMover {
+    pub mover_pos: Pos,
+    pub velocity: Vec3,
+    pub capsule: Capsule,
+    pogo_velocity: f32,
+    on_ground: bool,
+    sprint: bool,
+    throttle_x: f32,
+    throttle_y: f32,
+    jump: bool,
+    want_sprint: bool,
+    forward: Vec3,
+    right: Vec3,
+    pub third_person: bool,
+    /// Sweeping query origin (C `m_rayOrigin`).
+    ray_origin: Pos,
+    /// C `m_worldWidth = 2 * gridCount * a`.
+    world_width: f32,
+    /// Last computed query visualization (see [`VillageMover::query`]).
+    query_viz: [f32; VILLAGE_QUERY_LEN],
+}
+
+/// Flat layout length of [`VillageMover::query_viz`]. See `sim_village_query`.
+pub const VILLAGE_QUERY_LEN: usize = 39;
+
+impl VillageMover {
+    /// Initialize at `start` for a world of half-width `world_width / 2`.
+    pub fn new(start: Pos, world_width: f32) -> Self {
+        let ray_origin = Pos {
+            x: (-0.45 * world_width) as _,
+            y: 20.0 as _,
+            z: (-0.45 * world_width) as _,
+        };
+        Self {
+            mover_pos: start,
+            velocity: VEC3_ZERO,
+            capsule: mover_shared::mover_capsule(),
+            pogo_velocity: 0.0,
+            on_ground: false,
+            sprint: false,
+            throttle_x: 0.0,
+            throttle_y: 0.0,
+            jump: false,
+            want_sprint: false,
+            forward: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            },
+            right: Vec3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            third_person: false,
+            ray_origin,
+            world_width,
+            query_viz: [0.0; VILLAGE_QUERY_LEN],
+        }
+    }
+
+    /// Feed WASD throttle, jump edge, sprint, and camera-relative axes (XZ).
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_input(
+        &mut self,
+        throttle_x: f32,
+        throttle_y: f32,
+        jump: bool,
+        sprint: bool,
+        fwd_x: f32,
+        fwd_z: f32,
+        right_x: f32,
+        right_z: f32,
+    ) {
+        self.throttle_x = throttle_x;
+        self.throttle_y = throttle_y;
+        if jump {
+            self.jump = true;
+        }
+        self.want_sprint = sprint;
+
+        let mut len = 0.0;
+        let mut fwd = get_length_and_normalize(
+            &mut len,
+            Vec3 {
+                x: fwd_x,
+                y: 0.0,
+                z: fwd_z,
+            },
+        );
+        if len < 1e-4 {
+            fwd = Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            };
+        }
+        let mut right = get_length_and_normalize(
+            &mut len,
+            Vec3 {
+                x: right_x,
+                y: 0.0,
+                z: right_z,
+            },
+        );
+        if len < 1e-4 {
+            right = Vec3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            };
+        }
+        self.forward = fwd;
+        self.right = right;
+    }
+
+    pub fn toggle_third_person(&mut self) {
+        self.third_person = !self.third_person;
+    }
+
+    /// One mover integration step against `world` (does not step the world).
+    /// Delegates to the shared [`crate::mover_shared::solve_move`] (C
+    /// `CharacterMover::SolveMove`), so the Village mover picks up the friction,
+    /// dynamic-body push loop, and clip behavior identical to the Character page.
+    pub fn solve_move(&mut self, world: &mut World, time_step: f32) {
+        if time_step <= 0.0 {
+            return;
+        }
+
+        // Jump / sprint from the previous frame's ground state, matching C's `Step`
+        // order (applied before SolveMove). A queued jump persists until grounded.
+        if self.jump && self.on_ground {
+            self.velocity.y = JUMP_SPEED;
+            self.on_ground = false;
+            self.jump = false;
+        }
+        self.sprint = self.on_ground && self.want_sprint;
+
+        let mut body = MoverBody {
+            position: self.mover_pos,
+            velocity: self.velocity,
+            capsule: self.capsule,
+            pogo_velocity: self.pogo_velocity,
+            on_ground: self.on_ground,
+            sprint: self.sprint,
+        };
+        // The Village mover collides with everything, ignores nothing, and always
+        // clips its velocity (C Village uses the default CharacterMover behavior).
+        let params = MoverParams {
+            forward: self.forward,
+            right: self.right,
+            throttle_x: self.throttle_x,
+            throttle_y: self.throttle_y,
+            clip_velocity: true,
+            ignore_shapes: &[],
+            pogo_filter: default_query_filter(),
+            mover_filter: default_query_filter(),
+            cast_filter: default_query_filter(),
+        };
+        let mut draw = MoverDraw::default();
+        mover_shared::solve_move(world, &mut body, &params, &mut draw, time_step);
+
+        self.mover_pos = body.position;
+        self.velocity = body.velocity;
+        self.pogo_velocity = body.pogo_velocity;
+        self.on_ground = body.on_ground;
+        self.sprint = body.sprint;
+    }
+
+    /// C Village::Step query sweep (:711-779): a moving ray cast, a sphere shape
+    /// cast, and an overlap-shape test, then advance the sweep origin. `time_step`
+    /// is 0 when paused (the sweep freezes, matching C). Fills [`query_viz`].
+    pub fn query(&mut self, world: &World, time_step: f32) {
+        let translation = Vec3 {
+            x: 10.0,
+            y: -40.0,
+            z: -5.0,
+        };
+        let filter = default_query_filter();
+        let mut viz = [0.0f32; VILLAGE_QUERY_LEN];
+
+        let ray_origin = self.ray_origin;
+        let ray_end = offset_pos(ray_origin, translation);
+        viz[0] = ray_origin.x as f32;
+        viz[1] = ray_origin.y as f32;
+        viz[2] = ray_origin.z as f32;
+        viz[3] = ray_end.x as f32;
+        viz[4] = ray_end.y as f32;
+        viz[5] = ray_end.z as f32;
+
+        // Ray cast (closest).
+        let ray = world_cast_ray_closest(world, ray_origin, translation, &filter);
+        if ray.hit {
+            viz[6] = 1.0;
+            viz[7] = ray.point.x as f32;
+            viz[8] = ray.point.y as f32;
+            viz[9] = ray.point.z as f32;
+            viz[10] = ray.normal.x;
+            viz[11] = ray.normal.y;
+            viz[12] = ray.normal.z;
+            viz[13] = ray.triangle_index as f32;
+            viz[14] = ray.child_index as f32;
+            viz[15] = ray.user_material_id as f32;
+        }
+
+        // Sphere shape cast (closest), origin = m_rayOrigin - {1,0,1}.
+        let shape_origin = sub_pos(
+            ray_origin,
+            Vec3 {
+                x: 1.0,
+                y: 0.0,
+                z: 1.0,
+            },
+        );
+        let shape_end = offset_pos(shape_origin, translation);
+        viz[16] = shape_origin.x as f32;
+        viz[17] = shape_origin.y as f32;
+        viz[18] = shape_origin.z as f32;
+        viz[19] = shape_end.x as f32;
+        viz[20] = shape_end.y as f32;
+        viz[21] = shape_end.z as f32;
+
+        let mut proxy = box3d_rust::distance::ShapeProxy::default();
+        proxy.count = 1;
+        proxy.radius = 0.25;
+        proxy.points[0] = VEC3_ZERO;
+
+        let mut best_fraction = f32::MAX;
+        let mut best: Option<(Pos, Vec3, i32, i32, u64, f32)> = None;
+        world_cast_shape(
+            world,
+            shape_origin,
+            &proxy,
+            translation,
+            &filter,
+            |_id, point, normal, fraction, mid, tri, child| {
+                if fraction < best_fraction {
+                    best_fraction = fraction;
+                    best = Some((point, normal, tri, child, mid, fraction));
+                }
+                fraction
+            },
+        );
+        if let Some((point, normal, tri, child, mid, fraction)) = best {
+            let sphere_pos = offset_pos(shape_origin, mul_sv(fraction, translation));
+            viz[22] = 1.0;
+            viz[23] = sphere_pos.x as f32;
+            viz[24] = sphere_pos.y as f32;
+            viz[25] = sphere_pos.z as f32;
+            viz[26] = point.x as f32;
+            viz[27] = point.y as f32;
+            viz[28] = point.z as f32;
+            viz[29] = normal.x;
+            viz[30] = normal.y;
+            viz[31] = normal.z;
+            viz[32] = tri as f32;
+            viz[33] = child as f32;
+            viz[34] = mid as f32;
+        }
+
+        // Overlap shape (radius 0.3) at {rayOrigin.x-1, 2, rayOrigin.z-1}.
+        let overlap_origin = Pos {
+            x: (ray_origin.x as f32 - 1.0) as _,
+            y: 2.0 as _,
+            z: (ray_origin.z as f32 - 1.0) as _,
+        };
+        let mut oproxy = box3d_rust::distance::ShapeProxy::default();
+        oproxy.count = 1;
+        oproxy.radius = 0.3;
+        oproxy.points[0] = VEC3_ZERO;
+        let mut overlap = false;
+        world_overlap_shape(world, overlap_origin, &oproxy, &filter, |_id| {
+            overlap = true;
+            false
+        });
+        viz[35] = overlap_origin.x as f32;
+        viz[36] = overlap_origin.y as f32;
+        viz[37] = overlap_origin.z as f32;
+        viz[38] = if overlap { 1.0 } else { 0.0 };
+
+        self.query_viz = viz;
+
+        // Advance the sweep origin (C :770-787).
+        let half = 0.45 * self.world_width;
+        if (self.ray_origin.x as f32) > half {
+            self.ray_origin.x = (-half) as _;
+            self.ray_origin.z = (self.ray_origin.z as f32 + 8.0) as _;
+        }
+        if (self.ray_origin.z as f32) > half {
+            self.ray_origin.z = (-half) as _;
+        }
+        self.ray_origin.x = (self.ray_origin.x as f32 + 2.0 * time_step) as _;
+    }
+
+    pub fn query_viz(&self) -> [f32; VILLAGE_QUERY_LEN] {
+        self.query_viz
     }
 }

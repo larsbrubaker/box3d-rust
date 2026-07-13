@@ -1,8 +1,19 @@
-// Character / Mover — BasicMover-style capsule mover with ground-ray debug.
+// Character samples — a 1:1 port of the four upstream `sample_character.cpp`
+// scenes: CapsulePlane, MoverOverlap, Mover (BasicMover), and Rigid Body.
+//
+// - CapsulePlane / MoverOverlap: drag a query capsule with the mouse into static
+//   shapes; watch the returned collision planes and the b3SolvePlanes push-out.
+// - Mover: the real BasicMover level (test_map01 + stairs + torus mesh + wave
+//   height field + spring door + enemy/friendly capsules + dynamic sphere) driven
+//   by the C-exact CharacterMover. WASD / Space / Shift, Third Person + Clip
+//   Velocity controls.
+// - Rigid Body: the s&box-style dynamic character over the full obstacle course.
 
 import * as THREE from "three";
 import {
+  createButton,
   createButtonGroup,
+  createCheckbox,
   createInfoBox,
   createReadout,
   updateReadout,
@@ -17,144 +28,189 @@ import {
   setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
+import { pickRay } from "../interaction.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
-import {
-  formatVillageStats,
-  loadBuildingGeometry,
-  makeBuildingMaterial,
-  syncBuildingInstances,
-} from "../building-mesh.ts";
 
-type Mode = "mover" | "village";
+type Scene = "capsule-plane" | "mover-overlap" | "mover" | "rigid-body";
 
-export const SCENES: Mode[] = ["mover", "village"];
+export const SCENES: Scene[] = ["capsule-plane", "mover-overlap", "mover", "rigid-body"];
+
+const isDrag = (s: Scene) => s === "capsule-plane" || s === "mover-overlap";
+const isWalker = (s: Scene) => s === "mover" || s === "rigid-body";
+
+// Cached OBJ fetches (mirrors the Mesh Voxel / Shapes Conveyor async pattern).
+const objCache = new Map<string, Promise<string>>();
+function loadObj(name: string): Promise<string> {
+  let p = objCache.get(name);
+  if (!p) {
+    p = fetch(`/public/meshes/${name}`).then((r) => {
+      if (!r.ok) throw new Error(`${name} HTTP ${r.status}`);
+      return r.text();
+    });
+    objCache.set(name, p);
+  }
+  return p;
+}
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
-  // Self-check the scene table against the registry (see registry.ts pattern).
-  // Only "mover" is a RegisterSample entry; "village" is an internal walkthrough
-  // view of the Compound/Village sample, so it is whitelisted as `extra`.
-  assertRouteScenes("character", SCENES, ["village"]);
+  assertRouteScenes("character", SCENES);
+
   const { canvas, controls } = demoPage(
     container,
-    "Character Mover",
-    "Capsule mover matching upstream <code>Character / Mover</code> (BasicMover): " +
-      "WASD, jump, sprint, pogo ground ray, static capsules, and height-field terrain. " +
-      "Village mode walks Erin’s Compound / Village (real <code>building.obj</code> meshes).",
-    "WASD move · Space jump · Shift sprint · drag to orbit",
+    "Character",
+    "Erin Catto’s four <code>sample_character.cpp</code> scenes: drag a query capsule into " +
+      "shapes (CapsulePlane, MoverOverlap), or walk the real level with the C-exact " +
+      "<code>CharacterMover</code> (Mover) and the s&box-style dynamic character (Rigid Body).",
+    "drag capsule · WASD move · Space jump · Shift sprint · drag to orbit",
     wasm.version(),
     { category: "Character", samplesShell: true },
   );
 
-  controls.appendChild(
-    createInfoBox(
-      "Blue mover capsule + purple velocity + cyan pogo ray (hit = coral tip). " +
-        "Static capsules and boxes stand in for the C mesh map / enemy-friendly props. " +
-        "Click the canvas to focus keys.",
-    ),
+  let scene: Scene =
+    initialScene && SCENES.includes(initialScene as Scene) ? (initialScene as Scene) : "capsule-plane";
+  let thirdPerson = false;
+  let clipVelocity = true;
+
+  const info = createInfoBox("");
+  controls.appendChild(info);
+
+  const sceneButtons = createButtonGroup(
+    [
+      { label: "CapsulePlane", value: "capsule-plane" },
+      { label: "MoverOverlap", value: "mover-overlap" },
+      { label: "Mover", value: "mover" },
+      { label: "Rigid Body", value: "rigid-body" },
+      { label: "Respawn", value: "respawn" },
+    ],
+    scene,
+    (v) => {
+      if (v === "respawn") {
+        void reset();
+        return;
+      }
+      scene = v as Scene;
+      void reset();
+    },
   );
+  controls.appendChild(sceneButtons);
 
-  const statsEl = document.createElement("pre");
-  statsEl.className = "village-stats";
-  statsEl.style.cssText =
-    "margin:0.5rem 0 0;padding:0.5rem 0.65rem;font:12px/1.35 ui-monospace,Consolas,monospace;" +
-    "color:#d4d4d4;background:rgba(0,0,0,0.45);border-radius:4px;white-space:pre-wrap;";
-  controls.appendChild(statsEl);
+  // Scene-specific controls (shown/hidden per scene).
+  const solveBtn = createButton("Solve (push out)", () => wasm.character_solve());
+  const clipRow = createCheckbox("Clip Velocity", clipVelocity, (v) => {
+    clipVelocity = v;
+    wasm.character_set_clip_velocity(v);
+  });
+  const thirdRow = createCheckbox("Third Person (T)", thirdPerson, (v) => {
+    thirdPerson = v;
+    wasm.character_set_third_person(v);
+  });
+  controls.appendChild(solveBtn);
+  controls.appendChild(clipRow);
+  controls.appendChild(thirdRow);
 
-  let mode: Mode =
-    initialScene && SCENES.includes(initialScene as Mode) ? (initialScene as Mode) : "mover";
-  let villageGrid = 16;
-
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Mover", value: "mover" },
-        { label: "Village", value: "village" },
-        { label: "Respawn", value: "restart" },
-      ],
-      mode,
-      (v) => {
-        if (v === "restart") {
-          reset();
-          return;
-        }
-        mode = v as Mode;
-        reset();
-      },
-    ),
-  );
   const readout = createReadout();
   controls.appendChild(readout);
 
-  const demo = new DemoScene(canvas, { target: [7.5, 1, 9], distance: 14 });
-  // Preserve this sample's current flatter framing (yaw 35°, pitch 20°) now that
-  // the DemoScene default is the C camera (pitch -25°). reset() below overrides
-  // this with the per-mode mover/village camera each respawn; the C per-sample
-  // camera lands with this sample's batch-3 rebuild.
-  setView(demo, 35, 20, 14, [7.5, 1, 9]);
+  const demo = new DemoScene(canvas, { target: [0, 1, 0], distance: 8 });
   demo.camera.far = 800;
   demo.camera.updateProjectionMatrix();
+
   const pool = createMeshPool();
-  let terrainMesh: THREE.Mesh | null = null;
-  let terrainWire: THREE.LineSegments | null = null;
-  const buildingMat = makeBuildingMaterial();
-  let buildingInstanced: THREE.InstancedMesh | null = null;
-  let buildingGeo: THREE.BufferGeometry | null = null;
 
-  void loadBuildingGeometry()
-    .then((geo) => {
-      buildingGeo = geo;
-      if (mode === "village") syncVillageBuildings();
-    })
-    .catch((err) => console.warn("building.obj load failed", err));
-
-  function clearBuildings() {
-    if (buildingInstanced) {
-      demo.content.remove(buildingInstanced);
-      buildingInstanced.dispose();
-      buildingInstanced = null;
+  // Static ground wireframe (mesh + height field), rebuilt on each reset.
+  let groundMesh: THREE.Mesh | null = null;
+  let groundWire: THREE.LineSegments | null = null;
+  function clearGround() {
+    if (groundMesh) {
+      demo.content.remove(groundMesh);
+      groundMesh.geometry.dispose();
+      (groundMesh.material as THREE.Material).dispose();
+      groundMesh = null;
+    }
+    if (groundWire) {
+      demo.content.remove(groundWire);
+      groundWire.geometry.dispose();
+      (groundWire.material as THREE.Material).dispose();
+      groundWire = null;
     }
   }
-
-  function syncVillageBuildings() {
-    clearBuildings();
-    if (mode !== "village" || !buildingGeo) {
-      statsEl.textContent = "";
-      return;
-    }
-    const data = wasm.character_village_buildings();
-    const n = Math.floor(data.length / 10);
-    if (n > 0) {
-      buildingInstanced = new THREE.InstancedMesh(buildingGeo, buildingMat, n);
-      buildingInstanced.castShadow = true;
-      buildingInstanced.receiveShadow = true;
-      syncBuildingInstances(buildingInstanced, data);
-      demo.content.add(buildingInstanced);
-    }
-    statsEl.textContent = formatVillageStats(wasm.character_village_stats());
+  function buildGround() {
+    clearGround();
+    const wire = wasm.character_ground_wireframe();
+    if (wire.length < 18) return;
+    groundMesh = makeTriangleMesh(trianglesFromWireframe(wire), 0x5a7a62, 0.9);
+    groundMesh.receiveShadow = true;
+    groundWire = makeWireEdges(wire, 0x2f4035, 0.3);
+    demo.content.add(groundMesh);
+    demo.content.add(groundWire);
   }
 
-  // Debug overlay: pogo ray + velocity
-  const debugGeo = new THREE.BufferGeometry();
-  const debugPositions = new Float32Array(12);
-  debugGeo.setAttribute("position", new THREE.BufferAttribute(debugPositions, 3));
-  const debugMat = new THREE.LineBasicMaterial({
-    color: 0x22d3ee,
-    linewidth: 2,
-  });
-  const debugLines = new THREE.LineSegments(debugGeo, debugMat);
-  demo.dynamic.add(debugLines);
+  // Colored debug line segments ([x0,y0,z0,x1,y1,z1,color] septuples).
+  const segGeo = new THREE.BufferGeometry();
+  const segMat = new THREE.LineBasicMaterial({ vertexColors: true });
+  const segLines = new THREE.LineSegments(segGeo, segMat);
+  segLines.frustumCulled = false;
+  demo.dynamic.add(segLines);
 
-  const hitGeo = new THREE.BufferGeometry();
-  const hitPos = new Float32Array(3);
-  hitGeo.setAttribute("position", new THREE.BufferAttribute(hitPos, 3));
-  const hitMat = new THREE.PointsMaterial({ color: 0xf87171, size: 0.18 });
-  const hitPoint = new THREE.Points(hitGeo, hitMat);
-  demo.dynamic.add(hitPoint);
+  // Colored debug points ([x,y,z,color,size] quintuples).
+  const ptGeo = new THREE.BufferGeometry();
+  const ptMat = new THREE.PointsMaterial({ vertexColors: true, size: 0.16 });
+  const ptPoints = new THREE.Points(ptGeo, ptMat);
+  ptPoints.frustumCulled = false;
+  demo.dynamic.add(ptPoints);
 
+  const _col = new THREE.Color();
+  function updateSegments(data: Float32Array) {
+    const n = Math.floor(data.length / 7);
+    const pos = new Float32Array(n * 6);
+    const col = new Float32Array(n * 6);
+    for (let i = 0; i < n; i++) {
+      const b = i * 7;
+      pos[i * 6 + 0] = data[b]!;
+      pos[i * 6 + 1] = data[b + 1]!;
+      pos[i * 6 + 2] = data[b + 2]!;
+      pos[i * 6 + 3] = data[b + 3]!;
+      pos[i * 6 + 4] = data[b + 4]!;
+      pos[i * 6 + 5] = data[b + 5]!;
+      _col.setHex(data[b + 6]! & 0xffffff);
+      for (const off of [0, 3]) {
+        col[i * 6 + off] = _col.r;
+        col[i * 6 + off + 1] = _col.g;
+        col[i * 6 + off + 2] = _col.b;
+      }
+    }
+    segGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    segGeo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    segGeo.computeBoundingSphere();
+  }
+  function updatePoints(data: Float32Array) {
+    const n = Math.floor(data.length / 5);
+    const pos = new Float32Array(n * 3);
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const b = i * 5;
+      pos[i * 3] = data[b]!;
+      pos[i * 3 + 1] = data[b + 1]!;
+      pos[i * 3 + 2] = data[b + 2]!;
+      _col.setHex(data[b + 3]! & 0xffffff);
+      col[i * 3] = _col.r;
+      col[i * 3 + 1] = _col.g;
+      col[i * 3 + 2] = _col.b;
+    }
+    ptGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    ptGeo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    ptGeo.computeBoundingSphere();
+  }
+
+  // --- Keyboard (Mover / Rigid Body) ---
   const keys = new Set<string>();
   const onKeyDown = (e: KeyboardEvent) => {
     keys.add(e.code);
+    if (e.code === "KeyT") {
+      thirdPerson = !thirdPerson;
+      wasm.character_set_third_person(thirdPerson);
+    }
     if (["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(e.code)) e.preventDefault();
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -163,143 +219,235 @@ export function init(container: HTMLElement, initialScene?: string) {
   canvas.tabIndex = 0;
   canvas.style.outline = "none";
 
-  function clearTerrain() {
-    if (terrainMesh) {
-      demo.content.remove(terrainMesh);
-      terrainMesh.geometry.dispose();
-      (terrainMesh.material as THREE.Material).dispose();
-      terrainMesh = null;
+  // --- Mouse drag (CapsulePlane / MoverOverlap) ---
+  let lastStatus: Float32Array = new Float32Array();
+  let dragging = false;
+  const dragOrigin = new THREE.Vector3();
+  const dragBase = new THREE.Vector3();
+  const _dir = new THREE.Vector3();
+
+  function rayPoint10(clientX: number, clientY: number, out: THREE.Vector3) {
+    const { origin, translation } = pickRay(demo, canvas, clientX, clientY);
+    _dir.copy(translation).normalize();
+    out.copy(origin).addScaledVector(_dir, 10);
+  }
+  const onPointerDown = (e: PointerEvent) => {
+    if (!isDrag(scene) || e.button !== 0 || e.ctrlKey || e.altKey) return;
+    rayPoint10(e.clientX, e.clientY, dragOrigin);
+    dragBase.set(lastStatus[2] ?? 0, lastStatus[3] ?? 0, lastStatus[4] ?? 0);
+    dragging = true;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragging) return;
+    const p = new THREE.Vector3();
+    rayPoint10(e.clientX, e.clientY, p);
+    p.sub(dragOrigin).add(dragBase);
+    wasm.character_set_drag(p.x, p.y, p.z);
+  };
+  const onPointerUp = (e: PointerEvent) => {
+    if (dragging) {
+      dragging = false;
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
     }
-    if (terrainWire) {
-      demo.content.remove(terrainWire);
-      terrainWire.geometry.dispose();
-      (terrainWire.material as THREE.Material).dispose();
-      terrainWire = null;
+  };
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+
+  let sceneReady = false;
+
+  function applyCamera() {
+    switch (scene) {
+      case "capsule-plane":
+        setView(demo, 120, 22, 6, [0, 1, 0.7]);
+        break;
+      case "mover-overlap":
+        setView(demo, 120, 18, 9, [0, 1, 0]);
+        break;
+      case "mover":
+        setView(demo, 35, 20, 14, [7.5, 1, 9]);
+        break;
+      case "rigid-body":
+        setView(demo, 30, 18, 6, [7.5, 2, 9]);
+        break;
     }
+    demo.camera.far = 800;
+    demo.camera.updateProjectionMatrix();
   }
 
-  function rebuildTerrain() {
-    clearTerrain();
-    if (mode !== "mover") return;
-    const wire = wasm.character_terrain_wireframe();
-    if (wire.length < 18) return;
-    const positions = trianglesFromWireframe(wire);
-    terrainMesh = makeTriangleMesh(positions, 0x5a7a62, 0.9);
-    terrainWire = makeWireEdges(wire, 0x2f4035, 0.3);
-    demo.content.add(terrainMesh);
-    demo.content.add(terrainWire);
+  function updateControlVisibility() {
+    solveBtn.style.display = scene === "capsule-plane" ? "" : "none";
+    clipRow.style.display = scene === "mover" ? "" : "none";
+    thirdRow.style.display = isWalker(scene) ? "" : "none";
+    const hints: Record<Scene, string> = {
+      "capsule-plane":
+        "Drag the green capsule into the box; yellow marks the returned planes. " +
+        "<b>Solve</b> pushes it out with <code>b3SolvePlanes</code>.",
+      "mover-overlap":
+        "Drag the yellow capsule into the sphere / capsule / box. Lime arrows are valid plane " +
+        "normals (red = degenerate — must stay 0); the cyan capsule is the solved push-out.",
+      mover:
+        "Walk the C-exact <code>CharacterMover</code> over the real level. Blue capsule + purple " +
+        "velocity + green/gray pogo ray. It shoves the dynamic sphere and swings the spring door. " +
+        "Click the canvas to focus keys.",
+      "rigid-body":
+        "The s&box dynamic character (green feet box + blue capsule) with trace-based step-up over " +
+        "the obstacle course. Purple velocity, orange wish, yellow mass center. Click to focus keys.",
+    };
+    info.innerHTML = hints[scene];
   }
 
-  function reset() {
-    if (mode === "village") {
-      wasm.character_reset_ex(1, villageGrid);
-      const half = villageGrid * 4;
-      demo.controls.target.set(0, 8, 0);
-      demo.camera.position.set(half * 0.55, half * 0.4, half * 0.65);
-      syncVillageBuildings();
-    } else {
-      clearBuildings();
-      statsEl.textContent = "";
-      wasm.character_reset_ex(0, 10);
-      demo.controls.target.set(7.5, 1, 9);
-      demo.camera.position.set(14, 6, 18);
-    }
-    demo.controls.update();
-    rebuildTerrain();
-  }
+  async function reset(): Promise<void> {
+    sceneReady = false;
+    dragging = false;
+    updateControlVisibility();
+    applyCamera();
 
-  reset();
-
-  let frame = 0;
-  const stop = runLoop(() => {
-    let throttleX = 0;
-    let throttleY = 0;
-    if (keys.has("KeyW")) throttleX += 1;
-    if (keys.has("KeyS")) throttleX -= 1;
-    if (keys.has("KeyA")) throttleY -= 1;
-    if (keys.has("KeyD")) throttleY += 1;
-    const jump = keys.has("Space");
-    const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
-
-    const cam = demo.camera.position;
-    const target = demo.controls.target;
-    let fwdX = target.x - cam.x;
-    let fwdZ = target.z - cam.z;
-    const fl = Math.hypot(fwdX, fwdZ) || 1;
-    fwdX /= fl;
-    fwdZ /= fl;
-    const rightX = -fwdZ;
-    const rightZ = fwdX;
-
-    wasm.character_set_input(throttleX, throttleY, jump, sprint, fwdX, fwdZ, rightX, rightZ);
-    wasm.character_step(1 / 60, 4);
-    const poses = wasm.character_poses();
-    // Engine style words drive every body's color; the final word is the mover
-    // capsule (C DrawSolidCapsule blue), packed by `character_styles`.
-    syncMeshesFromPoses(demo.content, pool, poses, {
-      groundIndex: null,
-      styles: wasm.character_styles(),
-    });
-
-    const dbg = wasm.character_debug_lines();
-    debugPositions[0] = dbg[0]!;
-    debugPositions[1] = dbg[1]!;
-    debugPositions[2] = dbg[2]!;
-    debugPositions[3] = dbg[3]!;
-    debugPositions[4] = dbg[4]!;
-    debugPositions[5] = dbg[5]!;
-    debugPositions[6] = dbg[6]!;
-    debugPositions[7] = dbg[7]!;
-    debugPositions[8] = dbg[8]!;
-    debugPositions[9] = dbg[9]!;
-    debugPositions[10] = dbg[10]!;
-    debugPositions[11] = dbg[11]!;
-    debugGeo.attributes.position!.needsUpdate = true;
-    debugGeo.computeBoundingSphere();
-
-    // Velocity segment uses purple; swap material color per segment is hard with one
-    // LineSegments — keep cyan for pogo and tint velocity via a second pass on hit tip.
-    const hit = dbg[12]! > 0.5;
-    hitPoint.visible = hit;
-    if (hit) {
-      hitPos[0] = dbg[3]!;
-      hitPos[1] = dbg[4]!;
-      hitPos[2] = dbg[5]!;
-      hitGeo.attributes.position!.needsUpdate = true;
-    }
-
-    const status = wasm.character_status();
-    const mx = status[0]!;
-    const my = status[1]!;
-    const mz = status[2]!;
-    demo.controls.target.set(mx, my + 0.5, mz);
-
-    frame += 1;
-    if (frame % 10 === 0) {
-      updateReadout(readout, [
-        { label: "mode", value: mode },
-        { label: "ground", value: status[6]! > 0.5 ? "yes" : "no" },
-        { label: "sprint", value: status[7]! > 0.5 ? "yes" : "no" },
-        { label: "y", value: my.toFixed(2) },
-        { label: "speed", value: Math.hypot(status[3]!, status[4]!, status[5]!).toFixed(2) },
-        { label: "pogo", value: hit ? "hit" : "air" },
+    if (scene === "capsule-plane") {
+      wasm.character_reset(0);
+      clearGround();
+      sceneReady = true;
+    } else if (scene === "mover-overlap") {
+      wasm.character_reset(1);
+      clearGround();
+      sceneReady = true;
+    } else if (scene === "mover") {
+      const activeScene = scene;
+      const [map, stairs] = await Promise.all([
+        loadObj("test_map01.obj"),
+        loadObj("stairs.obj"),
       ]);
+      if (scene !== activeScene) return;
+      wasm.character_reset_mover(map, stairs);
+      wasm.character_set_clip_velocity(clipVelocity);
+      wasm.character_set_third_person(thirdPerson);
+      buildGround();
+      sceneReady = true;
+    } else {
+      const activeScene = scene;
+      const [map, stairs, building, v1, v2] = await Promise.all([
+        loadObj("test_map01.obj"),
+        loadObj("stairs.obj"),
+        loadObj("building.obj"),
+        loadObj("voxel_mesh_01.obj"),
+        loadObj("voxel_mesh_02.obj"),
+      ]);
+      if (scene !== activeScene) return;
+      wasm.character_reset_rigid_body(map, stairs, building, v1, v2);
+      thirdPerson = true;
+      thirdRow.querySelector("input")?.setAttribute("checked", "true");
+      wasm.character_set_third_person(true);
+      buildGround();
+      sceneReady = true;
     }
-    demo.render();
-  }, readout);
+  }
+
+  void reset();
+
+  const _target = new THREE.Vector3();
+  let frame = 0;
+
+  const stop = runLoop(
+    () => {
+      // Camera-relative heading for the walkers.
+      const cam = demo.camera.position;
+      const tgt = demo.controls.target;
+      let fwdX = tgt.x - cam.x;
+      let fwdZ = tgt.z - cam.z;
+      const fl = Math.hypot(fwdX, fwdZ) || 1;
+      fwdX /= fl;
+      fwdZ /= fl;
+      const rightX = -fwdZ;
+      const rightZ = fwdX;
+
+      if (isWalker(scene)) {
+        let tx = 0;
+        let ty = 0;
+        if (keys.has("KeyW")) tx += 1;
+        if (keys.has("KeyS")) tx -= 1;
+        if (keys.has("KeyA")) ty -= 1;
+        if (keys.has("KeyD")) ty += 1;
+        const jump = keys.has("Space");
+        const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
+        wasm.character_set_input(tx, ty, jump, sprint, fwdX, fwdZ, rightX, rightZ);
+      }
+
+      wasm.character_step(1 / 60, 4);
+
+      const poses = wasm.character_poses();
+      syncMeshesFromPoses(demo.content, pool, poses, {
+        groundIndex: null,
+        styles: wasm.character_styles(),
+      });
+
+      updateSegments(wasm.character_debug_segments());
+      updatePoints(wasm.character_debug_points());
+
+      lastStatus = wasm.character_status();
+
+      // Third-person / follow camera for the walkers.
+      if (isWalker(scene)) {
+        const follow = wasm.character_follow_target();
+        if (follow.length >= 3) {
+          _target.set(follow[0]!, follow[1]! + 0.5, follow[2]!);
+          if (thirdPerson) {
+            // Chase: translate the camera rigidly with the character so the boom trails.
+            const dx = _target.x - tgt.x;
+            const dy = _target.y - tgt.y;
+            const dz = _target.z - tgt.z;
+            demo.camera.position.set(cam.x + dx, cam.y + dy, cam.z + dz);
+          }
+          demo.controls.target.copy(_target);
+          demo.controls.update();
+        }
+      }
+
+      frame += 1;
+      if (frame % 10 === 0) {
+        if (isDrag(scene)) {
+          updateReadout(readout, [
+            { label: "scene", value: scene },
+            { label: "planes", value: String(Math.round(lastStatus[0] ?? 0)) },
+            { label: "degenerate", value: String(Math.round(lastStatus[1] ?? 0)) },
+          ]);
+        } else {
+          const speed = Math.hypot(lastStatus[3] ?? 0, lastStatus[5] ?? 0);
+          updateReadout(readout, [
+            { label: "scene", value: scene },
+            { label: "ground", value: (lastStatus[6] ?? 0) > 0.5 ? "yes" : "no" },
+            { label: "sprint", value: (lastStatus[7] ?? 0) > 0.5 ? "yes" : "no" },
+            { label: "y", value: (lastStatus[1] ?? 0).toFixed(2) },
+            { label: "speed", value: speed.toFixed(2) },
+          ]);
+        }
+      }
+      demo.render();
+    },
+    readout,
+    { ready: () => sceneReady },
+  );
 
   return () => {
     stop();
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
-    clearTerrain();
-    clearBuildings();
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointermove", onPointerMove);
+    canvas.removeEventListener("pointerup", onPointerUp);
+    canvas.removeEventListener("pointercancel", onPointerUp);
+    clearGround();
     disposeMeshPool(pool);
-    debugGeo.dispose();
-    debugMat.dispose();
-    hitGeo.dispose();
-    hitMat.dispose();
-    buildingMat.dispose();
+    segGeo.dispose();
+    segMat.dispose();
+    ptGeo.dispose();
+    ptMat.dispose();
     demo.dispose();
   };
 }

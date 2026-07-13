@@ -354,6 +354,54 @@ impl DynamicTree {
         debug_assert!(0 <= proxy_id && proxy_id < self.node_capacity());
         self.nodes[proxy_id as usize].aabb
     }
+
+    /// The root node index, or [`crate::core::NULL_INDEX`] for an empty tree.
+    /// (b3DynamicTree::root) Exposed read-only for visualization tooling that
+    /// walks the tree structure (the Tree Benchmark sample's depth computation).
+    pub fn root_index(&self) -> i32 {
+        self.root
+    }
+
+    /// A read-only snapshot of every node slot in the pool (allocated and free),
+    /// indexed identically to the C `m_tree.nodes[i]` array so a caller can run the
+    /// sample's breadth-first depth walk and per-level AABB draw. This mirrors the
+    /// C sample reaching directly into `b3DynamicTree::nodes`; the internal fields
+    /// stay private, so this is the only sanctioned window onto them.
+    pub fn node_views(&self) -> Vec<TreeNodeView> {
+        self.nodes
+            .iter()
+            .map(|n| TreeNodeView {
+                aabb: n.aabb,
+                parent: n.parent,
+                child1: n.child1,
+                child2: n.child2,
+                user_data: n.user_data,
+                is_leaf: n.is_leaf(),
+                is_allocated: n.is_allocated(),
+            })
+            .collect()
+    }
+}
+
+/// Read-only view of a single dynamic-tree node, for visualization tooling that
+/// needs the structural fields the C sample reads off `b3TreeNode` directly
+/// (parent/children for a BFS depth walk, `aabb` + flags for per-level drawing).
+#[derive(Debug, Clone, Copy)]
+pub struct TreeNodeView {
+    /// The node bounding box. (b3TreeNode::aabb)
+    pub aabb: Aabb,
+    /// The parent index, or [`crate::core::NULL_INDEX`] for the root. (b3TreeNode::parent)
+    pub parent: i32,
+    /// First child index for internal nodes. (b3TreeNode::children.child1)
+    pub child1: i32,
+    /// Second child index for internal nodes. (b3TreeNode::children.child2)
+    pub child2: i32,
+    /// Leaf user data. (b3TreeNode::userData)
+    pub user_data: u64,
+    /// Whether this node is a leaf (`b3_leafNode`).
+    pub is_leaf: bool,
+    /// Whether this node slot is allocated (`b3_allocatedNode`).
+    pub is_allocated: bool,
 }
 
 /// Category-bit filter matching the C ternary in Query/RayCast/BoxCast.

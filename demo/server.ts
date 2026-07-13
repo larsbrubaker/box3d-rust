@@ -16,6 +16,7 @@ const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".obj": "text/plain",
+  ".b3rec": "application/octet-stream",
 };
 
 function readIndexHtml(): string {
@@ -76,7 +77,9 @@ function tryServe(pathname: string): { content: string | Uint8Array; mime: strin
   if (existsSync(filePath) && statSync(filePath).isFile()) {
     const ext = extname(filePath);
     const mime = MIME_TYPES[ext] || "application/octet-stream";
-    if (ext === ".wasm") {
+    // Binary assets must be served as bytes, not re-encoded through utf-8 (which
+    // corrupts and inflates them). .b3rec recordings join .wasm here.
+    if (ext === ".wasm" || ext === ".b3rec") {
       return { content: new Uint8Array(readFileSync(filePath)), mime };
     }
     return { content: readFileSync(filePath, "utf-8"), mime };

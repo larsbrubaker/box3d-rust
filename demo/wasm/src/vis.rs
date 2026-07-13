@@ -14,7 +14,8 @@
 use box3d_rust::body::get_body_transform;
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::height_field::{
-    get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
+    get_height_field_material_indices, get_height_field_triangle, get_height_field_triangle_count,
+    HeightFieldData, HEIGHT_FIELD_HOLE,
 };
 use box3d_rust::hull::{get_hull_edges, get_hull_faces, get_hull_points, HullData};
 use box3d_rust::math_functions::{
@@ -234,10 +235,21 @@ pub fn sphere(radius: f32) -> Sphere {
 /// Height-field triangle edges as interleaved endpoints `[x0,y0,z0, x1,y1,z1, ...]`.
 /// Each triangle contributes its 3 edges (shared edges are duplicated). `origin` is added
 /// to every vertex; pass `VEC3_ZERO` for local-space output.
+///
+/// Hole cells (`HEIGHT_FIELD_HOLE` material) are skipped, matching C
+/// `DrawHeightField` — which omits holes — and, crucially, avoiding the
+/// [`get_height_field_triangle`] debug-assert that fires on a hole triangle
+/// (`height_field/triangle.rs`). Fields with no holes are unaffected.
 pub fn hf_triangle_edges(hf: &HeightFieldData, origin: Vec3) -> Vec<f32> {
     let count = get_height_field_triangle_count(hf);
+    let materials = get_height_field_material_indices(hf);
     let mut edges = Vec::new();
     for i in 0..count {
+        // triangle_index >> 1 == cell index (`height_field/triangle.rs`).
+        let cell = (i >> 1) as usize;
+        if materials.get(cell).copied() == Some(HEIGHT_FIELD_HOLE) {
+            continue;
+        }
         let tri = get_height_field_triangle(hf, i);
         let verts = tri.vertices;
         for e in 0..3 {

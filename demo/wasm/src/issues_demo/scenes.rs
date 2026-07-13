@@ -1,0 +1,455 @@
+//! Scene builders for the Issues samples (`sample_issues.cpp`). Each `build_*`
+//! reproduces one C constructor's body/shape/joint creation calls exactly and
+//! returns a fully-populated [`IssuesState`].
+//!
+//! SPDX-FileCopyrightText: 2025 Erin Catto
+//! SPDX-License-Identifier: MIT
+
+use super::{HullBody, IssuesState};
+use crate::vis::{
+    hf_triangle_edges, hull_edges, hull_triangles, mesh_triangle_edges_offset, VisBody,
+};
+use box3d_rust::body::create_body;
+use box3d_rust::geometry::Capsule;
+use box3d_rust::height_field::create_grid;
+use box3d_rust::hull::{create_hull, make_box_hull};
+use box3d_rust::math_functions::{Pos, Quat, Vec3, VEC3_ONE};
+use box3d_rust::mesh::{create_grid_mesh, create_platform_mesh};
+use box3d_rust::shape::{
+    create_capsule_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
+};
+use box3d_rust::types::{default_body_def, default_shape_def, BodyType, MotionLocks};
+
+/// b3_colorMagenta (draw.h) — the Capsule Mesh player capsule's custom color.
+const COLOR_MAGENTA: u32 = 0x00FF_00FF;
+
+fn pos(x: f32, y: f32, z: f32) -> Pos {
+    Pos {
+        x: x as _,
+        y: y as _,
+        z: z as _,
+    }
+}
+
+fn vec3(x: f32, y: f32, z: f32) -> Vec3 {
+    Vec3 { x, y, z }
+}
+
+/// C `Sample::AddGroundBox( extent )` — ground body at `(0,-1,0)` with an
+/// `extent × 1 × extent` box hull, pushed as the first render body (index 0).
+fn add_ground_box(state: &mut IssuesState, extent: f32) {
+    let mut def = default_body_def();
+    def.position = pos(0.0, -1.0, 0.0);
+    let ground = create_body(&mut state.world, &def);
+    let hull = make_box_hull(extent, 1.0, extent);
+    create_hull_shape(&mut state.world, ground, &default_shape_def(), &hull.base);
+    state
+        .bodies
+        .push(VisBody::box_body(ground.index1 - 1, extent, 1.0, extent));
+}
+
+/// Dump Loader (:13) — reproduces `data/dumps/single_box/box3d_dump.inl`, which the
+/// C sample `#include`s as source: a rotated dynamic cube resting on a large static
+/// ground box. There is no runtime dump-loader API (the "dump" is emitted C++ code),
+/// so the recorded body/shape defs are ported inline; the values are bit-exact.
+pub(super) fn build_dump_loader() -> IssuesState {
+    let mut state = IssuesState::new();
+    // The dump sets gravity {0,-10,0} (already the world default) and
+    // b3SetLengthUnitsPerMeter(1) (the default); both are no-ops here.
+
+    // --- Body "cube" (dynamic) ---
+    let mut bd = default_body_def();
+    bd.name = "cube".to_string();
+    bd.type_ = BodyType::Dynamic;
+    bd.position = pos(-7.985_733_53e-07, 0.499_929_696, -9.860_344_79e-07);
+    bd.rotation = Quat {
+        v: vec3(-4.036_134_63e-08, 0.825_855_613, 4.680_836_34e-08),
+        s: 0.563_881_755,
+    };
+    bd.linear_velocity = vec3(2.472_397_75e-08, -1.769_513_6e-08, 8.656_933_84e-09);
+    bd.angular_velocity = vec3(1.731_631_73e-08, -4.202_693_3e-15, -4.945_490_42e-08);
+    let cube = create_body(&mut state.world, &bd);
+    let mut sd = default_shape_def();
+    sd.base_material.friction = 0.600_000_024;
+    // The dump builds the cube collision hull from 8 explicit ±0.5 vertices.
+    let cube_verts = box_hull_verts(0.5, 0.5, 0.5);
+    let cube_hull = create_hull(&cube_verts, cube_verts.len() as i32).expect("cube hull");
+    create_hull_shape(&mut state.world, cube, &sd, &cube_hull);
+    state
+        .bodies
+        .push(VisBody::box_body(cube.index1 - 1, 0.5, 0.5, 0.5));
+
+    // --- Body "ground" (static) ---
+    let mut bd = default_body_def();
+    bd.name = "ground".to_string();
+    bd.type_ = BodyType::Static;
+    bd.position = pos(0.0, -1.0, 0.0);
+    bd.is_awake = false;
+    let ground = create_body(&mut state.world, &bd);
+    let mut sd = default_shape_def();
+    sd.base_material.friction = 0.600_000_024;
+    let ground_verts = box_hull_verts(15.0, 1.0, 15.0);
+    let ground_hull = create_hull(&ground_verts, ground_verts.len() as i32).expect("ground hull");
+    create_hull_shape(&mut state.world, ground, &sd, &ground_hull);
+    state
+        .bodies
+        .push(VisBody::box_body(ground.index1 - 1, 15.0, 1.0, 15.0));
+
+    state
+}
+
+/// The 8 corner vertices of an `hx × hy × hz` box, in the exact order the dump lists
+/// them (`{+,+,+}, {-,+,+}, {-,-,+}, {+,-,+}, {+,+,-}, {-,+,-}, {-,-,-}, {+,-,-}`).
+fn box_hull_verts(hx: f32, hy: f32, hz: f32) -> [Vec3; 8] {
+    [
+        vec3(hx, hy, hz),
+        vec3(-hx, hy, hz),
+        vec3(-hx, -hy, hz),
+        vec3(hx, -hy, hz),
+        vec3(hx, hy, -hz),
+        vec3(-hx, hy, -hz),
+        vec3(-hx, -hy, -hz),
+        vec3(hx, -hy, -hz),
+    ]
+}
+
+/// Crash (:52) — a 20×20 grid mesh ground with two dynamic boxes above it. The
+/// "Add Joint" button welds the two boxes (see [`super::issues_add_joint`]).
+pub(super) fn build_crash() -> IssuesState {
+    let mut state = IssuesState::new();
+
+    // Ground: grid mesh at (0,-1,0).
+    let mut bd = default_body_def();
+    bd.position = pos(0.0, -1.0, 0.0);
+    let ground = create_body(&mut state.world, &bd);
+    let grid = create_grid_mesh(20, 20, 2.0, 0, true).expect("grid mesh");
+    create_mesh_shape(
+        &mut state.world,
+        ground,
+        &default_shape_def(),
+        &grid,
+        VEC3_ONE,
+    );
+    state.static_wire = mesh_triangle_edges_offset(&grid, VEC3_ONE, vec3(0.0, -1.0, 0.0));
+
+    let sd = default_shape_def();
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+
+    let mut bd = default_body_def();
+    bd.type_ = BodyType::Dynamic;
+    bd.position = pos(2.0, 4.0, 0.0);
+    let body1 = create_body(&mut state.world, &bd);
+    create_hull_shape(&mut state.world, body1, &sd, &box_hull.base);
+    state
+        .bodies
+        .push(VisBody::box_body(body1.index1 - 1, 0.5, 0.5, 0.5));
+
+    bd.position = pos(-2.0, 4.0, 0.0);
+    let body2 = create_body(&mut state.world, &bd);
+    create_hull_shape(&mut state.world, body2, &sd, &box_hull.base);
+    state
+        .bodies
+        .push(VisBody::box_body(body2.index1 - 1, 0.5, 0.5, 0.5));
+
+    state.crash_body1 = body1;
+    state.crash_body2 = body2;
+    state
+}
+
+/// Multiple Prismatic (:118) — six dynamic boxes stacked and chained by prismatic
+/// joints (limit ±6, `constraintHertz = 240`, `drawScale = 2`).
+pub(super) fn build_multiple_prismatic() -> IssuesState {
+    use box3d_rust::joint::create_prismatic_joint;
+    use box3d_rust::types::default_prismatic_joint_def;
+
+    let mut state = IssuesState::new();
+
+    let mut bd = default_body_def();
+    let ground = create_body(&mut state.world, &bd);
+
+    let sd = default_shape_def();
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    let mut joint_def = default_prismatic_joint_def();
+    joint_def.base.body_id_a = ground;
+    joint_def.base.local_frame_a.p = vec3(0.0, 0.0, 0.0);
+    joint_def.base.local_frame_b.p = vec3(0.0, -0.6, 0.0);
+    joint_def.base.draw_scale = 2.0;
+    joint_def.base.constraint_hertz = 240.0;
+    joint_def.lower_translation = -6.0;
+    joint_def.upper_translation = 6.0;
+    joint_def.enable_limit = true;
+
+    for i in 0..6 {
+        bd.position = pos(0.0, 0.6 + 1.2 * i as f32, 0.0);
+        bd.type_ = BodyType::Dynamic;
+        let body = create_body(&mut state.world, &bd);
+        create_hull_shape(&mut state.world, body, &sd, &box_hull.base);
+        state
+            .bodies
+            .push(VisBody::box_body(body.index1 - 1, 0.5, 0.5, 0.5));
+
+        joint_def.base.body_id_b = body;
+        create_prismatic_joint(&mut state.world, &joint_def);
+
+        joint_def.base.body_id_a = body;
+        joint_def.base.local_frame_a.p = vec3(0.0, 0.6, 0.0);
+    }
+
+    state
+}
+
+/// Hull Crash (:174) — a fixed, nearly-coplanar point set fed through `b3CreateHull`
+/// (the active `#elif 1` block, 5 points, scaled by 0.01). When the hull builder
+/// rejects the degenerate set the sample draws the raw points instead of a hull —
+/// this reproduces that robustness path.
+pub(super) fn build_hull_crash() -> IssuesState {
+    let mut state = IssuesState::new();
+
+    // C `#elif 1` point set (sample_issues.cpp:200-204).
+    let raw = [
+        vec3(100.000000, -142.292389, 130.826111),
+        vec3(99.5354385, -71.3011093, 130.826111),
+        vec3(99.5930862, -80.1112213, -100.000000),
+        vec3(100.000000, -142.292389, -100.000000),
+        vec3(99.5930862, -80.1112213, 130.826111),
+    ];
+    let points: Vec<Vec3> = raw
+        .iter()
+        .map(|p| Vec3 {
+            x: 0.01 * p.x,
+            y: 0.01 * p.y,
+            z: 0.01 * p.z,
+        })
+        .collect();
+
+    match create_hull(&points, points.len() as i32) {
+        Some(hull) => {
+            state.hull_crash_ok = true;
+            state.hull_crash_tris = hull_triangles(&hull);
+            state.hull_crash_edges = hull_edges(&hull);
+        }
+        None => {
+            state.hull_crash_ok = false;
+            for p in &points {
+                state.hull_crash_points.extend_from_slice(&[p.x, p.y, p.z]);
+            }
+        }
+    }
+    state
+}
+
+/// One arbitrary-hull body for Convex Jitter: create the hull, attach it, and record
+/// its render geometry (fan triangles + wire edges) keyed by body index.
+fn add_hull_body(
+    state: &mut IssuesState,
+    body_def: &box3d_rust::types::BodyDef,
+    shape_def: &box3d_rust::types::ShapeDef,
+    points: &[Vec3],
+) {
+    let body = create_body(&mut state.world, body_def);
+    let hull = create_hull(points, points.len() as i32).expect("convex-jitter hull");
+    create_hull_shape(&mut state.world, body, shape_def, &hull);
+    state.hull_bodies.push(HullBody {
+        body_index: body.index1 - 1,
+        tris: hull_triangles(&hull),
+        edges: hull_edges(&hull),
+    });
+}
+
+/// Convex Jitter (:275) — two precise 16-/18-point hulls at scale 0.01 (a static
+/// pad and a dynamic slab with rolling resistance) over a ground box.
+pub(super) fn build_convex_jitter() -> IssuesState {
+    let mut state = IssuesState::new();
+    add_ground_box(&mut state, 10.0);
+
+    let s = 0.01f32;
+
+    // --- Hull 1 (static, 16 points) ---
+    {
+        let b = vec3(-459.292877, 217.398331, 1.00115335);
+        let mut bd = default_body_def();
+        bd.position = pos(s * b.x, s * b.z + 2.0, s * b.y);
+        bd.rotation = Quat {
+            v: vec3(0.0, -0.707106769, 0.0),
+            s: 0.707106769,
+        };
+        let mut raw = [
+            vec3(-44.8770714, -91.6598053, -1.92012548),
+            vec3(-92.5001831, 51.0151291, 15.8006573),
+            vec3(-91.0282211, -9.44371605, 15.6148796),
+            vec3(90.2375641, 77.3870087, 15.9356089),
+            vec3(-85.5353241, 91.3750992, -1.36629653),
+            vec3(88.9092178, -87.2975464, -1.86754704),
+            vec3(83.7932816, -89.8572235, 15.4168339),
+            vec3(87.0243988, 88.9776535, -1.32423306),
+            vec3(-91.6564941, -85.4949493, 15.3782759),
+            vec3(-90.2922516, -87.2074127, -1.92012548),
+            vec3(-87.2944870, 89.9510498, 15.9215889),
+            vec3(79.2338104, 89.9690781, 15.9724140),
+            vec3(-91.6744461, 81.0823212, -1.39959598),
+            vec3(90.3452759, -76.4459610, 15.4588966),
+            vec3(-87.4021912, -89.2263107, 15.3677588),
+            vec3(76.3258057, 92.0059967, 1.82873762),
+        ];
+        for p in raw.iter_mut() {
+            *p = vec3(s * p.x, s * p.z, s * p.y);
+        }
+        add_hull_body(&mut state, &bd, &default_shape_def(), &raw);
+    }
+
+    // --- Hull 2 (dynamic, 18 points, rolling resistance 0.1) ---
+    {
+        let b = vec3(-402.321838, 157.310364, 16.8169250);
+        let mut bd = default_body_def();
+        bd.position = pos(s * b.x, s * b.z + 2.0, s * b.y);
+        bd.rotation = Quat {
+            v: vec3(0.0, -0.00152086187, 0.0),
+            s: 0.999998868,
+        };
+        bd.type_ = BodyType::Dynamic;
+        let mut sd = default_shape_def();
+        sd.base_material.rolling_resistance = 0.1;
+        let mut raw = [
+            vec3(29.5000000, 17.1488495, 0.175081104),
+            vec3(29.5000000, -17.2990532, 0.125000000),
+            vec3(29.4840164, -17.3057766, 24.0200863),
+            vec3(29.4840164, 17.1648350, 24.1781254),
+            vec3(-29.1345520, 17.5529804, 0.125000000),
+            vec3(-29.1345520, 17.5529804, 23.7899799),
+            vec3(-29.1441040, 16.9679585, 24.3750000),
+            vec3(-29.1345520, -17.2990532, 24.3750000),
+            vec3(-29.1345520, -17.2990532, 0.175081253),
+            vec3(29.0720215, 17.5529785, 0.125000000),
+            vec3(29.0859070, 17.5629406, 23.8120594),
+            vec3(29.1401348, -17.2990532, 24.3750000),
+            vec3(29.1123581, 16.9722290, 24.4027710),
+            vec3(29.3944912, 17.2543602, 24.1206398),
+            vec3(-29.1345520, -17.2990532, 24.0759430),
+            vec3(-29.1345520, -16.9722252, 24.4027710),
+            vec3(29.1123619, -16.9722271, 24.4027729),
+            vec3(29.5000000, 17.3429642, 24.0000000),
+        ];
+        for p in raw.iter_mut() {
+            *p = vec3(s * p.x, s * p.z, s * p.y);
+        }
+        add_hull_body(&mut state, &bd, &sd, &raw);
+    }
+
+    state
+}
+
+/// s&box mover (:385) — a 40×40 height-field grid plus a `b3CreatePlatformMesh`
+/// under an angular-locked box that drops onto them.
+pub(super) fn build_sbox_mover() -> IssuesState {
+    let mut state = IssuesState::new();
+
+    // Ground 1: height field at (-10, 0, -10).
+    let hf_origin = vec3(-10.0, 0.0, -10.0);
+    let mut bd = default_body_def();
+    bd.position = pos(hf_origin.x, hf_origin.y, hf_origin.z);
+    let ground1 = create_body(&mut state.world, &bd);
+    let hf = create_grid(40, 40, vec3(0.5, 1.0, 0.5), false);
+    create_height_field_shape(&mut state.world, ground1, &default_shape_def(), &hf);
+    state.static_wire = hf_triangle_edges(&hf, hf_origin);
+
+    // Ground 2: platform mesh at the origin.
+    let bd = default_body_def();
+    let ground2 = create_body(&mut state.world, &bd);
+    let platform = create_platform_mesh(vec3(0.0, 0.5, 0.0), 1.0, 2.0, 5.0).expect("platform mesh");
+    create_mesh_shape(
+        &mut state.world,
+        ground2,
+        &default_shape_def(),
+        &platform,
+        VEC3_ONE,
+    );
+    state.static_wire.extend(mesh_triangle_edges_offset(
+        &platform,
+        VEC3_ONE,
+        vec3(0.0, 0.0, 0.0),
+    ));
+
+    // Angular-locked dynamic box.
+    let mut bd = default_body_def();
+    bd.type_ = BodyType::Dynamic;
+    bd.position = pos(0.0, 3.5, 0.0);
+    bd.motion_locks = MotionLocks {
+        angular_x: true,
+        angular_y: true,
+        angular_z: true,
+        ..MotionLocks::default()
+    };
+    bd.enable_contact_recycling = false;
+    let body = create_body(&mut state.world, &bd);
+    let box_hull = make_box_hull(0.25, 1.0, 0.25);
+    create_hull_shape(&mut state.world, body, &default_shape_def(), &box_hull.base);
+    state
+        .bodies
+        .push(VisBody::box_body(body.index1 - 1, 0.25, 1.0, 0.25));
+
+    state
+}
+
+/// Capsule Mesh (:463) — the player-controller repro: `building.obj` on a big ground
+/// box with a locked, sleepless magenta capsule dropped above it.
+pub(super) fn build_capsule_mesh() -> IssuesState {
+    let mut state = IssuesState::new();
+
+    // Ground plane (box hull 50 × 0.1 × 50).
+    let bd = default_body_def();
+    let ground = create_body(&mut state.world, &bd);
+    let ground_hull = make_box_hull(50.0, 0.1, 50.0);
+    create_hull_shape(
+        &mut state.world,
+        ground,
+        &default_shape_def(),
+        &ground_hull.base,
+    );
+    state
+        .bodies
+        .push(VisBody::box_body(ground.index1 - 1, 50.0, 0.1, 50.0));
+
+    // Building mesh at (0, 0.1, 0) — the shipped building.obj (embedded in wasm).
+    let building = crate::obj_loader::load_building_mesh();
+    let mut bd = default_body_def();
+    bd.position = pos(0.0, 0.1, 0.0);
+    let building_body = create_body(&mut state.world, &bd);
+    create_mesh_shape(
+        &mut state.world,
+        building_body,
+        &default_shape_def(),
+        &building,
+        VEC3_ONE,
+    );
+    state.static_wire = mesh_triangle_edges_offset(&building, VEC3_ONE, vec3(0.0, 0.1, 0.0));
+
+    // Locked, sleepless capsule (player-controller setup).
+    let mut bd = default_body_def();
+    bd.type_ = BodyType::Dynamic;
+    bd.position = pos(0.0, 4.0, 10.0);
+    bd.motion_locks = MotionLocks {
+        angular_x: true,
+        angular_y: true,
+        angular_z: true,
+        ..MotionLocks::default()
+    };
+    bd.enable_sleep = false;
+    bd.enable_contact_recycling = false;
+    let body = create_body(&mut state.world, &bd);
+    let mut sd = default_shape_def();
+    sd.base_material.friction = 0.3;
+    sd.base_material.custom_color = COLOR_MAGENTA;
+    let capsule = Capsule {
+        center1: vec3(0.0, -0.5, 0.0),
+        center2: vec3(0.0, 0.5, 0.0),
+        radius: 0.3,
+    };
+    create_capsule_shape(&mut state.world, body, &sd, &capsule);
+    state.bodies.push(VisBody::capsule_colored(
+        body.index1 - 1,
+        &capsule,
+        COLOR_MAGENTA,
+    ));
+
+    state
+}

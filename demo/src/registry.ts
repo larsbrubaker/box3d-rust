@@ -14,8 +14,8 @@
 // across 19 categories. Three upstream RegisterSample calls are `#if 0`'d and
 // therefore excluded: Bodies "Gyroscopic Precession", Benchmark "Large World"
 // (the first one at :203; the live one at :1022 is kept), Ragdoll "Pose". The
-// Replay viewer is registered through a non-RegisterSample path (g_replayIndex)
-// and is not represented here.
+// Replay viewer is registered through a non-RegisterSample path (g_replayIndex),
+// represented here as its own single-entry "Replay" category (route "replay").
 //
 // ---------------------------------------------------------------------------
 // Single-registration pattern (registry ↔ multi-scene page link)
@@ -118,10 +118,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Junkyard", "partial", "benchmark", "junkyard"],
   ]),
   ...cat("Character", "sample_character.cpp", [
-    ["CapsulePlane", "planned"],
-    ["MoverOverlap", "planned"],
-    ["Mover", "partial", "character", "mover"],
-    ["Rigid Body", "planned"],
+    ["CapsulePlane", "live", "character", "capsule-plane"],
+    ["MoverOverlap", "live", "character", "mover-overlap"],
+    ["Mover", "live", "character", "mover"],
+    ["Rigid Body", "partial", "character", "rigid-body"],
   ]),
   ...cat("Collision", "sample_collision.cpp", [
     ["Ray Curtain", "live", "queries", "ray-curtain"],
@@ -149,8 +149,15 @@ export const SAMPLES: SampleEntry[] = [
     ["Simple", "partial", "compound", "simple"],
     ["Spheres", "partial", "compound", "spheres"],
     ["Hulls", "partial", "compound", "hulls"],
-    ["Tile Floor", "planned"],
-    ["Mesh Tile", "planned"],
+    // Partial: physics matches C (2500-hull compound + dropped sphere), but the
+    // static tiles are rendered as one instanced mesh and the placement RNG is
+    // demo-local (not the C Random* stream).
+    ["Tile Floor", "partial", "compound", "tile-floor"],
+    // Partial: 4 box-mesh compound tiles matching C; placement RNG is demo-local.
+    ["Mesh Tile", "partial", "compound", "mesh-tile"],
+    // Partial: the embedded character mover + sweeping ray/shape/overlap query are
+    // ported (WASD walkthrough), but the grid is fixed at the C debug value 8
+    // (release 200 is too heavy for serial wasm) and prop RNG is demo-local.
     ["Village", "partial", "compound", "village"],
   ]),
   ...cat("Continuous", "sample_continuous.cpp", [
@@ -187,13 +194,21 @@ export const SAMPLES: SampleEntry[] = [
     ["Capsule Mass", "live", "geometry", "capsule-mass"],
   ]),
   ...cat("Issues", "sample_issues.cpp", [
-    ["Dump Loader", "planned"],
-    ["Crash", "planned"],
-    ["Multiple Prismatic", "planned"],
-    ["Hull Crash", "planned"],
-    ["Convex Jitter", "planned"],
-    ["s&box mover", "planned"],
-    ["Capsule Mesh", "planned"],
+    // Partial: the C "dump" is emitted C++ source (b3World_Dump output #included into
+    // the constructor), not a runtime-loadable format, and box3d-rust ports no dump
+    // *loader* API — so the recorded body/shape defs (single rotated cube + ground) are
+    // hand-ported inline. Values are bit-exact; only the load mechanism differs.
+    ["Dump Loader", "partial", "issues", "dump-loader"],
+    ["Crash", "live", "issues", "crash"],
+    // Partial: C sets m_mouseForceScale = 1e6 (a stronger picker pull); the shared
+    // MouseGrab has no force-scale knob, so the grab uses default strength. The six
+    // prismatic joints, ±6 limit, and constraintHertz 240 are exact; divergence is
+    // cosmetic (only affects mouse-drag strength).
+    ["Multiple Prismatic", "partial", "issues", "multiple-prismatic"],
+    ["Hull Crash", "live", "issues", "hull-crash"],
+    ["Convex Jitter", "live", "issues", "convex-jitter"],
+    ["s&box mover", "live", "issues", "s-box-mover"],
+    ["Capsule Mesh", "live", "issues", "capsule-mesh"],
   ]),
   ...cat("Joints", "sample_joint.cpp", [
     ["Distance Joint", "live", "joints", "distance"],
@@ -249,10 +264,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Incline", "live", "ragdolls", "incline"],
   ]),
   ...cat("Robustness", "sample_robustness.cpp", [
-    ["HighMassRatio1", "planned"],
-    ["Tiny Pyramid", "planned"],
-    ["Overlap Recovery", "planned"],
-    ["Overflow Color Pile", "planned"],
+    ["HighMassRatio1", "live", "robustness", "high-mass-ratio1"],
+    ["Tiny Pyramid", "live", "robustness", "tiny-pyramid"],
+    ["Overlap Recovery", "live", "robustness", "overlap-recovery"],
+    ["Overflow Color Pile", "live", "robustness", "overflow-color-pile"],
   ]),
   ...cat("Shapes", "sample_shapes.cpp", [
     ["Inclined Plane", "live", "shapes", "inclined-plane"],
@@ -294,7 +309,20 @@ export const SAMPLES: SampleEntry[] = [
     ["Far Mesh Drop", "live", "world", "far-mesh-drop"],
   ]),
   ...cat("Tree", "sample_tree.cpp", [
-    ["Benchmark", "planned"],
+    // Partial: the AABB record files are fetched by JS (no fopen in the browser) and
+    // query/build/profile timings are measured with performance.now() (no std::time in
+    // wasm); Save / Load + Load Scale are dropped because b3DynamicTree_Save/_Load are
+    // debug-only file I/O not ported in box3d-rust. Tree build, 1024-query generation
+    // (seed 12345 XorShift, exact), ray/overlap/closest profiling, leaf + per-level
+    // visualization, and all readouts are faithful.
+    ["Benchmark", "partial", "tree", "benchmark"],
+  ]),
+  // Registered via g_replayIndex (RegisterReplay), not RegisterSample, so it is
+  // its own single-entry category. Partial: transport + scrubber + faithful
+  // playback ship; the outline tree, query search, selection inspector, and
+  // keyframe-policy popup do not (see demos/replay.ts).
+  ...cat("Replay", "sample_replay.cpp", [
+    ["Viewer", "partial", "replay"],
   ]),
 ];
 
@@ -399,8 +427,10 @@ function scenesFor(route: string): SampleEntry[] {
  *   - a registry entry whose `scene` the page does not implement (a RegisterSample
  *     row was added but the scene forgotten, or one side was renamed), and
  *   - a page scene with no matching registry entry — `extra` whitelists internal
- *     scenes intentionally not backed by a RegisterSample (e.g. Character's
- *     Village walkthrough, a second view of the Compound/Village sample).
+ *     scenes intentionally not backed by a RegisterSample (e.g. a second view of a
+ *     sample). The Character page dropped its old "village" walkthrough when it was
+ *     rebuilt to the four real RegisterSample scenes; the Village walk is owned by
+ *     the Compound sample/route.
  *
  * In a shipped build with no drift this logs nothing; a fired error is a real
  * registry↔page bug. Returns the registry scene keys for the route (handy when a

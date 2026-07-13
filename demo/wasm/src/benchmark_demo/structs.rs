@@ -8,12 +8,12 @@ use crate::vis::mesh_triangle_edges;
 use crate::vis::VisBody;
 use box3d_rust::body::create_body;
 use box3d_rust::geometry::{Capsule, Sphere};
-use box3d_rust::hull::create_hull;
+use box3d_rust::hull::{clone_and_transform_hull, create_hull};
 use box3d_rust::id::{BodyId, ShapeId};
 use box3d_rust::joint::create_spherical_joint;
 use box3d_rust::math_functions::{
-    add, get_length_and_normalize, lerp, mul_sv, Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_ONE,
-    VEC3_ZERO,
+    add, get_length_and_normalize, lerp, mul_sv, Pos, Transform, Vec3, QUAT_IDENTITY,
+    TRANSFORM_IDENTITY, VEC3_ONE, VEC3_ZERO,
 };
 use box3d_rust::mesh::create_wave_mesh;
 use box3d_rust::shape::{
@@ -279,10 +279,11 @@ fn hull_edges(hull: &box3d_rust::hull::HullData, offset: Vec3) -> Vec<f32> {
 /// `BenchmarkHull` (`sample_benchmark.cpp` :1024). A pure geometry demo (no
 /// bodies): 64 random points hulled, and a mirror-scaled (`{-1,1,1}`) clone.
 ///
-/// **Port note:** `b3CloneAndTransformHull` is not in the Rust port, so the mirror
-/// hull is rebuilt by scaling the input point cloud and re-hulling — visually and
-/// area-wise equivalent for a reflection. Timing is not reported (serial wasm has
-/// no `b3GetTicks`); the readout shows trial count + surface areas instead.
+/// **Port note:** the mirror hull is produced by `b3CloneAndTransformHull`
+/// (`clone_and_transform_hull`) with identity transform and scale `{-1,1,1}`,
+/// exactly as C does — this reflects the source hull (reversing edge winding) and
+/// recomputes its geometry. Timing is not reported (serial wasm has no
+/// `b3GetTicks`); the readout shows trial count + surface areas instead.
 pub(crate) fn build_hull() -> BenchScene {
     let world = new_world();
     let mut scene = empty_scene(world, Vec::new(), BenchKind::Hull);
@@ -316,16 +317,15 @@ pub(crate) fn build_hull() -> BenchScene {
         },
     );
 
-    // Mirror scale {-1,1,1}: scale the point cloud and re-hull (see note above).
-    let scaled: Vec<Vec3> = points
-        .iter()
-        .map(|p| Vec3 {
-            x: -p.x,
-            y: p.y,
-            z: p.z,
-        })
-        .collect();
-    let transformed = create_hull(&scaled, count as i32).expect("hull sample transformed");
+    // Mirror scale {-1,1,1} via b3CloneAndTransformHull (identity transform),
+    // exactly as C's BenchmarkHull does.
+    let scale = Vec3 {
+        x: -1.0,
+        y: 1.0,
+        z: 1.0,
+    };
+    let transformed = clone_and_transform_hull(&hull, TRANSFORM_IDENTITY, scale)
+        .expect("hull sample transformed");
     scene.hull_clone_area = transformed.surface_area;
     scene.hull_edges_b = hull_edges(
         &transformed,
