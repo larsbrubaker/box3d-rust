@@ -167,9 +167,11 @@ pub(crate) fn install(state: MeshState) -> u32 {
 
 /// Reset a parametric scene: 0 = Grid, 1 = Big Box, 2 = Box. `shape_type` picks the
 /// dropped body; `scale_x` / `scale_z` are the ground-mesh Scale X/Z sliders (Scale
-/// Y stays 1, matching the C `DrawControls`). The scale sliders rebuild the scene
-/// here (C uses `b3Shape_SetMesh`, which is not part of the collision port surface;
-/// re-creating the mesh shape at the new scale is behaviorally equivalent).
+/// Y stays 1, matching the C `DrawControls`). This is the scene *reset* entry: the
+/// mesh page (`demos/mesh.ts`) drives both scene entry and each Scale slider change
+/// through it, so it rebuilds the whole scene from scratch. C re-scales the live
+/// ground shape with `b3Shape_SetMesh` (now ported as `shape_set_mesh`) instead; a
+/// full reset yields the collision-identical ground plus a fresh drop body.
 #[wasm_bindgen]
 pub fn mesh_reset(scene: u32, shape_type: u32, scale_x: f32, scale_z: f32) -> u32 {
     let state = match scene {
@@ -181,8 +183,9 @@ pub fn mesh_reset(scene: u32, shape_type: u32, scale_x: f32, scale_z: f32) -> u3
 }
 
 /// Reflection reset (C `MeshReflection`) with the mirrored building's scale radios
-/// (default `{-1, 1, 1}`). C toggles it live with `b3Shape_SetMesh`; the port
-/// rebuilds the scene at the new scale (see [`mesh_reset`]).
+/// (default `{-1, 1, 1}`). C toggles the mirror live with `b3Shape_SetMesh` (now
+/// ported as `shape_set_mesh`); the mesh page drives this radio through a full
+/// scene reset instead (see [`mesh_reset`]).
 #[wasm_bindgen]
 pub fn mesh_reset_reflection(scale_x: f32, scale_y: f32, scale_z: f32) -> u32 {
     install(scenes::build_reflection(Vec3 {

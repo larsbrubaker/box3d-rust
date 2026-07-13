@@ -116,7 +116,7 @@ fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, sha
                 world0: world.world_id,
                 generation: world.shapes[fast_shape_id as usize].generation,
             };
-            if !fcn(id_a, id_b, world.custom_filter_context) {
+            if !fcn(&*world, id_a, id_b, world.custom_filter_context) {
                 return;
             }
         }

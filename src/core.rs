@@ -36,6 +36,23 @@ pub fn get_length_units_per_meter() -> f32 {
     f32::from_bits(LENGTH_UNITS_PER_METER_BITS.load(Ordering::Relaxed))
 }
 
+// The CCD stall threshold is a single global in C (`static float
+// b3_stallThreshold = FLT_MAX`) used only to log continuous-collision steps that
+// exceed it (solver.c / shape.c). Stored as an atomic bit pattern for the same
+// soundness reason as the length unit above. 0x7F7F_FFFF is FLT_MAX.
+static STALL_THRESHOLD_BITS: AtomicU32 = AtomicU32::new(0x7F7F_FFFF);
+
+/// Set the CCD stall threshold, in seconds. (core.c: b3SetStallThreshold)
+pub fn set_stall_threshold(seconds: f32) {
+    debug_assert!(crate::math_functions::is_valid_float(seconds) && seconds > 0.0);
+    STALL_THRESHOLD_BITS.store(seconds.to_bits(), Ordering::Relaxed);
+}
+
+/// Get the CCD stall threshold, in seconds. (core.c: b3GetStallThreshold)
+pub fn get_stall_threshold() -> f32 {
+    f32::from_bits(STALL_THRESHOLD_BITS.load(Ordering::Relaxed))
+}
+
 /// @return true if the library was built with the `double-precision` feature
 /// (large world mode), mirroring `BOX3D_DOUBLE_PRECISION`.
 pub fn is_double_precision() -> bool {
@@ -170,5 +187,19 @@ mod tests {
         assert_eq!(round_up_power_of2(1), 1);
         assert_eq!(bounding_power_of2(5), 3);
         assert_eq!(lower_power_of_2_exponent(9), 3);
+    }
+
+    #[test]
+    fn stall_threshold_round_trip() {
+        // Default mirrors C's `b3_stallThreshold = FLT_MAX`.
+        assert_eq!(get_stall_threshold(), f32::MAX);
+
+        // Matches sample_continuous.cpp Stall: b3SetStallThreshold(0.001f).
+        set_stall_threshold(0.001);
+        assert_eq!(get_stall_threshold(), 0.001);
+
+        // Restore the default so other tests observe C's initial value.
+        set_stall_threshold(f32::MAX);
+        assert_eq!(get_stall_threshold(), f32::MAX);
     }
 }

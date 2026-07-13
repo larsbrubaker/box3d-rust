@@ -962,7 +962,8 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       <tr><td>Ctrl + click</td><td>Grab body</td></tr>
       ${enableSpawnDelete ? "<tr><td>Shift + click</td><td>Spawn body</td></tr>" : ""}
       <tr><td>Alt + drag</td><td>Orbit / pan / zoom</td></tr>
-      <tr><td>Right-drag + WASD</td><td>Fly camera</td></tr>
+      <tr><td>Right-drag</td><td>Look (fly camera)</td></tr>
+      <tr><td>WASD / arrows</td><td>Fly move</td></tr>
       <tr><td>Scroll</td><td>Zoom</td></tr>
     </table>
   `;

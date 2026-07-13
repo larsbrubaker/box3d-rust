@@ -1,9 +1,10 @@
 //! Collision / Long Ray Cast — faithful port of `sample_collision.cpp`
 //! `LongRayCast` (line 1334). Very long rays are cast at a row of shapes from
 //! kilometers away; a slowly precessing cone sweeps the hit across each surface so
-//! single-precision drift shows up as a broken trail. The rock hull is drawn as an
-//! icosahedron stand-in (matching the other demos); its collision uses the real
-//! `create_rock` hull.
+//! single-precision drift shows up as a broken trail. The rock is rendered from its
+//! real `create_rock` convex hull (solid faces + wireframe edges via
+//! [`crate::vis::hull_triangles`] / [`crate::vis::hull_edges`]), the same hull the
+//! ray cast collides against.
 
 use crate::vis::{hf_triangle_edges, mesh_triangle_edges, push_poses, VisBody};
 use box3d_rust::body::{create_body, get_body_transform};
@@ -38,6 +39,12 @@ struct State {
     world: World,
     vis: Vec<VisBody>,
     surfaces: Vec<Surface>,
+    /// Rock body + its convex-hull geometry in hull-local space (`[x,y,z]` vertex
+    /// triples for the solid faces, endpoint triples for the wireframe edges). The
+    /// rock is static, so these are transformed to world space at export time.
+    rock_body: BodyId,
+    rock_tris_local: Vec<f32>,
+    rock_edges_local: Vec<f32>,
     targets: [Pos; SHAPE_COUNT],
     trail: [Vec<Pos>; SHAPE_COUNT],
     fail_rate: [f32; SHAPE_COUNT],
@@ -172,15 +179,17 @@ pub fn lrc_reset() {
     create_capsule_shape(&mut world, b, &shape_def, &capsule);
     vis.push(VisBody::capsule_body(b.index1 - 1, &capsule));
 
-    // Rock hull at targets[2].x (drawn as an icosahedron stand-in).
+    // Rock hull at targets[2].x, rendered from its real convex hull (solid faces +
+    // wireframe edges) rather than a stand-in. The same hull backs the ray cast.
     body_def.position = Pos {
         x: targets[2].x,
         y: 0.0,
         z: 0.0,
     };
-    let b = create_body(&mut world, &body_def);
-    create_hull_shape(&mut world, b, &shape_def, &hull);
-    vis.push(VisBody::icosahedron_colored(b.index1 - 1, 1.0, 0));
+    let rock_body = create_body(&mut world, &body_def);
+    create_hull_shape(&mut world, rock_body, &shape_def, &hull);
+    let rock_tris_local = crate::vis::hull_triangles(&hull);
+    let rock_edges_local = crate::vis::hull_edges(&hull);
 
     // Wave mesh at targets[3].x.
     body_def.position = Pos {
@@ -215,6 +224,9 @@ pub fn lrc_reset() {
             world,
             vis,
             surfaces,
+            rock_body,
+            rock_tris_local,
+            rock_edges_local,
             targets,
             trail: Default::default(),
             fail_rate: [0.0; SHAPE_COUNT],
@@ -277,6 +289,45 @@ pub fn lrc_surface_wireframe() -> Vec<f32> {
                 out.extend_from_slice(&[a.x, a.y, a.z, b.x, b.y, b.z]);
             }
         }
+        out
+    })
+}
+
+/// Rock hull geometry in world space: `[triCount, tris…, edgeCount, edges…]`, where
+/// `tris` is a flat non-indexed vertex list (9 floats per triangle) and `edges` is
+/// interleaved endpoint pairs (6 floats per edge). Baked from the real `create_rock`
+/// hull so the render matches the collision geometry exactly. Static, but
+/// transformed through the body pose so the layout mirrors [`lrc_surface_wireframe`].
+#[wasm_bindgen]
+pub fn lrc_rock_geometry() -> Vec<f32> {
+    with_state(|state| {
+        let xf = get_body_transform(&state.world, state.rock_body.index1 - 1);
+        let local = Transform {
+            p: Vec3 {
+                x: xf.p.x as f32,
+                y: xf.p.y as f32,
+                z: xf.p.z as f32,
+            },
+            q: xf.q,
+        };
+        let transform_points = |src: &[f32], out: &mut Vec<f32>| {
+            out.push(src.len() as f32);
+            for i in (0..src.len()).step_by(3) {
+                let p = transform_point(
+                    local,
+                    Vec3 {
+                        x: src[i],
+                        y: src[i + 1],
+                        z: src[i + 2],
+                    },
+                );
+                out.extend_from_slice(&[p.x, p.y, p.z]);
+            }
+        };
+        let mut out =
+            Vec::with_capacity(2 + state.rock_tris_local.len() + state.rock_edges_local.len());
+        transform_points(&state.rock_tris_local, &mut out);
+        transform_points(&state.rock_edges_local, &mut out);
         out
     })
 }

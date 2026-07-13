@@ -700,17 +700,46 @@ fn cast_overlay(state: &BodiesState, ov: &mut Overlay) {
         );
     }
 
-    // CollideMover planes (orange): normal segment + a small point at the contact.
+    // CollideMover planes (orange): a plane quad + normal segment + contact point,
+    // matching C `DrawPlane` (draw.c:119). `perp1 = b3Perp(normal)`,
+    // `perp2 = perp1 × normal`; the quad corners are `c ± perp1 ± perp2`.
     for (point, normal) in &state.cast.planes {
+        let c = *point;
+        let perp1 = box3d_rust::math_functions::perp(*normal);
+        let perp2 = box3d_rust::math_functions::cross(perp1, *normal);
+        let p1 = v3(
+            c.x + perp1.x + perp2.x,
+            c.y + perp1.y + perp2.y,
+            c.z + perp1.z + perp2.z,
+        );
+        let p2 = v3(
+            c.x - perp1.x + perp2.x,
+            c.y - perp1.y + perp2.y,
+            c.z - perp1.z + perp2.z,
+        );
+        let p3 = v3(
+            c.x - perp1.x - perp2.x,
+            c.y - perp1.y - perp2.y,
+            c.z - perp1.z - perp2.z,
+        );
+        let p4 = v3(
+            c.x + perp1.x - perp2.x,
+            c.y + perp1.y - perp2.y,
+            c.z + perp1.z - perp2.z,
+        );
+        ov.seg(p1, p2, C_ORANGE);
+        ov.seg(p2, p3, C_ORANGE);
+        ov.seg(p3, p4, C_ORANGE);
+        ov.seg(p4, p1, C_ORANGE);
         ov.seg(
-            *point,
+            c,
             v3(
-                point.x + 0.5 * normal.x,
-                point.y + 0.5 * normal.y,
-                point.z + 0.5 * normal.z,
+                c.x + 0.5 * normal.x,
+                c.y + 0.5 * normal.y,
+                c.z + 0.5 * normal.z,
             ),
             C_ORANGE,
         );
-        ov.point(*point, 8.0, C_ORANGE);
+        ov.point(c, 10.0, C_ORANGE);
     }
 }

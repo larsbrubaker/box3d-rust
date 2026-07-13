@@ -13,9 +13,14 @@ mod scene;
 pub(crate) use character::RigidbodyCharacter;
 pub(crate) use scene::build_rigid_body;
 
-use super::{mover_capsule, CharacterState, SceneKind, SceneState};
+use super::{mover_capsule, with_state, CharacterState, SceneKind, SceneState};
 use box3d_rust::body::{body_get_linear_velocity, body_get_position};
-use box3d_rust::math_functions::{get_length_and_normalize, Pos, Transform, Vec3, QUAT_IDENTITY};
+use box3d_rust::math_functions::{
+    get_length_and_normalize, sub_pos, Pos, Transform, Vec3, QUAT_IDENTITY,
+};
+use box3d_rust::types::default_query_filter;
+use box3d_rust::world::world_cast_ray_closest;
+use wasm_bindgen::prelude::*;
 
 pub(crate) fn step(state: &mut CharacterState, dt: f32, sub_steps: i32) {
     let (jump, want_sprint, throttle_x, throttle_y, forward, right) = {
@@ -67,6 +72,45 @@ pub(crate) fn step(state: &mut CharacterState, dt: f32, sub_steps: i32) {
     ];
 
     state.state = SceneState::RigidBody(c);
+}
+
+/// Third-person camera-boom raycast (C `RigidBodyCharacter::Step`, sample_character.cpp
+/// :1579-1602). Casts a world ray from the character (`from`) toward the desired eye
+/// (`to`) with `b3DefaultQueryFilter`, so the browser page can clamp the boom length on
+/// a hit and keep the eye from clipping through geometry — the same `b3World_CastRayClosest`
+/// the C sample runs each frame. Returns the hit fraction along `to - from` in `[0, 1]`,
+/// or `1.0` when the ray reaches the eye unobstructed (no hit / degenerate translation).
+/// The JS side owns the C margins (0.15 m camera radius, 0.1 m floor) and the
+/// `radius = min(saved, clamped)` restore, exactly as `m_camera` does.
+#[wasm_bindgen]
+pub fn character_camera_boom(
+    from_x: f32,
+    from_y: f32,
+    from_z: f32,
+    to_x: f32,
+    to_y: f32,
+    to_z: f32,
+) -> f32 {
+    with_state(|state| {
+        let from = Pos {
+            x: from_x as _,
+            y: from_y as _,
+            z: from_z as _,
+        };
+        let to = Pos {
+            x: to_x as _,
+            y: to_y as _,
+            z: to_z as _,
+        };
+        let translation = sub_pos(to, from);
+        let filter = default_query_filter();
+        let result = world_cast_ray_closest(&state.world, from, translation, &filter);
+        if result.hit {
+            result.fraction
+        } else {
+            1.0
+        }
+    })
 }
 
 fn placeholder_scene() -> SceneState {

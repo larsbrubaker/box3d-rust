@@ -185,7 +185,7 @@ fn sensor_accepts_visitor(
                 world0: world.world_id,
                 generation: other_shape.generation,
             };
-            if !custom_filter_fcn(id_a, id_b, world.custom_filter_context) {
+            if !custom_filter_fcn(world, id_a, id_b, world.custom_filter_context) {
                 return false;
             }
         }

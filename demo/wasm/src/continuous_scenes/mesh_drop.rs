@@ -266,15 +266,16 @@ pub fn sim_cont_mesh_drop_set_amplitude(amplitude: f32) -> u32 {
 }
 
 /// Mesh Drop / "Generate" button (C `DrawControls`, :628). Reseeds and rebuilds.
+///
+/// C `MeshDrop::Generate` sets `g_randomSeed = (uint32_t)b3GetTicks()`
+/// (`sample_continuous.cpp`:556) on every press — an inherently time-varying seed.
+/// JS passes a `performance.now()`-derived `u32` here (also on each Auto Generate
+/// cycle), so every regeneration draws a fresh pile exactly as C's tick reseed does.
+/// Any tick value is faithful; the deterministic Unit Test keeps its fixed
+/// `stability.c` seed via [`sim_reset_mesh_drop_unit`].
 #[wasm_bindgen]
-pub fn sim_cont_mesh_drop_generate() -> u32 {
-    with_extra(|e| {
-        // Advance the seed one XorShift step so each press gives a fresh pile
-        // (C uses `g_randomSeed = b3GetTicks()`, non-deterministic).
-        let mut rng = XorShift32::with_seed(e.md_seed);
-        rng.next_int();
-        e.md_seed = rng.seed();
-    });
+pub fn sim_cont_mesh_drop_generate(ticks: u32) -> u32 {
+    with_extra(|e| e.md_seed = ticks);
     build_mesh_drop_scene()
 }
 

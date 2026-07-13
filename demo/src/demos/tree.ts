@@ -4,9 +4,11 @@
 // sim, so it wires its own controls instead of the stepping samples shell.
 //
 // Disclosed deviations (see also the registry entry): record files are fetched
-// (no browser fopen); build / query timings use performance.now (no wasm std::time);
-// Save / Load + Load Scale are dropped (b3DynamicTree_Save/_Load are unported
-// debug-only file I/O). Distance culling of drawn boxes uses the live camera.
+// (no browser fopen); build / query timings use performance.now (no wasm std::time).
+// Save / Load + Load Scale ARE wired: Save downloads the serialized tree (Blob), Load
+// re-reads a picked file and rebuilds the tree (b3DynamicTree_Save/_Load ported in
+// tree_demo.rs as a portable leaf format, since C's raw-struct dump isn't portable).
+// Distance culling of drawn boxes uses the live camera.
 
 import * as THREE from "three";
 import { createButton, createCheckbox, createInfoBox, createSlider } from "../controls.ts";
@@ -69,7 +71,8 @@ export function init(container: HTMLElement) {
     createInfoBox(
       "<strong>Tree Benchmark</strong> — leaves draw light blue, gray when the current test's " +
         "query or ray hits them. Toggle Ray Cast / Overlap / Closet Point and drag Test to move the " +
-        "probe; Profile times all 1024 queries. Save / Load are omitted (no browser file I/O).",
+        "probe; Profile times all 1024 queries. Save downloads the tree; Load re-reads it (Load Scale " +
+        "rescales every box).",
     ),
   );
 
@@ -89,6 +92,7 @@ export function init(container: HTMLElement) {
     testIndex: 0,
     level: -1,
     km: 1,
+    loadScale: 1,
     height: 0,
     buildMs: 0,
     rayMs: 0,
@@ -159,6 +163,58 @@ export function init(container: HTMLElement) {
     createSlider("Kilometers", 0.5, 20, 1, 0.1, (v) => {
       state.km = v;
       rebuildGeometry();
+    }),
+  );
+
+  // --- Save / Load / Load Scale (C Save / Load buttons + Load Scale slider) ----
+  // Save serializes the live tree (tree_save) and downloads it as a Blob; Load
+  // re-reads a picked file through tree_load(bytes, loadScale) and rebuilds. No
+  // browser fopen, so the file name is user-chosen at download / pick time.
+  const saveLoadRow = document.createElement("div");
+  saveLoadRow.className = "control-row";
+  saveLoadRow.appendChild(
+    createButton("Save", () => {
+      const bytes = wasm.tree_save();
+      // Copy into a fresh ArrayBuffer so the Blob never aliases wasm memory.
+      const blob = new Blob([bytes.slice()], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${FILES[state.fileIndex]}.b3tree`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, false),
+  );
+  const loadInput = document.createElement("input");
+  loadInput.type = "file";
+  loadInput.accept = ".b3tree,application/octet-stream";
+  loadInput.style.display = "none";
+  loadInput.addEventListener("change", async () => {
+    const f = loadInput.files?.[0];
+    if (!f) return;
+    const buf = await f.arrayBuffer();
+    const ok = wasm.tree_load(new Uint8Array(buf), state.loadScale);
+    loadInput.value = ""; // allow re-picking the same file
+    if (!ok) {
+      if (readout) readout.textContent = `Load failed: ${f.name} is not a valid tree file`;
+      return;
+    }
+    state.buildMs = 0;
+    state.rayMs = 0;
+    state.overlapMs = 0;
+    state.closestMs = 0;
+    refreshStats();
+    rebuildGeometry();
+    state.loaded = true;
+  });
+  saveLoadRow.appendChild(
+    createButton("Load", () => loadInput.click(), false),
+  );
+  controls.appendChild(saveLoadRow);
+  controls.appendChild(loadInput);
+  controls.appendChild(
+    createSlider("Load Scale", 0.01, 1, 1, 0.01, (v) => {
+      state.loadScale = v;
     }),
   );
 

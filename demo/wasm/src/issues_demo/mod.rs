@@ -16,8 +16,8 @@
 //!   runtime-loadable format, and box3d-rust ports no dump *loader* API. Values are
 //!   bit-exact; the only divergence is hand-porting the recorded calls.
 //! - **Multiple Prismatic** sets `m_mouseForceScale = 1e6` in C (a stronger picker
-//!   pull); the shared [`crate::interact::MouseGrab`] has no such scale, so the grab
-//!   uses its default strength. Cosmetic only.
+//!   pull); [`issues_reset_multiple_prismatic`] applies the same override via
+//!   [`crate::interact::set_grab_force_scale`], so the mouse grab matches C exactly.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -126,7 +126,11 @@ pub fn issues_reset_crash() -> u32 {
 
 #[wasm_bindgen]
 pub fn issues_reset_multiple_prismatic() -> u32 {
-    install(scenes::build_multiple_prismatic())
+    let count = install(scenes::build_multiple_prismatic());
+    // C `MultiplePrismatic` sets `m_mouseForceScale = 1e6` (sample_issues.cpp:163)
+    // for a much stronger picker pull; re-apply after `install` restores the default.
+    interact::set_grab_force_scale(1_000_000.0);
+    count
 }
 
 #[wasm_bindgen]

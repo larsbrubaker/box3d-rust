@@ -107,7 +107,7 @@ export function init(container: HTMLElement, initialScene?: string) {
         "wireframe). <strong>Mesh Drop</strong> rains 1024 tiny shapes into a wave basin — 1024 " +
         "continuous bodies runs below 60 fps in serial WASM; its RNG seed varies per Generate (C " +
         "seeds from ticks), and Auto Generate regenerates on settle. <strong>Stall</strong> fires a " +
-        "600 m/s rock at a 200×200 torus (the C stall-threshold readout is not exposed by the port).",
+        "600 m/s rock at a 200×200 torus, with the C CCD stall threshold (1.0 ms) set and shown.",
     ),
   );
 
@@ -268,7 +268,9 @@ export function init(container: HTMLElement, initialScene?: string) {
     row.appendChild(
       createButton("Generate", () => {
         sawMovement = false;
-        wasm.sim_cont_mesh_drop_generate();
+        // C `MeshDrop::Generate` seeds from `b3GetTicks()`; a performance.now()-derived
+        // u32 is the browser equivalent (any tick value is faithful).
+        wasm.sim_cont_mesh_drop_generate(performance.now() >>> 0);
       }),
     );
     // C `DrawControls` Button "Auto Generate" (toggles m_autoGenerate).
@@ -295,6 +297,11 @@ export function init(container: HTMLElement, initialScene?: string) {
       row.className = "control-group";
       row.appendChild(createButton("Launch (L)", () => wasm.sim_cont_stall_launch()));
       sceneControls.appendChild(row);
+      // C `Stall` ctor sets b3SetStallThreshold(0.001f) to log slow CCD steps.
+      const readout = document.createElement("div");
+      readout.className = "sample-stat";
+      readout.textContent = `CCD stall threshold: ${wasm.sim_cont_stall_threshold_ms().toFixed(1)} ms`;
+      sceneControls.appendChild(readout);
     } else if (mode === "mesh-drop") {
       for (const el of meshDropControls()) sceneControls.appendChild(el);
     }
@@ -397,7 +404,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       const moving = wasm.sim_cont_mesh_drop_move_count();
       if (moving > 0) sawMovement = true;
       else if (sawMovement) {
-        wasm.sim_cont_mesh_drop_generate();
+        wasm.sim_cont_mesh_drop_generate(performance.now() >>> 0);
         sawMovement = false;
       }
     }

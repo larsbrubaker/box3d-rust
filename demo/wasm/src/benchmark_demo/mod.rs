@@ -72,11 +72,17 @@ pub(crate) struct JunkyardAnim {
     pub radius: f32,
 }
 
-/// Washer kinematic drum handle (for the wireframe outline export).
+/// Washer kinematic drum handle plus its baked hull geometry (the 36 wall + 4 rib
+/// child hulls, flattened to drum-local space) so the browser renders the real drum
+/// rather than a cylinder outline.
 pub(crate) struct WasherState {
     pub drum_id: BodyId,
     pub drum_radius: f32,
     pub drum_half_len: f32,
+    /// Solid faces of every drum child hull, `[x,y,z]` vertex triples (9 per tri).
+    pub drum_tris: Vec<f32>,
+    /// Wireframe edges of every drum child hull, endpoint triples (6 per edge).
+    pub drum_edges: Vec<f32>,
 }
 
 /// Shared state for the single live benchmark scene.
@@ -98,6 +104,10 @@ pub(crate) struct BenchScene {
     pub destruction: Option<piles::DestructionState>,
     pub washer: Option<WasherState>,
     pub large_world: Option<fields::LargeWorldState>,
+
+    /// Candy Cups frustum-hull solid faces in cup-local space (`[x,y,z]` triples, 9
+    /// per triangle), shared by every cup. Empty unless the live scene is Candy Cups.
+    pub candy_hull: Vec<f32>,
 
     /// Explosion impulse-per-area (`m_impulse`, live Magnitude slider).
     pub explosion_impulse: f32,
@@ -157,6 +167,7 @@ pub(crate) fn empty_scene(world: World, bodies: Vec<VisBody>, kind: BenchKind) -
         destruction: None,
         washer: None,
         large_world: None,
+        candy_hull: Vec::new(),
         explosion_impulse: 1000.0,
         hf_radius: 0.1,
         hf_columns: 50,
@@ -351,8 +362,9 @@ pub fn bench_hull_wireframe_b() -> Vec<f32> {
     with_state(|state| state.hull_edges_b.clone())
 }
 
-/// Washer drum outline pose + dims `[px,py,pz, qx,qy,qz,qw, radius, halfLen]`, or
-/// empty when the live scene is not the Washer.
+/// Washer drum pose + dims `[px,py,pz, qx,qy,qz,qw, radius, halfLen]`, or empty when
+/// the live scene is not the Washer. The browser positions the drum geometry
+/// ([`bench_washer_drum_geometry`]) with the pose fields.
 #[wasm_bindgen]
 pub fn bench_washer_drum() -> Vec<f32> {
     with_state(|state| {
@@ -372,6 +384,32 @@ pub fn bench_washer_drum() -> Vec<f32> {
             w.drum_half_len,
         ]
     })
+}
+
+/// Washer drum geometry in drum-local space: `[triCount, tris…, edgeCount, edges…]`
+/// (the real 36 wall + 4 rib child hulls, `vis::hull_triangles`/`hull_edges`). Empty
+/// unless the live scene is the Washer. Rendered at the [`bench_washer_drum`] pose.
+#[wasm_bindgen]
+pub fn bench_washer_drum_geometry() -> Vec<f32> {
+    with_state(|state| {
+        let Some(w) = &state.washer else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(2 + w.drum_tris.len() + w.drum_edges.len());
+        out.push(w.drum_tris.len() as f32);
+        out.extend_from_slice(&w.drum_tris);
+        out.push(w.drum_edges.len() as f32);
+        out.extend_from_slice(&w.drum_edges);
+        out
+    })
+}
+
+/// Candy Cups frustum-hull solid faces in cup-local space (flat `[x,y,z]` vertex
+/// triples, 9 per triangle), shared by every cup. Empty unless the live scene is
+/// Candy Cups. The browser uses this as the per-instance geometry for the cups.
+#[wasm_bindgen]
+pub fn bench_candy_hull() -> Vec<f32> {
+    with_state(|state| state.candy_hull.clone())
 }
 
 // ---------------------------------------------------------------------------

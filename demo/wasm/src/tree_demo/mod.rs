@@ -17,9 +17,19 @@
 //! - **Timing.** wasm has no `std::time`; the JS page times the isolated
 //!   [`tree_reset`], [`tree_rebuild`], and `tree_profile_*` calls with
 //!   `performance.now()` (the C `b3GetTicks` / `b3GetMilliseconds` reductions).
-//! - **Save / Load.** `b3DynamicTree_Save` / `b3DynamicTree_Load` are debug-only file
-//!   I/O and are not ported in box3d-rust; the C sample's Save / Load buttons and the
-//!   Load Scale slider are therefore dropped (disclosed on the page).
+//! - **Save / Load.** C's `b3DynamicTree_Save` / `b3DynamicTree_Load` (collision.h,
+//!   dynamic_tree.c:2100) `fwrite`/`fread` the raw `b3DynamicTree` struct followed by
+//!   its `b3TreeNode` array — a C-layout memory dump that is neither browser-reachable
+//!   (`fopen`) nor portable across the C/Rust node representations. [`tree_save`] /
+//!   [`tree_load`] port the *behavior* faithfully with a small self-describing binary:
+//!   a magic + the real [`DYNAMIC_TREE_VERSION`] guard (mirroring C's `tree.version !=
+//!   B3_DYNAMIC_TREE_VERSION` rejection), then every leaf's `userData` / `categoryBits`
+//!   / AABB. Load reconstructs the tree by re-inserting the saved leaves in `userData`
+//!   order (so it reproduces the same incrementally-built structure the file captured)
+//!   with C's `scale` applied to every AABB (the `Load Scale` slider). A Save→Load
+//!   round-trip reproduces the tree's leaf set, height, area ratio, and bounds exactly
+//!   (see the round-trip test). JS wires Save to a Blob download and Load to a file
+//!   input; the browser still has no `fopen`, so the file name argument is dropped.
 //! - **RNG.** [`Generate`](Self) mirrors the C stream exactly: the C `srand( 42 )` seeds
 //!   the C-library `rand()`, which the sample never calls (it uses `RandomVec3` /
 //!   `RandomFloatRange` over `g_randomSeed`), so it is a no-op on the query stream. The
@@ -43,6 +53,11 @@ use box3d_rust::math_functions::{
 };
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
+
+// Save / Load (C `b3DynamicTree_Save` / `b3DynamicTree_Load`) lives in its own module
+// (`tree_save` / `tree_load` are re-exported wasm bindings). Kept split so this file
+// stays focused and under the source-length limit.
+mod save_load;
 
 /// C `TreeBenchmark::m_testCount` — the query batch size (release build).
 const TEST_COUNT: usize = 1024;

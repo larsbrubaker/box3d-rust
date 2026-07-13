@@ -13,6 +13,8 @@ use super::ShapeGeometry;
 use crate::geometry::{Capsule, Sphere};
 use crate::hull::{is_valid_hull, HullData};
 use crate::id::ShapeId;
+use crate::math_functions::{is_valid_vec3, safe_scale, Vec3};
+use crate::mesh::{is_valid_mesh, MeshData};
 use crate::world::World;
 use std::rc::Rc;
 
@@ -90,6 +92,45 @@ pub fn shape_set_capsule(world: &mut World, shape_id: ShapeId, capsule: &Capsule
         shape.aabb_margin = compute_shape_margin(shape);
     }
 
+    let wake_bodies = true;
+    let destroy_proxy = true;
+    reset_proxy(world, index, wake_bodies, destroy_proxy);
+
+    world.locked = false;
+}
+
+/// (b3Shape_SetMesh)
+///
+/// Retypes the shape to a mesh, swapping in `mesh` (an owned clone, as
+/// [`create_mesh_shape`](crate::shape::create_mesh_shape) does — C keeps a
+/// borrowed pointer) at the sanitized `scale`, then destroys the shape's
+/// contacts and rebuilds the broad-phase proxy. Like C, this does no mass
+/// update: mesh shapes carry no mass, and the C source only calls `b3ResetProxy`.
+pub fn shape_set_mesh(world: &mut World, shape_id: ShapeId, mesh: &MeshData, scale: Vec3) {
+    debug_assert!(is_valid_vec3(scale));
+    debug_assert!(is_valid_mesh(Some(mesh)));
+    debug_assert!(mesh.hash != 0);
+
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    world.locked = true;
+
+    let index = get_shape(world, shape_id);
+    destroy_shape_allocation_for_shape_change(world, index);
+
+    {
+        let shape = &mut world.shapes[index as usize];
+        shape.geometry = ShapeGeometry::Mesh {
+            data: mesh.clone(),
+            scale: safe_scale(scale),
+        };
+        shape.aabb_margin = compute_shape_margin(shape);
+    }
+
+    // Need to wake bodies so they can react to the shape change.
     let wake_bodies = true;
     let destroy_proxy = true;
     reset_proxy(world, index, wake_bodies, destroy_proxy);

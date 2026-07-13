@@ -24,6 +24,7 @@ import {
   makeTriangleMesh,
   makeWireEdges,
   setView,
+  solidMat,
   trianglesFromWireframe,
 } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
@@ -130,14 +131,14 @@ const SCENE_INFO: Record<Scene, string> = {
     "Joint Grid: n 10 (C DEBUG; C release 100 = 10 000 jointed spheres). Sleep disabled.",
   "falling-boxes": "Falling Boxes: n 50 (C release) — 50×8×8 = 3200 unit cubes.",
   "candy-cups":
-    "Candy Cups: 4×4×4 = 64 convex cups (C DEBUG; C release 16³ = 4096). Cups render as truncated cones over the exact frustum hull.",
+    "Candy Cups: 4×4×4 = 64 convex cups (C DEBUG; C release 16³ = 4096). Cups render from the exact 8-sided frustum hull.",
   explosion:
     "Explosion: n 16 (C release) — 1089 cylinders. Set Magnitude then press Explode for a radial impulse from (0,-4,0).",
   "height-field":
     "Height Field: 50×50 wave field. Each readout casts a dense grid of rays (Radius 0) or sphere shapes (Radius > 0) straight down.",
   trees: "Falling Trees: mesh 150×200 (CreateTrees100), 10 trees × 22 tapering hulls (C DEBUG bodyCount; release 50).",
   washer:
-    "Washer: gridCount 8 (C DEBUG; C release 20³ = 8000 cubes). A kinematic drum (wireframe outline) tumbles the cubes.",
+    "Washer: gridCount 8 (C DEBUG; C release 20³ = 8000 cubes). A kinematic drum (real 36 wall + 4 rib hulls) tumbles the cubes.",
   "large-world":
     "Large World: 32×32 = 1024 static floor boxes at the origin (a broad-phase move-buffer stress test; C DEBUG grid, release 1000² = 1M is infeasible) with 16 dropped spheres.",
   hull: "Hull: a pure geometry demo — 64 random points hulled (green) and its mirror-scaled clone (yellow). No physics bodies.",
@@ -199,7 +200,10 @@ export function init(container: HTMLElement, initialScene?: string) {
   let groundWire: THREE.LineSegments | null = null;
   let hullWireA: THREE.LineSegments | null = null;
   let hullWireB: THREE.LineSegments | null = null;
+  let drumMesh: THREE.Mesh | null = null;
   let drumWire: THREE.LineSegments | null = null;
+  // Candy Cups: the real frustum hull, swapped in for the kind-3 (cylinder) slot.
+  let candyGeo: THREE.BufferGeometry | null = null;
 
   const _m = new THREE.Matrix4();
   const _p = new THREE.Vector3();
@@ -240,14 +244,14 @@ export function init(container: HTMLElement, initialScene?: string) {
   }
 
   function clearGround() {
-    for (const obj of [groundTri, groundWire, hullWireA, hullWireB, drumWire]) {
+    for (const obj of [groundTri, groundWire, hullWireA, hullWireB, drumMesh, drumWire]) {
       if (obj) {
         demo.content.remove(obj);
         obj.geometry.dispose();
         (obj.material as THREE.Material).dispose();
       }
     }
-    groundTri = groundWire = hullWireA = hullWireB = drumWire = null;
+    groundTri = groundWire = hullWireA = hullWireB = drumMesh = drumWire = null;
   }
 
   function clearVisuals() {
@@ -306,6 +310,18 @@ export function init(container: HTMLElement, initialScene?: string) {
   function reset() {
     clearVisuals();
     resetScene();
+    // Candy Cups render the real frustum hull; swap it into the kind-3 render slot.
+    if (scene === "candy-cups") {
+      if (!candyGeo) {
+        const h = wasm.bench_candy_hull();
+        candyGeo = new THREE.BufferGeometry();
+        candyGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(h), 3));
+        candyGeo.computeVertexNormals();
+      }
+      kindGeo[3] = candyGeo;
+    } else {
+      kindGeo[3] = cylGeo;
+    }
     buildGround();
     const [yaw, pitch, dist, target] = SCENE_VIEW[scene];
     setView(demo, yaw, pitch, dist, target);
@@ -444,20 +460,32 @@ export function init(container: HTMLElement, initialScene?: string) {
   function renderDrum() {
     const d = wasm.bench_washer_drum();
     if (d.length < 9) return;
-    if (!drumWire) {
-      const geo = new THREE.CylinderGeometry(d[7]!, d[7]!, 2 * d[8]!, 24, 1, true);
-      const edges = new THREE.EdgesGeometry(geo);
-      geo.dispose();
-      drumWire = new THREE.LineSegments(
-        edges,
-        new THREE.LineBasicMaterial({ color: 0x6b7280 }),
-      );
-      // Cylinder axis is local Y; the drum axis is Z, so rotate -90° about X.
-      drumWire.geometry.rotateX(Math.PI / 2);
+    if (!drumMesh) {
+      // Real drum: 36 wall + 4 rib child hulls (solid faces + wireframe edges).
+      const g = wasm.bench_washer_drum_geometry();
+      let p = 0;
+      const triCount = g[p++]! | 0;
+      const tris = g.slice(p, p + triCount);
+      p += triCount;
+      const edgeCount = g[p++]! | 0;
+      const edges = g.slice(p, p + edgeCount);
+      if (triCount === 0) return;
+      const mg = new THREE.BufferGeometry();
+      mg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tris), 3));
+      mg.computeVertexNormals();
+      drumMesh = new THREE.Mesh(mg, solidMat(0x6b7280, 1));
+      drumMesh.castShadow = true;
+      drumMesh.receiveShadow = true;
+      demo.content.add(drumMesh);
+      drumWire = makeWireEdges(edges, 0x374151);
       demo.content.add(drumWire);
     }
-    drumWire.position.set(d[0]!, d[1]!, d[2]!);
-    drumWire.quaternion.set(d[3]!, d[4]!, d[5]!, d[6]!);
+    drumMesh.position.set(d[0]!, d[1]!, d[2]!);
+    drumMesh.quaternion.set(d[3]!, d[4]!, d[5]!, d[6]!);
+    if (drumWire) {
+      drumWire.position.set(d[0]!, d[1]!, d[2]!);
+      drumWire.quaternion.set(d[3]!, d[4]!, d[5]!, d[6]!);
+    }
   }
 
   function renderHullReadout() {
@@ -502,6 +530,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     sphereGeo.dispose();
     cylGeo.dispose();
     icoGeo.dispose();
+    candyGeo?.dispose();
     for (const mat of matByKind.values()) mat.dispose();
   };
 }

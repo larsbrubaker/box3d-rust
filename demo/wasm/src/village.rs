@@ -1,8 +1,10 @@
 //! Shared Compound / Village scene builder (C `sample_compound.cpp` Village).
 //!
 //! Fixed grid at the C debug value 8 (C release uses 200, which is far too heavy
-//! for serial wasm) plus the real `building.obj` compound meshes. Physics matches
-//! C layout; RNG is demo-local (not the C `Random*` stream).
+//! for serial wasm) plus the real `building.obj` compound meshes. At grid 8 this
+//! reproduces the C **debug** build exactly: same layout and the same C
+//! `g_randomSeed` XorShift stream (seed 12345), consumed in the C constructor's
+//! call order.
 //!
 //! Also hosts the Compound Village character mover + sweeping query visualization
 //! (see [`VillageMover`]).
@@ -11,6 +13,7 @@
 
 use crate::mover_shared::{self, MoverBody, MoverDraw, MoverParams, JUMP_SPEED};
 use crate::obj_loader::load_building_mesh;
+use crate::rng::XorShift32;
 use box3d_rust::body::create_body;
 use box3d_rust::compound::{
     create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundMeshDef,
@@ -25,32 +28,6 @@ use box3d_rust::math_functions::{
 use box3d_rust::shape::create_compound_shape;
 use box3d_rust::types::{default_body_def, default_query_filter, default_shape_def, BodyType};
 use box3d_rust::world::{world_cast_ray_closest, world_cast_shape, world_overlap_shape, World};
-
-/// Tiny LCG for village prop / building placement (demo-only; not C Random*).
-pub struct DemoRng(pub u32);
-
-impl DemoRng {
-    fn next_u32(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
-        self.0
-    }
-
-    fn next_f32(&mut self) -> f32 {
-        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
-    }
-
-    pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + (hi - lo) * self.next_f32()
-    }
-
-    pub fn vec3_range(&mut self, lo: Vec3, hi: Vec3) -> Vec3 {
-        Vec3 {
-            x: self.range(lo.x, hi.x),
-            y: self.range(lo.y, hi.y),
-            z: self.range(lo.z, hi.z),
-        }
-    }
-}
 
 /// One building instance in compound-local space (for Three.js InstancedMesh).
 #[derive(Clone, Copy)]
@@ -78,7 +55,9 @@ pub struct VillageScene {
 /// the 200-wide release grid is far too heavy for the serial wasm build.
 pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
     let a = 4.0f32;
-    let mut rng = DemoRng(0xB111_A6E7);
+    // C `Village` (:489) resets `g_randomSeed = 12345` in the Sample ctor, then the
+    // prop/mesh loops below consume the shared XorShift stream in the C call order.
+    let mut rng = XorShift32::with_seed(12345);
     let material = default_surface_material();
     let box_hull = make_box_hull(a, 0.5 * a, a);
 
@@ -102,7 +81,7 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
             if (i & 1) != 0 && (j & 1) != 0 {
                 let base = transform.p;
                 let p1 = base
-                    + rng.vec3_range(
+                    + rng.vec3(
                         Vec3 { x: -a, y: a, z: -a },
                         Vec3 {
                             x: a,
@@ -111,7 +90,7 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
                         },
                     );
                 let p2 = base
-                    + rng.vec3_range(
+                    + rng.vec3(
                         Vec3 { x: -a, y: a, z: -a },
                         Vec3 {
                             x: a,
@@ -144,7 +123,7 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
     }
 
     let building_mesh = load_building_mesh();
-    let material_count = building_mesh.material_count.max(1).min(4) as usize;
+    let material_count = building_mesh.material_count.clamp(1, 4) as usize;
     let mut mesh_materials: Vec<SurfaceMaterial> = Vec::with_capacity(material_count);
     for i in 0..material_count {
         let mut mat = default_surface_material();
@@ -178,7 +157,7 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
                 rng.range(-std::f32::consts::PI, std::f32::consts::PI),
             );
 
-            let mut scale = rng.vec3_range(
+            let mut scale = rng.vec3(
                 Vec3 {
                     x: 0.5,
                     y: 0.5,

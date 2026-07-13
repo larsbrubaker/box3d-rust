@@ -3,7 +3,7 @@
 
 use super::{add_ground_box, empty_scene, new_world, BenchKind, BenchScene, WasherState};
 use crate::rng::XorShift32;
-use crate::vis::{mesh_triangle_edges, VisBody};
+use crate::vis::{hull_edges, hull_triangles, mesh_triangle_edges, VisBody};
 use box3d_rust::body::{create_body, destroy_body};
 use box3d_rust::hull::{create_hull, destroy_hull, make_box_hull, make_cube_hull};
 use box3d_rust::id::BodyId;
@@ -82,8 +82,9 @@ fn create_convex(
 
 /// `CandyCups` (`sample_benchmark.cpp` :295). `n = m = DEBUG 4 : 16`; the browser
 /// uses **4** (release 16×16×16 = 4096 convex hulls does not hold interactively).
-/// Cups render as truncated cones approximating the frustum hull (physics uses the
-/// exact hull).
+/// Cups render from the exact frustum hull (`vis::hull_triangles`), the same hull
+/// the physics uses. Each cup is a unit-scaled kind-3 (cylinder) render slot whose
+/// per-instance geometry the browser swaps for the frustum via [`bench_candy_hull`].
 pub(crate) fn build_candy_cups() -> BenchScene {
     let n = 4i32;
     let m = 4i32;
@@ -96,6 +97,9 @@ pub(crate) fn build_candy_cups() -> BenchScene {
     body_def.type_ = BodyType::Dynamic;
     let shape_def = default_shape_def();
     let convex = create_convex(0.6, 0.0, 0.95, 1.0);
+    // Bake the frustum solid faces once (cup-local space, y∈[0,1]); every cup shares
+    // this geometry, rendered at each cup's raw body pose (no local offset).
+    scene.candy_hull = hull_triangles(&convex);
 
     for i in 0..n {
         for j in 0..m {
@@ -107,16 +111,17 @@ pub(crate) fn build_candy_cups() -> BenchScene {
                 };
                 let body = create_body(&mut scene.world, &body_def);
                 create_hull_shape(&mut scene.world, body, &shape_def, &convex);
-                // Render approximation: cylinder along local Y, centered on the
-                // frustum's y-span [0,1], radius ~mean(0.6, 0.95).
+                // Unit kind-3 render slot at the raw body pose: the browser draws the
+                // frustum hull (bench_candy_hull) here at scale 1, so it matches the
+                // collision geometry exactly.
                 scene.bodies.push(VisBody::cylinder_local(
                     body.index1 - 1,
-                    0.775,
-                    0.5,
+                    1.0,
+                    1.0,
                     Transform {
                         p: Vec3 {
                             x: 0.0,
-                            y: 0.5,
+                            y: 0.0,
                             z: 0.0,
                         },
                         q: QUAT_IDENTITY,
@@ -158,8 +163,8 @@ pub(crate) fn build_washer() -> BenchScene {
             .push(VisBody::box_body(ground.index1 - 1, 60.0, 1.0, 60.0));
     }
 
-    // Kinematic drum.
-    let drum_id = build_washer_drum(&mut scene);
+    // Kinematic drum (returns the body plus its baked child-hull geometry).
+    let (drum_id, drum_tris, drum_edges) = build_washer_drum(&mut scene);
 
     // Cube fill.
     let grid_count = 8i32;
@@ -192,12 +197,16 @@ pub(crate) fn build_washer() -> BenchScene {
         drum_id,
         drum_radius: 17.0,
         drum_half_len: 10.0,
+        drum_tris,
+        drum_edges,
     });
     scene
 }
 
-/// Build the kinematic drum body (36 wall segments + ribs). Returns the drum body.
-fn build_washer_drum(scene: &mut BenchScene) -> BodyId {
+/// Build the kinematic drum body (36 wall segments + ribs). Returns the drum body
+/// plus its child-hull geometry flattened to drum-local space (`(tris, edges)`) so
+/// the browser can render the real drum instead of a cylinder outline.
+fn build_washer_drum(scene: &mut BenchScene) -> (BodyId, Vec<f32>, Vec<f32>) {
     let motor_speed = 25.0f32;
     let mut body_def = default_body_def();
     body_def.position = Pos {
@@ -235,6 +244,8 @@ fn build_washer_drum(scene: &mut BenchScene) -> BodyId {
     let angle = PI / 18.0;
     let q = make_quat_from_axis_angle(VEC3_AXIS_Z, angle);
     let qo = make_quat_from_axis_angle(VEC3_AXIS_Z, 0.1 * angle);
+    let mut drum_tris: Vec<f32> = Vec::new();
+    let mut drum_edges: Vec<f32> = Vec::new();
     let mut u1 = Vec3 {
         x: 1.0,
         y: 0.0,
@@ -266,6 +277,8 @@ fn build_washer_drum(scene: &mut BenchScene) -> BodyId {
             ];
             let hull = create_hull(&points, 8).expect("washer wall hull");
             create_hull_shape(&mut scene.world, drum, &shape_def, &hull);
+            drum_tris.extend_from_slice(&hull_triangles(&hull));
+            drum_edges.extend_from_slice(&hull_edges(&hull));
             destroy_hull(hull);
         }
 
@@ -282,12 +295,14 @@ fn build_washer_drum(scene: &mut BenchScene) -> BodyId {
             ];
             let hull = create_hull(&points, 8).expect("washer rib hull");
             create_hull_shape(&mut scene.world, drum, &shape_def, &hull);
+            drum_tris.extend_from_slice(&hull_triangles(&hull));
+            drum_edges.extend_from_slice(&hull_edges(&hull));
             destroy_hull(hull);
         }
 
         u1 = u2;
     }
-    drum
+    (drum, drum_tris, drum_edges)
 }
 
 // ---------------------------------------------------------------------------

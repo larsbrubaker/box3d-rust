@@ -71,7 +71,16 @@ use crate::solver_set::SolverSet;
 use crate::types::{Capacity, FrictionCallback, RestitutionCallback};
 
 /// Prototype for a contact filter callback. (b3CustomFilterFcn)
-pub type CustomFilterFcn = fn(ShapeId, ShapeId, u64) -> bool;
+///
+/// C's `b3CustomFilterFcn(b3ShapeId, b3ShapeId, void* context)` reaches shape
+/// state mid-step through the global registry (e.g. `b3Shape_IsSensor` /
+/// `b3Shape_GetUserData` in `sample_benchmark.cpp`). The Rust port has no global
+/// registry, so the callback receives `&World` up front, giving it the same
+/// read access to any shape via the ported accessors (`shape_get_user_data`,
+/// `shape_is_sensor`, ...). The trailing `u64` mirrors C's `void* context`.
+/// Every invocation site already holds a shared `&World`, so passing it borrows
+/// cleanly.
+pub type CustomFilterFcn = fn(&World, ShapeId, ShapeId, u64) -> bool;
 
 /// Prototype for a pre-solve callback. (b3PreSolveFcn)
 pub type PreSolveFcn =

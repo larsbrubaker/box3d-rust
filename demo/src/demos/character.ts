@@ -62,7 +62,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     "Erin Catto’s four <code>sample_character.cpp</code> scenes: drag a query capsule into " +
       "shapes (CapsulePlane, MoverOverlap), or walk the real level with the C-exact " +
       "<code>CharacterMover</code> (Mover) and the s&box-style dynamic character (Rigid Body).",
-    "drag capsule · WASD move · Space jump · Shift sprint · drag to orbit",
+    "drag capsule · WASD/arrows move · Space jump · Shift sprint · drag to orbit",
     wasm.version(),
     { category: "Character", samplesShell: true },
   );
@@ -104,6 +104,8 @@ export function init(container: HTMLElement, initialScene?: string) {
   const thirdRow = createCheckbox("Third Person (T)", thirdPerson, (v) => {
     thirdPerson = v;
     wasm.character_set_third_person(v);
+    if (!v && pointerLocked) document.exitPointerLock?.();
+    updateLookHint();
   });
   controls.appendChild(solveBtn);
   controls.appendChild(clipRow);
@@ -205,13 +207,20 @@ export function init(container: HTMLElement, initialScene?: string) {
 
   // --- Keyboard (Mover / Rigid Body) ---
   const keys = new Set<string>();
+  // Arrow keys alias WASD; preventDefault on the movement keys so arrows/Space
+  // never scroll the page. Skip while a form field is focused (don't steal typing).
+  const moveKeys = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"];
   const onKeyDown = (e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     keys.add(e.code);
     if (e.code === "KeyT") {
       thirdPerson = !thirdPerson;
       wasm.character_set_third_person(thirdPerson);
+      if (!thirdPerson && pointerLocked) document.exitPointerLock?.();
+      updateLookHint();
     }
-    if (["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(e.code)) e.preventDefault();
+    if (moveKeys.includes(e.code)) e.preventDefault();
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
   window.addEventListener("keydown", onKeyDown);
@@ -261,6 +270,65 @@ export function init(container: HTMLElement, initialScene?: string) {
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
 
+  // --- Rigid Body FPS look (Pointer Lock) + third-person camera boom -----------
+  // The C RigidBody sample calls sapp_lock_mouse(true) and drives yaw/pitch from the
+  // host's relative mouse deltas (sample.cpp MouseMove :1271-1283), running a
+  // third-person camera with a boom raycast that clamps the eye distance on a hit
+  // (sample_character.cpp :1571-1602). The browser can only lock the pointer from a
+  // user gesture, so we lock on canvas click while the Rigid Body scene is in
+  // third-person, and Esc releases (standard browser behavior). Orbit / Alt-drag still
+  // work as an unlocked fallback since the boom just reads controls.yaw / pitch.
+  const LOOK_SENS = 0.1 * (Math.PI / 180); // C sensitivity: 0.1 deg per pixel, in radians
+  const PITCH_LIMIT = 85 * (Math.PI / 180); // C clamps pitch to ±85°
+  // Third-person boom distance the user chose (wheel / Alt+right-drag); the boom only
+  // ever shortens it for a frame and restores, exactly like C's m_radius save/restore.
+  let boomRadius = 6;
+  let lastBoomApplied = 6;
+  let pointerLocked = false;
+
+  const canvasArea = (canvas.closest(".demo-canvas-area") as HTMLElement | null) ?? canvas.parentElement;
+  const lookHint = document.createElement("div");
+  lookHint.className = "sample-draw-text";
+  lookHint.style.bottom = "0.6em";
+  lookHint.style.top = "auto";
+  lookHint.style.left = "50%";
+  lookHint.style.transform = "translateX(-50%)";
+  lookHint.style.pointerEvents = "none";
+  lookHint.style.display = "none";
+  canvasArea?.appendChild(lookHint);
+
+  function updateLookHint() {
+    if (scene !== "rigid-body" || !thirdPerson) {
+      lookHint.style.display = "none";
+      return;
+    }
+    lookHint.style.display = "";
+    lookHint.textContent = pointerLocked
+      ? "Mouse look active — press Esc to release"
+      : "Click to look around (Esc releases)";
+  }
+
+  const onLookMove = (e: MouseEvent) => {
+    if (!pointerLocked) return;
+    // Raw relative deltas (sample.cpp: m_mouseDelta = { mouseDX, mouseDY }).
+    demo.controls.yaw -= 2 * LOOK_SENS * e.movementX;
+    demo.controls.pitch += LOOK_SENS * e.movementY;
+    if (demo.controls.pitch > PITCH_LIMIT) demo.controls.pitch = PITCH_LIMIT;
+    else if (demo.controls.pitch < -PITCH_LIMIT) demo.controls.pitch = -PITCH_LIMIT;
+  };
+  const onLookClick = () => {
+    if (scene === "rigid-body" && thirdPerson && !pointerLocked) {
+      canvas.requestPointerLock?.();
+    }
+  };
+  const onPointerLockChange = () => {
+    pointerLocked = document.pointerLockElement === canvas;
+    updateLookHint();
+  };
+  canvas.addEventListener("click", onLookClick);
+  document.addEventListener("mousemove", onLookMove);
+  document.addEventListener("pointerlockchange", onPointerLockChange);
+
   let sceneReady = false;
 
   function applyCamera() {
@@ -276,6 +344,9 @@ export function init(container: HTMLElement, initialScene?: string) {
         break;
       case "rigid-body":
         setView(demo, 30, 18, 6, [7.5, 2, 9]);
+        // Adopt the framed distance as the user's chosen boom length.
+        boomRadius = 6;
+        lastBoomApplied = 6;
         break;
     }
     demo.camera.far = 800;
@@ -299,9 +370,11 @@ export function init(container: HTMLElement, initialScene?: string) {
         "Click the canvas to focus keys.",
       "rigid-body":
         "The s&box dynamic character (green feet box + blue capsule) with trace-based step-up over " +
-        "the obstacle course. Purple velocity, orange wish, yellow mass center. Click to focus keys.",
+        "the obstacle course. Purple velocity, orange wish, yellow mass center. <b>Click to look</b> " +
+        "(FPS mouse-look, Esc releases); the camera boom won't clip walls you back into.",
     };
     info.innerHTML = hints[scene];
+    updateLookHint();
   }
 
   async function reset(): Promise<void> {
@@ -344,6 +417,9 @@ export function init(container: HTMLElement, initialScene?: string) {
       thirdPerson = true;
       thirdRow.querySelector("input")?.setAttribute("checked", "true");
       wasm.character_set_third_person(true);
+      // Rigid Body forces third-person on; refresh the look hint (updateControlVisibility
+      // ran before this with the old thirdPerson value, so the hint was hidden).
+      updateLookHint();
       buildGround();
       sceneReady = true;
     }
@@ -370,10 +446,10 @@ export function init(container: HTMLElement, initialScene?: string) {
       if (isWalker(scene)) {
         let tx = 0;
         let ty = 0;
-        if (keys.has("KeyW")) tx += 1;
-        if (keys.has("KeyS")) tx -= 1;
-        if (keys.has("KeyA")) ty -= 1;
-        if (keys.has("KeyD")) ty += 1;
+        if (keys.has("KeyW") || keys.has("ArrowUp")) tx += 1;
+        if (keys.has("KeyS") || keys.has("ArrowDown")) tx -= 1;
+        if (keys.has("KeyA") || keys.has("ArrowLeft")) ty -= 1;
+        if (keys.has("KeyD") || keys.has("ArrowRight")) ty += 1;
         const jump = keys.has("Space");
         const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
         wasm.character_set_input(tx, ty, jump, sprint, fwdX, fwdZ, rightX, rightZ);
@@ -393,7 +469,43 @@ export function init(container: HTMLElement, initialScene?: string) {
       lastStatus = wasm.character_status();
 
       // Third-person / follow camera for the walkers.
-      if (isWalker(scene)) {
+      if (scene === "rigid-body") {
+        // C-exact third-person boom (sample_character.cpp :1571-1602): pivot on the
+        // character, cast a ray toward the desired eye, and clamp the boom on a hit so
+        // the camera never clips a wall the player backs into. Restored each frame so
+        // the eye springs back out once the wall is clear.
+        const follow = wasm.character_follow_target();
+        if (follow.length >= 3) {
+          _target.set(follow[0]!, follow[1]!, follow[2]!);
+          demo.controls.pivot.copy(_target);
+          // Fold wheel / Alt+right-drag zoom (which lands in controls.radius) back into
+          // the user's chosen boom length; the boom itself never persists into radius.
+          if (Math.abs(demo.controls.radius - lastBoomApplied) > 1e-6) {
+            boomRadius = demo.controls.radius;
+          }
+          // Desired eye at full boom radius, using the mouse-look yaw / pitch. forward
+          // is the +view-Z (pivot→eye) direction, matching CameraControls.
+          const yaw = demo.controls.yaw;
+          const pitch = demo.controls.pitch;
+          const cp = Math.cos(pitch);
+          const ex = _target.x + Math.sin(yaw) * cp * boomRadius;
+          const ey = _target.y + Math.sin(pitch) * boomRadius;
+          const ez = _target.z + Math.cos(yaw) * cp * boomRadius;
+          let applied = boomRadius;
+          if (boomRadius > 0.01) {
+            const frac = wasm.character_camera_boom(_target.x, _target.y, _target.z, ex, ey, ez);
+            if (frac < 1) {
+              // C margins: 0.15 m camera radius, 0.1 m floor; radius = min(saved, clamped).
+              applied = Math.min(boomRadius, Math.max(0.1, frac * boomRadius - 0.15));
+            }
+          }
+          // Only set radius; never write camera.position directly, so CameraControls'
+          // external-move reconciliation never ratchets the boom inward. render()'s
+          // update() positions the eye from pivot + forward * radius.
+          demo.controls.radius = applied;
+          lastBoomApplied = applied;
+        }
+      } else if (scene === "mover") {
         const follow = wasm.character_follow_target();
         if (follow.length >= 3) {
           _target.set(follow[0]!, follow[1]! + 0.5, follow[2]!);
@@ -442,6 +554,11 @@ export function init(container: HTMLElement, initialScene?: string) {
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("pointercancel", onPointerUp);
+    canvas.removeEventListener("click", onLookClick);
+    document.removeEventListener("mousemove", onLookMove);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    if (pointerLocked) document.exitPointerLock?.();
+    lookHint.remove();
     clearGround();
     disposeMeshPool(pool);
     segGeo.dispose();

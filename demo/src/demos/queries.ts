@@ -47,6 +47,7 @@ import {
   makeWireBox,
   makeWireEdges,
   setView,
+  solidMat,
 } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
@@ -1144,7 +1145,7 @@ function initLongRayCast(container: HTMLElement) {
   controls.appendChild(
     createInfoBox(
       "<strong>Long Ray Cast</strong> — green trail = accurate, orange = drifting, red = a " +
-        "miss the near ground-truth ray would have hit. The rock hull is drawn as an icosahedron.",
+        "miss the near ground-truth ray would have hit. The rock is drawn from its real convex hull.",
     ),
   );
 
@@ -1160,6 +1161,8 @@ function initLongRayCast(container: HTMLElement) {
   const pool = createMeshPool();
   const ov = new Overlay(demo.dynamic);
   let wire: THREE.LineSegments | null = null;
+  let rockMesh: THREE.Mesh | null = null;
+  let rockWire: THREE.LineSegments | null = null;
 
   wasm.lrc_reset();
   apply();
@@ -1170,6 +1173,28 @@ function initLongRayCast(container: HTMLElement) {
     if (w.length) {
       wire = makeWireEdges(w, CC.gray);
       demo.dynamic.add(wire);
+    }
+  }
+
+  // Rock: solid faces + wireframe edges from the real create_rock hull (static).
+  {
+    const g = wasm.lrc_rock_geometry();
+    let p = 0;
+    const triCount = g[p++]! | 0;
+    const tris = g.slice(p, p + triCount);
+    p += triCount;
+    const edgeCount = g[p++]! | 0;
+    const edges = g.slice(p, p + edgeCount);
+    if (triCount > 0) {
+      const rg = new THREE.BufferGeometry();
+      rg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tris), 3));
+      rg.computeVertexNormals();
+      rockMesh = new THREE.Mesh(rg, solidMat(0x8a8f98, 1));
+      rockMesh.castShadow = true;
+      rockMesh.receiveShadow = true;
+      demo.dynamic.add(rockMesh);
+      rockWire = makeWireEdges(edges, 0x1e293b);
+      demo.dynamic.add(rockWire);
     }
   }
 
@@ -1228,6 +1253,16 @@ function initLongRayCast(container: HTMLElement) {
       demo.dynamic.remove(wire);
       wire.geometry.dispose();
       (wire.material as THREE.Material).dispose();
+    }
+    if (rockMesh) {
+      demo.dynamic.remove(rockMesh);
+      rockMesh.geometry.dispose();
+      (rockMesh.material as THREE.Material).dispose();
+    }
+    if (rockWire) {
+      demo.dynamic.remove(rockWire);
+      rockWire.geometry.dispose();
+      (rockWire.material as THREE.Material).dispose();
     }
     disposeMeshPool(pool);
     demo.dispose();

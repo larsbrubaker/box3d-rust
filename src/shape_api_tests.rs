@@ -9,7 +9,7 @@ use crate::broad_phase::{proxy_id, proxy_type};
 use crate::constants::SHAPE_NAME_LENGTH;
 use crate::contact::create_contact;
 use crate::core::NULL_INDEX;
-use crate::geometry::{default_surface_material, Capsule, Sphere};
+use crate::geometry::{default_surface_material, Capsule, ShapeType, Sphere};
 use crate::hull::make_box_hull;
 use crate::math_functions::{Vec3, POS_ZERO, VEC3_ONE, VEC3_ZERO};
 use crate::mesh::create_box_mesh;
@@ -20,10 +20,10 @@ use crate::shape::{
     shape_enable_pre_solve_events, shape_enable_sensor_events, shape_get_aabb, shape_get_capsule,
     shape_get_closest_point, shape_get_density, shape_get_filter, shape_get_friction,
     shape_get_hull, shape_get_mesh_material_count, shape_get_mesh_surface_material, shape_get_name,
-    shape_get_restitution, shape_get_sphere, shape_get_surface_material, shape_get_user_data,
-    shape_ray_cast, shape_set_capsule, shape_set_density, shape_set_filter, shape_set_friction,
-    shape_set_hull, shape_set_mesh_material, shape_set_name, shape_set_restitution,
-    shape_set_sphere, shape_set_surface_material, shape_set_user_data,
+    shape_get_restitution, shape_get_sphere, shape_get_surface_material, shape_get_type,
+    shape_get_user_data, shape_ray_cast, shape_set_capsule, shape_set_density, shape_set_filter,
+    shape_set_friction, shape_set_hull, shape_set_mesh, shape_set_mesh_material, shape_set_name,
+    shape_set_restitution, shape_set_sphere, shape_set_surface_material, shape_set_user_data,
 };
 use crate::solver_set::AWAKE_SET;
 use crate::types::{
@@ -407,6 +407,39 @@ fn set_hull_from_sphere_rebuilds_proxy() {
     shape_set_hull(&mut world, shape, &box_hull.base);
     assert!(shape_get_hull(&world, shape).is_some());
     assert!(world.shapes[raw].proxy_key != NULL_INDEX);
+}
+
+#[test]
+fn set_mesh_retypes_and_rebuilds_proxy() {
+    // b3Shape_SetMesh retypes a live shape to a mesh, swapping geometry + scale,
+    // then rebuilds the broad-phase proxy (sample_collision.cpp MeshScale slider).
+    let mut world = World::new(&default_world_def());
+    let (_body, shape) = make_dynamic_sphere(&mut world);
+    let raw = (shape.index1 - 1) as usize;
+    assert_eq!(shape_get_type(&world, shape), ShapeType::Sphere);
+
+    // A wide, thin box mesh — clearly larger in x/z than the 0.5 sphere.
+    let mesh = create_box_mesh(VEC3_ZERO, Vec3::new(2.0, 0.1, 2.0), false).expect("mesh");
+    let scale = Vec3::new(1.5, 1.0, 1.5);
+    shape_set_mesh(&mut world, shape, &mesh, scale);
+
+    assert_eq!(shape_get_type(&world, shape), ShapeType::Mesh);
+    match &world.shapes[raw].geometry {
+        crate::shape::ShapeGeometry::Mesh { data, scale: s } => {
+            assert_eq!(data.hash, mesh.hash);
+            assert_eq!(*s, scale);
+        }
+        other => panic!("expected mesh geometry, got {other:?}"),
+    }
+
+    // Proxy rebuilt and the AABB now spans the scaled mesh (x half-extent 2*1.5=3).
+    assert!(world.shapes[raw].proxy_key != NULL_INDEX);
+    let aabb = shape_get_aabb(&world, shape);
+    assert!(
+        aabb.upper_bound.x >= 3.0 && aabb.lower_bound.x <= -3.0,
+        "mesh AABB should span the scaled extent, got {aabb:?}"
+    );
+    assert!(!world.locked);
 }
 
 #[test]
