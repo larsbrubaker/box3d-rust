@@ -14,13 +14,21 @@ bit-exact with the C scalar reference in both precision modes. Everything
 below is quality, presentation, and release work — not core physics.**
 
 **Demo track note (context, not a task): Samples App coverage is complete.
-Benchmark DEBUG-count samples are now `live` under the Village precedent
-(release scale stays disclosed in SCENE_INFO). Remaining `partial` registry
-rows are intentional browser/policy disclosures documented in
-`demo/src/registry.ts` (Benchmark Sensor camera gap, Hull Step trial loop,
-pointer-lock, dump-loader mechanism, scaled/scoped mesh samples, Tree/Replay
-browser limits, Time of Impact label). No further actionable demo-excellence
-task file.**
+Benchmark DEBUG-count samples (including Sensor and Hull) are now `live`
+under the Village precedent (release scale stays disclosed in SCENE_INFO).
+Remaining `partial` registry rows are intentional browser/policy disclosures
+documented in `demo/src/registry.ts` — only these:
+
+1. Character / Rigid Body — pointer-lock on canvas click (browser)
+2. Collision / Time of Impact — intentional label correction
+3. Issues / Dump Loader — no dump loader API; hand-ported defs
+4. Mesh / Height Field — scaled for browser render
+5. Mesh / Creation Benchmark — performance.now vs b3GetTicks
+6. Tree / Benchmark — fetch/performance.now/portable save format
+7. Replay / Viewer — query search index + keyframe-policy skipped
+
+No further actionable demo-excellence task file for completable fidelity
+gaps.**
 
 ## Upstream tracking (recurring)
 
