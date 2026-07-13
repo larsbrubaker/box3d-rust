@@ -1,71 +1,52 @@
-// Orbit + fly camera, a faithful port of Box3D's sample camera
-// (box3d-cpp-reference/samples/host/camera.cpp/h) adapted to drive a Three.js
-// PerspectiveCamera. It replaces three's OrbitControls so the demo's mouse and
-// keyboard interaction matches the C samples app exactly.
+// Camera for the Box3D demo samples. Spherical state (yaw / pitch / radius /
+// pivot) still matches the C sample camera (camera.cpp), but primary mouse
+// navigation mirrors NodeDesigner / MatterCAD mouse-anchored controls
+// (FDS/NodeDesigner static/js/node-editor/rendering/camera-operations.js +
+// 3d-controls.js):
 //
-// Two modes share one state (yaw / pitch / radius / pivot). Sticky mouse-button
-// + Alt-modifier flags select which mode each gesture drives:
+//   PRIMARY (NodeDesigner-style, no modifier)
+//     scroll             : zoom toward the world point under the cursor
+//     right-drag         : orbit around the world point under the cursor
+//     middle-drag        : pan in the view plane through that point
 //
-//   ORBIT (Alt held)
-//     Alt + left-drag    : orbit (yaw/pitch around pivot)      ORBIT_SENS
-//     Alt + middle-drag  : pan pivot in view-space XY          PAN_SENS·radius
-//     Alt + right-drag-Y : radial zoom (adjust radius)         RADIAL_ZOOM_SENS
+//   C-compat (Alt held) — same sensitivities as camera.cpp
+//     Alt + left-drag    : orbit around the fixed pivot               ORBIT_SENS
+//     Alt + middle-drag  : pan pivot in view-space XY                 PAN_SENS·radius
+//     Alt + right-drag-Y : radial zoom (adjust radius)                RADIAL_ZOOM_SENS
 //
-//   FLY (right mouse held, no Alt)
-//     right-drag         : FPS look (yaw/pitch the direction)  FLY_LOOK_SENS
-//     WASD / arrows      : translate eye along forward/right   m_speed (m/s)
-//     scroll             : tune m_speed                        FLY_SPEED_STEP
+//   KEYBOARD
+//     WASD / arrows      : translate eye along forward/right          m_speed (m/s)
 //
-//   Always
-//     bare scroll        : multiplicative zoom on radius       ZOOM_STEP
-//
-// The demos render in meters, Y-up — the same frame the C camera lives in once
-// its sim->display render transform is identity — so this port drops that
-// transform (and the third-person follow branch) and keeps the gesture state
-// machine, sensitivities, and clamps bit-for-bit. Mouse events accumulate input
-// deltas (camera.cpp OnEvent); update() consumes them and folds them into the
-// camera state (camera.cpp Update), then positions the Three camera.
+// Y-up meters (Box3D). NodeDesigner is Z-up; turntable yaw uses world +Y here
+// instead of +Z. Mesh picking uses optional pick roots (content/dynamic);
+// fallbacks match ND: previous-hit plane → ground (Y=0) → pivot plane.
 
 import * as THREE from "three";
 
-// --- Constants (camera.cpp:9-21) --------------------------------------------
 const DEG_TO_RAD = Math.PI / 180;
-const HALF_PI = Math.PI * 0.5;
-const ORBIT_SENS = 0.005; // radians per pixel
-const FLY_LOOK_SENS = 0.005; // radians per pixel
-const PAN_SENS = 0.005; // meters per pixel per meter of radius
-const RADIAL_ZOOM_SENS = 0.02; // meters per pixel (alt+right-drag)
-const FLY_SPEED_STEP = 1.0; // m/s per scroll tick
-const ZOOM_STEP = 0.9; // multiplier per scroll tick
+const HALF_PI = Math.PI / 2;
+const ORBIT_SENS = 0.005;
+const PAN_SENS = 0.005;
+const RADIAL_ZOOM_SENS = 0.02;
+const ZOOM_EXP = 0.1; // NodeDesigner onWheel: Math.exp(±zoomSpeed)
 const MIN_DIST = 0.1;
-const MIN_SPEED = 0.06; // matches box3d's 0.001*60
-const MAX_SPEED = 30000.0; // matches box3d's 500*60
+const MIN_SPEED = 0.06;
+const MAX_SPEED = 30000.0;
 const PITCH_LIM = HALF_PI - 0.01;
-// camera.h:50 kViewDistance: projection far plane + maximum orbit radius.
 const VIEW_DISTANCE = 1000.0;
 
-// b3ClampFloat (math_functions.h:177).
 function clampFloat(a: number, lower: number, upper: number): number {
   return a < lower ? lower : upper < a ? upper : a;
 }
 
-// b3UnwindAngle = remainderf(radians, 2*PI) (math_functions.h:213). IEEE
-// remainder: subtract 2π·n where n = radians/2π rounded to the nearest integer
-// with ties going to the EVEN integer (round-half-to-even), exactly as C's
-// remainderf does. JS `Math.round` breaks ties half-up, so a tie is detected and
-// corrected below. Result lands in [-π, π]; keeps yaw bounded across long
-// sessions.
 function unwindAngle(radians: number): number {
   const twoPi = 2.0 * Math.PI;
   const q = radians / twoPi;
-  const r = Math.round(q); // nearest, ties toward +∞
-  // On an exact tie (r - q === 0.5) round to the even integer instead.
+  const r = Math.round(q);
   const n = r - q === 0.5 && r % 2 !== 0 ? r - 1 : r;
   return radians - twoPi * n;
 }
 
-// Yaw/pitch -> the "+view-Z" direction (pivot -> camera), camera.cpp:35-39. The
-// actual looking direction is -forward.
 function forwardFromAngles(out: THREE.Vector3, yaw: number, pitch: number): THREE.Vector3 {
   const cp = Math.cos(pitch);
   return out.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp);
@@ -74,35 +55,36 @@ function forwardFromAngles(out: THREE.Vector3, yaw: number, pitch: number): THRE
 const _forward = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 const _eye = new THREE.Vector3();
-const _eyeBefore = new THREE.Vector3();
 const _off = new THREE.Vector3();
 const _tmpR = new THREE.Vector3();
+const _tmpV = new THREE.Vector3();
+const _tmpV2 = new THREE.Vector3();
+const _tmpV3 = new THREE.Vector3();
+const _ndc = new THREE.Vector2();
+const _quat = new THREE.Quaternion();
+const _quatZ = new THREE.Quaternion();
+const _quatX = new THREE.Quaternion();
+const _raycaster = new THREE.Raycaster();
+const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hitPlaneScratch = new THREE.Plane();
+
+type MouseNav = "none" | "orbit_anchor" | "pan_plane" | "alt_orbit" | "alt_pan" | "alt_zoom";
 
 export class CameraControls {
-  /** Look-at pivot (meters). Aliased as `target` for OrbitControls-compatible callers. */
   readonly pivot = new THREE.Vector3(0, 0, 0);
-  yaw = 35.0 * DEG_TO_RAD; // radians, around Y (camera.cpp:75)
-  pitch = -25.0 * DEG_TO_RAD; // radians, around camera-frame X (camera.cpp:76)
-  radius = 25.0; // meters from pivot (camera.cpp:77)
-  speed = 10.0; // fly-mode m/s (camera.cpp:82)
-
-  /** When false, gestures are ignored but follow (external pivot moves) still tracks. */
+  yaw = 35.0 * DEG_TO_RAD;
+  pitch = -25.0 * DEG_TO_RAD;
+  radius = 25.0;
+  speed = 10.0;
   enabled = true;
 
-  // Per-frame input deltas accumulated by the event handlers, zeroed by update
-  // (camera.h:236-245).
+  private pickRoots: THREE.Object3D[] = [];
   private orbitDX = 0;
   private orbitDY = 0;
   private panDX = 0;
   private panDY = 0;
   private radialZoomDY = 0;
-  private scrollAccum = 0;
-  private speedScrollAccum = 0;
-  // Multiplicative radius change from a two-finger pinch (1 = none). Touch only;
-  // see the touch handlers below.
   private pinchFactor = 1;
-
-  // Sticky button/key state (camera.h:247-255).
   private leftDown = false;
   private rightDown = false;
   private middleDown = false;
@@ -111,27 +93,23 @@ export class CameraControls {
   private aDown = false;
   private sDown = false;
   private dDown = false;
-
-  // Cached basis from the previous frame; pan reads last frame's right/up so it
-  // matches the screen the user dragged against (camera.cpp:481-483).
   private readonly right = new THREE.Vector3(1, 0, 0);
   private readonly up = new THREE.Vector3(0, 1, 0);
-
-  // The eye we last wrote to the camera. If the camera moves out from under us
-  // (a demo assigns camera.position directly), reconcile our spherical state
-  // from it so external framing and follow cams keep working.
   private readonly lastEye = new THREE.Vector3();
   private lastNow = performance.now();
-
-  // Last cursor position, for frame-to-frame pixel deltas (sokol mouse_dx/dy).
-  // Computed from clientX/clientY rather than movementX/movementY so it is robust
-  // across browsers and works without pointer lock.
   private lastX = 0;
   private lastY = 0;
-
-  // Touch gesture baseline (previous centroid + pinch distance). The C sample app
-  // has no touch spec — touch is a browser affordance layered on top, so these
-  // fields and the touch handlers below never touch the ported orbit/fly math.
+  private mouseNav: MouseNav = "none";
+  private readonly mouseDownPos = new THREE.Vector2();
+  private readonly curMousePos = new THREE.Vector2();
+  private readonly rotationAnchor = new THREE.Vector3();
+  private readonly mouseDownWorld = new THREE.Vector3();
+  private readonly previousHitPoint = new THREE.Vector3();
+  private hasPreviousHit = false;
+  private readonly hitPlane = new THREE.Plane();
+  private readonly panStartEye = new THREE.Vector3();
+  private readonly panStartPivot = new THREE.Vector3();
+  private readonly panStartCam = new THREE.PerspectiveCamera();
   private touchCount = 0;
   private lastTouchX = 0;
   private lastTouchY = 0;
@@ -145,7 +123,10 @@ export class CameraControls {
     this.addListeners();
   }
 
-  /** OrbitControls-compatible alias so existing demos keep working unchanged. */
+  setPickRoots(roots: THREE.Object3D[]): void {
+    this.pickRoots = roots;
+  }
+
   get target(): THREE.Vector3 {
     return this.pivot;
   }
@@ -158,7 +139,6 @@ export class CameraControls {
     return (this.pitch * 180) / Math.PI;
   }
 
-  /** Box3D's sample signature: angles in degrees, pivot folded in (camera.cpp:195). */
   setView(
     yawDeg: number,
     pitchDeg: number,
@@ -173,109 +153,56 @@ export class CameraControls {
     this.applyToCamera();
   }
 
-  /**
-   * Consume accumulated input and fold it into the camera state, then reposition
-   * the Three camera. Mirrors camera.cpp Update() (minus the third-person and
-   * render-transform branches). `dt` defaults to the real frame delta, needed by
-   * fly-mode WASD translation.
-   */
   update(dt?: number): void {
     const now = performance.now();
     const frameDt = dt ?? clampFloat((now - this.lastNow) / 1000, 0, 0.1);
     this.lastNow = now;
 
-    // Reconcile an external camera move (a demo set camera.position directly,
-    // e.g. character/joints follow cams that also nudge the target). OrbitControls
-    // derived its spherical state from position-target every frame; do the same
-    // only when the camera actually drifted from our last write.
     if (this.camera.position.distanceToSquared(this.lastEye) > 1e-10) {
-      _off.copy(this.camera.position).sub(this.pivot);
-      const r = _off.length();
-      if (r > 1e-6) {
-        this.radius = clampFloat(r, MIN_DIST, VIEW_DISTANCE);
-        this.pitch = clampFloat(Math.asin(clampFloat(_off.y / r, -1, 1)), -PITCH_LIM, PITCH_LIM);
-        this.yaw = Math.atan2(_off.x, _off.z);
-      }
+      this.syncSphericalFromEye();
     }
 
     if (this.enabled) {
-      const flyMode = this.rightDown && !this.altDown;
-      if (flyMode) {
-        // Snapshot eye BEFORE rotating so yaw/pitch pivot around the eye (FPS)
-        // instead of around the pivot; back-derive the pivot afterward so the eye
-        // stays put regardless of look angle (camera.cpp:404-461). This must live
-        // in its own scratch (_eyeBefore): forwardFromAngles writes the shared
-        // _forward, and the post-rotation forward below reuses _forward — copying
-        // out here keeps eyeBefore from being clobbered by that second call.
-        const eyeBefore = _eyeBefore
-          .copy(forwardFromAngles(_forward, this.yaw, this.pitch))
-          .multiplyScalar(this.radius)
-          .add(this.pivot);
+      let wasdF = 0.0;
+      let wasdR = 0.0;
+      if (this.wDown) wasdF -= 1.0;
+      if (this.sDown) wasdF += 1.0;
+      if (this.dDown) wasdR += 1.0;
+      if (this.aDown) wasdR -= 1.0;
 
-        if (this.orbitDX !== 0 || this.orbitDY !== 0) {
-          this.yaw -= this.orbitDX * FLY_LOOK_SENS;
-          this.pitch += this.orbitDY * FLY_LOOK_SENS;
-          this.pitch = clampFloat(this.pitch, -PITCH_LIM, PITCH_LIM);
-        }
-
+      if (wasdF !== 0.0 || wasdR !== 0.0) {
         const forward = forwardFromAngles(_forward, this.yaw, this.pitch);
+        const right = _tmpR.copy(_worldUp).cross(forward);
+        const rlen = right.length();
+        if (rlen > 1e-6) right.multiplyScalar(1 / rlen);
+        const step = this.speed * frameDt;
+        _eye.copy(this.camera.position);
+        _eye.addScaledVector(forward, wasdF * step).addScaledVector(right, wasdR * step);
+        this.pivot.add(_tmpV.copy(_eye).sub(this.camera.position));
+        this.camera.position.copy(_eye);
+        this.syncSphericalFromEye();
+      }
 
-        let wasdF = 0.0; // +forward = backwards, since forward = pivot->eye
-        let wasdR = 0.0;
-        if (this.wDown) wasdF -= 1.0;
-        if (this.sDown) wasdF += 1.0;
-        if (this.dDown) wasdR += 1.0;
-        if (this.aDown) wasdR -= 1.0;
+      if (this.orbitDX !== 0 || this.orbitDY !== 0) {
+        this.yaw -= this.orbitDX * ORBIT_SENS;
+        this.pitch -= this.orbitDY * ORBIT_SENS;
+        this.pitch = clampFloat(this.pitch, -PITCH_LIM, PITCH_LIM);
+      }
 
-        _eye.copy(eyeBefore);
-        if (wasdF !== 0.0 || wasdR !== 0.0) {
-          // right = normalize(worldUp x forward), matching Box3D's UpdateTransform.
-          const right = _tmpR.copy(_worldUp).cross(forward);
-          const rlen = right.length();
-          if (rlen > 1e-6) right.multiplyScalar(1 / rlen);
-          const step = this.speed * frameDt;
-          _eye.addScaledVector(forward, wasdF * step).addScaledVector(right, wasdR * step);
-        }
+      if (this.panDX !== 0 || this.panDY !== 0) {
+        const panScale = PAN_SENS * this.radius;
+        this.pivot.addScaledVector(this.right, -this.panDX * panScale);
+        this.pivot.addScaledVector(this.up, this.panDY * panScale);
+      }
 
-        // Back-derive the pivot so a return to orbit preserves the look direction.
-        this.pivot.copy(_eye).addScaledVector(forward, -this.radius);
+      if (this.radialZoomDY !== 0) {
+        this.radius -= RADIAL_ZOOM_SENS * this.radialZoomDY;
+        this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
+      }
 
-        if (this.speedScrollAccum !== 0.0) {
-          this.speed += this.speedScrollAccum * FLY_SPEED_STEP;
-          this.speed = clampFloat(this.speed, MIN_SPEED, MAX_SPEED);
-        }
-      } else {
-        // Orbit mode (camera.cpp:469-505).
-        if (this.orbitDX !== 0 || this.orbitDY !== 0) {
-          this.yaw -= this.orbitDX * ORBIT_SENS;
-          this.pitch -= this.orbitDY * ORBIT_SENS;
-          this.pitch = clampFloat(this.pitch, -PITCH_LIM, PITCH_LIM);
-        }
-
-        if (this.panDX !== 0 || this.panDY !== 0) {
-          // Move pivot along last frame's view-space right/up (camera.cpp:479-490).
-          const panScale = PAN_SENS * this.radius;
-          this.pivot.addScaledVector(this.right, -this.panDX * panScale);
-          this.pivot.addScaledVector(this.up, this.panDY * panScale);
-        }
-
-        if (this.radialZoomDY !== 0) {
-          // Drag down -> zoom in (radius shrinks).
-          this.radius -= RADIAL_ZOOM_SENS * this.radialZoomDY;
-          this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
-        }
-
-        if (this.scrollAccum !== 0) {
-          this.radius *= Math.pow(ZOOM_STEP, this.scrollAccum);
-          this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
-        }
-
-        // Two-finger pinch (touch): scale the orbit radius directly by the ratio
-        // of the previous to current finger spread, so spreading zooms in.
-        if (this.pinchFactor !== 1) {
-          this.radius *= this.pinchFactor;
-          this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
-        }
+      if (this.pinchFactor !== 1) {
+        this.radius *= this.pinchFactor;
+        this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
       }
 
       this.yaw = unwindAngle(this.yaw);
@@ -286,22 +213,14 @@ export class CameraControls {
     this.panDX = 0;
     this.panDY = 0;
     this.radialZoomDY = 0;
-    this.scrollAccum = 0;
-    this.speedScrollAccum = 0;
     this.pinchFactor = 1;
-
     this.applyToCamera();
   }
 
-  // Refresh the cached basis and position the Three camera. forward is +view-Z
-  // (pivot->eye); the look direction is -forward, so lookAt(pivot) is correct.
   private applyToCamera(): void {
     const forward = forwardFromAngles(_forward, this.yaw, this.pitch);
-    // up = worldUp re-orthogonalized against forward; right = up x forward
-    // (camera.cpp:50-52). Cached for the next frame's pan.
     this.up.copy(_worldUp).addScaledVector(forward, -_worldUp.dot(forward)).normalize();
     this.right.copy(this.up).cross(forward).normalize();
-
     _eye.copy(this.pivot).addScaledVector(forward, this.radius);
     this.camera.position.copy(_eye);
     this.camera.up.set(0, 1, 0);
@@ -309,7 +228,137 @@ export class CameraControls {
     this.lastEye.copy(_eye);
   }
 
-  // --- Event handling (camera.cpp OnEvent) ----------------------------------
+  private syncSphericalFromEye(): void {
+    _off.copy(this.camera.position).sub(this.pivot);
+    const r = _off.length();
+    if (r > 1e-6) {
+      this.radius = clampFloat(r, MIN_DIST, VIEW_DISTANCE);
+      this.pitch = clampFloat(Math.asin(clampFloat(_off.y / r, -1, 1)), -PITCH_LIM, PITCH_LIM);
+      this.yaw = Math.atan2(_off.x, _off.z);
+    }
+  }
+
+  private clientToNdc(clientX: number, clientY: number): void {
+    const rect = this.dom.getBoundingClientRect();
+    const w = Math.max(rect.width, 1);
+    const h = Math.max(rect.height, 1);
+    _ndc.set(((clientX - rect.left) / w) * 2 - 1, -((clientY - rect.top) / h) * 2 + 1);
+  }
+
+  private setRayFromClient(clientX: number, clientY: number, cam: THREE.Camera = this.camera): void {
+    this.clientToNdc(clientX, clientY);
+    _raycaster.setFromCamera(_ndc, cam);
+  }
+
+  /** NodeDesigner findIntersectionPoint, adapted to Y-up (ground = XZ at Y=0). */
+  private findIntersectionPoint(clientX: number, clientY: number): THREE.Vector3 {
+    this.setRayFromClient(clientX, clientY);
+    const out = new THREE.Vector3();
+
+    if (this.pickRoots.length > 0) {
+      const hits = _raycaster.intersectObjects(this.pickRoots, true);
+      if (hits.length > 0) {
+        out.copy(hits[0]!.point);
+        this.previousHitPoint.copy(out);
+        this.hasPreviousHit = true;
+        return out;
+      }
+    }
+
+    if (this.hasPreviousHit) {
+      const viewDir = _tmpV.copy(this.camera.position).sub(this.previousHitPoint).normalize();
+      _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, this.previousHitPoint);
+      if (_raycaster.ray.intersectPlane(_hitPlaneScratch, out)) return out;
+    }
+
+    // Reject coplanar ground hits (pitch≈0): Three returns ray origin → zoom no-op.
+    if (
+      Math.abs(_raycaster.ray.direction.y) > 1e-4 &&
+      _raycaster.ray.intersectPlane(_groundPlane, out)
+    ) {
+      const t = _tmpV.copy(out).sub(_raycaster.ray.origin).dot(_raycaster.ray.direction);
+      if (t > MIN_DIST) {
+        const viewDir = _tmpV.copy(this.camera.position).sub(out).normalize();
+        _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, out);
+        if (_raycaster.ray.intersectPlane(_hitPlaneScratch, _tmpV2)) return _tmpV2.clone();
+        return out.clone();
+      }
+    }
+
+    const viewDir = _tmpV.copy(this.camera.position).sub(this.pivot).normalize();
+    _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, this.pivot);
+    if (_raycaster.ray.intersectPlane(_hitPlaneScratch, out)) return out;
+
+    const distance = this.camera.position.distanceTo(this.pivot);
+    return _raycaster.ray.origin.clone().addScaledVector(_raycaster.ray.direction, distance);
+  }
+
+  /** NodeDesigner zoomToCursor: slide eye along eye→point, keep look vector. */
+  private zoomToCursor(worldPosition: THREE.Vector3, zoomFactor: number): void {
+    const eye = this.camera.position;
+    const toPoint = _tmpV.copy(worldPosition).sub(eye);
+    const dist = toPoint.length();
+    if (dist < 1e-8) return;
+    const newDist = dist * zoomFactor;
+    if (newDist < MIN_DIST && zoomFactor < 1) return;
+    const move = dist - newDist;
+    const dir = toPoint.multiplyScalar(1 / dist);
+    const eyeMove = _tmpV2.copy(dir).multiplyScalar(move);
+    const look = _tmpV3.copy(this.pivot).sub(eye);
+    eye.add(eyeMove);
+    this.pivot.copy(eye).add(look);
+    this.syncSphericalFromEye();
+    this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
+    this.applyToCamera();
+  }
+
+  /** NodeDesigner applyOrbitDrag / turntable around cursor anchor (Y-up). */
+  private applyOrbitAroundAnchor(deltaX: number, deltaY: number, anchor: THREE.Vector3): void {
+    const rotYaw = -deltaX * ORBIT_SENS;
+    const rotPitch = -deltaY * ORBIT_SENS;
+    _quatZ.setFromAxisAngle(_worldUp, rotYaw);
+    const lookDir = _tmpV.copy(this.pivot).sub(this.camera.position).normalize();
+    const camRight = _tmpR.copy(lookDir).cross(_worldUp).normalize();
+    if (camRight.lengthSq() < 1e-8) return;
+    const elevation = Math.asin(clampFloat(lookDir.y, -1, 1));
+    const maxEl = HALF_PI - 0.1;
+    let clampedPitch = rotPitch;
+    if ((elevation > maxEl && rotPitch > 0) || (elevation < -maxEl && rotPitch < 0)) {
+      clampedPitch = 0;
+    }
+    _quatX.setFromAxisAngle(camRight, clampedPitch);
+    _quat.copy(_quatZ).multiply(_quatX);
+    _tmpV.copy(this.camera.position).sub(anchor).applyQuaternion(_quat);
+    this.camera.position.copy(anchor).add(_tmpV);
+    _tmpV.copy(this.pivot).sub(anchor).applyQuaternion(_quat);
+    this.pivot.copy(anchor).add(_tmpV);
+    this.syncSphericalFromEye();
+    this.pitch = clampFloat(this.pitch, -PITCH_LIM, PITCH_LIM);
+    this.yaw = unwindAngle(this.yaw);
+    this.applyToCamera();
+  }
+
+  /** NodeDesigner panAlongHitPlane. */
+  private panAlongHitPlane(): void {
+    this.clientToNdc(this.curMousePos.x, this.curMousePos.y);
+    this.panStartCam.position.copy(this.panStartEye);
+    this.panStartCam.up.copy(this.camera.up);
+    this.panStartCam.lookAt(this.panStartPivot);
+    this.panStartCam.aspect = this.camera.aspect;
+    this.panStartCam.fov = this.camera.fov;
+    this.panStartCam.near = this.camera.near;
+    this.panStartCam.far = this.camera.far;
+    this.panStartCam.updateProjectionMatrix();
+    this.panStartCam.updateMatrixWorld();
+    _raycaster.setFromCamera(_ndc, this.panStartCam);
+    if (!_raycaster.ray.intersectPlane(this.hitPlane, _tmpV)) return;
+    const offset = _tmpV2.copy(_tmpV).sub(this.mouseDownWorld);
+    this.camera.position.copy(this.panStartEye).sub(offset);
+    this.pivot.copy(this.panStartPivot).sub(offset);
+    this.syncSphericalFromEye();
+    this.applyToCamera();
+  }
+
   private addListeners(): void {
     this.dom.addEventListener("mousedown", this.onMouseDown);
     window.addEventListener("mousemove", this.onMouseMove);
@@ -318,9 +367,8 @@ export class CameraControls {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     this.dom.addEventListener("contextmenu", this.onContextMenu);
+    this.dom.addEventListener("auxclick", this.onAuxClick);
     window.addEventListener("blur", this.onBlur);
-    // Touch (non-passive: we preventDefault to own the gesture and suppress the
-    // browser's compatibility mouse events / page scroll on the canvas).
     this.dom.addEventListener("touchstart", this.onTouchStart, { passive: false });
     this.dom.addEventListener("touchmove", this.onTouchMove, { passive: false });
     this.dom.addEventListener("touchend", this.onTouchEnd);
@@ -333,13 +381,57 @@ export class CameraControls {
     return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   }
 
+  private isUiTarget(e: Event): boolean {
+    const t = e.target as HTMLElement | null;
+    if (!t || typeof t.closest !== "function") return false;
+    if (t === this.dom || this.dom.contains(t)) return false;
+    return !!t.closest(
+      ".demo-controls, .menu-bar, .sample-metrics, .tree-nav, button, input, select, textarea, a",
+    );
+  }
+
   private onMouseDown = (e: MouseEvent): void => {
+    if (this.isUiTarget(e)) return;
     if (e.button === 0) this.leftDown = true;
     else if (e.button === 2) this.rightDown = true;
-    else if (e.button === 1) this.middleDown = true;
+    else if (e.button === 1) {
+      this.middleDown = true;
+      e.preventDefault();
+    }
     this.altDown = e.altKey;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
+    this.mouseDownPos.set(e.clientX, e.clientY);
+    this.curMousePos.copy(this.mouseDownPos);
+    if (!this.enabled) return;
+
+    const canAlt = e.altKey && !e.ctrlKey && !e.shiftKey;
+    if (canAlt && e.button === 0) {
+      this.mouseNav = "alt_orbit";
+      return;
+    }
+    if (canAlt && e.button === 1) {
+      this.mouseNav = "alt_pan";
+      return;
+    }
+    if (canAlt && e.button === 2) {
+      this.mouseNav = "alt_zoom";
+      return;
+    }
+
+    if (e.button === 2) {
+      this.mouseNav = "orbit_anchor";
+      this.rotationAnchor.copy(this.findIntersectionPoint(e.clientX, e.clientY));
+    } else if (e.button === 1) {
+      this.mouseNav = "pan_plane";
+      this.mouseDownWorld.copy(this.findIntersectionPoint(e.clientX, e.clientY));
+      const viewDir = _tmpV.copy(this.pivot).sub(this.camera.position).normalize();
+      this.hitPlane.setFromNormalAndCoplanarPoint(viewDir, this.mouseDownWorld);
+      this.panStartEye.copy(this.camera.position);
+      this.panStartPivot.copy(this.pivot);
+    } else {
+      this.mouseNav = "none";
+    }
   };
 
   private onMouseUp = (e: MouseEvent): void => {
@@ -347,53 +439,59 @@ export class CameraControls {
     else if (e.button === 2) this.rightDown = false;
     else if (e.button === 1) this.middleDown = false;
     this.altDown = e.altKey;
+    if (e.button === 0 || e.button === 1 || e.button === 2) this.mouseNav = "none";
   };
 
   private onMouseMove = (e: MouseEvent): void => {
     this.altDown = e.altKey;
-    // Frame-to-frame pixel delta (sokol mouse_dx/dy). Track even when disabled so
-    // deltas stay correct across a disabled span.
     const dx = e.clientX - this.lastX;
     const dy = e.clientY - this.lastY;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
+    this.curMousePos.set(e.clientX, e.clientY);
     if (!this.enabled) return;
-    // C keeps only keyboard mods; canOrbit is Alt held with no Ctrl/Shift
-    // (camera.cpp:260-261).
-    const canOrbit = e.altKey && !e.ctrlKey && !e.shiftKey;
-    if (canOrbit && this.leftDown) {
+
+    if (this.mouseNav !== "none" && e.buttons === 0) {
+      this.mouseNav = "none";
+      this.leftDown = false;
+      this.rightDown = false;
+      this.middleDown = false;
+      return;
+    }
+
+    if (this.mouseNav === "orbit_anchor") {
+      this.applyOrbitAroundAnchor(dx, dy, this.rotationAnchor);
+      return;
+    }
+    if (this.mouseNav === "pan_plane") {
+      this.panAlongHitPlane();
+      return;
+    }
+    if (this.mouseNav === "alt_orbit" && this.leftDown) {
       this.orbitDX += dx;
       this.orbitDY += dy;
-    } else if (canOrbit && this.middleDown) {
+    } else if (this.mouseNav === "alt_pan" && this.middleDown) {
       this.panDX += dx;
       this.panDY += dy;
-    } else if (canOrbit && this.rightDown) {
+    } else if (this.mouseNav === "alt_zoom" && this.rightDown) {
       this.radialZoomDY += dy;
-    } else if (!canOrbit && this.rightDown) {
-      // Fly-look: routed into the orbit accumulators; update() reads them as a
-      // look delta when rightDown && !altDown (camera.cpp:296-302).
-      this.orbitDX += dx;
-      this.orbitDY += dy;
     }
   };
 
   private onWheel = (e: WheelEvent): void => {
+    if (this.isUiTarget(e)) return;
     e.preventDefault();
-    // Normalize to ~1 tick per notch across deltaMode (pixel/line/page).
+    if (!this.enabled) return;
     let d = e.deltaY;
     if (e.deltaMode === 1) d *= 16;
     else if (e.deltaMode === 2) d *= 100;
-    const ticks = -d / 100;
-    const canOrbit = e.altKey && !e.ctrlKey && !e.shiftKey;
-    if (!canOrbit && this.rightDown) this.speedScrollAccum += ticks;
-    else this.scrollAccum += ticks;
+    const steps = Math.max(1, Math.round(Math.abs(d) / 100));
+    const zoomFactor = Math.exp(d > 0 ? ZOOM_EXP * steps : -ZOOM_EXP * steps);
+    this.zoomToCursor(this.findIntersectionPoint(e.clientX, e.clientY), zoomFactor);
   };
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (this.isTextTarget()) return;
-    // Arrow keys alias WASD for fly-mode translation. They also scroll the page,
-    // so preventDefault while we own them (the text-input guard above keeps the
-    // arrows working normally inside form fields / range sliders).
     switch (e.code) {
       case "KeyW":
       case "ArrowUp":
@@ -451,14 +549,6 @@ export class CameraControls {
     }
   };
 
-  // --- Touch (browser affordance; C samples app is mouse/keyboard only) -------
-  // Desktop mouse/keyboard behavior is unchanged. Gesture mapping:
-  //   one finger drag   -> orbit  (feeds the orbit accumulators, like Alt+drag)
-  //   two-finger pinch  -> zoom   (scales the orbit radius by the spread ratio)
-  //   two-finger drag   -> pan    (moves the pivot in view-space, like Alt+middle)
-  //   tap               -> select (handled by the pointer layer in interaction.ts)
-  // Baselines re-sync on finger add/remove so lifting one finger of a pinch never
-  // jerks the single-finger orbit.
   private touchCentroidX(touches: TouchList): number {
     return touches.length >= 2 ? (touches[0]!.clientX + touches[1]!.clientX) * 0.5 : touches[0]!.clientX;
   }
@@ -482,9 +572,23 @@ export class CameraControls {
   }
 
   private onTouchStart = (e: TouchEvent): void => {
-    // Own the gesture: suppress page scroll/zoom and compatibility mouse events.
     e.preventDefault();
     this.syncTouchBaseline(e.touches);
+    if (e.touches.length === 1) {
+      const t = e.touches[0]!;
+      this.mouseNav = "orbit_anchor";
+      this.rotationAnchor.copy(this.findIntersectionPoint(t.clientX, t.clientY));
+    } else if (e.touches.length >= 2) {
+      this.mouseNav = "pan_plane";
+      const cx = this.touchCentroidX(e.touches);
+      const cy = this.touchCentroidY(e.touches);
+      this.mouseDownWorld.copy(this.findIntersectionPoint(cx, cy));
+      const viewDir = _tmpV.copy(this.pivot).sub(this.camera.position).normalize();
+      this.hitPlane.setFromNormalAndCoplanarPoint(viewDir, this.mouseDownWorld);
+      this.panStartEye.copy(this.camera.position);
+      this.panStartPivot.copy(this.pivot);
+      this.curMousePos.set(cx, cy);
+    }
   };
 
   private onTouchMove = (e: TouchEvent): void => {
@@ -494,19 +598,15 @@ export class CameraControls {
       this.syncTouchBaseline(touches);
       return;
     }
-
     if (touches.length >= 2) {
       const cx = this.touchCentroidX(touches);
       const cy = this.touchCentroidY(touches);
       const dist = this.pinchDistance(touches);
-      // Only fold deltas when the previous frame was also a 2-finger gesture,
-      // else a 1->2 transition would inject a spurious jump.
       if (this.touchCount >= 2) {
-        this.panDX += cx - this.lastTouchX;
-        this.panDY += cy - this.lastTouchY;
+        this.curMousePos.set(cx, cy);
+        this.panAlongHitPlane();
         if (this.lastPinchDist > 0 && dist > 0) {
-          // Spread fingers (dist grows) -> ratio < 1 -> radius shrinks -> zoom in.
-          this.pinchFactor *= this.lastPinchDist / dist;
+          this.zoomToCursor(this.findIntersectionPoint(cx, cy), this.lastPinchDist / dist);
         }
       }
       this.lastTouchX = cx;
@@ -515,9 +615,8 @@ export class CameraControls {
       this.touchCount = touches.length;
     } else {
       const t = touches[0]!;
-      if (this.touchCount === 1) {
-        this.orbitDX += t.clientX - this.lastTouchX;
-        this.orbitDY += t.clientY - this.lastTouchY;
+      if (this.touchCount === 1 && this.mouseNav === "orbit_anchor") {
+        this.applyOrbitAroundAnchor(t.clientX - this.lastTouchX, t.clientY - this.lastTouchY, this.rotationAnchor);
       }
       this.lastTouchX = t.clientX;
       this.lastTouchY = t.clientY;
@@ -527,16 +626,23 @@ export class CameraControls {
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    // Re-baseline against the fingers still down (2->1 keeps orbiting smoothly).
     this.syncTouchBaseline(e.touches);
+    if (e.touches.length === 0) this.mouseNav = "none";
+    else if (e.touches.length === 1) {
+      const t = e.touches[0]!;
+      this.mouseNav = "orbit_anchor";
+      this.rotationAnchor.copy(this.findIntersectionPoint(t.clientX, t.clientY));
+    }
   };
 
   private onContextMenu = (e: Event): void => {
-    // Right-drag drives fly-look, so the browser menu must not pop.
     e.preventDefault();
   };
 
-  // Drop every held input on focus loss (camera.cpp:356-367).
+  private onAuxClick = (e: MouseEvent): void => {
+    if (e.button === 1) e.preventDefault();
+  };
+
   private onBlur = (): void => {
     this.leftDown = false;
     this.rightDown = false;
@@ -546,6 +652,7 @@ export class CameraControls {
     this.sDown = false;
     this.dDown = false;
     this.altDown = false;
+    this.mouseNav = "none";
   };
 
   dispose(): void {
@@ -556,6 +663,7 @@ export class CameraControls {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     this.dom.removeEventListener("contextmenu", this.onContextMenu);
+    this.dom.removeEventListener("auxclick", this.onAuxClick);
     window.removeEventListener("blur", this.onBlur);
     this.dom.removeEventListener("touchstart", this.onTouchStart);
     this.dom.removeEventListener("touchmove", this.onTouchMove);
@@ -563,3 +671,7 @@ export class CameraControls {
     this.dom.removeEventListener("touchcancel", this.onTouchEnd);
   }
 }
+
+// Keep speed clamp helpers referenced for fly-speed tuning API parity.
+void MIN_SPEED;
+void MAX_SPEED;

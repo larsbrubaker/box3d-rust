@@ -979,10 +979,11 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       <tr><td>Left-click</td><td>Select body</td></tr>
       <tr><td>Ctrl + click</td><td>Grab body</td></tr>
       ${enableSpawnDelete ? "<tr><td>Shift + left</td><td>Shoot (Ctrl spin, Alt ragdoll)</td></tr>" : ""}
-      <tr><td>Alt + drag</td><td>Orbit / pan / zoom</td></tr>
-      <tr><td>Right-drag</td><td>Look (fly camera)</td></tr>
-      <tr><td>WASD / arrows</td><td>Fly move</td></tr>
-      <tr><td>Scroll</td><td>Zoom</td></tr>
+      <tr><td>Scroll</td><td>Zoom to cursor</td></tr>
+      <tr><td>Right-drag</td><td>Orbit at cursor</td></tr>
+      <tr><td>Middle-drag</td><td>Pan at cursor</td></tr>
+      <tr><td>Alt + drag</td><td>Orbit / pan / zoom (C)</td></tr>
+      <tr><td>WASD / arrows</td><td>Move camera</td></tr>
     </table>
   `;
 
@@ -1029,9 +1030,9 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   //   plain left-click : select the body under the cursor (store for F-frame)
   //   Ctrl + left-drag : grab a dynamic body with the motor-joint mouse spring
   //   Shift + left     : shoot projectile (Ctrl = spinning cylinder, Alt = ragdoll)
-  // Camera gestures (Alt+drag orbit/pan/zoom, right-drag fly) live in the camera
-  // controller, so nothing here disables it. Grab tracks the drag point along the
-  // pick ray at the initial hit fraction, exactly like C MouseMove:1288.
+  // Camera gestures (scroll zoom-to-cursor, RMB orbit / MMB pan at cursor,
+  // Alt+drag C-compat) live in the camera controller. Grab tracks the drag
+  // point along the pick ray at the initial hit fraction (C MouseMove:1288).
   let dragging = false;
   let grabFraction = 0;
   let suppressClick = false;

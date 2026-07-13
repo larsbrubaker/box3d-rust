@@ -348,6 +348,8 @@ export class DemoScene {
       this.dynamicCsmDirty = true;
     });
     this.scene.add(this.content, this.dynamic);
+    // NodeDesigner-style zoom/orbit/pan hit-test against demo meshes.
+    this.controls.setPickRoots([this.content, this.dynamic]);
 
     // Post-processing chain: scene (offscreen, linear HDR) -> GTAO -> OutputPass
     // (applies AgX tone map + sRGB). RenderPass renders offscreen, so Three

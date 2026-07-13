@@ -569,7 +569,10 @@ function buildMenuBar(): void {
           ["Esc", "Clear selection"],
         ];
         const mouse: [string, string][] = [
-          ["Alt + drag", "Orbit / pan / zoom"],
+          ["Scroll", "Zoom to cursor"],
+          ["Right-drag", "Orbit at cursor"],
+          ["Middle-drag", "Pan at cursor"],
+          ["Alt + drag", "Orbit / pan / zoom (C)"],
           ["Ctrl + click", "Grab body"],
           ["Shift + click", "Spawn body"],
         ];
