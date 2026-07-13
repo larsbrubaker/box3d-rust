@@ -114,7 +114,8 @@ export const SAMPLES: SampleEntry[] = [
     ["Explosion", "live", "benchmark", "explosion"],
     ["Height Field", "live", "benchmark", "height-field"],
     ["Falling Trees", "partial", "benchmark", "trees"],
-    ["Sensor", "partial", "sensors", "benchmark"],
+    // Live: full C 40×40 counts; camera matches C SetView(0, 0, 250, {0, 110, 0}).
+    ["Sensor", "live", "sensors", "benchmark"],
     // Partial: cube count is debug-scaled (grid 8; C release 20³ = 8000).
     // Rendering is now faithful — the drum draws its real 36 wall + 4 rib hulls.
     ["Washer", "partial", "benchmark", "washer"],
