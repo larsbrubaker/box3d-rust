@@ -128,13 +128,9 @@ export const SAMPLES: SampleEntry[] = [
     ["CapsulePlane", "live", "character", "capsule-plane"],
     ["MoverOverlap", "live", "character", "mover-overlap"],
     ["Mover", "live", "character", "mover"],
-    // Partial: the s&box RigidbodyCharacter physics + trace step-up are ported, and the
-    // third-person camera now matches C — FPS mouse-look via the Pointer Lock API (C
-    // sapp_lock_mouse + sample.cpp MouseMove sensitivities) plus the boom raycast that
-    // clamps the eye off walls (sample_character.cpp :1571-1602, character_camera_boom).
-    // Remaining disclosed divergences: the mouse locks on a canvas click (browsers can't
-    // auto-lock like sapp_lock_mouse), and C's "Debug (V)" toggle isn't wired (the debug
-    // overlays are always drawn).
+    // Partial: RigidbodyCharacter physics, third-person boom, and Debug (V) match C.
+    // Remaining disclosed divergence: mouse locks on canvas click (browsers can't
+    // auto-lock like sapp_lock_mouse).
     ["Rigid Body", "partial", "character", "rigid-body"],
   ]),
   ...cat("Collision", "sample_collision.cpp", [
