@@ -102,27 +102,45 @@ export const SAMPLES: SampleEntry[] = [
     ["Fixed Rotation", "live", "bodies", "fixed-rotation"],
   ]),
   ...cat("Benchmark", "sample_benchmark.cpp", [
-    ["Large Pyramid", "partial", "benchmark", "pyramid"],
+    // Live: baseCount 20 (C DEBUG; release 90 disclosed in SCENE_INFO / too heavy for
+    // serial wasm). Camera/controls/behavior match the C debug build.
+    ["Large Pyramid", "live", "benchmark", "pyramid"],
     ["Wide Pyramid", "live", "benchmark", "wide-pyramid"],
-    ["Many Pyramids", "partial", "benchmark", "many-pyramids"],
-    ["Rain", "partial", "benchmark", "rain"],
-    ["Joint Grid", "partial", "benchmark", "joint-grid"],
+    // Live: 3×3 pyramids (C DEBUG; release 14×14 disclosed in SCENE_INFO / too heavy
+    // for serial wasm).
+    ["Many Pyramids", "live", "benchmark", "many-pyramids"],
+    // Live: GRID_COUNT 3, GROUP_SIZE 2 (C DEBUG; release 10/3 disclosed in SCENE_INFO
+    // / too heavy for serial wasm).
+    ["Rain", "live", "benchmark", "rain"],
+    // Live: n 10 (C DEBUG; release 100 disclosed in SCENE_INFO / too heavy for serial
+    // wasm). Sleep disabled like C.
+    ["Joint Grid", "live", "benchmark", "joint-grid"],
     ["Falling Boxes", "live", "benchmark", "falling-boxes"],
-    // Partial: count is debug-scaled (4×4×4 = 64 cups; C release 16³ = 4096).
-    // Rendering is now faithful — cups draw from the exact 8-sided frustum hull.
-    ["Candy Cups", "partial", "benchmark", "candy-cups"],
+    // Live: 4×4×4 = 64 cups (C DEBUG; release 16³ = 4096 disclosed in SCENE_INFO /
+    // too heavy for serial wasm). Cups draw from the exact 8-sided frustum hull.
+    ["Candy Cups", "live", "benchmark", "candy-cups"],
     ["Explosion", "live", "benchmark", "explosion"],
     ["Height Field", "live", "benchmark", "height-field"],
-    ["Falling Trees", "partial", "benchmark", "trees"],
+    // Live: 10 trees × 22 tapering hulls (C DEBUG bodyCount; release 50 disclosed in
+    // SCENE_INFO / too heavy for serial wasm).
+    ["Falling Trees", "live", "benchmark", "trees"],
     ["Sensor", "partial", "sensors", "benchmark"],
-    // Partial: cube count is debug-scaled (grid 8; C release 20³ = 8000).
-    // Rendering is now faithful — the drum draws its real 36 wall + 4 rib hulls.
-    ["Washer", "partial", "benchmark", "washer"],
-    ["Large World", "partial", "benchmark", "large-world"],
+    // Live: gridCount 8 (C DEBUG; release 20³ = 8000 disclosed in SCENE_INFO / too
+    // heavy for serial wasm). Drum draws its real 36 wall + 4 rib hulls.
+    ["Washer", "live", "benchmark", "washer"],
+    // Live: 32×32 floor grid (C DEBUG; release 1000² disclosed in SCENE_INFO / too
+    // heavy for serial wasm).
+    ["Large World", "live", "benchmark", "large-world"],
     ["Hull", "partial", "benchmark", "hull"],
-    ["Chains", "partial", "benchmark", "chains"],
-    ["Destruction", "partial", "benchmark", "destruction"],
-    ["Junkyard", "partial", "benchmark", "junkyard"],
+    // Live: gridCount 10 (C DEBUG; release 25 disclosed in SCENE_INFO / too heavy for
+    // serial wasm).
+    ["Chains", "live", "benchmark", "chains"],
+    // Live: gridCount 6, extent 0.75 (C DEBUG; release 20/2.5 disclosed in SCENE_INFO
+    // / too heavy for serial wasm).
+    ["Destruction", "live", "benchmark", "destruction"],
+    // Live: 2×21×21 = 882 rocks (C DEBUG; release 24 layers disclosed in SCENE_INFO /
+    // too heavy for serial wasm).
+    ["Junkyard", "live", "benchmark", "junkyard"],
   ]),
   ...cat("Character", "sample_character.cpp", [
     ["CapsulePlane", "live", "character", "capsule-plane"],
