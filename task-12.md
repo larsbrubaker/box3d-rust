@@ -156,7 +156,10 @@ the accepted stand-in.
   point cloud with a stale comment - upgrade to clone_and_transform_hull.
 - **Batch 3d — Character + Compound + Robustness + Issues + Tree + Replay:
   DONE** (branch `demo-samples-batch3d`). COVERAGE COMPLETE: every
-  RegisterSample category is ported. Review fixes: rigid_body/ split,
+  RegisterSample category is ported. 3c carry-over done: Benchmark Hull
+  mirror now uses clone_and_transform_hull (identity transform, scale
+  {-1,1,1}) like C; negated-point-cloud workaround and stale comment
+  removed. Review fixes: rigid_body/ split,
   demo movers unified into mover_shared.rs (fixed a friction-axis
   transcription bug in the Village copy + restored the push loop),
   vis::hf_triangle_edges hole-aware, replay reuses draw_data's capture,
