@@ -1338,31 +1338,106 @@ function initInitialOverlap(container: HTMLElement) {
 
 // --- Shape Cast Debug ------------------------------------------------------
 
+/**
+ * Frame the camera on triangle ∪ capsule world AABB for Shape Cast Debug.
+ *
+ * C uses `SetView(120, 30, 20, {0,1.5,0})` with far = 1000 (`Camera::kViewDistance`).
+ * After `scale = 0.01` the capsules sit ~(-716,-1194,-701)…(2270,3405,-701) — beyond
+ * that far plane and a hairline (radius 0.01), so the default view only shows a
+ * fragment of the cyan triangle. Keep C's yaw/pitch, pivot on the real AABB, raise
+ * `far`, and allow radius past the orbit clamp so the whole repro is visible.
+ * Cast math is unchanged (still the scaled large-world numbers).
+ */
+function frameShapeCastDebug(demo: DemoScene, d: Float32Array) {
+  const t0 = [d[2]!, d[3]!, d[4]!];
+  const t1 = [d[5]!, d[6]!, d[7]!];
+  const t2 = [d[8]!, d[9]!, d[10]!];
+  const c1 = [d[11]!, d[12]!, d[13]!];
+  const c2 = [d[14]!, d[15]!, d[16]!];
+  const greenP = [d[18]!, d[19]!, d[20]!];
+  const grayP = [d[21]!, d[22]!, d[23]!];
+  const redP = [d[24]!, d[25]!, d[26]!];
+  const hit = d[0]! > 0.5;
+
+  const ends: number[][] = [t0, t1, t2];
+  for (const p of [greenP, grayP, ...(hit ? [redP] : [])]) {
+    ends.push([c1[0]! + p[0]!, c1[1]! + p[1]!, c1[2]! + p[2]!]);
+    ends.push([c2[0]! + p[0]!, c2[1]! + p[1]!, c2[2]! + p[2]!]);
+  }
+
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
+  for (const p of ends) {
+    minX = Math.min(minX, p[0]!);
+    minY = Math.min(minY, p[1]!);
+    minZ = Math.min(minZ, p[2]!);
+    maxX = Math.max(maxX, p[0]!);
+    maxY = Math.max(maxY, p[1]!);
+    maxZ = Math.max(maxZ, p[2]!);
+  }
+  const cx = 0.5 * (minX + maxX);
+  const cy = 0.5 * (minY + maxY);
+  const cz = 0.5 * (minZ + maxZ);
+  const hx = 0.5 * (maxX - minX);
+  const hy = 0.5 * (maxY - minY);
+  const hz = 0.5 * (maxZ - minZ);
+  const halfDiag = Math.hypot(hx, hy, hz);
+  // FOV is 50° (C main.cpp / DemoScene). Fit the AABB with padding.
+  const fovRad = ((demo.camera.fov ?? 50) * Math.PI) / 180;
+  const fit = halfDiag / Math.tan(0.5 * fovRad);
+  const dist = Math.max(fit * 1.25, 50);
+
+  // C yaw/pitch; pivot on geometry (not {0,1.5,0}). setView clamps radius to 1000
+  // (C kViewDistance); write past the clamp so the full AABB fits, then apply via
+  // update(). Scroll will re-clamp — user can still orbit/pan the framed scene.
+  setView(demo, 120, 30, Math.min(dist, 1000), [cx, cy, cz]);
+  demo.controls.radius = dist;
+  demo.controls.update(0);
+
+  // Capsules lie thousands of units out; default makeViewer far=600 clips them.
+  demo.camera.far = Math.max(8000, dist + halfDiag * 2 + 500);
+  demo.camera.near = Math.max(0.1, dist * 1e-4);
+  demo.camera.updateProjectionMatrix();
+}
+
 function initShapeCastDebug(container: HTMLElement) {
   const { wasm, controls, demo, readout } = makeViewer(container, {
     name: "Shape Cast Debug",
     desc:
       "Official Collision sample <strong>Shape Cast Debug</strong> — a degenerate large-world " +
-      "shape cast (triangle vs capsule) reproduced at 0.01 scale.",
-    hint: "Static repro",
+      "shape cast (triangle vs capsule) reproduced at 0.01 scale. Camera is framed on the " +
+      "full AABB (C's SetView at the origin cannot see the far capsules).",
+    hint: "Static repro · no controls — orbit/pan to inspect",
     target: [0, 1.5, 0],
     distance: 20,
   });
   controls.appendChild(
     createInfoBox(
-      "<strong>Shape Cast Debug</strong> — cyan triangle, green start capsule, red the hit " +
-        "position, gray the full sweep end.",
+      "<strong>Shape Cast Debug</strong> — cyan triangle at the origin, green start capsule, " +
+        "red hit position, gray full-sweep end. Cast math keeps C's scaled large-world numbers; " +
+        "draw radius is thickened for visibility (true radius is 0.01).",
     ),
   );
 
   const ov = new Overlay(demo.dynamic);
-  setView(demo, 120, 30, 20, [0, 1.5, 0]);
+  const label = document.createElement("div");
+  label.className = "info-readout";
+  controls.appendChild(label);
+
+  // Frame once from the static geometry (scene does not animate).
+  const first = wasm.scd_data();
+  frameShapeCastDebug(demo, first);
 
   const stop = runLoop(() => {
     ov.clear();
     ov.add(makeAxes(1));
     const d = wasm.scd_data();
     const hit = d[0]! > 0.5;
+    const fraction = d[1]!;
     const t0 = [d[2]!, d[3]!, d[4]!];
     const t1 = [d[5]!, d[6]!, d[7]!];
     const t2 = [d[8]!, d[9]!, d[10]!];
@@ -1373,20 +1448,30 @@ function initShapeCastDebug(container: HTMLElement) {
     const grayP = [d[21]!, d[22]!, d[23]!];
     const redP = [d[24]!, d[25]!, d[26]!];
 
+    // Hairline radius 0.01 is invisible at this scale — thicken for debug draw only.
+    const capLen = Math.hypot(c2[0]! - c1[0]!, c2[1]! - c1[1]!, c2[2]! - c1[2]!);
+    const visR = Math.max(r, Math.max(8, capLen * 0.004));
+
     ov.segs(triSegs(t0, t1, t2), CC.cyan);
-    const cap = (p: number[], color: number) =>
-      ov.add(
-        makeCapsule(
-          [c1[0]! + p[0]!, c1[1]! + p[1]!, c1[2]! + p[2]!] as [number, number, number],
-          [c2[0]! + p[0]!, c2[1]! + p[1]!, c2[2]! + p[2]!] as [number, number, number],
-          r,
-          color,
-          0.6,
-        ),
-      );
+    const worldEnds = (p: number[]): [[number, number, number], [number, number, number]] => [
+      [c1[0]! + p[0]!, c1[1]! + p[1]!, c1[2]! + p[2]!],
+      [c2[0]! + p[0]!, c2[1]! + p[1]!, c2[2]! + p[2]!],
+    ];
+    const cap = (p: number[], color: number) => {
+      const [a, b] = worldEnds(p);
+      ov.line(a, b, color, 0.95);
+      ov.add(makeCapsule(a, b, visR, color, 0.45));
+    };
     cap(greenP, CC.green);
     if (hit) cap(redP, CC.red);
     cap(grayP, CC.gray);
+
+    // Sweep of the capsule origin (green → gray), matching C's translation draw intent.
+    ov.line(greenP, grayP, CC.yellow, 0.5);
+
+    label.textContent = hit
+      ? `hit · fraction = ${fraction.toFixed(6)} · radius = ${r} (draw ${visR.toFixed(1)})`
+      : `miss · fraction = ${fraction.toFixed(6)} · radius = ${r}`;
     demo.render();
   }, readout);
 
