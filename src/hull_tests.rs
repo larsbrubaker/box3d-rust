@@ -1,9 +1,13 @@
 //! Port of box3d-cpp-reference/test/test_hull.c
 
 use crate::hull::{
-    clone_hull, compare_hull_data, create_cylinder, create_hull, destroy_hull, make_box_hull,
+    clone_and_transform_hull, clone_hull, compare_hull_data, create_cylinder, create_hull,
+    destroy_hull, is_valid_hull, make_box_hull,
 };
-use crate::math_functions::{abs_float, sub_mm, Vec3, PI};
+use crate::math_functions::{
+    abs_float, make_quat_from_axis_angle, sub_mm, Transform, Vec3, PI, QUAT_IDENTITY,
+    TRANSFORM_IDENTITY, VEC3_AXIS_Y,
+};
 
 const CUBE_CORNERS: [Vec3; 8] = [
     Vec3 {
@@ -567,4 +571,186 @@ fn create_hull_degenerate() {
         },
     ];
     assert!(create_hull(&coplanar, 8).is_none());
+}
+
+#[test]
+fn clone_and_transform_identity() {
+    // Identity transform + unit scale reproduces the source hull's geometry
+    // (planes are recomputed via Newell's method but must land on the same faces).
+    let original = create_hull(&CUBE_CORNERS, 8).expect("cube");
+    let hull = clone_and_transform_hull(
+        &original,
+        TRANSFORM_IDENTITY,
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .expect("identity clone");
+
+    assert!(is_valid_hull(&hull));
+    assert_eq!(hull.vertex_count, original.vertex_count);
+    assert_eq!(hull.edge_count, original.edge_count);
+    assert_eq!(hull.face_count, original.face_count);
+
+    ensure_small(hull.volume - 8.0, 1e-4);
+    ensure_small(hull.surface_area - 24.0, 1e-4);
+    ensure_small(hull.inner_radius - 1.0, 1e-5);
+    ensure_small(hull.center.x, 1e-5);
+    ensure_small(hull.center.y, 1e-5);
+    ensure_small(hull.center.z, 1e-5);
+    ensure_small(hull.aabb.lower_bound.x + 1.0, 1e-5);
+    ensure_small(hull.aabb.upper_bound.x - 1.0, 1e-5);
+
+    destroy_hull(hull);
+    destroy_hull(original);
+}
+
+#[test]
+fn clone_and_transform_uniform_scale() {
+    // Scale by 2: volume ×8, area ×4, inner radius ×2.
+    let original = create_hull(&CUBE_CORNERS, 8).expect("cube");
+    let hull = clone_and_transform_hull(
+        &original,
+        TRANSFORM_IDENTITY,
+        Vec3 {
+            x: 2.0,
+            y: 2.0,
+            z: 2.0,
+        },
+    )
+    .expect("scaled clone");
+
+    ensure_small((hull.volume - 64.0) / 64.0, 1e-4);
+    ensure_small((hull.surface_area - 96.0) / 96.0, 1e-4);
+    ensure_small(hull.inner_radius - 2.0, 1e-5);
+    ensure_small(hull.aabb.lower_bound.x + 2.0, 1e-5);
+    ensure_small(hull.aabb.upper_bound.x - 2.0, 1e-5);
+
+    destroy_hull(hull);
+    destroy_hull(original);
+}
+
+#[test]
+fn clone_and_transform_translation() {
+    // Translation shifts center + bounds, leaving intrinsic properties intact.
+    let original = create_hull(&CUBE_CORNERS, 8).expect("cube");
+    let hull = clone_and_transform_hull(
+        &original,
+        Transform {
+            p: Vec3 {
+                x: 3.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            q: QUAT_IDENTITY,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .expect("translated clone");
+
+    ensure_small(hull.center.x - 3.0, 1e-4);
+    ensure_small(hull.volume - 8.0, 1e-4);
+    ensure_small(hull.aabb.lower_bound.x - 2.0, 1e-5);
+    ensure_small(hull.aabb.upper_bound.x - 4.0, 1e-5);
+
+    destroy_hull(hull);
+    destroy_hull(original);
+}
+
+#[test]
+fn clone_and_transform_rotation() {
+    // 90° about Y: the cube is symmetric, so all intrinsic + bound quantities hold.
+    let original = create_hull(&CUBE_CORNERS, 8).expect("cube");
+    let q = make_quat_from_axis_angle(VEC3_AXIS_Y, 0.5 * PI);
+    let hull = clone_and_transform_hull(
+        &original,
+        Transform {
+            p: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            q,
+        },
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .expect("rotated clone");
+
+    assert!(is_valid_hull(&hull));
+    ensure_small(hull.volume - 8.0, 1e-4);
+    ensure_small(hull.surface_area - 24.0, 1e-4);
+    ensure_small(hull.inner_radius - 1.0, 1e-5);
+    ensure_small(hull.aabb.upper_bound.x - 1.0, 1e-5);
+    ensure_small(hull.aabb.upper_bound.z - 1.0, 1e-5);
+
+    destroy_hull(hull);
+    destroy_hull(original);
+}
+
+#[test]
+fn clone_and_transform_reflection_stays_valid() {
+    // A negative net scale reflects the hull; the winding-reversal path must keep
+    // it outward-facing (positive volume) and a valid convex hull.
+    let original = create_hull(&CUBE_CORNERS, 8).expect("cube");
+    let hull = clone_and_transform_hull(
+        &original,
+        TRANSFORM_IDENTITY,
+        Vec3 {
+            x: -1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .expect("reflected clone");
+
+    assert!(is_valid_hull(&hull));
+    assert_eq!(hull.face_count, original.face_count);
+    assert_eq!(hull.edge_count, original.edge_count);
+    ensure_small(hull.volume - 8.0, 1e-4);
+    ensure_small(hull.surface_area - 24.0, 1e-4);
+    ensure_small(hull.inner_radius - 1.0, 1e-5);
+
+    destroy_hull(hull);
+    destroy_hull(original);
+}
+
+#[test]
+fn clone_and_transform_cylinder_matches_original() {
+    // Mirrors the C HullTransform sample: clone a cylinder under identity and
+    // confirm the intrinsic properties survive the plane/bulk recompute.
+    let original = create_cylinder(1.0, 0.5, 0.0, 9).expect("cylinder");
+    let hull = clone_and_transform_hull(
+        &original,
+        TRANSFORM_IDENTITY,
+        Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .expect("cylinder clone");
+
+    assert!(is_valid_hull(&hull));
+    assert_eq!(hull.vertex_count, original.vertex_count);
+    assert_eq!(hull.face_count, original.face_count);
+    assert_eq!(hull.edge_count, original.edge_count);
+    ensure_small((hull.volume - original.volume) / original.volume, 1e-4);
+    ensure_small(
+        (hull.surface_area - original.surface_area) / original.surface_area,
+        1e-4,
+    );
+    ensure_small(hull.inner_radius - original.inner_radius, 1e-5);
+
+    destroy_hull(hull);
+    destroy_hull(original);
 }

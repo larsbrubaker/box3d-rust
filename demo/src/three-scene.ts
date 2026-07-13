@@ -130,6 +130,77 @@ export function applyShapeStyle(mesh: THREE.Mesh, style: number): void {
   mat.opacity = wantTransparent ? 0.5 : 1.0;
 }
 
+/**
+ * Apply packed engine style words to an `InstancedMesh`, one color per instance,
+ * via Three's `instanceColor` attribute (`mesh.setColorAt`). This is the instanced
+ * analogue of {@link applyShapeStyle} and exists so the Benchmark piles (Large
+ * Pyramid, Falling Boxes, …) show per-body sleep/wake recoloring while still
+ * rendering as a single draw call.
+ *
+ * **Compromise (documented):** an `InstancedMesh` shares ONE material, so only the
+ * 0xRRGGBB *color* can vary per instance (`instanceColor`). The PBR *material
+ * preset* (roughness / metalness / transparency) is resolved once, from the
+ * `representative`-th style word, and written to the shared material — every
+ * instance therefore shares one preset. In the Benchmark scenes that use this,
+ * all instanced bodies are dynamic boxes/cylinders of the same body type, so the
+ * preset is identical across instances and the compromise is invisible; only the
+ * per-body awake/asleep *color* differs, which is exactly what `instanceColor`
+ * carries. The shared material's own `color` is forced to white so `instanceColor`
+ * is the final albedo (Three multiplies `material.color * instanceColor`).
+ *
+ * Colors are decoded from the same style layout as {@link applyShapeStyle} (sRGB
+ * 0xRRGGBB in bits 0..24) and converted to the renderer's linear working space via
+ * `THREE.Color`, matching `applyShapeStyle`'s `mat.color.setHex` semantics.
+ */
+export function applyInstancedStyles(
+  mesh: THREE.InstancedMesh,
+  styles: ArrayLike<number>,
+  count: number,
+  representative = 0,
+  colorsChanged = true,
+): void {
+  // Resolve the shared material preset from one representative style word.
+  const rep = styles[representative] ?? 0;
+  const mat = mesh.material as THREE.MeshStandardMaterial;
+  const preset = (rep >>> 24) & 0x7;
+  const bodyType = (rep >>> 27) & 0x3;
+  const transparent = (rep >>> 29) & 0x1;
+  let roughness: number;
+  let metalness: number;
+  if (preset >= 1 && preset <= 5) {
+    roughness = MATERIAL_PRESET_ROUGHNESS[preset]!;
+    metalness = MATERIAL_PRESET_METALLIC[preset]!;
+  } else {
+    roughness = BODY_TYPE_ROUGHNESS[bodyType]!;
+    metalness = BODY_TYPE_METALLIC[bodyType]!;
+  }
+  if (mat.roughness !== roughness) mat.roughness = roughness;
+  if (mat.metalness !== metalness) mat.metalness = metalness;
+  // instanceColor is the albedo; keep the shared material color white so it does
+  // not tint the per-instance colors.
+  if (mat.color.getHex() !== 0xffffff) mat.color.setHex(0xffffff);
+  const wantTransparent = transparent === 1;
+  if (mat.transparent !== wantTransparent) {
+    mat.transparent = wantTransparent;
+    mat.opacity = wantTransparent ? 0.5 : 1.0;
+    mat.needsUpdate = true;
+  }
+
+  // Per-instance color. setColorAt lazily allocates mesh.instanceColor. When the
+  // caller's style buffer is byte-for-byte unchanged (a settled/asleep pile whose
+  // awake-gated `*_styles()` snapshot did not refetch), the per-instance colors
+  // already live in `instanceColor`, so skip the whole write + GPU upload. A newly
+  // (re)allocated mesh has no `instanceColor` yet and must be filled regardless.
+  if (!colorsChanged && mesh.instanceColor) return;
+  for (let i = 0; i < count; i++) {
+    const rgb = (styles[i] ?? 0) & 0xffffff;
+    _styleColor.setHex(rgb, THREE.SRGBColorSpace);
+    mesh.setColorAt(i, _styleColor);
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+const _styleColor = new THREE.Color();
 const _yUp = new THREE.Vector3(0, 1, 0);
 const _tmp = new THREE.Vector3();
 const _tmp2 = new THREE.Vector3();
@@ -642,13 +713,26 @@ export function makeSolidBox(
   return mesh;
 }
 
+/**
+ * Line segments from a flat `[ax,ay,az, bx,by,bz, ...]` edge buffer. `opacity`
+ * feeds the shared {@link lineMat} (default fully opaque; ground/terrain overlays
+ * pass a faint value like 0.35).
+ *
+ * NOTE: the third argument is the line *opacity*, not a buffer index. A previous
+ * `offset` index parameter here silently produced all-NaN geometry when callers
+ * passed a fractional opacity value (0.35 → `edges[0.35]` is `undefined` →
+ * coerced to NaN), which then tripped Three's `computeBoundingSphere(): radius is
+ * NaN` warning at render on every route with a faint ground wire. No caller ever
+ * needed a real index offset, so the parameter now carries the opacity the call
+ * sites always intended.
+ */
 export function makeWireEdges(
   edges: ArrayLike<number>,
   color: number,
-  offset = 0,
+  opacity = 1,
 ): THREE.LineSegments {
   const positions: number[] = [];
-  for (let i = offset; i + 5 < edges.length; i += 6) {
+  for (let i = 0; i + 5 < edges.length; i += 6) {
     positions.push(
       edges[i]!,
       edges[i + 1]!,
@@ -660,7 +744,7 @@ export function makeWireEdges(
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  return new THREE.LineSegments(geo, lineMat(color));
+  return new THREE.LineSegments(geo, lineMat(color, opacity));
 }
 
 /** Reconstruct triangle vertex positions from wireframe edge triplets (3 edges × 6 floats). */

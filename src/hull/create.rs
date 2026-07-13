@@ -5,8 +5,9 @@ use super::types::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE,
 use super::validate::is_valid_hull;
 use crate::core::{hash, non_zero_hash, HASH_INIT};
 use crate::math_functions::{
-    add, align_up8, clamp_int, compute_cos_sin, cos, cross, length, max, min, mul_sm, mul_sv,
-    plane_separation, scalar_triple_product, sin, steiner, sub, sub_mm, Vec3, PI, VEC3_ZERO,
+    add, align_up8, clamp_int, compute_cos_sin, cos, cross, length, make_matrix_from_quat,
+    make_plane_from_normal_and_point, max, min, mul, mul_mv, mul_sm, mul_sv, plane_separation,
+    safe_scale, scalar_triple_product, sin, steiner, sub, sub_mm, Transform, Vec3, PI, VEC3_ZERO,
 };
 
 fn update_hull_bounds(hull: &mut HullData) {
@@ -293,6 +294,139 @@ pub fn clone_hull(hull: &HullData) -> Option<HullData> {
         return None;
     }
     Some(hull.clone())
+}
+
+/// Clone a hull, then scale/rotate/translate it. Recomputes planes, bounds, and
+/// bulk properties, so the result is a fully valid hull. A negative net scale
+/// (reflection) reverses each face's edge winding so the hull stays outward-facing.
+/// Returns `None` if `original` is invalid or the transformed hull degenerates.
+/// (b3CloneAndTransformHull)
+pub fn clone_and_transform_hull(
+    original: &HullData,
+    transform: Transform,
+    scale: Vec3,
+) -> Option<HullData> {
+    if !is_valid_hull(original) {
+        return None;
+    }
+
+    // The Rust hull owns its arrays directly (C memcpy's the trailing blob); the
+    // byte layout/offsets are preserved by the clone so the final hash matches C.
+    let mut hull = original.clone();
+
+    let safe_scale = safe_scale(scale);
+
+    let face_count = hull.face_count as usize;
+    let vertex_count = hull.vertex_count as usize;
+
+    if safe_scale.x * safe_scale.y * safe_scale.z < 0.0 {
+        // Reflected: reverse edge winding for each face.
+        for i in 0..face_count {
+            let start_edge_index = hull.faces[i].edge;
+            let mut current_edge_index = start_edge_index;
+            let mut prev_edge_index: u8 = u8::MAX;
+
+            loop {
+                let edge_next = hull.edges[current_edge_index as usize].next;
+                if edge_next == start_edge_index {
+                    prev_edge_index = current_edge_index;
+                    break;
+                }
+                current_edge_index = edge_next;
+                if current_edge_index == start_edge_index {
+                    break;
+                }
+            }
+
+            debug_assert!(prev_edge_index != u8::MAX);
+
+            current_edge_index = start_edge_index;
+
+            loop {
+                let next_index = hull.edges[current_edge_index as usize].next;
+                let twin = hull.edges[current_edge_index as usize].twin;
+                hull.edges[current_edge_index as usize].next = prev_edge_index;
+
+                if current_edge_index < twin {
+                    let a = hull.edges[current_edge_index as usize].origin;
+                    let b = hull.edges[twin as usize].origin;
+                    hull.edges[current_edge_index as usize].origin = b;
+                    hull.edges[twin as usize].origin = a;
+                }
+
+                prev_edge_index = current_edge_index;
+                current_edge_index = next_index;
+                if current_edge_index == start_edge_index {
+                    break;
+                }
+            }
+        }
+
+        for i in 0..vertex_count {
+            let edge = hull.vertices[i].edge;
+            hull.vertices[i].edge = hull.edges[edge as usize].twin;
+        }
+    }
+
+    let matrix = make_matrix_from_quat(transform.q);
+    for i in 0..vertex_count {
+        hull.points[i] = add(mul_mv(matrix, mul(safe_scale, hull.points[i])), transform.p);
+    }
+
+    for i in 0..face_count {
+        let mut count = 0i32;
+        let mut centroid = VEC3_ZERO;
+        let mut normal = VEC3_ZERO;
+
+        let start_edge_index = hull.faces[i].edge;
+        let mut current_edge_index = start_edge_index;
+
+        debug_assert!(hull.edges[start_edge_index as usize].face as usize == i);
+        debug_assert!((hull.edges[start_edge_index as usize].origin as i32) < hull.vertex_count);
+
+        let origin = hull.points[hull.edges[start_edge_index as usize].origin as usize];
+
+        loop {
+            let edge = hull.edges[current_edge_index as usize];
+            let twin = hull.edges[edge.twin as usize];
+            debug_assert!(twin.twin == current_edge_index);
+
+            let v1 = sub(hull.points[edge.origin as usize], origin);
+            let v2 = sub(hull.points[twin.origin as usize], origin);
+
+            count += 1;
+            centroid = add(centroid, v1);
+            normal.x += (v1.y - v2.y) * (v1.z + v2.z);
+            normal.y += (v1.z - v2.z) * (v1.x + v2.x);
+            normal.z += (v1.x - v2.x) * (v1.y + v2.y);
+
+            current_edge_index = edge.next;
+            if current_edge_index == start_edge_index {
+                break;
+            }
+        }
+
+        debug_assert!(count > 0);
+        centroid = mul_sv(1.0 / count as f32, centroid);
+        centroid = add(centroid, origin);
+
+        let area = length(normal);
+        debug_assert!(area > 0.0);
+        normal = mul_sv(1.0 / area, normal);
+
+        hull.planes[i] = make_plane_from_normal_and_point(normal, centroid);
+    }
+
+    update_hull_bounds(&mut hull);
+    if !update_hull_bulk_properties(&mut hull) {
+        return None;
+    }
+
+    finalize_hash(&mut hull);
+
+    debug_assert!(is_valid_hull(&hull));
+
+    Some(hull)
 }
 
 /// Destroy is a no-op for owned Rust hulls; kept for API parity. (b3DestroyHull)
