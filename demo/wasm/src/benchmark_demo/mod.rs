@@ -101,6 +101,7 @@ pub(crate) struct BenchScene {
     pub junkyard: Option<JunkyardAnim>,
     pub rain: Option<rain::RainState>,
     pub chains: Option<structs::ChainsState>,
+    pub hull: Option<structs::HullState>,
     pub destruction: Option<piles::DestructionState>,
     pub washer: Option<WasherState>,
     pub large_world: Option<fields::LargeWorldState>,
@@ -164,6 +165,7 @@ pub(crate) fn empty_scene(world: World, bodies: Vec<VisBody>, kind: BenchKind) -
         junkyard: None,
         rain: None,
         chains: None,
+        hull: None,
         destruction: None,
         washer: None,
         large_world: None,
@@ -282,6 +284,8 @@ pub fn bench_step(dt: f32, sub_steps: i32) -> u32 {
             BenchKind::Junkyard => legacy::step_junkyard(state, dt),
             BenchKind::Rain => rain::step_rain(state),
             BenchKind::Chains => structs::step_chains(state),
+            // Hull create/clone trials: `bench_hull_create_trials` /
+            // `bench_hull_clone_trials` (page-timed; wasm has no b3GetTicks).
             BenchKind::LargeWorld => fields::step_large_world(state),
             BenchKind::Destruction => piles::step_destruction(state),
             _ => {}
@@ -344,6 +348,8 @@ pub fn bench_height_field_cast() -> Vec<f32> {
 }
 
 /// Hull sample readout: `[trials, area, cloneArea]` (`BenchmarkHull::Step`).
+/// Areas are means from the last create/clone trial run (`step_hull` or the
+/// timed [`bench_hull_create_trials`] / [`bench_hull_clone_trials`] exports).
 #[wasm_bindgen]
 pub fn bench_hull_info() -> Vec<f32> {
     with_state(|state| {
@@ -353,6 +359,20 @@ pub fn bench_hull_info() -> Vec<f32> {
             state.hull_clone_area,
         ]
     })
+}
+
+/// C `BenchmarkHull::Step` create-trial loop only — returns mean surface area.
+/// The page times this with `performance.now()` (wasm has no `b3GetTicks`).
+#[wasm_bindgen]
+pub fn bench_hull_create_trials() -> f32 {
+    with_state(structs::run_hull_create_trials)
+}
+
+/// C `BenchmarkHull::Step` clone-trial loop only — returns mean scaled surface
+/// area. The page times this with `performance.now()` (wasm has no `b3GetTicks`).
+#[wasm_bindgen]
+pub fn bench_hull_clone_trials() -> f32 {
+    with_state(structs::run_hull_clone_trials)
 }
 
 /// Hull sample: transformed (yellow) hull wireframe edges (the original green hull

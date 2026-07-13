@@ -119,7 +119,10 @@ export const SAMPLES: SampleEntry[] = [
     // Rendering is now faithful — the drum draws its real 36 wall + 4 rib hulls.
     ["Washer", "partial", "benchmark", "washer"],
     ["Large World", "partial", "benchmark", "large-world"],
-    ["Hull", "partial", "benchmark", "hull"],
+    // Live: Step create/clone trial loops ported at C DEBUG 200 (release 2000
+    // disclosed on the page). Timing uses performance.now() around the wasm
+    // trial exports (no b3GetTicks in wasm), matching Height Field / Tree.
+    ["Hull", "live", "benchmark", "hull"],
     ["Chains", "partial", "benchmark", "chains"],
     ["Destruction", "partial", "benchmark", "destruction"],
     ["Junkyard", "partial", "benchmark", "junkyard"],

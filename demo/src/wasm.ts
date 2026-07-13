@@ -552,6 +552,10 @@ export interface Box3dWasm {
   bench_mesh_wireframe(): Float32Array;
   bench_hull_wireframe_b(): Float32Array;
   bench_hull_info(): Float32Array;
+  /** C BenchmarkHull::Step create-trial loop; returns mean surface area. */
+  bench_hull_create_trials(): number;
+  /** C BenchmarkHull::Step clone-trial loop; returns mean scaled surface area. */
+  bench_hull_clone_trials(): number;
   bench_washer_drum(): Float32Array;
   /** Washer drum geometry (drum-local): `[triCount, tris…, edgeCount, edges…]`. */
   bench_washer_drum_geometry(): Float32Array;
