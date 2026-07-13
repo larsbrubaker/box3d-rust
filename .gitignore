@@ -4,7 +4,6 @@ demo/dist/
 demo/.dev-cache/
 demo/public/pkg/
 nul
-.cursor/
 bun.lock
 
 .worktrees/
