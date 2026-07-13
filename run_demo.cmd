@@ -1,5 +1,5 @@
 @echo off
-REM Build the WASM demo and serve it at http://localhost:3000.
+REM Build the WASM demo and serve it at http://localhost:3001.
 REM Double-click this file, or run it from a terminal. Press Ctrl+C to stop.
 setlocal
 
@@ -34,7 +34,7 @@ popd
 if not "%BUILD_ERR%"=="0" (echo [run_demo] WASM build failed. & pause & exit /b 1)
 
 REM Open the browser shortly after the server has had time to start.
-start "" cmd /c "timeout /t 2 >nul & start "" http://localhost:3000"
+start "" cmd /c "timeout /t 2 >nul & start "" http://localhost:3001"
 
-echo [run_demo] Serving at http://localhost:3000  (Ctrl+C to stop)
+echo [run_demo] Serving at http://localhost:3001  (Ctrl+C to stop)
 call bun run dev

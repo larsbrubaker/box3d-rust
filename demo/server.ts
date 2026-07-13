@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, existsSync, statSync, rmSync } from "fs";
 import { join, extname } from "path";
 import { versionDefines } from "./build-version.ts";
 
-const PORT = parseInt(process.env.PORT || "3000");
+const PORT = parseInt(process.env.PORT || "3001");
 const ROOT = import.meta.dir;
 const DEV_CACHE = join(ROOT, ".dev-cache");
 

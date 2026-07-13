@@ -6,7 +6,7 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev"],
       "cwd": "demo",
-      "port": 3000,
+      "port": 3001,
       "autoPort": true
     }
   ]

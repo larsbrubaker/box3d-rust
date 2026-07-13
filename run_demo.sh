@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the WASM demo and serve it at http://localhost:3000.
+# Build the WASM demo and serve it at http://localhost:3001.
 # Run from anywhere: ./run_demo.sh   (Ctrl+C to stop)
 set -e
 
@@ -27,9 +27,9 @@ echo "[run_demo] Building WASM from the Rust port..."
 
 # Open the browser shortly after the server has had time to start.
 ( sleep 2
-  if command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:3000
-  elif command -v open >/dev/null 2>&1; then open http://localhost:3000
+  if command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:3001
+  elif command -v open >/dev/null 2>&1; then open http://localhost:3001
   fi ) &
 
-echo "[run_demo] Serving at http://localhost:3000  (Ctrl+C to stop)"
+echo "[run_demo] Serving at http://localhost:3001  (Ctrl+C to stop)"
 bun run dev

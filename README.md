@@ -148,7 +148,7 @@ cargo test --features double-precision
 The demo site (`demo/`) runs the port in the browser via WebAssembly.
 
 The quickest way to see it — builds the wasm and serves the demo at
-`http://localhost:3000`, opening your browser:
+`http://localhost:3001`, opening your browser:
 
 ```
 run_demo.cmd      # Windows (double-click or run from a terminal)
@@ -161,7 +161,7 @@ Or drive the steps yourself:
 cd demo
 bun install
 bun run build:wasm   # wasm-pack build (once, and after Rust changes)
-bun run dev          # dev server at http://localhost:3000, rebuilds wasm on Rust edits
+bun run dev          # dev server at http://localhost:3001, rebuilds wasm on Rust edits
 ```
 
 Deployed automatically to GitHub Pages on push to `main`.
