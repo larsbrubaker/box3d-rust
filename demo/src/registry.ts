@@ -292,9 +292,8 @@ export const SAMPLES: SampleEntry[] = [
     // scaled down from the C 400/10 for browser render feasibility (disclosed on
     // the page), and both the ray and sphere shape-cast branches are ported.
     ["Height Field", "partial", "height-field"],
-    // Viewer ports the wireframe + per-level BVH AABB inspector + build stats, but
-    // scopes out the degenerate-triangle labels and the concave/weld checkboxes.
-    ["Viewer", "partial", "mesh", "viewer"],
+    // Viewer: BVH inspector, concave/weld controls, degenerate triangle labels.
+    ["Viewer", "live", "mesh", "viewer"],
     // Creation Benchmark builds the four meshes on demand and reports the minimum
     // wall time (page-side timing rather than C's per-step b3GetTicks reduction).
     ["Creation Benchmark", "partial", "mesh", "creation-benchmark"],

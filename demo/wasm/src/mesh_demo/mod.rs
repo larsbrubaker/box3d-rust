@@ -96,6 +96,10 @@ pub(crate) struct MeshState {
     // Viewer / Creation Benchmark data.
     /// The Viewer's active collision mesh (for per-level BVH node draw + stats).
     pub viewer_mesh: Option<MeshData>,
+    /// Packed degenerate-triangle draw data for the Viewer (C `MeshViewer::Render`).
+    /// Stride 16 floats per entry: `[triIdx, i1, i2, i3, cx,cy,cz, v1x,v1y,v1z, v2…, v3…]`
+    /// using the pre-weld temp-mesh verts/indices (same as C).
+    pub viewer_degenerates: Vec<f32>,
     /// Loaded temp meshes for the Creation Benchmark (parsed once, rebuilt on run).
     pub bench_meshes: Vec<crate::obj_loader::TempMesh>,
     /// Scene stats readout (`mesh_stats`): meaning is scene-specific (see accessor).
@@ -126,6 +130,7 @@ impl MeshState {
             drop_index: -1,
             humans: Vec::new(),
             viewer_mesh: None,
+            viewer_degenerates: Vec::new(),
             bench_meshes: Vec::new(),
             stats: Vec::new(),
             voxel_hull: None,
@@ -423,6 +428,13 @@ pub fn mesh_viewer_height() -> i32 {
 #[wasm_bindgen]
 pub fn mesh_viewer_nodes(level: i32) -> Vec<f32> {
     with_state(|state| viewer::viewer_nodes(state, level))
+}
+
+/// Viewer degenerate-triangle draw data (C `MeshViewer::Render` labels/points).
+/// Stride 16: `[triIdx, i1, i2, i3, cx,cy,cz, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z]`.
+#[wasm_bindgen]
+pub fn mesh_viewer_degenerates() -> Vec<f32> {
+    with_state(|state| viewer::viewer_degenerates(state))
 }
 
 /// Build all four Creation-Benchmark meshes once (C `MeshCreationBenchmark::Step`

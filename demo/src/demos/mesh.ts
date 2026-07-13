@@ -5,10 +5,12 @@
 // controls, plus the async OBJ-loading gate for the mesh-file scenes.
 
 import * as THREE from "three";
-import { createButton, createButtonGroup, createInfoBox, createSlider } from "../controls.ts";
+import { createButton, createButtonGroup, createCheckbox, createInfoBox, createSlider } from "../controls.ts";
 import {
   attachInteraction,
   makeInteractAdapter,
+  TextLabelOverlay,
+  type DebugLabel,
   type ParamDef,
   type SimControllerWithTick,
 } from "../interaction.ts";
@@ -19,6 +21,8 @@ import {
   COLORS,
   DemoScene,
   makeArrow,
+  makeDot,
+  makeSphere,
   makeTriangleMesh,
   makeWireBox,
   makeWireEdges,
@@ -169,6 +173,10 @@ export function init(container: HTMLElement, initialScene?: string) {
   // --- Viewer BVH node overlay (rebuilt on draw-level change) ---
   const bvhGroup = new THREE.Group();
   demo.content.add(bvhGroup);
+  // Degenerate-triangle points (centroid + verts); labels via TextLabelOverlay.
+  const degGroup = new THREE.Group();
+  demo.content.add(degGroup);
+  const textSprites = new TextLabelOverlay(demo);
   const BVH_COLORS = [
     0xf0f8ff, 0xfaebd7, 0x00ffff, 0x7fffd4, 0xf0ffff, 0xf5f5dc, 0xffe4c4, 0xffebcd, 0x0000ff,
     0x8a2be2, 0xa52a2a, 0xdeb887, 0x5f9ea0, 0x7fff00, 0xd2691e, 0xff7f50, 0x6495ed, 0xfff8dc,
@@ -177,7 +185,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   function clearBvh() {
     for (const child of [...bvhGroup.children]) {
       bvhGroup.remove(child);
-      const anyChild = child as THREE.LineSegments | THREE.ArrowHelper;
+      const anyChild = child as THREE.LineSegments | THREE.ArrowHelper | THREE.Mesh;
       if ((anyChild as THREE.LineSegments).geometry) {
         (anyChild as THREE.LineSegments).geometry.dispose();
         const mat = (anyChild as THREE.LineSegments).material as THREE.Material;
@@ -185,6 +193,16 @@ export function init(container: HTMLElement, initialScene?: string) {
       }
       (anyChild as THREE.ArrowHelper).dispose?.();
     }
+  }
+  function clearDegenerates() {
+    for (const child of [...degGroup.children]) {
+      degGroup.remove(child);
+      const m = child as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      mat?.dispose?.();
+    }
+    textSprites.clear();
   }
   function buildBvh(level: number) {
     clearBvh();
@@ -202,7 +220,37 @@ export function init(container: HTMLElement, initialScene?: string) {
       if (axis === 0) bvhGroup.add(makeArrow([cx, cy, cz], [1, 0, 0], 0.1, 0xff0000));
       else if (axis === 1) bvhGroup.add(makeArrow([cx, cy, cz], [0, 1, 0], 0.1, 0x00ff00));
       else if (axis === 2) bvhGroup.add(makeArrow([cx, cy, cz], [0, 0, 1], 0.1, 0x0000ff));
+      else if (axis === 3) bvhGroup.add(makeSphere(cx, cy, cz, 0.03, 0xffa500, 1)); // C leaf orange
     }
+  }
+  // C MeshViewer::Render degenerate loop: cyan centroid + RGB verts + index labels.
+  const DEG_OFFSET = 0.01;
+  function buildDegenerates() {
+    clearDegenerates();
+    if (scene !== "viewer") return;
+    const data = wasm.mesh_viewer_degenerates();
+    const labels: DebugLabel[] = [];
+    for (let i = 0; i + 15 < data.length; i += 16) {
+      const triIdx = data[i]! | 0;
+      const i1 = data[i + 1]! | 0;
+      const i2 = data[i + 2]! | 0;
+      const i3 = data[i + 3]! | 0;
+      const cx = data[i + 4]!, cy = data[i + 5]!, cz = data[i + 6]!;
+      const v1x = data[i + 7]!, v1y = data[i + 8]!, v1z = data[i + 9]!;
+      const v2x = data[i + 10]!, v2y = data[i + 11]!, v2z = data[i + 12]!;
+      const v3x = data[i + 13]!, v3y = data[i + 14]!, v3z = data[i + 15]!;
+      degGroup.add(makeDot([cx, cy, cz], 0x00ffff, 0.04)); // cyan centroid
+      degGroup.add(makeDot([v1x, v1y, v1z], 0xff0000, 0.04));
+      degGroup.add(makeDot([v2x, v2y, v2z], 0x00ff00, 0.04));
+      degGroup.add(makeDot([v3x, v3y, v3z], 0x0000ff, 0.04));
+      labels.push(
+        { x: cx + DEG_OFFSET, y: cy + DEG_OFFSET, z: cz + DEG_OFFSET, color: "#ffa500", text: String(triIdx) },
+        { x: v1x + DEG_OFFSET, y: v1y + DEG_OFFSET, z: v1z + DEG_OFFSET, color: "#ff0000", text: String(i1) },
+        { x: v2x + DEG_OFFSET, y: v2y + DEG_OFFSET, z: v2z + DEG_OFFSET, color: "#00ff00", text: String(i2) },
+        { x: v3x + DEG_OFFSET, y: v3y + DEG_OFFSET, z: v3z + DEG_OFFSET, color: "#0000ff", text: String(i3) },
+      );
+    }
+    textSprites.update(labels);
   }
 
   // ---------------------------------------------------------------------------
@@ -214,6 +262,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   const refl = { x: -1, y: 1, z: 1 };
   const viewer = { index: 0, median: true, concave: true, weld: true, tolMm: 1.5, level: -1 };
   let benchStat = "—";
+  let viewerBuildMs = 0;
 
   const sceneControls = document.createElement("div");
 
@@ -289,6 +338,19 @@ export function init(container: HTMLElement, initialScene?: string) {
           },
         ),
       );
+      // C MeshViewer::DrawControls — concave edges / weld vertices checkboxes.
+      sceneControls.appendChild(
+        createCheckbox("Concave edges", viewer.concave, (v) => {
+          viewer.concave = v;
+          reset();
+        }),
+      );
+      sceneControls.appendChild(
+        createCheckbox("Weld vertices", viewer.weld, (v) => {
+          viewer.weld = v;
+          reset();
+        }),
+      );
       sceneControls.appendChild(
         createSlider("Tolerance (mm)", 0, 10, viewer.tolMm, 0.1, (v) => {
           viewer.tolMm = v;
@@ -332,6 +394,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   function reset(): Promise<void> {
     clearGround();
     clearBvh();
+    clearDegenerates();
     for (const child of [...hullGroup.children]) {
       hullGroup.remove(child);
       const m = child as THREE.LineSegments;
@@ -398,9 +461,12 @@ export function init(container: HTMLElement, initialScene?: string) {
       return loadObj(VIEWER_MESHES[viewer.index]!)
         .then((txt) => {
           if (scene !== activeScene) return;
+          const t0 = performance.now();
           wasm.mesh_reset_viewer(txt, viewer.median, viewer.concave, viewer.weld, viewer.tolMm);
+          viewerBuildMs = performance.now() - t0;
           buildGround();
           buildBvh(viewer.level);
+          buildDegenerates();
           rebuildSceneControls(); // refresh the draw-level slider max
           sceneReady = true;
           setLoading(false);
@@ -483,7 +549,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       case "reflection":
         return `building triangles ${s[0] ?? 0} · scale (${refl.x}, ${refl.y}, ${refl.z})`;
       case "viewer":
-        return `tris ${s[0] ?? 0} · verts ${s[1] ?? 0} · degenerate ${s[2] ?? 0} · height ${s[3] ?? 0} · node area ${(s[4] ?? 0).toFixed(2)}`;
+        return `tris ${s[0] ?? 0} · verts ${s[1] ?? 0} · degenerate ${s[2] ?? 0} · height ${s[3] ?? 0} · node area ${(s[4] ?? 0).toFixed(2)} · build ${viewerBuildMs.toFixed(2)} ms`;
       case "creation-benchmark":
         return benchStat;
       case "voxel":
@@ -526,9 +592,12 @@ export function init(container: HTMLElement, initialScene?: string) {
     stop();
     clearGround();
     clearBvh();
+    clearDegenerates();
     demo.content.remove(groundGroup);
     demo.content.remove(bvhGroup);
+    demo.content.remove(degGroup);
     demo.dynamic.remove(hullGroup);
+    textSprites.dispose();
     ctrl.dispose();
     disposeMeshPool(pool);
     demo.dispose();
