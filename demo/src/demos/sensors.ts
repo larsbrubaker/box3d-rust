@@ -211,8 +211,9 @@ export function init(container: HTMLElement, initialScene?: string) {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     if (e.shiftKey) {
       const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
+      const variant = e.ctrlKey ? 1 : e.altKey ? 2 : 0;
       interact.sim_spawn_random(
-        origin.x, origin.y, origin.z, translation.x, translation.y, translation.z,
+        origin.x, origin.y, origin.z, translation.x, translation.y, translation.z, variant,
       );
       e.preventDefault();
       e.stopPropagation();

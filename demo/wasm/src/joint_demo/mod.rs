@@ -572,45 +572,24 @@ pub fn joint_mouse_active() -> bool {
 }
 
 #[wasm_bindgen]
-pub fn joint_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+pub fn joint_spawn_random(
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    tx: f32,
+    ty: f32,
+    tz: f32,
+    variant: u8,
+) -> Vec<f32> {
     with_state(|state| {
-        match interact::spawn_random(
+        let spawned = interact::spawn_projectile(
             &mut state.world,
             interact::pos(ox, oy, oz),
             interact::vec3(tx, ty, tz),
-        ) {
-            Some(spawned) => {
-                let kind = spawned.kind;
-                let hx = spawned.half_extents[0];
-                let hy = spawned.half_extents[1];
-                let hz = spawned.half_extents[2];
-                let idx = spawned.body_index;
-                if kind == 1 {
-                    state.bodies.push(VisBody::sphere_body(idx, hx));
-                } else if kind == 2 {
-                    state.bodies.push(VisBody::capsule_body(
-                        idx,
-                        &box3d_rust::geometry::Capsule {
-                            center1: Vec3 {
-                                x: 0.0,
-                                y: -hy,
-                                z: 0.0,
-                            },
-                            center2: Vec3 {
-                                x: 0.0,
-                                y: hy,
-                                z: 0.0,
-                            },
-                            radius: hx,
-                        },
-                    ));
-                } else {
-                    state.bodies.push(VisBody::box_body(idx, hx, hy, hz));
-                }
-                vec![1.0, idx as f32, hx, hy, hz, kind as f32]
-            }
-            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        }
+            interact::LaunchVariant::from_u8(variant),
+        );
+        interact::append_spawned_vis(&state.world, &mut state.bodies, &spawned);
+        interact::spawn_ok_payload(&spawned)
     })
 }
 

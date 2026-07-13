@@ -193,14 +193,12 @@ crate::demo_shell! {
     mouse_move: determinism_mouse_move,
     mouse_up: determinism_mouse_up,
     mouse_active: determinism_mouse_active,
-    spawn_random: determinism_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            state
-                .bodies
-                .push(VisBody::sphere_body(sp.body_index, sp.half_extents[0]));
-            vec![1.0, sp.body_index as f32]
+    spawn_random: determinism_spawn_random = |state, spawned| {
+        crate::interact::append_spawned_vis(&state.world, &mut state.bodies, spawned);
+        match spawned.first() {
+            Some(sp) => vec![1.0, sp.body_index as f32],
+            None => vec![0.0, 0.0],
         }
-        None => vec![0.0, 0.0],
     },
     delete_at_ray: determinism_delete_at_ray = |_state, _index| {},
     counters: determinism_counters,

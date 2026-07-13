@@ -262,7 +262,7 @@ export interface Box3dWasm {
   joint_mouse_move(px: number, py: number, pz: number): void;
   joint_mouse_up(): void;
   joint_mouse_active(): boolean;
-  joint_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  joint_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   joint_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   joint_counters(): Float32Array;
   joint_debug_draw(flags: number): Float32Array;
@@ -341,7 +341,7 @@ export interface Box3dWasm {
   shapes_mouse_move(px: number, py: number, pz: number): void;
   shapes_mouse_up(): void;
   shapes_mouse_active(): boolean;
-  shapes_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  shapes_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   shapes_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
 
   query_reset(): void;
@@ -359,7 +359,7 @@ export interface Box3dWasm {
   query_mouse_move(px: number, py: number, pz: number): void;
   query_mouse_up(): void;
   query_mouse_active(): boolean;
-  query_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  query_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   query_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   query_counters(): Float32Array;
   query_debug_draw(flags: number): Float32Array;
@@ -481,7 +481,7 @@ export interface Box3dWasm {
   sim_mouse_move(px: number, py: number, pz: number): void;
   sim_mouse_up(): void;
   sim_mouse_active(): boolean;
-  sim_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  sim_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   sim_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   sim_counters(): Float32Array;
   sim_debug_draw(flags: number): Float32Array;
@@ -565,7 +565,7 @@ export interface Box3dWasm {
   bench_mouse_move(px: number, py: number, pz: number): void;
   bench_mouse_up(): void;
   bench_mouse_active(): boolean;
-  bench_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  bench_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   bench_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   bench_counters(): Float32Array;
   bench_debug_draw(flags: number): Float32Array;
@@ -603,7 +603,7 @@ export interface Box3dWasm {
   bodies_mouse_move(px: number, py: number, pz: number): void;
   bodies_mouse_up(): void;
   bodies_mouse_active(): boolean;
-  bodies_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  bodies_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   bodies_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
 
   is_double_precision_build(): boolean;
@@ -620,7 +620,7 @@ export interface Box3dWasm {
   world_far_pyramid_mouse_move(px: number, py: number, pz: number): void;
   world_far_pyramid_mouse_up(): void;
   world_far_pyramid_mouse_active(): boolean;
-  world_far_pyramid_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  world_far_pyramid_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   world_far_pyramid_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   world_far_pyramid_counters(): Float32Array;
   world_far_pyramid_debug_draw(flags: number): Float32Array;
@@ -650,7 +650,7 @@ export interface Box3dWasm {
   world_far_mouse_move(px: number, py: number, pz: number): void;
   world_far_mouse_up(): void;
   world_far_mouse_active(): boolean;
-  world_far_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  world_far_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   world_far_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   world_far_counters(): Float32Array;
   world_far_debug_draw(flags: number): Float32Array;
@@ -674,7 +674,7 @@ export interface Box3dWasm {
   determinism_mouse_move(px: number, py: number, pz: number): void;
   determinism_mouse_up(): void;
   determinism_mouse_active(): boolean;
-  determinism_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  determinism_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   determinism_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   determinism_counters(): Float32Array;
   determinism_debug_draw(flags: number): Float32Array;
@@ -739,7 +739,7 @@ export interface Box3dWasm {
   issues_mouse_move(px: number, py: number, pz: number): void;
   issues_mouse_up(): void;
   issues_mouse_active(): boolean;
-  issues_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  issues_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   issues_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   issues_counters(): Float32Array;
   issues_debug_draw(flags: number): Float32Array;

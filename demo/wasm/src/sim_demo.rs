@@ -588,35 +588,86 @@ pub fn sim_mouse_active() -> bool {
     with_sim(|sim| sim.grab.is_active())
 }
 
-/// Shift-click spawn: random sphere/box/capsule along the pick ray.
-/// Returns `[ok, body_index, hx, hy, hz, kind]` (ok is 0/1).
+/// Shift-click spawn: sphere / cylinder / human along the pick ray.
+/// `variant`: 0 = sphere, 1 = cylinder (Ctrl), 2 = human (Alt).
+/// Returns `[ok, body_index, hx, hy, hz, kind]` for the first body (ok is 0/1).
 #[wasm_bindgen]
-pub fn sim_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+pub fn sim_spawn_random(
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    tx: f32,
+    ty: f32,
+    tz: f32,
+    variant: u8,
+) -> Vec<f32> {
     with_sim(|sim| {
-        match interact::spawn_random(
+        let spawned = interact::spawn_projectile(
             &mut sim.world,
             interact::pos(ox, oy, oz),
             interact::vec3(tx, ty, tz),
-        ) {
-            Some(spawned) => {
+            interact::LaunchVariant::from_u8(variant),
+        );
+        push_spawned_sim(sim, &spawned);
+        interact::spawn_ok_payload(&spawned)
+    })
+}
+
+/// Append spawned projectile descriptors to the SimBody render list.
+fn push_spawned_sim(sim: &mut SimState, spawned: &[interact::SpawnedBody]) {
+    use crate::vis::{capsule_from_body, KIND_CAPSULE, KIND_CYLINDER, KIND_SPHERE};
+    for sp in spawned {
+        match sp.kind {
+            KIND_SPHERE => {
                 sim.bodies.push(SimBody {
-                    body_index: spawned.body_index,
-                    half_extents: spawned.half_extents,
-                    kind: spawned.kind,
+                    body_index: sp.body_index,
+                    half_extents: sp.half_extents,
+                    kind: 1,
                     local: None,
                 });
-                vec![
-                    1.0,
-                    spawned.body_index as f32,
-                    spawned.half_extents[0],
-                    spawned.half_extents[1],
-                    spawned.half_extents[2],
-                    spawned.kind as f32,
-                ]
             }
-            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            KIND_CAPSULE => {
+                if let Some(cap) = capsule_from_body(&sim.world, sp.body_index) {
+                    let (local, half) =
+                        capsule_local_from_centers(cap.center1, cap.center2, cap.radius);
+                    sim.bodies.push(SimBody {
+                        body_index: sp.body_index,
+                        half_extents: half,
+                        kind: 2,
+                        local: Some(local),
+                    });
+                }
+            }
+            KIND_CYLINDER => {
+                // Physics hull spans y∈[0, height]; offset the centered cylinder
+                // mesh by half-height. SimBody pages that lack a kind-3 mesh path
+                // still get a visible stand-in via continuous's cylinder branch /
+                // box fallback with non-zero Z extent.
+                let local = Transform {
+                    p: Vec3 {
+                        x: 0.0,
+                        y: sp.half_extents[2],
+                        z: 0.0,
+                    },
+                    q: QUAT_IDENTITY,
+                };
+                sim.bodies.push(SimBody {
+                    body_index: sp.body_index,
+                    half_extents: [sp.half_extents[0], sp.half_extents[1], sp.half_extents[0]],
+                    kind: 3,
+                    local: Some(local),
+                });
+            }
+            _ => {
+                sim.bodies.push(SimBody {
+                    body_index: sp.body_index,
+                    half_extents: sp.half_extents,
+                    kind: 0,
+                    local: None,
+                });
+            }
         }
-    })
+    }
 }
 
 /// Ctrl-click delete: destroy the dynamic body under the pick ray. Returns 1 on success.

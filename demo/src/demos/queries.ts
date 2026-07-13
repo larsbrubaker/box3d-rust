@@ -30,7 +30,7 @@ type CastWorldWasm = Box3dWasm & {
   query_mouse_move(px: number, py: number, pz: number): void;
   query_mouse_up(): void;
   query_mouse_active(): boolean;
-  query_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  query_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number, variant?: number): Float32Array;
   query_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   query_counters(): Float32Array;
   query_debug_draw(flags: number): Float32Array;

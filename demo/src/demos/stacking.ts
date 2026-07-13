@@ -217,6 +217,7 @@ export function init(container: HTMLElement, initialScene?: string) {
 
     const wantSphere = kind === 1;
     const wantCapsule = kind === 2;
+    const wantCylinder = kind === 3;
 
     if (wantCapsule) {
       if (!mesh || mesh.geometry.type !== "CapsuleGeometry") {
@@ -231,7 +232,20 @@ export function init(container: HTMLElement, initialScene?: string) {
       return mesh;
     }
 
-    if (!mesh || mesh.userData.kind === 4 || (wantSphere && mesh.geometry !== sphereGeo) || (!wantSphere && mesh.geometry !== boxGeo)) {
+    if (wantCylinder) {
+      if (!mesh || mesh.geometry.type !== "CylinderGeometry") {
+        if (mesh) disposeMesh(mesh);
+        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 2.0, 16), makeShapeMaterial());
+        mesh.userData.kind = 3;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        demo.content.add(mesh);
+        meshes[i] = mesh;
+      }
+      return mesh;
+    }
+
+    if (!mesh || mesh.userData.kind === 4 || mesh.userData.kind === 3 || (wantSphere && mesh.geometry !== sphereGeo) || (!wantSphere && mesh.geometry !== boxGeo)) {
       if (mesh) disposeMesh(mesh);
       mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, makeShapeMaterial());
       mesh.userData.kind = wantSphere ? 1 : 0;
@@ -403,6 +417,19 @@ export function init(container: HTMLElement, initialScene?: string) {
           geo.dispose();
           mesh.geometry = new THREE.CapsuleGeometry(radius, Math.max(1e-4, halfLen * 2), 4, 10);
         }
+      } else if (kind === 3) {
+        const radius = poses[o + 7]!;
+        const halfLen = poses[o + 8]!;
+        const geo = mesh.geometry as THREE.CylinderGeometry;
+        const h = Math.max(1e-4, halfLen * 2);
+        if (
+          Math.abs(geo.parameters.radiusTop - radius) > 1e-4 ||
+          Math.abs(geo.parameters.height - h) > 1e-3
+        ) {
+          geo.dispose();
+          mesh.geometry = new THREE.CylinderGeometry(radius, radius, h, 16);
+        }
+        mesh.scale.set(1, 1, 1);
       } else if (kind === 1) {
         mesh.scale.setScalar(poses[o + 7]!);
       } else {

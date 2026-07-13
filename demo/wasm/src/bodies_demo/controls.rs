@@ -6,8 +6,8 @@
 //! shared [`crate::demo_shell!`] scaffold.
 
 use super::{v3, with_state, SceneKind};
+use crate::interact;
 use crate::shell::ZERO_POS;
-use crate::vis::VisBody;
 use box3d_rust::body::{
     body_disable, body_enable, body_set_angular_velocity, body_set_awake, body_set_linear_velocity,
     body_set_transform, body_set_type,
@@ -219,23 +219,12 @@ crate::demo_shell! {
     mouse_move: bodies_mouse_move,
     mouse_up: bodies_mouse_up,
     mouse_active: bodies_mouse_active,
-    spawn_random: bodies_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            // `interact::spawn_random` only ever returns the bullet sphere (kind 1);
-            // the box arm mirrors the original dispatch for any future kind.
-            let vb = match sp.kind {
-                1 => VisBody::sphere_body(sp.body_index, sp.half_extents[0]),
-                _ => VisBody::box_body(
-                    sp.body_index,
-                    sp.half_extents[0],
-                    sp.half_extents[1],
-                    sp.half_extents[2],
-                ),
-            };
-            state.vis.push(vb);
-            vec![1.0, sp.body_index as f32]
+    spawn_random: bodies_spawn_random = |state, spawned| {
+        interact::append_spawned_vis(&state.world, &mut state.vis, spawned);
+        match spawned.first() {
+            Some(sp) => vec![1.0, sp.body_index as f32],
+            None => vec![0.0, 0.0],
         }
-        None => vec![0.0, 0.0],
     },
     delete_at_ray: bodies_delete_at_ray = |_state, _index| {},
     counters: bodies_counters,

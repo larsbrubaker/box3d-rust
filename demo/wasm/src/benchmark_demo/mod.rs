@@ -416,15 +416,11 @@ pub fn bench_candy_hull() -> Vec<f32> {
 // Shared grab / spawn / delete / counters / debug surface + world toggles
 // ---------------------------------------------------------------------------
 
-/// Push a freshly spawned bullet sphere onto the render list (shift-click).
-fn on_spawn(state: &mut BenchScene, spawned: Option<interact::SpawnedBody>) -> Vec<f32> {
-    match spawned {
-        Some(sp) => {
-            state
-                .bodies
-                .push(VisBody::sphere_body(sp.body_index, sp.half_extents[0]));
-            vec![1.0, sp.body_index as f32]
-        }
+/// Push freshly spawned projectile bodies onto the render list (shift-click).
+fn on_spawn(state: &mut BenchScene, spawned: &[interact::SpawnedBody]) -> Vec<f32> {
+    interact::append_spawned_vis(&state.world, &mut state.bodies, spawned);
+    match spawned.first() {
+        Some(sp) => vec![1.0, sp.body_index as f32],
         None => vec![0.0, 0.0],
     }
 }

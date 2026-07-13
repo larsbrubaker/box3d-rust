@@ -248,29 +248,30 @@ pub fn world_far_pyramid_spawn_random(
     tx: f32,
     ty: f32,
     tz: f32,
+    variant: u8,
 ) -> Vec<f32> {
     with_far(|state| {
-        match interact::spawn_random(
+        let spawned = interact::spawn_projectile(
             &mut state.world,
             to_world(state.base, ox, oy, oz),
             interact::vec3(tx, ty, tz),
-        ) {
-            Some(spawned) => {
-                state.bodies.push(FarBody {
-                    body_index: spawned.body_index,
-                    half_extents: spawned.half_extents,
-                });
-                vec![
-                    1.0,
-                    spawned.body_index as f32,
-                    spawned.half_extents[0],
-                    spawned.half_extents[1],
-                    spawned.half_extents[2],
-                    spawned.kind as f32,
-                ]
-            }
-            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            interact::LaunchVariant::from_u8(variant),
+        );
+        for sp in &spawned {
+            // Far Pyramid renders everything as instanced boxes; pack sphere /
+            // cylinder / capsule extents so instances stay visible.
+            let he = if sp.kind == crate::vis::KIND_SPHERE {
+                let r = sp.half_extents[0];
+                [r, r, r]
+            } else {
+                sp.half_extents
+            };
+            state.bodies.push(FarBody {
+                body_index: sp.body_index,
+                half_extents: he,
+            });
         }
+        interact::spawn_ok_payload(&spawned)
     })
 }
 #[wasm_bindgen]

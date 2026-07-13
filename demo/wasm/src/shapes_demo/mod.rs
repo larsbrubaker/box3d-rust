@@ -445,15 +445,10 @@ crate::demo_shell! {
     mouse_up: shapes_mouse_up,
     mouse_active: shapes_mouse_active,
     // Shapes' spawn payload also reports the half-extents + kind so the page can
-    // size the instanced mesh; the picker only ever spawns the bullet sphere.
-    spawn_random: shapes_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            let idx = sp.body_index;
-            let hx = sp.half_extents[0];
-            state.bodies.push(VisBody::sphere_body(idx, hx));
-            vec![1.0, idx as f32, hx, hx, hx, sp.kind as f32]
-        }
-        None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    // size the instanced mesh.
+    spawn_random: shapes_spawn_random = |state, spawned| {
+        crate::interact::append_spawned_vis(&state.world, &mut state.bodies, spawned);
+        crate::interact::spawn_ok_payload(spawned)
     },
     // On delete, clear the Static Invoke handle if it was removed, and prune the
     // Wind chain id list so a stale `BodyId` never reaches `shape_apply_wind`

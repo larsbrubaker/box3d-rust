@@ -524,24 +524,32 @@ pub fn sensor_mouse_active() -> bool {
     with_state(|state| state.grab.is_active())
 }
 
-/// Shift-click spawn the C bullet sphere along the pick ray, tracked as a
-/// non-sensor render body. Returns `[hit, index, hx, hy, hz, kind]`.
+/// Shift-click spawn a projectile along the pick ray, tracked as a non-sensor
+/// render body. `variant`: 0 = sphere, 1 = cylinder, 2 = human.
+/// Returns `[hit, index, hx, hy, hz, kind]`.
 #[wasm_bindgen]
-pub fn sensor_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+pub fn sensor_spawn_random(
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    tx: f32,
+    ty: f32,
+    tz: f32,
+    variant: u8,
+) -> Vec<f32> {
     with_state(|state| {
-        match interact::spawn_random(
+        let spawned = interact::spawn_projectile(
             &mut state.world,
             interact::pos(ox, oy, oz),
             interact::vec3(tx, ty, tz),
-        ) {
-            Some(spawned) => {
-                let idx = spawned.body_index;
-                let r = spawned.half_extents[0];
-                state.vis.push(VisBody::sphere_body(idx, r), 0, false);
-                vec![1.0, idx as f32, r, r, r, spawned.kind as f32]
-            }
-            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            interact::LaunchVariant::from_u8(variant),
+        );
+        let mut temp = Vec::new();
+        interact::append_spawned_vis(&state.world, &mut temp, &spawned);
+        for vb in temp {
+            state.vis.push(vb, 0, false);
         }
+        interact::spawn_ok_payload(&spawned)
     })
 }
 

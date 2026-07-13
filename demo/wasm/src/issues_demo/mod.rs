@@ -271,14 +271,9 @@ crate::demo_shell! {
     mouse_move: issues_mouse_move,
     mouse_up: issues_mouse_up,
     mouse_active: issues_mouse_active,
-    spawn_random: issues_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            let idx = sp.body_index;
-            let hx = sp.half_extents[0];
-            state.bodies.push(VisBody::sphere_body(idx, hx));
-            vec![1.0, idx as f32, hx, hx, hx, sp.kind as f32]
-        }
-        None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    spawn_random: issues_spawn_random = |state, spawned| {
+        crate::interact::append_spawned_vis(&state.world, &mut state.bodies, spawned);
+        crate::interact::spawn_ok_payload(spawned)
     },
     delete_at_ray: issues_delete_at_ray = |state, index| {
         // Prune a deleted Convex Jitter hull body from its render channel.

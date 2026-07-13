@@ -430,21 +430,12 @@ crate::demo_shell! {
     mouse_move: robustness_mouse_move,
     mouse_up: robustness_mouse_up,
     mouse_active: robustness_mouse_active,
-    spawn_random: robustness_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            let vb = match sp.kind {
-                1 => VisBody::sphere_body(sp.body_index, sp.half_extents[0]),
-                _ => VisBody::box_body(
-                    sp.body_index,
-                    sp.half_extents[0],
-                    sp.half_extents[1],
-                    sp.half_extents[2],
-                ),
-            };
-            state.bodies.push(vb);
-            vec![1.0, sp.body_index as f32]
+    spawn_random: robustness_spawn_random = |state, spawned| {
+        crate::interact::append_spawned_vis(&state.world, &mut state.bodies, spawned);
+        match spawned.first() {
+            Some(sp) => vec![1.0, sp.body_index as f32],
+            None => vec![0.0, 0.0],
         }
-        None => vec![0.0, 0.0],
     },
     delete_at_ray: robustness_delete_at_ray = |state, index| {
         state.recovery_body_ids.retain(|id| id.index1 - 1 != index);

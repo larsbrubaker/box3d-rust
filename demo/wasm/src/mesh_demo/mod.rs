@@ -483,14 +483,9 @@ crate::demo_shell! {
     mouse_move: mesh_mouse_move,
     mouse_up: mesh_mouse_up,
     mouse_active: mesh_mouse_active,
-    spawn_random: mesh_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            let idx = sp.body_index;
-            let hx = sp.half_extents[0];
-            state.bodies.push(VisBody::sphere_body(idx, hx));
-            vec![1.0, idx as f32, hx, hx, hx, sp.kind as f32]
-        }
-        None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    spawn_random: mesh_spawn_random = |state, spawned| {
+        crate::interact::append_spawned_vis(&state.world, &mut state.bodies, spawned);
+        crate::interact::spawn_ok_payload(spawned)
     },
     delete_at_ray: mesh_delete_at_ray = |state, index| {
         // Keep the drop-body handle honest if the picker body was the one deleted.

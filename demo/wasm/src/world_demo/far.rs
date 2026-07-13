@@ -419,19 +419,29 @@ crate::demo_shell! {
     mouse_move: world_far_mouse_move,
     mouse_up: world_far_mouse_up,
     mouse_active: world_far_mouse_active,
-    // The picker always spawns the bullet sphere (kind 1, r = 0.25). Pack the
-    // render params as [r, r, r] (not sphere's default [r, 0, 0]) so the Far Mesh
+    // Pack sphere params as [r, r, r] (not the default [r, 0, 0]) so the Far Mesh
     // Drop instanced box renderer gives a cube-shaped instance, not a degenerate
-    // sliver — matching the Far Pyramid spawn packing.
-    spawn_random: world_far_spawn_random = |state, spawned| match spawned {
-        Some(sp) => {
-            let r = sp.half_extents[0];
-            let mut vb = VisBody::sphere_body(sp.body_index, r);
-            vb.params = [r, r, r, 0.0, 0.0, 0.0, 0.0];
-            state.bodies.push(vb);
-            vec![1.0, sp.body_index as f32]
+    // sliver — matching the Far Pyramid spawn packing. Non-sphere variants use the
+    // shared VisBody helper.
+    spawn_random: world_far_spawn_random = |state, spawned| {
+        for sp in spawned {
+            if sp.kind == crate::vis::KIND_SPHERE {
+                let r = sp.half_extents[0];
+                let mut vb = VisBody::sphere_body(sp.body_index, r);
+                vb.params = [r, r, r, 0.0, 0.0, 0.0, 0.0];
+                state.bodies.push(vb);
+            } else {
+                crate::interact::append_spawned_vis(
+                    &state.world,
+                    &mut state.bodies,
+                    std::slice::from_ref(sp),
+                );
+            }
         }
-        None => vec![0.0, 0.0],
+        match spawned.first() {
+            Some(sp) => vec![1.0, sp.body_index as f32],
+            None => vec![0.0, 0.0],
+        }
     },
     delete_at_ray: world_far_delete_at_ray = |_state, _index| {},
     counters: world_far_counters,

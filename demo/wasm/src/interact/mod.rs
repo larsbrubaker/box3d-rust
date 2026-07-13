@@ -12,18 +12,24 @@ use box3d_rust::body::{
     body_set_target_transform, create_body, destroy_body, is_body_awake,
 };
 use box3d_rust::geometry::Sphere;
+use box3d_rust::hull::create_cylinder;
+use box3d_rust::human::{
+    create_human, human_set_bullet, human_set_velocity, Human, BONE_COUNT,
+};
 use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
 use box3d_rust::joint::{create_motor_joint, destroy_joint, joint_is_valid};
 use box3d_rust::math_functions::{
     length, Pos, Transform, Vec3, WorldTransform, QUAT_IDENTITY, VEC3_ZERO,
 };
-use box3d_rust::shape::{create_sphere_shape, shape_get_body};
+use box3d_rust::shape::{create_hull_shape, create_sphere_shape, shape_get_body};
 use box3d_rust::types::{
     default_body_def, default_motor_joint_def, default_query_filter, default_shape_def, BodyType,
 };
 use box3d_rust::world::{world_cast_ray_closest, world_get_counters, World};
 use std::cell::Cell;
 use wasm_bindgen::prelude::*;
+
+use crate::vis::{capsule_from_body, VisBody, KIND_CAPSULE, KIND_CYLINDER, KIND_SPHERE};
 
 mod draw;
 pub use draw::*;
@@ -162,12 +168,32 @@ impl MouseGrab {
 }
 
 /// Descriptor for a body the demo renderer should track after spawn.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpawnedBody {
     pub body_index: i32,
     pub half_extents: [f32; 3],
-    /// 0 = box, 1 = sphere, 2 = capsule
+    /// 0 = box, 1 = sphere, 2 = capsule, 3 = cylinder (`VisBody` kinds).
     pub kind: u8,
+}
+
+/// Shift-click launch variant (`sample.cpp` :1211-1250). Modifier precedence matches
+/// C: Ctrl → cylinder, else Alt → ragdoll, else sphere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LaunchVariant {
+    Sphere = 0,
+    Cylinder = 1,
+    Human = 2,
+}
+
+impl LaunchVariant {
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::Cylinder,
+            2 => Self::Human,
+            _ => Self::Sphere,
+        }
+    }
 }
 
 /// `m_launchSpeedScale` default from the base `Sample` constructor
@@ -251,41 +277,87 @@ const PROJECTILE_RADIUS: f32 = 0.25;
 /// `shapeDef.density *= 4.0f`).
 const PROJECTILE_DENSITY_SCALE: f32 = 4.0;
 
-/// Spawn the C sample's shift-click projectile along a pick ray: a dynamic
-/// bullet **sphere** of radius 0.25 at `origin + 2·direction`, launched at
-/// `20·launchSpeedScale·direction`, with the default shape density boosted ×4.
-/// Mirrors `Sample::MouseDown`'s plain shift branch (`sample.cpp` :1238-1250) —
-/// no `MOD_CTRL` (cylinder) / `MOD_ALT` (ragdoll) variant. Returns a render
-/// descriptor (`kind = 1`, sphere).
-pub fn spawn_random(world: &mut World, origin: Pos, translation: Vec3) -> Option<SpawnedBody> {
+/// Spinning-cylinder projectile: `b3CreateCylinder(2.0, 0.15, 0.0, 6)` (`sample.cpp`
+/// :1226). Half-height for the centered render mesh is `height / 2`.
+const CYLINDER_HEIGHT: f32 = 2.0;
+const CYLINDER_RADIUS: f32 = 0.15;
+const CYLINDER_SIDES: i32 = 6;
+const CYLINDER_HALF_HEIGHT: f32 = CYLINDER_HEIGHT * 0.5;
+
+/// Normalize the pick-ray translation; `None` when the ray is degenerate.
+fn pick_direction(translation: Vec3) -> Option<Vec3> {
     let len = length(translation);
     if len < 1e-8 {
         return None;
     }
-    let direction = Vec3 {
+    Some(Vec3 {
         x: translation.x / len,
         y: translation.y / len,
         z: translation.z / len,
-    };
+    })
+}
 
-    // Projectile launch speed: `20.0 * m_launchSpeedScale` (`sample.cpp` :1243),
-    // read at spawn time so per-scene overrides (`sim_set_launch_speed_scale`) apply.
-    let projectile_speed = 20.0 * launch_speed_scale();
-
-    let mut body_def = default_body_def();
-    body_def.type_ = BodyType::Dynamic;
-    // position = pickRay.origin + 2.0f * direction (sample.cpp :1242)
-    body_def.position = Pos {
+fn spawn_position(origin: Pos, direction: Vec3) -> Pos {
+    // position = pickRay.origin + 2.0f * direction (sample.cpp :1221 / :1242 / :1232)
+    Pos {
         x: origin.x + 2.0 * direction.x,
         y: origin.y + 2.0 * direction.y,
         z: origin.z + 2.0 * direction.z,
+    }
+}
+
+fn scaled_velocity(direction: Vec3, speed_factor: f32) -> Vec3 {
+    let speed = speed_factor * launch_speed_scale();
+    Vec3 {
+        x: speed * direction.x,
+        y: speed * direction.y,
+        z: speed * direction.z,
+    }
+}
+
+/// Spawn the C sample's plain Shift-click bullet sphere (`sample.cpp` :1238-1250):
+/// radius 0.25, density ×4, speed `20·launchSpeedScale`. Thin wrapper over
+/// [`spawn_projectile`] for call sites that only want the sphere branch.
+#[allow(dead_code)]
+pub fn spawn_random(world: &mut World, origin: Pos, translation: Vec3) -> Option<SpawnedBody> {
+    spawn_projectile(world, origin, translation, LaunchVariant::Sphere)
+        .into_iter()
+        .next()
+}
+
+/// Spawn a Shift-click projectile along a pick ray. Variant selects the C branch:
+/// sphere (plain Shift), spinning cylinder (Shift+Ctrl), or ragdoll human
+/// (Shift+Alt). Returns one descriptor per render body (many for a human).
+pub fn spawn_projectile(
+    world: &mut World,
+    origin: Pos,
+    translation: Vec3,
+    variant: LaunchVariant,
+) -> Vec<SpawnedBody> {
+    let Some(direction) = pick_direction(translation) else {
+        return Vec::new();
     };
-    // linearVelocity = (20.0f * m_launchSpeedScale) * direction (sample.cpp :1243)
-    body_def.linear_velocity = Vec3 {
-        x: projectile_speed * direction.x,
-        y: projectile_speed * direction.y,
-        z: projectile_speed * direction.z,
-    };
+    match variant {
+        LaunchVariant::Sphere => spawn_sphere_projectile(world, origin, direction)
+            .into_iter()
+            .collect(),
+        LaunchVariant::Cylinder => spawn_cylinder_projectile(world, origin, direction)
+            .into_iter()
+            .collect(),
+        LaunchVariant::Human => spawn_human_projectile(world, origin, direction),
+    }
+}
+
+fn spawn_sphere_projectile(
+    world: &mut World,
+    origin: Pos,
+    direction: Vec3,
+) -> Option<SpawnedBody> {
+    // Projectile launch speed: `20.0 * m_launchSpeedScale` (`sample.cpp` :1243).
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = spawn_position(origin, direction);
+    body_def.linear_velocity = scaled_velocity(direction, 20.0);
     body_def.is_bullet = true; // sample.cpp :1244
 
     let body_id = create_body(world, &body_def);
@@ -302,8 +374,131 @@ pub fn spawn_random(world: &mut World, origin: Pos, translation: Vec3) -> Option
     Some(SpawnedBody {
         body_index: body_id.index1 - 1,
         half_extents: [PROJECTILE_RADIUS, PROJECTILE_RADIUS, PROJECTILE_RADIUS],
-        kind: 1, // sphere
+        kind: KIND_SPHERE,
     })
+}
+
+fn spawn_cylinder_projectile(
+    world: &mut World,
+    origin: Pos,
+    direction: Vec3,
+) -> Option<SpawnedBody> {
+    // sample.cpp :1217-1228 — dynamic bullet, speed `10 * m_launchSpeedScale`,
+    // hull = b3CreateCylinder(2.0, 0.15, 0.0, 6).
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = spawn_position(origin, direction);
+    body_def.linear_velocity = scaled_velocity(direction, 10.0);
+    body_def.is_bullet = true;
+
+    let body_id = create_body(world, &body_def);
+    let shape_def = default_shape_def();
+    let hull = create_cylinder(CYLINDER_HEIGHT, CYLINDER_RADIUS, 0.0, CYLINDER_SIDES)?;
+    create_hull_shape(world, body_id, &shape_def, &hull);
+
+    // Render as a Y-axis cylinder. Physics hull spans y∈[0, height]; offset the
+    // centered mesh by half-height so it lines up with the hull.
+    Some(SpawnedBody {
+        body_index: body_id.index1 - 1,
+        // [radius, half_height, local_y_offset]
+        half_extents: [CYLINDER_RADIUS, CYLINDER_HALF_HEIGHT, CYLINDER_HALF_HEIGHT],
+        kind: KIND_CYLINDER,
+    })
+}
+
+fn spawn_human_projectile(world: &mut World, origin: Pos, direction: Vec3) -> Vec<SpawnedBody> {
+    // sample.cpp :1230-1236 — CreateHuman(..., 1,1,1, group 0, null, true),
+    // Human_SetBullet(true), Human_SetVelocity((10 * scale) * dir).
+    let position = spawn_position(origin, direction);
+    let mut human = Human::default();
+    create_human(
+        &mut human, world, position, 1.0, 1.0, 1.0, 0, 0, true,
+    );
+    human_set_bullet(&human, world, true);
+    human_set_velocity(&human, world, scaled_velocity(direction, 10.0));
+
+    let mut out = Vec::with_capacity(BONE_COUNT);
+    for i in 0..BONE_COUNT {
+        let body_id = human.bones[i].body_id;
+        if body_id.is_null() {
+            continue;
+        }
+        let body_index = body_id.index1 - 1;
+        let Some(cap) = capsule_from_body(world, body_index) else {
+            continue;
+        };
+        // Pack radius + half-segment for adapters that don't re-query the world.
+        let half_len = 0.5
+            * length(Vec3 {
+                x: cap.center2.x - cap.center1.x,
+                y: cap.center2.y - cap.center1.y,
+                z: cap.center2.z - cap.center1.z,
+            });
+        out.push(SpawnedBody {
+            body_index,
+            half_extents: [cap.radius, half_len, cap.radius],
+            kind: KIND_CAPSULE,
+        });
+    }
+    out
+}
+
+/// Append spawned projectile bodies to a `VisBody` render list (sphere / capsule /
+/// cylinder), looking up live capsule geometry from the world when needed.
+pub fn append_spawned_vis(world: &World, bodies: &mut Vec<VisBody>, spawned: &[SpawnedBody]) {
+    for sp in spawned {
+        match sp.kind {
+            KIND_SPHERE => {
+                bodies.push(VisBody::sphere_body(sp.body_index, sp.half_extents[0]));
+            }
+            KIND_CAPSULE => {
+                if let Some(cap) = capsule_from_body(world, sp.body_index) {
+                    bodies.push(VisBody::capsule_body(sp.body_index, &cap));
+                }
+            }
+            KIND_CYLINDER => {
+                let local = Transform {
+                    p: Vec3 {
+                        x: 0.0,
+                        y: sp.half_extents[2],
+                        z: 0.0,
+                    },
+                    q: QUAT_IDENTITY,
+                };
+                bodies.push(VisBody::cylinder_local(
+                    sp.body_index,
+                    sp.half_extents[0],
+                    sp.half_extents[1],
+                    local,
+                    0,
+                ));
+            }
+            _ => {
+                bodies.push(VisBody::box_body(
+                    sp.body_index,
+                    sp.half_extents[0],
+                    sp.half_extents[1],
+                    sp.half_extents[2],
+                ));
+            }
+        }
+    }
+}
+
+/// Default wasm return payload: `[ok, body_index, hx, hy, hz, kind]` for the
+/// first spawned body (ok=0 when empty).
+pub fn spawn_ok_payload(spawned: &[SpawnedBody]) -> Vec<f32> {
+    match spawned.first() {
+        Some(sp) => vec![
+            1.0,
+            sp.body_index as f32,
+            sp.half_extents[0],
+            sp.half_extents[1],
+            sp.half_extents[2],
+            sp.kind as f32,
+        ],
+        None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    }
 }
 
 /// Destroy the dynamic body under a pick ray. Returns the destroyed body index, or -1.
@@ -383,4 +578,118 @@ pub fn pos(x: f32, y: f32, z: f32) -> Pos {
 
 pub fn vec3(x: f32, y: f32, z: f32) -> Vec3 {
     Vec3 { x, y, z }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use box3d_rust::body::{body_get_linear_velocity, body_is_bullet, make_body_id};
+    use box3d_rust::types::default_world_def;
+
+    fn test_world() -> World {
+        World::new(&default_world_def())
+    }
+
+    fn unit_z() -> Vec3 {
+        Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        }
+    }
+
+    #[test]
+    fn spawn_cylinder_is_bullet_with_c_dims_and_speed() {
+        reset_launch_speed_scale();
+        let mut world = test_world();
+        let origin = Pos {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let spawned = spawn_projectile(&mut world, origin, unit_z(), LaunchVariant::Cylinder);
+        assert_eq!(spawned.len(), 1);
+        let sp = spawned[0];
+        assert_eq!(sp.kind, KIND_CYLINDER);
+        assert!((sp.half_extents[0] - CYLINDER_RADIUS).abs() < 1e-6);
+        assert!((sp.half_extents[1] - CYLINDER_HALF_HEIGHT).abs() < 1e-6);
+
+        let body_id = make_body_id(&world, sp.body_index);
+        assert!(body_is_bullet(&world, body_id));
+
+        let vel = body_get_linear_velocity(&world, body_id);
+        let expected = 10.0 * launch_speed_scale();
+        let mag = length(vel);
+        assert!(
+            (mag - expected).abs() < 1e-4,
+            "cylinder speed {mag} != 10*scale ({expected})"
+        );
+        assert!((vel.z - expected).abs() < 1e-4);
+    }
+
+    #[test]
+    fn spawn_human_is_bullet_with_c_velocity() {
+        reset_launch_speed_scale();
+        let mut world = test_world();
+        let origin = Pos {
+            x: 0.0,
+            y: 5.0,
+            z: 0.0,
+        };
+        let spawned = spawn_projectile(&mut world, origin, unit_z(), LaunchVariant::Human);
+        assert!(
+            spawned.len() > 1,
+            "human should spawn multiple bone bodies, got {}",
+            spawned.len()
+        );
+        assert!(spawned.iter().all(|s| s.kind == KIND_CAPSULE));
+
+        let expected = 10.0 * launch_speed_scale();
+        for sp in &spawned {
+            let body_id = make_body_id(&world, sp.body_index);
+            assert!(
+                body_is_bullet(&world, body_id),
+                "bone {} should be bullet",
+                sp.body_index
+            );
+            let vel = body_get_linear_velocity(&world, body_id);
+            let mag = length(vel);
+            assert!(
+                (mag - expected).abs() < 1e-3,
+                "bone {} speed {mag} != 10*scale ({expected})",
+                sp.body_index
+            );
+        }
+    }
+
+    #[test]
+    fn spawn_sphere_still_uses_20x_scale() {
+        reset_launch_speed_scale();
+        let mut world = test_world();
+        let spawned = spawn_projectile(
+            &mut world,
+            Pos {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            unit_z(),
+            LaunchVariant::Sphere,
+        );
+        assert_eq!(spawned.len(), 1);
+        let body_id = make_body_id(&world, spawned[0].body_index);
+        let expected = 20.0 * launch_speed_scale();
+        let mag = length(body_get_linear_velocity(&world, body_id));
+        assert!((mag - expected).abs() < 1e-4);
+    }
+
+    #[test]
+    fn launch_variant_ctrl_precedes_alt() {
+        // Document the C precedence: from_u8 only encodes a single choice; TS
+        // picks Ctrl over Alt before calling. Sphere is the default fallback.
+        assert_eq!(LaunchVariant::from_u8(0), LaunchVariant::Sphere);
+        assert_eq!(LaunchVariant::from_u8(1), LaunchVariant::Cylinder);
+        assert_eq!(LaunchVariant::from_u8(2), LaunchVariant::Human);
+        assert_eq!(LaunchVariant::from_u8(99), LaunchVariant::Sphere);
+    }
 }

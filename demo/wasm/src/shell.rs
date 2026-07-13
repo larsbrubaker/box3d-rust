@@ -32,7 +32,7 @@
 //!     base: |s| ZERO_POS,                // |&State| -> Pos  (scene base frame)
 //!     mouse_down: my_mouse_down, mouse_move: my_mouse_move,
 //!     mouse_up: my_mouse_up, mouse_active: my_mouse_active,
-//!     spawn_random: my_spawn = |state, spawned| { /* -> Vec<f32> */ },
+//!     spawn_random: my_spawn = |state, spawned| { /* &[SpawnedBody] -> Vec<f32> */ },
 //!     delete_at_ray: my_delete = |state, index| { /* post-delete cleanup */ },
 //!     counters: my_counters,
 //!     debug_draw: my_debug_draw, debug_text: my_debug_text,
@@ -138,10 +138,19 @@ macro_rules! demo_shell {
             $with(|state| state.$grab.is_active())
         }
 
-        /// Shift-click spawn the C bullet sphere along the pick ray. The render
-        /// bookkeeping + return payload are the category's `spawn_random` hook.
+        /// Shift-click spawn a projectile along the pick ray.
+        /// `variant`: 0 = sphere, 1 = cylinder (Ctrl), 2 = human (Alt).
+        /// The render bookkeeping + return payload are the category's `spawn_random` hook.
         #[wasm_bindgen::prelude::wasm_bindgen]
-        pub fn $spawn(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+        pub fn $spawn(
+            ox: f32,
+            oy: f32,
+            oz: f32,
+            tx: f32,
+            ty: f32,
+            tz: f32,
+            variant: u8,
+        ) -> Vec<f32> {
             $with(|state| {
                 let base_fn: &dyn Fn(&$state) -> box3d_rust::math_functions::Pos = &$base;
                 let base: box3d_rust::math_functions::Pos = base_fn(&*state);
@@ -153,7 +162,7 @@ macro_rules! demo_shell {
                         z: oz,
                     },
                 );
-                let spawned = $crate::interact::spawn_random(
+                let spawned = $crate::interact::spawn_projectile(
                     &mut state.$world,
                     origin,
                     box3d_rust::math_functions::Vec3 {
@@ -161,10 +170,11 @@ macro_rules! demo_shell {
                         y: ty,
                         z: tz,
                     },
+                    $crate::interact::LaunchVariant::from_u8(variant),
                 );
-                let f: &dyn Fn(&mut $state, Option<$crate::interact::SpawnedBody>) -> Vec<f32> =
+                let f: &dyn Fn(&mut $state, &[$crate::interact::SpawnedBody]) -> Vec<f32> =
                     &$spawn_fn;
-                f(state, spawned)
+                f(state, &spawned)
             })
         }
 

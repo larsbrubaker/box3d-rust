@@ -703,48 +703,24 @@ pub fn query_mouse_active() -> bool {
 }
 
 #[wasm_bindgen]
-pub fn query_spawn_random(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
+pub fn query_spawn_random(
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    tx: f32,
+    ty: f32,
+    tz: f32,
+    variant: u8,
+) -> Vec<f32> {
     with_state(|state| {
-        match interact::spawn_random(&mut state.world, pos(ox, oy, oz), vec3(tx, ty, tz)) {
-            Some(s) => {
-                match s.kind {
-                    1 => state
-                        .vis
-                        .push(VisBody::sphere_body(s.body_index, s.half_extents[0])),
-                    2 => state.vis.push(VisBody::capsule_body(
-                        s.body_index,
-                        &Capsule {
-                            center1: Vec3 {
-                                x: 0.0,
-                                y: -s.half_extents[1],
-                                z: 0.0,
-                            },
-                            center2: Vec3 {
-                                x: 0.0,
-                                y: s.half_extents[1],
-                                z: 0.0,
-                            },
-                            radius: s.half_extents[0],
-                        },
-                    )),
-                    _ => state.vis.push(VisBody::box_body(
-                        s.body_index,
-                        s.half_extents[0],
-                        s.half_extents[1],
-                        s.half_extents[2],
-                    )),
-                }
-                vec![
-                    1.0,
-                    s.body_index as f32,
-                    s.half_extents[0],
-                    s.half_extents[1],
-                    s.half_extents[2],
-                    s.kind as f32,
-                ]
-            }
-            None => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        }
+        let spawned = interact::spawn_projectile(
+            &mut state.world,
+            pos(ox, oy, oz),
+            vec3(tx, ty, tz),
+            interact::LaunchVariant::from_u8(variant),
+        );
+        interact::append_spawned_vis(&state.world, &mut state.vis, &spawned);
+        interact::spawn_ok_payload(&spawned)
     })
 }
 

@@ -34,7 +34,15 @@ export type InteractWasm = {
   sim_mouse_move(px: number, py: number, pz: number): void;
   sim_mouse_up(): void;
   sim_mouse_active(): boolean;
-  sim_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  sim_spawn_random(
+    ox: number,
+    oy: number,
+    oz: number,
+    tx: number,
+    ty: number,
+    tz: number,
+    variant?: number,
+  ): Float32Array;
   sim_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   sim_counters(): Float32Array;
   sim_debug_draw(flags: number): Float32Array;
@@ -100,7 +108,8 @@ export function makeInteractAdapter(
     sim_mouse_move: (px, py, pz) => call("mouse_move")(px, py, pz),
     sim_mouse_up: () => call("mouse_up")(),
     sim_mouse_active: () => call("mouse_active")(),
-    sim_spawn_random: (ox, oy, oz, tx, ty, tz) => call("spawn_random")(ox, oy, oz, tx, ty, tz),
+    sim_spawn_random: (ox, oy, oz, tx, ty, tz, variant = 0) =>
+      call("spawn_random")(ox, oy, oz, tx, ty, tz, variant),
     sim_delete_at_ray: (ox, oy, oz, tx, ty, tz) => call("delete_at_ray")(ox, oy, oz, tx, ty, tz),
     sim_counters: () => call("counters")(),
     sim_debug_draw: (flags) => call("debug_draw")(flags),
@@ -960,7 +969,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       <tr><td>Tab</td><td>Hide / show UI</td></tr>
       <tr><td>Left-click</td><td>Select body</td></tr>
       <tr><td>Ctrl + click</td><td>Grab body</td></tr>
-      ${enableSpawnDelete ? "<tr><td>Shift + click</td><td>Spawn body</td></tr>" : ""}
+      ${enableSpawnDelete ? "<tr><td>Shift + left</td><td>Shoot (Ctrl spin, Alt ragdoll)</td></tr>" : ""}
       <tr><td>Alt + drag</td><td>Orbit / pan / zoom</td></tr>
       <tr><td>Right-drag</td><td>Look (fly camera)</td></tr>
       <tr><td>WASD / arrows</td><td>Fly move</td></tr>
@@ -974,7 +983,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   // --- Pointer interaction (C Sample::MouseDown/Move, sample.cpp:1136-1289) ---
   //   plain left-click : select the body under the cursor (store for F-frame)
   //   Ctrl + left-drag : grab a dynamic body with the motor-joint mouse spring
-  //   Shift + left     : spawn the bullet sphere along the pick ray
+  //   Shift + left     : shoot projectile (Ctrl = spinning cylinder, Alt = ragdoll)
   // Camera gestures (Alt+drag orbit/pan/zoom, right-drag fly) live in the camera
   // controller, so nothing here disables it. Grab tracks the drag point along the
   // pick ray at the initial hit fraction, exactly like C MouseMove:1288.
@@ -1019,11 +1028,20 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
 
-    // Shift+click spawns the bullet body (C sample.cpp:1211). Shift+Ctrl (cylinder)
-    // and Shift+Alt (human) are batch-3: their wasm exports don't exist yet.
+    // Shift+click spawns a projectile (C sample.cpp:1211). Precedence matches C:
+    // Shift+Ctrl → spinning cylinder, else Shift+Alt → ragdoll human, else sphere.
     if (e.shiftKey && enableSpawnDelete) {
       const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
-      wasm.sim_spawn_random(origin.x, origin.y, origin.z, translation.x, translation.y, translation.z);
+      const variant = e.ctrlKey ? 1 : e.altKey ? 2 : 0;
+      wasm.sim_spawn_random(
+        origin.x,
+        origin.y,
+        origin.z,
+        translation.x,
+        translation.y,
+        translation.z,
+        variant,
+      );
       e.preventDefault();
       e.stopPropagation();
       suppressClick = true;
