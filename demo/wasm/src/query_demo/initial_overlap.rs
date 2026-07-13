@@ -154,13 +154,15 @@ fn compute_wireframe(world: &World, mesh: &MeshData, body_id: BodyId) -> Vec<f32
 }
 
 /// The cached fixed capsule + zero-length cast result.
+/// Packing: `[ c1(3), c2(3), radius, hit, fraction, px,py,pz, nx,ny,nz ]`.
 #[wasm_bindgen]
 pub fn io_cast() -> Vec<f32> {
     with_state(|state| state.cast.clone())
 }
 
 /// The fixed capsule + zero-length cast result.
-/// `[ c1(3), c2(3), radius, hit, px,py,pz, nx,ny,nz ]`.
+/// `[ c1(3), c2(3), radius, hit, fraction, px,py,pz, nx,ny,nz ]`.
+/// `fraction` mirrors C `context.count > 0 ? context.fractions[0] : 1.0`.
 fn compute_cast(world: &World, initial_overlap: bool) -> Vec<f32> {
     // C: offset = {-2.1,-0.8,0.95}, capsule ±y along up, radius 0.25 (line 1638).
     let offset = Vec3 {
@@ -204,9 +206,17 @@ fn compute_cast(world: &World, initial_overlap: bool) -> Vec<f32> {
         |sid, p, n, f, m, t, _c| cast_closest(world, &mut ctx, sid, p, n, f, m, t),
     );
 
+    // C Step: fraction = count > 0 ? fractions[0] : 1.0
+    let fraction = if ctx.count > 0 {
+        ctx.fractions[0]
+    } else {
+        1.0
+    };
+
     let mut out = vec![c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, radius];
     if ctx.count > 0 {
         out.push(1.0);
+        out.push(fraction);
         out.extend_from_slice(&[
             ctx.points[0].x as f32,
             ctx.points[0].y as f32,
@@ -217,6 +227,7 @@ fn compute_cast(world: &World, initial_overlap: bool) -> Vec<f32> {
         ]);
     } else {
         out.push(0.0);
+        out.push(fraction);
         out.extend_from_slice(&[0.0; 6]);
     }
     out
