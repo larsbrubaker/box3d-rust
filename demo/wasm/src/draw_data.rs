@@ -171,7 +171,10 @@ thread_local! {
 /// Installs the capture callbacks on the world if they are not already present.
 /// The handles it stamps (`user_shape = shape index1`) persist on the shapes and
 /// are reused on later calls; only the freshly recomputed colors change.
-fn with_engine_colors<R>(world: &mut World, f: impl FnOnce(&World, &HashMap<u64, u32>) -> R) -> R {
+pub(crate) fn with_engine_colors<R>(
+    world: &mut World,
+    f: impl FnOnce(&World, &HashMap<u64, u32>) -> R,
+) -> R {
     if world.create_debug_shape.is_none() {
         world.create_debug_shape = Some(capture_create);
     }
@@ -199,7 +202,7 @@ fn with_engine_colors<R>(world: &mut World, f: impl FnOnce(&World, &HashMap<u64,
 /// presets in `(Default, Metallic]` and otherwise falls back to the per-bodyType
 /// table (`debug_adapter.c` :844-855). We store the *effective* preset (the raw
 /// value when 1..=5, else 0) so the TypeScript resolver can branch identically.
-fn pack_style(engine_color: u32, body_type: BodyType, transparent_dynamic: bool) -> u32 {
+pub(crate) fn pack_style(engine_color: u32, body_type: BodyType, transparent_dynamic: bool) -> u32 {
     let rgb = engine_color & STYLE_COLOR_MASK;
 
     let raw_preset = (engine_color >> 24) & 0xFF;

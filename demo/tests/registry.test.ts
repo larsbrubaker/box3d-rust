@@ -18,14 +18,17 @@ import { SCENES as compound } from "../src/demos/compound.ts";
 import { SCENES as continuous } from "../src/demos/continuous.ts";
 import { SCENES as determinism } from "../src/demos/determinism.ts";
 import { SCENES as geometry } from "../src/demos/geometry.ts";
+import { SCENES as issues } from "../src/demos/issues.ts";
 import { SCENES as joints } from "../src/demos/joints.ts";
 import { SCENES as manifolds } from "../src/demos/manifolds.ts";
 import { SCENES as mesh } from "../src/demos/mesh.ts";
 import { SCENES as queries } from "../src/demos/queries.ts";
 import { SCENES as ragdolls } from "../src/demos/ragdolls.ts";
+import { SCENES as robustness } from "../src/demos/robustness.ts";
 import { SCENES as sensors } from "../src/demos/sensors.ts";
 import { SCENES as shapes } from "../src/demos/shapes.ts";
 import { SCENES as stacking } from "../src/demos/stacking.ts";
+import { SCENES as tree } from "../src/demos/tree.ts";
 import { SCENES as world } from "../src/demos/world.ts";
 
 /**
@@ -37,19 +40,22 @@ import { SCENES as world } from "../src/demos/world.ts";
 const PAGES: Record<string, { scenes: readonly string[]; extra?: readonly string[] }> = {
   bodies: { scenes: bodies },
   benchmark: { scenes: benchmark },
-  character: { scenes: character, extra: ["village"] },
+  character: { scenes: character },
   compound: { scenes: compound },
   continuous: { scenes: continuous },
   determinism: { scenes: determinism },
   geometry: { scenes: geometry },
+  issues: { scenes: issues },
   joints: { scenes: joints },
   manifolds: { scenes: manifolds },
   mesh: { scenes: mesh },
   queries: { scenes: queries },
   ragdolls: { scenes: ragdolls },
+  robustness: { scenes: robustness },
   sensors: { scenes: sensors },
   shapes: { scenes: shapes },
   stacking: { scenes: stacking },
+  tree: { scenes: tree },
   world: { scenes: world },
 };
 

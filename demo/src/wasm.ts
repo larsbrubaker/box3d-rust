@@ -97,6 +97,27 @@ export interface Box3dWasm {
   ragdoll_styles(): Uint32Array;
   ragdoll_body_count(): number;
 
+  // Robustness (sample_robustness.cpp): 0 HighMassRatio1, 1 Tiny Pyramid,
+  // 2 Overlap Recovery, 3 Overflow Color Pile.
+  robustness_reset_scene(scene: number): number;
+  robustness_set_overlap_params(
+    extent: number,
+    base_count: number,
+    overlap: number,
+    speed: number,
+    hertz: number,
+    damping_ratio: number,
+  ): void;
+  robustness_step(dt: number, sub_steps: number): number;
+  robustness_poses(): Float32Array;
+  robustness_styles(): Uint32Array;
+  robustness_body_count(): number;
+  robustness_counters(): Float32Array;
+  /** [neighbor_count, overflow_contacts, total_contacts] (Overflow Color Pile). */
+  robustness_overflow_stats(): Float32Array;
+  /** Tiny Pyramid box edge length in centimetres (200 * extent). */
+  robustness_tiny_cm(): number;
+
   joint_reset_chain(): number;
   joint_reset_hinge(): number;
   joint_reset_gear_lift(): number;
@@ -411,6 +432,28 @@ export interface Box3dWasm {
   sim_reset_village(): number;
   sim_village_buildings(): Float32Array;
   sim_village_stats(): Float32Array;
+  // Compound / Tile Floor + Mesh Tile (sample_compound.cpp).
+  sim_reset_tile_floor(): number;
+  sim_reset_mesh_tile(): number;
+  sim_tile_transforms(): Float32Array;
+  sim_tile_half(): Float32Array;
+  sim_tile_stats(): Float32Array;
+  // Compound / Village character mover + sweeping query visualization.
+  sim_village_set_input(
+    throttle_x: number,
+    throttle_y: number,
+    jump: boolean,
+    sprint: boolean,
+    fwd_x: number,
+    fwd_z: number,
+    right_x: number,
+    right_z: number,
+  ): void;
+  sim_village_mover_step(dt: number): void;
+  sim_village_query_step(dt: number): void;
+  sim_village_mover_pose(): Float32Array;
+  sim_village_query(): Float32Array;
+  sim_village_toggle_third_person(): boolean;
   sim_reset_pyramid(): number;
   sim_reset_sphere_stack(): number;
 
@@ -458,6 +501,26 @@ export interface Box3dWasm {
   sim_stop_recording(): Uint8Array;
   sim_is_recording(): boolean;
   sim_record_start_step(): number;
+
+  // --- Replay viewer (sample_replay.cpp): .b3rec recording player ---
+  replay_load(data: Uint8Array): boolean;
+  replay_unload(): void;
+  replay_loaded(): boolean;
+  replay_frame_count(): number;
+  replay_frame(): number;
+  replay_time_step(): number;
+  replay_sub_step_count(): number;
+  replay_bounds(): Float32Array;
+  replay_body_count(): number;
+  replay_is_at_end(): boolean;
+  replay_has_diverged(): boolean;
+  replay_diverge_frame(): number;
+  replay_step(): void;
+  replay_seek(frame: number): void;
+  replay_restart(): void;
+  replay_scene_geometry(): Float32Array;
+  replay_body_transforms(): Float32Array;
+  replay_shape_styles(): Uint32Array;
 
   bench_reset_large_pyramid(): number;
   bench_reset_wide_pyramid(): number;
@@ -609,8 +672,17 @@ export interface Box3dWasm {
   determinism_set_enable_continuous(flag: boolean): void;
   determinism_set_recycle_distance(meters: number): void;
 
-  character_reset(): number;
-  character_reset_ex(mode: number, grid_count: number): number;
+  // Asset-free drag scenes: 0 = CapsulePlane, 1 = MoverOverlap.
+  character_reset(scene: number): number;
+  // Mover / Rigid Body take fetched OBJ text.
+  character_reset_mover(test_map_obj: string, stairs_obj: string): number;
+  character_reset_rigid_body(
+    test_map_obj: string,
+    stairs_obj: string,
+    building_obj: string,
+    voxel1_obj: string,
+    voxel2_obj: string,
+  ): number;
   character_set_input(
     throttle_x: number,
     throttle_y: number,
@@ -621,14 +693,70 @@ export interface Box3dWasm {
     right_x: number,
     right_z: number,
   ): void;
+  character_set_clip_velocity(clip: boolean): void;
+  character_set_third_person(third_person: boolean): void;
+  character_set_drag(x: number, y: number, z: number): void;
+  character_solve(): void;
   character_step(dt: number, sub_steps: number): number;
   character_poses(): Float32Array;
   character_styles(): Uint32Array;
   character_status(): Float32Array;
-  character_debug_lines(): Float32Array;
-  character_terrain_wireframe(): Float32Array;
-  character_village_buildings(): Float32Array;
-  character_village_stats(): Float32Array;
+  character_ground_wireframe(): Float32Array;
+  character_debug_segments(): Float32Array;
+  character_debug_points(): Float32Array;
+  character_follow_target(): Float32Array;
+
+  // --- Issues category (sample_issues.cpp; demo/wasm/src/issues_demo/).
+  issues_reset_dump_loader(): number;
+  issues_reset_crash(): number;
+  issues_reset_multiple_prismatic(): number;
+  issues_reset_hull_crash(): number;
+  issues_reset_convex_jitter(): number;
+  issues_reset_sbox_mover(): number;
+  issues_reset_capsule_mesh(): number;
+  issues_step(dt: number, sub_steps: number): number;
+  issues_poses(): Float32Array;
+  issues_styles(): Uint32Array;
+  issues_body_count(): number;
+  issues_static_wireframe(): Float32Array;
+  issues_hull_geometry(): Float32Array;
+  issues_hull_poses(): Float32Array;
+  issues_hull_crash(): Float32Array;
+  issues_add_joint(): void;
+  issues_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  issues_mouse_move(px: number, py: number, pz: number): void;
+  issues_mouse_up(): void;
+  issues_mouse_active(): boolean;
+  issues_spawn_random(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
+  issues_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
+  issues_counters(): Float32Array;
+  issues_debug_draw(flags: number): Float32Array;
+  issues_debug_text(): string;
+  issues_set_enable_sleep(flag: boolean): void;
+  issues_set_enable_warm_starting(flag: boolean): void;
+  issues_set_enable_continuous(flag: boolean): void;
+  issues_set_recycle_distance(meters: number): void;
+
+  // --- Tree category (sample_tree.cpp; demo/wasm/src/tree_demo.rs).
+  tree_reset(file_index: number, text: string): void;
+  tree_rebuild(): void;
+  tree_stats(): Float32Array;
+  tree_dims(): Float32Array;
+  tree_leaf_boxes(): Float32Array;
+  tree_level_boxes(level: number): Float32Array;
+  tree_step_query(
+    do_ray: boolean,
+    do_overlap: boolean,
+    do_closest: boolean,
+    test_index: number,
+  ): Float32Array;
+  tree_profile_ray(): void;
+  tree_profile_overlap(): void;
+  tree_profile_closest(): void;
+  tree_test_ray(index: number): Float32Array;
+  tree_test_overlap(index: number): Float32Array;
+  tree_test_sphere(index: number): Float32Array;
+  tree_file_index(): number;
 }
 
 // --- Typed telemetry layouts (single source of truth for the positional

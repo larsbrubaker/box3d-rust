@@ -53,4 +53,14 @@ cpSync(join(ROOT, "public/pkg"), join(DIST, "public/pkg"), { recursive: true });
 console.log("Copying sample meshes...");
 cpSync(join(ROOT, "public/meshes"), join(DIST, "public/meshes"), { recursive: true });
 
+// 6. Copy sample data assets (MIT, from box3d-cpp-reference/data) — e.g. the Tree
+//    Benchmark AABB record files under data/trees/, fetched by demos/tree.ts.
+console.log("Copying sample data...");
+cpSync(join(ROOT, "public/data"), join(DIST, "public/data"), { recursive: true });
+
+// 7. Copy bundled .b3rec recordings (recorded from this port itself) — fetched
+//    cold by demos/replay.ts. Binary; cpSync preserves bytes.
+console.log("Copying sample recordings...");
+cpSync(join(ROOT, "public/recordings"), join(DIST, "public/recordings"), { recursive: true });
+
 console.log(`Build complete → ${DIST}`);
