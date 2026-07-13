@@ -234,14 +234,20 @@ export const SAMPLES: SampleEntry[] = [
     ["Prismatic", "live", "joints", "prismatic"],
     ["Spherical", "live", "joints", "spherical"],
     ["Parallel Spring", "live", "joints", "parallel"],
-    ["Revolute", "partial", "joints", "revolute"],
+    // Live: hinge plank + shapeless parent, Limit/Motor/Spring DrawControls, and
+    // energy HUD match C RevoluteJoint (sample_joint.cpp).
+    ["Revolute", "live", "joints", "revolute"],
     ["Weld", "live", "joints", "weld"],
     ["Wheel", "live", "joints", "wheel"],
-    ["Ball and Chain", "partial", "joints", "chain"],
+    // Live: 32 spherical-linked capsules + heavy tip (C hard-codes linkCount=32;
+    // no DrawControls), matching BallAndChain scene construction.
+    ["Ball and Chain", "live", "joints", "chain"],
     ["Door", "live", "joints", "door"],
     ["Bridge", "live", "joints", "bridge"],
     ["Motion Locks", "live", "joints", "motion-locks"],
-    ["Driving", "partial", "joints", "driving"],
+    // Live: wave height field + chassis/wheels, Suspension/Motor/Steering
+    // DrawControls, WASD drive, and chase-cam telemetry match C Driving.
+    ["Driving", "live", "joints", "driving"],
     ["Gear Lift", "live", "joints", "gear"],
   ]),
   ...cat("Manifold", "sample_manifold.cpp", [
@@ -300,23 +306,36 @@ export const SAMPLES: SampleEntry[] = [
     ["Wind Flap", "live", "shapes", "wind-flap"],
   ]),
   ...cat("Stacking", "sample_stacking.cpp", [
-    ["Card House Thick", "partial", "stacking", "card-house-thick"],
-    ["Card House", "partial", "stacking", "card-house"],
-    ["Sphere Stack", "partial", "stacking", "spheres"],
-    ["Capsule Stack", "partial", "stacking", "capsule-stack"],
-    ["Single Box", "partial", "stacking", "single"],
-    ["Cylinder", "partial", "stacking", "cylinder"],
+    // Live: exact C card dims/counts/materials; SetView + scene match CardHouseThick.
+    ["Card House Thick", "live", "stacking", "card-house-thick"],
+    // Live: exact C thin-card house; SetView matches CardHouse.
+    ["Card House", "live", "stacking", "card-house"],
+    // Live: exact C sphere count/materials; SetView matches SphereStack.
+    ["Sphere Stack", "live", "stacking", "spheres"],
+    // Live: exact C capsule stack; Z/angular locks keep collapse planar (as in C).
+    ["Capsule Stack", "live", "stacking", "capsule-stack"],
+    // Live: single box + C position HUD; SetView matches SingleBox.
+    ["Single Box", "live", "stacking", "single"],
+    // Live: 12-sided rolling cylinder hull; forceScale 0.01 and SetView match Cylinder.
+    ["Cylinder", "live", "stacking", "cylinder"],
     // Live: builds each body via `b3CloneAndTransformHull` of one base cylinder
     // (identity transform + per-instance scale), exactly as C's
     // `b3CreateTransformedHullShape` does; camera/forceScale/values all match.
     ["Cylinder Stack", "live", "stacking", "cylinder-stack"],
-    ["Box Stack", "partial", "stacking", "boxes"],
-    ["Jenga Stack", "partial", "stacking", "jenga"],
-    ["Dominoes", "partial", "stacking", "dominoes"],
-    ["Wedge", "partial", "stacking", "wedge"],
-    ["Arch", "partial", "stacking", "arch"],
-    ["Double Domino", "partial", "stacking", "double-domino"],
-    ["Pyramid2D", "partial", "stacking", "pyramid"],
+    // Live: exact C box-stack counts; SetView matches BoxStack.
+    ["Box Stack", "live", "stacking", "boxes"],
+    // Live: Hull/Capsule DrawControls radio + exact C tower; SetView matches JengaStack.
+    ["Jenga Stack", "live", "stacking", "jenga"],
+    // Live: 30 rings + C kick impulse at reset; SetView matches Dominoes (release).
+    ["Dominoes", "live", "stacking", "dominoes"],
+    // Live: convex wedge hull scene; SetView matches Wedge.
+    ["Wedge", "live", "stacking", "wedge"],
+    // Live: convex arch hull scene; SetView matches Arch.
+    ["Arch", "live", "stacking", "arch"],
+    // Live: dual lines + C linear impulse at reset; SetView matches DoubleDomino.
+    ["Double Domino", "live", "stacking", "double-domino"],
+    // Live: exact C planar pyramid; Z locks keep collapse in-plane (as in C).
+    ["Pyramid2D", "live", "stacking", "pyramid"],
   ]),
   ...cat("World", "sample_world.cpp", [
     ["Far Stack", "live", "world", "far-stack"],

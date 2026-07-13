@@ -24,24 +24,6 @@ use box3d_rust::world::{
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
-/// Tiny LCG for village prop placement (demo-only; not the C Random* stream).
-pub(crate) struct DemoRng(pub(crate) u32);
-
-impl DemoRng {
-    pub(crate) fn next_u32(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
-        self.0
-    }
-
-    pub(crate) fn next_f32(&mut self) -> f32 {
-        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
-    }
-
-    pub(crate) fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + (hi - lo) * self.next_f32()
-    }
-}
-
 pub(crate) fn capsule_local_from_centers(c1: Vec3, c2: Vec3, radius: f32) -> (Transform, [f32; 3]) {
     let mut dir = Vec3 {
         x: c2.x - c1.x,

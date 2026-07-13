@@ -13,15 +13,11 @@ bring-up rules apply to everything below.
 bit-exact with the C scalar reference in both precision modes. Everything
 below is quality, presentation, and release work — not core physics.**
 
-## Parallel tracks
-
-| File | Track | Depends on |
-|---|---|---|
-| [task-12.md](task-12.md) | Demo excellence: **port Erin’s Samples App demos 1:1 (no invented demos)**; interaction layer; visual quality; site polish | — |
-
-The C samples app has **153** `RegisterSample` entries. Goal = faithful ports of
-those samples (Three.js + Rust/WASM rendering). Do not invent new demos.
-Inventory and remaining gaps live in task-12.
+**Demo track note (context, not a task): Samples App coverage is complete.
+Remaining `partial` registry rows are intentional browser/policy disclosures
+documented in `demo/src/registry.ts` (benchmark debug counts, pointer-lock,
+dump-loader mechanism, scaled/scoped mesh samples, Tree/Replay browser limits,
+Time of Impact label). No further actionable demo-excellence task file.**
 
 ## Upstream tracking (recurring)
 
