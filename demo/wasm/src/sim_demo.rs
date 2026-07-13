@@ -40,14 +40,6 @@ impl DemoRng {
     pub(crate) fn range(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.next_f32()
     }
-
-    pub(crate) fn vec3_range(&mut self, lo: Vec3, hi: Vec3) -> Vec3 {
-        Vec3 {
-            x: self.range(lo.x, hi.x),
-            y: self.range(lo.y, hi.y),
-            z: self.range(lo.z, hi.z),
-        }
-    }
 }
 
 pub(crate) fn capsule_local_from_centers(c1: Vec3, c2: Vec3, radius: f32) -> (Transform, [f32; 3]) {

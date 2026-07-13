@@ -13,7 +13,7 @@
 //
 //   FLY (right mouse held, no Alt)
 //     right-drag         : FPS look (yaw/pitch the direction)  FLY_LOOK_SENS
-//     WASD               : translate eye along forward/right   m_speed (m/s)
+//     WASD / arrows      : translate eye along forward/right   m_speed (m/s)
 //     scroll             : tune m_speed                        FLY_SPEED_STEP
 //
 //   Always
@@ -74,6 +74,7 @@ function forwardFromAngles(out: THREE.Vector3, yaw: number, pitch: number): THRE
 const _forward = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 const _eye = new THREE.Vector3();
+const _eyeBefore = new THREE.Vector3();
 const _off = new THREE.Vector3();
 const _tmpR = new THREE.Vector3();
 
@@ -202,8 +203,12 @@ export class CameraControls {
       if (flyMode) {
         // Snapshot eye BEFORE rotating so yaw/pitch pivot around the eye (FPS)
         // instead of around the pivot; back-derive the pivot afterward so the eye
-        // stays put regardless of look angle (camera.cpp:404-461).
-        const eyeBefore = forwardFromAngles(_forward, this.yaw, this.pitch)
+        // stays put regardless of look angle (camera.cpp:404-461). This must live
+        // in its own scratch (_eyeBefore): forwardFromAngles writes the shared
+        // _forward, and the post-rotation forward below reuses _forward — copying
+        // out here keeps eyeBefore from being clobbered by that second call.
+        const eyeBefore = _eyeBefore
+          .copy(forwardFromAngles(_forward, this.yaw, this.pitch))
           .multiplyScalar(this.radius)
           .add(this.pivot);
 
@@ -386,18 +391,29 @@ export class CameraControls {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (this.isTextTarget()) return;
+    // Arrow keys alias WASD for fly-mode translation. They also scroll the page,
+    // so preventDefault while we own them (the text-input guard above keeps the
+    // arrows working normally inside form fields / range sliders).
     switch (e.code) {
       case "KeyW":
+      case "ArrowUp":
         this.wDown = true;
+        if (e.code === "ArrowUp") e.preventDefault();
         break;
       case "KeyA":
+      case "ArrowLeft":
         this.aDown = true;
+        if (e.code === "ArrowLeft") e.preventDefault();
         break;
       case "KeyS":
+      case "ArrowDown":
         this.sDown = true;
+        if (e.code === "ArrowDown") e.preventDefault();
         break;
       case "KeyD":
+      case "ArrowRight":
         this.dDown = true;
+        if (e.code === "ArrowRight") e.preventDefault();
         break;
       case "AltLeft":
       case "AltRight":
@@ -411,15 +427,19 @@ export class CameraControls {
   private onKeyUp = (e: KeyboardEvent): void => {
     switch (e.code) {
       case "KeyW":
+      case "ArrowUp":
         this.wDown = false;
         break;
       case "KeyA":
+      case "ArrowLeft":
         this.aDown = false;
         break;
       case "KeyS":
+      case "ArrowDown":
         this.sDown = false;
         break;
       case "KeyD":
+      case "ArrowRight":
         this.dDown = false;
         break;
       case "AltLeft":

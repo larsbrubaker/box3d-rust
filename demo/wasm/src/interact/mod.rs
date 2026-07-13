@@ -28,13 +28,15 @@ use wasm_bindgen::prelude::*;
 mod draw;
 pub use draw::*;
 
-/// Mouse-grab state for one demo world (C Sample mouse body + motor joint).
+/// Mouse-grab state for one demo world (C Sample mouse body + motor joint). The
+/// grab strength (`m_mouseForceScale`) is not per-instance state: it lives in a
+/// thread-local ([`grab_force_scale`]) that resets to the C base default at each
+/// world seam, mirroring how [`launch_speed_scale`] tracks `m_launchSpeedScale`.
 #[derive(Clone, Copy)]
 pub struct MouseGrab {
     pub mouse_body_id: BodyId,
     pub mouse_joint_id: JointId,
     pub mouse_point: Pos,
-    pub force_scale: f32,
 }
 
 impl Default for MouseGrab {
@@ -47,7 +49,6 @@ impl Default for MouseGrab {
                 y: 0.0,
                 z: 0.0,
             },
-            force_scale: 100.0,
         }
     }
 }
@@ -122,7 +123,8 @@ impl MouseGrab {
         let mass_data = body_get_mass_data(world, body_id);
         let g = length(world.gravity);
         let mg = mass_data.mass * g;
-        joint_def.max_spring_force = self.force_scale * mg;
+        // C `Sample::MouseDown` (:1194): `jointDef.maxSpringForce = m_mouseForceScale * mg`.
+        joint_def.max_spring_force = grab_force_scale() * mg;
 
         if mass_data.mass > 0.0 {
             let trace = mass_data.inertia.cx.x + mass_data.inertia.cy.y + mass_data.inertia.cz.z;
@@ -173,12 +175,25 @@ pub struct SpawnedBody {
 /// their own ctor (e.g. Compound Village sets 2.0).
 const DEFAULT_LAUNCH_SPEED_SCALE: f32 = 5.0;
 
+/// `m_mouseForceScale` default from the base `Sample` constructor
+/// (`sample.cpp` :312). The base ctor sets 100.0; individual samples override it
+/// (e.g. Issues / Multiple Prismatic sets 1e6 for a much stronger picker pull,
+/// `sample_issues.cpp` :163).
+const DEFAULT_GRAB_FORCE_SCALE: f32 = 100.0;
+
 thread_local! {
     /// Current `m_launchSpeedScale`. Matches C semantics: scene resets restore the
     /// base default (via [`reset_launch_speed_scale`]) and a scene that overrides
     /// it re-applies its value after reset (via [`set_launch_speed_scale`] /
     /// [`sim_set_launch_speed_scale`]). Read only at projectile-spawn time.
     static LAUNCH_SPEED_SCALE: Cell<f32> = const { Cell::new(DEFAULT_LAUNCH_SPEED_SCALE) };
+
+    /// Current `m_mouseForceScale`. Same seam semantics as [`LAUNCH_SPEED_SCALE`]:
+    /// scene resets restore the base default (via [`reset_grab_force_scale`]) and a
+    /// scene that overrides it re-applies its value after reset (via
+    /// [`set_grab_force_scale`]). Read only at grab-begin time
+    /// ([`MouseGrab::begin`]).
+    static GRAB_FORCE_SCALE: Cell<f32> = const { Cell::new(DEFAULT_GRAB_FORCE_SCALE) };
 }
 
 /// Current projectile launch-speed scale (`m_launchSpeedScale`).
@@ -200,6 +215,24 @@ pub fn reset_launch_speed_scale() {
     LAUNCH_SPEED_SCALE.with(|c| c.set(DEFAULT_LAUNCH_SPEED_SCALE));
 }
 
+/// Current mouse-grab strength (`m_mouseForceScale`), read at grab-begin time.
+pub fn grab_force_scale() -> f32 {
+    GRAB_FORCE_SCALE.with(|c| c.get())
+}
+
+/// Override the active scene's mouse-grab strength (a C sample setting
+/// `m_mouseForceScale` in its ctor, e.g. Issues / Multiple Prismatic). Call
+/// *after* a scene reset, which restores the default first.
+pub fn set_grab_force_scale(scale: f32) {
+    GRAB_FORCE_SCALE.with(|c| c.set(scale));
+}
+
+/// Restore the base `Sample` default (100.0). Called from [`reset_scene_scales`]
+/// at every world seam so a prior scene's override never leaks across a switch.
+pub fn reset_grab_force_scale() {
+    GRAB_FORCE_SCALE.with(|c| c.set(DEFAULT_GRAB_FORCE_SCALE));
+}
+
 /// Reset every per-scene scale that lives in a thread-local — the projectile
 /// launch-speed scale and the debug-draw joint/force scales — back to its base
 /// default. Called at each world-construction seam (`new_world` / `new_sim` /
@@ -208,6 +241,7 @@ pub fn reset_launch_speed_scale() {
 /// helper so a new demo cannot reset one scale and forget the other.
 pub fn reset_scene_scales() {
     reset_launch_speed_scale();
+    reset_grab_force_scale();
     reset_draw_scales();
 }
 

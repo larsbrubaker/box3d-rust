@@ -15,14 +15,17 @@ use crate::geometry::Sphere;
 use crate::hull::make_box_hull;
 use crate::id::ShapeId;
 use crate::math_functions::{abs_float, length, offset_pos, Aabb, Pos, Vec3, POS_ZERO, VEC3_ZERO};
-use crate::shape::{create_hull_shape, create_sphere_shape, shape_is_valid};
+use crate::shape::{
+    create_hull_shape, create_sphere_shape, shape_get_user_data, shape_is_sensor, shape_is_valid,
+};
 use crate::types::{
     default_body_def, default_explosion_def, default_query_filter, default_shape_def,
     default_world_def, BodyType,
 };
 use crate::world::*;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-fn custom_filter(_shape_a: ShapeId, _shape_b: ShapeId, _context: u64) -> bool {
+fn custom_filter(_world: &World, _shape_a: ShapeId, _shape_b: ShapeId, _context: u64) -> bool {
     true
 }
 
@@ -415,4 +418,103 @@ fn test_world_dump_helpers() {
 
     let _ = std::fs::remove_file("box3d_bounds.txt");
     let _ = std::fs::remove_file("box3d_dump.inl");
+}
+
+// Custom-filter userData access, mirroring sample_benchmark.cpp
+// `BenchmarkSensor::Filter` (:922), which reads a shape's userData mid-step
+// through `b3Shape_GetUserData(shapeId)`. The Rust callback gets the same reach
+// via the `&World` it now receives.
+
+const FILTER_SENTINEL: u64 = 0xBEEF;
+static FILTER_SAW_USER_DATA: AtomicU64 = AtomicU64::new(0);
+static FILTER_SAW_SENSOR: AtomicBool = AtomicBool::new(false);
+
+/// Reads both shapes' userData (and sensor flag) through `&World`, then suppresses
+/// the pair when either shape carries [`FILTER_SENTINEL`].
+fn user_data_filter(world: &World, shape_a: ShapeId, shape_b: ShapeId, _context: u64) -> bool {
+    let ud_a = shape_get_user_data(world, shape_a);
+    let ud_b = shape_get_user_data(world, shape_b);
+    FILTER_SAW_USER_DATA.store(ud_a | ud_b, Ordering::Relaxed);
+    FILTER_SAW_SENSOR.store(
+        shape_is_sensor(world, shape_a) || shape_is_sensor(world, shape_b),
+        Ordering::Relaxed,
+    );
+    ud_a != FILTER_SENTINEL && ud_b != FILTER_SENTINEL
+}
+
+/// Two overlapping dynamic boxes; shape A enables custom filtering and carries
+/// `user_data_a`. Steps the world and returns `(max_speed, saw_user_data)`.
+fn overlap_filter_run(user_data_a: u64) -> (f32, u64) {
+    let mut world_def = default_world_def();
+    world_def.gravity = VEC3_ZERO;
+    let mut world = World::new(&world_def);
+    world_set_custom_filter_callback(&mut world, Some(user_data_filter), 0);
+
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = Pos {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    let body_a = create_body(&mut world, &body_def);
+    let mut shape_def_a = default_shape_def();
+    shape_def_a.density = 1.0;
+    shape_def_a.enable_custom_filtering = true;
+    shape_def_a.user_data = user_data_a;
+    create_hull_shape(&mut world, body_a, &shape_def_a, &box_hull.base);
+
+    body_def.position = Pos {
+        x: 0.4,
+        y: 0.0,
+        z: 0.0,
+    };
+    let body_b = create_body(&mut world, &body_def);
+    let mut shape_def_b = default_shape_def();
+    shape_def_b.density = 1.0;
+    shape_def_b.user_data = 3;
+    create_hull_shape(&mut world, body_b, &shape_def_b, &box_hull.base);
+
+    FILTER_SAW_USER_DATA.store(0, Ordering::Relaxed);
+    FILTER_SAW_SENSOR.store(true, Ordering::Relaxed);
+    for _ in 0..8 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let speed = length(body_get_linear_velocity(&world, body_a))
+        .max(length(body_get_linear_velocity(&world, body_b)));
+    (speed, FILTER_SAW_USER_DATA.load(Ordering::Relaxed))
+}
+
+/// The custom filter reads shape userData through `&World` and suppresses the
+/// pair accordingly (mirrors `BenchmarkSensor::Filter`).
+#[test]
+fn test_custom_filter_reads_shape_user_data() {
+    // Sentinel userData on shape A → the filter returns false → the overlapping
+    // boxes never form a contact and never separate.
+    let (suppressed_speed, saw) = overlap_filter_run(FILTER_SENTINEL);
+    assert_eq!(
+        saw,
+        FILTER_SENTINEL | 3,
+        "filter should have read both shapes' userData through &World"
+    );
+    assert!(
+        !FILTER_SAW_SENSOR.load(Ordering::Relaxed),
+        "neither box is a sensor"
+    );
+    assert!(
+        suppressed_speed < 1e-4,
+        "suppressed pair should not separate, got speed {suppressed_speed}"
+    );
+
+    // Non-sentinel userData → the filter allows the pair → the overlap resolves
+    // and the boxes gain separating velocity. Confirms the suppression above was
+    // caused by the userData the callback read, not by absence of collision.
+    let (allowed_speed, _) = overlap_filter_run(5);
+    assert!(
+        allowed_speed > 1e-2,
+        "allowed pair should separate, got speed {allowed_speed}"
+    );
 }

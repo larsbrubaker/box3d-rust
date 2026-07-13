@@ -58,7 +58,7 @@ fn mesh_drop_wireframe_finite_across_controls() {
     }
     for shape in 0..4u32 {
         let _ = super::sim_cont_mesh_drop_set_type(shape);
-        let _ = super::sim_cont_mesh_drop_generate();
+        let _ = super::sim_cont_mesh_drop_generate(12345);
         let wire = super::super::sim_cont_ground_wireframe();
         for (i, v) in wire.iter().enumerate() {
             assert!(

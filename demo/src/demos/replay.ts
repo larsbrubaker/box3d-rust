@@ -11,9 +11,18 @@
 //   - Shipped & working: load a bundled or user-picked .b3rec, transport +
 //     scrubber, and playback rendering (sphere/capsule parametric; hull/mesh/
 //     height-field as triangle meshes), plus the divergence readout.
-//   - Not ported (would balloon the port): the outline scene tree, whole-recording
-//     query search index, per-selection inspector, and keyframe-policy popup.
-//     Compound-shape bodies are not individually tessellated.
+//   - Shipped: the OUTLINE scene tree (bodies grouped by creation ordinal with their
+//     shapes) and the SELECTION INSPECTOR (the selected body's live transform /
+//     velocity / mass / awake-enabled-bullet state at the current frame, updating as
+//     you scrub or play). Click a body in the outline or in the 3D view to select and
+//     highlight it (emissive tint). Selection survives backward seeks (stored as an
+//     ordinal), matching C.
+//   - Not ported (disclosed): the whole-recording query SEARCH INDEX (C replays the
+//     entire recording once to index every spatial query — scoped out as too heavy for
+//     the browser demo) and the KEYFRAME-POLICY popup (it only tunes a backward-seek
+//     keyframe-ring budget our restart-and-replay seek never consumes, so a control
+//     would have no observable effect). Compound-shape bodies are not individually
+//     tessellated, so they render nothing (but still list + inspect).
 //
 // Loading a LOCAL .b3rec via the file picker is ordinary in-page behavior; nothing
 // is uploaded. The bundled sample was recorded from this port itself (see
@@ -81,6 +90,12 @@ export function init(container: HTMLElement) {
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
   let parsed: ParsedShape[] = [];
   let meshes: THREE.Mesh[] = [];
+
+  // --- Selection (C ReplayViewer m_selBodyOrdinal). Stored as a creation ordinal so
+  // it survives the backward-seek world rebuild, exactly like the C viewer. ---
+  let selectedOrd: number | null = null;
+  const bodyRows = new Map<number, HTMLElement>();
+  const HILITE = new THREE.Color(0x2f6bff);
 
   // --- Transport state ---
   let playing = false;
@@ -172,6 +187,125 @@ export function init(container: HTMLElement) {
       demo.content.add(mesh);
       return mesh;
     });
+    // Fresh materials start with black emissive; rebuild the outline for the new
+    // topology and re-apply the current selection highlight.
+    buildOutline();
+    applyHighlight();
+  }
+
+  // Emissive tint on every mesh belonging to the selected body (C's outline
+  // highlight). applyShapeStyle never touches emissive, so this persists across
+  // frames and only needs re-applying on a selection change or a topology rebuild.
+  function applyHighlight() {
+    for (let i = 0; i < meshes.length; i++) {
+      const mat = meshes[i]!.material as THREE.MeshStandardMaterial;
+      if (parsed[i] && parsed[i]!.ordinal === selectedOrd) mat.emissive.copy(HILITE);
+      else mat.emissive.setHex(0x000000);
+    }
+  }
+
+  function escapeHtml(s: string): string {
+    return s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;",
+    );
+  }
+
+  // (Re)populate the Outline panel from the current topology (C DrawOutlineTree):
+  // one clickable row per valid body, its shapes listed beneath. A shape row selects
+  // its owning body (selection is body-granular; see the module scope note).
+  function buildOutline() {
+    outlineList.innerHTML = "";
+    bodyRows.clear();
+    let entries: { ord: number; name: string; type: string; shapes: string[] }[] = [];
+    try {
+      entries = JSON.parse(wasm.replay_outline());
+    } catch {
+      entries = [];
+    }
+    for (const b of entries) {
+      const row = document.createElement("div");
+      row.style.cursor = "pointer";
+      row.style.padding = "1px 4px";
+      row.textContent = `Body ${b.ord} · ${b.name || b.type}`;
+      row.title = `${b.type}`;
+      row.addEventListener("click", () => selectBody(b.ord));
+      outlineList.appendChild(row);
+      bodyRows.set(b.ord, row);
+      for (const s of b.shapes) {
+        const srow = document.createElement("div");
+        srow.style.cursor = "pointer";
+        srow.style.paddingLeft = "18px";
+        srow.style.opacity = "0.75";
+        srow.style.fontSize = "0.9em";
+        srow.textContent = `– ${s}`;
+        srow.addEventListener("click", () => selectBody(b.ord));
+        outlineList.appendChild(srow);
+      }
+    }
+    updateOutlineSelection();
+  }
+
+  function updateOutlineSelection() {
+    for (const [ord, row] of bodyRows) {
+      row.style.background = ord === selectedOrd ? "rgba(47,107,255,0.35)" : "";
+    }
+  }
+
+  function selectBody(ord: number | null) {
+    selectedOrd = ord;
+    applyHighlight();
+    updateOutlineSelection();
+    updateInspector();
+  }
+
+  // Selection inspector for the current frame (C DrawBodyDetail). Called each rendered
+  // frame so the readout tracks the body as the recording plays / scrubs.
+  function updateInspector() {
+    if (selectedOrd == null) {
+      inspectorBody.innerHTML = '<span style="opacity:.65">Click a body (outline or view) to inspect.</span>';
+      return;
+    }
+    let d: {
+      present: boolean;
+      id?: number;
+      name?: string;
+      type?: string;
+      pos?: number[];
+      spinDeg?: number;
+      vel?: number[];
+      omega?: number[];
+      speed?: number;
+      spinRate?: number;
+      mass?: number;
+      awake?: boolean;
+      enabled?: boolean;
+      bullet?: boolean;
+      gravityScale?: number;
+      shapeCount?: number;
+      jointCount?: number;
+    };
+    try {
+      d = JSON.parse(wasm.replay_body_detail(selectedOrd));
+    } catch {
+      d = { present: false };
+    }
+    if (!d.present) {
+      inspectorBody.innerHTML =
+        `Body ordinal ${selectedOrd}<br><span style="opacity:.65">Not present at this frame.</span>`;
+      return;
+    }
+    const f = (n: number) => n.toFixed(3);
+    const p = d.pos!, v = d.vel!, w = d.omega!;
+    inspectorBody.innerHTML =
+      `<b>Body ${d.id}</b> ${escapeHtml(d.name || "(none)")} · ${d.type}<br>` +
+      `pos (${f(p[0]!)}, ${f(p[1]!)}, ${f(p[2]!)})<br>` +
+      `spin ${d.spinDeg!.toFixed(1)}°<br>` +
+      `vel (${f(v[0]!)}, ${f(v[1]!)}, ${f(v[2]!)}) · speed ${f(d.speed!)}<br>` +
+      `omega (${f(w[0]!)}, ${f(w[1]!)}, ${f(w[2]!)}) · rate ${f(d.spinRate!)}<br>` +
+      `mass ${d.mass!.toPrecision(4)} kg<br>` +
+      `awake ${d.awake ? "yes" : "no"} · enabled ${d.enabled ? "yes" : "no"} · bullet ${d.bullet ? "yes" : "no"}<br>` +
+      `gravity scale ${d.gravityScale!.toFixed(2)}<br>` +
+      `shapes ${d.shapeCount} · joints ${d.jointCount}`;
   }
 
   function renderFrame() {
@@ -216,6 +350,10 @@ export function init(container: HTMLElement) {
       }
       applyShapeStyle(m, styles[i] ?? 0);
     }
+    // Re-apply the current selection highlight (applyShapeStyle may have rewritten a
+    // recolored material's flags) and refresh the inspector for this frame.
+    applyHighlight();
+    updateInspector();
   }
 
   function frameCamera() {
@@ -240,6 +378,7 @@ export function init(container: HTMLElement) {
     const ok = wasm.replay_load(bytes);
     if (ok) {
       wasm.replay_seek(0);
+      selectedOrd = null; // a fresh recording clears any prior selection
       buildScene();
       frameCamera();
       playing = false;
@@ -357,7 +496,61 @@ export function init(container: HTMLElement) {
   loopLabel.append(loopCb, document.createTextNode("Loop"));
   optRow.append(speedSel, loopLabel);
 
-  controls.append(fileGroup, transportRow, scrubGroup, optRow);
+  // --- Outline scene tree + selection inspector (C left Outline window + Detail pane).
+  const outlineGroup = document.createElement("div");
+  outlineGroup.className = "control-group";
+  const outlineLabel = document.createElement("label");
+  outlineLabel.textContent = "Outline";
+  const outlineList = document.createElement("div");
+  outlineList.style.maxHeight = "180px";
+  outlineList.style.overflowY = "auto";
+  outlineList.style.fontFamily = "monospace";
+  outlineList.style.fontSize = "0.85em";
+  outlineList.style.border = "1px solid rgba(128,128,128,0.3)";
+  outlineList.style.borderRadius = "4px";
+  outlineList.style.padding = "2px";
+  outlineGroup.append(outlineLabel, outlineList);
+
+  const inspGroup = document.createElement("div");
+  inspGroup.className = "control-group";
+  const inspLabel = document.createElement("label");
+  inspLabel.textContent = "Inspector";
+  const inspectorBody = document.createElement("div");
+  inspectorBody.style.fontFamily = "monospace";
+  inspectorBody.style.fontSize = "0.85em";
+  inspectorBody.style.lineHeight = "1.5";
+  inspGroup.append(inspLabel, inspectorBody);
+
+  controls.append(fileGroup, transportRow, scrubGroup, optRow, outlineGroup, inspGroup);
+
+  // 3D-view picking: a genuine (non-drag) left click ray-tests the rendered meshes and
+  // selects the hit body's ordinal, or clears the selection on a miss (C MouseDown).
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  let downX = 0;
+  let downY = 0;
+  const onCanvasPointerDown = (e: PointerEvent) => {
+    downX = e.clientX;
+    downY = e.clientY;
+  };
+  const onCanvasPointerUp = (e: PointerEvent) => {
+    if (e.button !== 0 || e.altKey) return;
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) >= 4) return; // was a drag/orbit
+    if (!wasm.replay_loaded()) return;
+    const rect = canvas.getBoundingClientRect();
+    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, demo.camera);
+    const hits = raycaster.intersectObjects(meshes, false);
+    if (hits.length === 0) {
+      selectBody(null);
+      return;
+    }
+    const idx = meshes.indexOf(hits[0]!.object as THREE.Mesh);
+    selectBody(idx >= 0 ? (parsed[idx]?.ordinal ?? null) : null);
+  };
+  canvas.addEventListener("pointerdown", onCanvasPointerDown);
+  canvas.addEventListener("pointerup", onCanvasPointerUp);
 
   function updateButtons() {
     btnPlay.textContent = playing ? "Pause" : "Play";
@@ -435,6 +628,8 @@ export function init(container: HTMLElement) {
 
   return () => {
     stop();
+    canvas.removeEventListener("pointerdown", onCanvasPointerDown);
+    canvas.removeEventListener("pointerup", onCanvasPointerUp);
     disposeScene();
     wasm.replay_unload();
     sphereGeo.dispose();

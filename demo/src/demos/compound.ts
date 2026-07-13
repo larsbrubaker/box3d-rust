@@ -44,7 +44,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     "Compound shape gallery from <code>sample_compound.cpp</code>: Simple, Spheres, Hulls, " +
       "Tile Floor (2500-hull compound), Mesh Tile (box-mesh compound), and Village (real " +
       "<code>building.obj</code> compound meshes with the C character mover + query sweep).",
-    "WASD walk (Village) · Ctrl+click grab · Shift+click spawn · click select · P/O/R",
+    "WASD/arrows walk (Village) · Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
     { category: "Compound", samplesShell: true },
   );
@@ -237,11 +237,16 @@ export function init(container: HTMLElement, initialScene?: string) {
 
   // ---- Keyboard (Village WASD) ------------------------------------------
   const keys = new Set<string>();
+  // Arrow keys alias WASD for the walkthrough; preventDefault on the movement
+  // keys so arrows/Space never scroll the page. Skip while a form field is focused.
+  const moveKeys = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"];
   const onKeyDown = (e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     keys.add(e.code);
     if (mode === "village") {
       if (e.code === "KeyT") wasm.sim_village_toggle_third_person();
-      if (["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(e.code)) e.preventDefault();
+      if (moveKeys.includes(e.code)) e.preventDefault();
     }
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -344,10 +349,10 @@ export function init(container: HTMLElement, initialScene?: string) {
     // WASD throttle in camera-relative axes (as in the Character page).
     let throttleX = 0;
     let throttleY = 0;
-    if (keys.has("KeyW")) throttleX += 1;
-    if (keys.has("KeyS")) throttleX -= 1;
-    if (keys.has("KeyA")) throttleY -= 1;
-    if (keys.has("KeyD")) throttleY += 1;
+    if (keys.has("KeyW") || keys.has("ArrowUp")) throttleX += 1;
+    if (keys.has("KeyS") || keys.has("ArrowDown")) throttleX -= 1;
+    if (keys.has("KeyA") || keys.has("ArrowLeft")) throttleY -= 1;
+    if (keys.has("KeyD") || keys.has("ArrowRight")) throttleY += 1;
     const jump = keys.has("Space");
     const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
 

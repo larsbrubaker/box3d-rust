@@ -283,12 +283,14 @@ export interface Box3dWasm {
   sim_cont_ground_wireframe(): Float32Array;
   /** Fire the Stall rock bullet (C `Stall::Launch`). */
   sim_cont_stall_launch(): number;
+  /** Active CCD stall threshold in ms (C `b3GetStallThreshold` × 1000); Stall sets 1.0. */
+  sim_cont_stall_threshold_ms(): number;
   /** Mesh Drop "Type" combo: 0 box, 1 capsule, 2 cylinder, 3 sphere. */
   sim_cont_mesh_drop_set_type(shape: number): number;
   /** Mesh Drop "Amplitude" slider (0..1); rebuilds ground + grid. */
   sim_cont_mesh_drop_set_amplitude(amplitude: number): number;
-  /** Mesh Drop "Generate" button; reseeds and rebuilds the grid. */
-  sim_cont_mesh_drop_generate(): number;
+  /** Mesh Drop "Generate" button; reseeds from `ticks` (C `b3GetTicks()`) and rebuilds. */
+  sim_cont_mesh_drop_generate(ticks: number): number;
   /** Bodies that moved on the last step (`b3BodyEvents.moveCount`) — drives Auto Generate. */
   sim_cont_mesh_drop_move_count(): number;
   /** Minimum tracked-body mass-center height (Mesh Drop Unit Test failure readout). */
@@ -397,6 +399,8 @@ export interface Box3dWasm {
   lrc_set_params(ray_length_km: number, cone_angle: number): void;
   lrc_poses(): Float32Array;
   lrc_surface_wireframe(): Float32Array;
+  /** Rock hull geometry (world space): `[triCount, tris…, edgeCount, edges…]`. */
+  lrc_rock_geometry(): Float32Array;
   lrc_step(): Float32Array;
 
   // Collision / Initial Overlap (InitialOverlap).
@@ -521,6 +525,10 @@ export interface Box3dWasm {
   replay_scene_geometry(): Float32Array;
   replay_body_transforms(): Float32Array;
   replay_shape_styles(): Uint32Array;
+  /** JSON outline: `[{ord,name,type,shapes:[typeName,...]}]` for bodies valid this frame. */
+  replay_outline(): string;
+  /** JSON inspector for body `ord` at the current frame: `{present,id,name,type,pos,spinDeg,vel,omega,speed,spinRate,mass,awake,enabled,bullet,gravityScale,shapeCount,jointCount}` or `{present:false}`. */
+  replay_body_detail(ord: number): string;
 
   bench_reset_large_pyramid(): number;
   bench_reset_wide_pyramid(): number;
@@ -545,6 +553,10 @@ export interface Box3dWasm {
   bench_hull_wireframe_b(): Float32Array;
   bench_hull_info(): Float32Array;
   bench_washer_drum(): Float32Array;
+  /** Washer drum geometry (drum-local): `[triCount, tris…, edgeCount, edges…]`. */
+  bench_washer_drum_geometry(): Float32Array;
+  /** Candy Cups frustum-hull solid faces (cup-local, flat `[x,y,z]` triples). */
+  bench_candy_hull(): Float32Array;
   bench_set_explosion_magnitude(impulse: number): void;
   bench_explode(): void;
   bench_set_height_field_radius(radius: number): void;
@@ -757,6 +769,19 @@ export interface Box3dWasm {
   tree_test_overlap(index: number): Float32Array;
   tree_test_sphere(index: number): Float32Array;
   tree_file_index(): number;
+  /** Serialize the current dynamic tree to the portable leaf format (C `b3DynamicTree_Save`). */
+  tree_save(): Uint8Array;
+  /** Replace the live tree with one loaded from `bytes`, scaling every AABB by `scale`
+   *  (C `b3DynamicTree_Load( file, loadScale )`). Returns false on a bad/mismatched file. */
+  tree_load(bytes: Uint8Array, scale: number): boolean;
+
+  /** Rigid Body third-person camera boom raycast (C `RigidBodyCharacter::Step`): cast
+   *  from the character toward the desired eye; returns the hit fraction in [0,1], or 1
+   *  when the eye is reachable unobstructed. JS applies the C margins + radius restore. */
+  character_camera_boom(
+    fromX: number, fromY: number, fromZ: number,
+    toX: number, toY: number, toZ: number,
+  ): number;
 }
 
 // --- Typed telemetry layouts (single source of truth for the positional

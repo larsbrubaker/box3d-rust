@@ -2,17 +2,18 @@
 //! (line 774). A scalable box mesh is cast against by a sphere (or ray); the scale
 //! and cast start animate via sliders.
 //!
-//! The C sample re-scales the live shape with `b3Shape_SetMesh`, which is not part
-//! of the ported public API. We reproduce the identical query geometry by rebuilding
-//! the mesh body at the new scale on each change (the mesh body is a single static
-//! shape at the origin, so the recreated proxy is collision-identical).
+//! The C sample re-scales the live shape with `b3Shape_SetMesh`; the port now
+//! mirrors that exactly, mutating the existing mesh shape in place on each slider
+//! change (no body rebuild, no proxy flicker).
+
+#![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
 use crate::vis::mesh_triangle_edges;
-use box3d_rust::body::{create_body, destroy_body};
-use box3d_rust::id::BodyId;
+use box3d_rust::body::create_body;
+use box3d_rust::id::ShapeId;
 use box3d_rust::math_functions::{Pos, Vec3, VEC3_ZERO};
 use box3d_rust::mesh::{create_box_mesh, MeshData};
-use box3d_rust::shape::create_mesh_shape;
+use box3d_rust::shape::{create_mesh_shape, shape_set_mesh};
 use box3d_rust::types::{default_body_def, default_query_filter, default_shape_def};
 use box3d_rust::world::{world_cast_ray_closest, world_cast_shape, World};
 use std::cell::RefCell;
@@ -23,7 +24,7 @@ use super::shared::{cast_closest, CastContext};
 struct State {
     world: World,
     mesh: MeshData,
-    mesh_body: BodyId,
+    mesh_shape: ShapeId,
     scale: Vec3,
     start: Pos,
     sphere_cast: bool,
@@ -47,12 +48,11 @@ fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
     })
 }
 
-fn build_mesh_body(world: &mut World, mesh: &MeshData, scale: Vec3) -> BodyId {
+fn build_mesh_body(world: &mut World, mesh: &MeshData, scale: Vec3) -> ShapeId {
     let body_def = default_body_def();
     let shape_def = default_shape_def();
     let body = create_body(world, &body_def);
-    create_mesh_shape(world, body, &shape_def, mesh, scale);
-    body
+    create_mesh_shape(world, body, &shape_def, mesh, scale)
 }
 
 #[wasm_bindgen]
@@ -75,7 +75,7 @@ pub fn msc_reset() {
         y: 1.0,
         z: 1.0,
     };
-    let mesh_body = build_mesh_body(&mut world, &mesh, scale);
+    let mesh_shape = build_mesh_body(&mut world, &mesh, scale);
     // C: m_start = {-2,0,0} (line 798).
     let start = Pos {
         x: -2.0,
@@ -90,7 +90,7 @@ pub fn msc_reset() {
         *cell.borrow_mut() = Some(State {
             world,
             mesh,
-            mesh_body,
+            mesh_shape,
             scale,
             start,
             sphere_cast,
@@ -110,15 +110,11 @@ pub fn msc_set_params(sx: f32, sy: f32, sz: f32, start_y: f32, start_z: f32, sph
             z: sz.clamp(-2.0, 2.0),
         };
         if new_scale != state.scale {
-            // Rebuild the mesh body at the new scale (see module docs). Disjoint
-            // field borrows: world (mut) and mesh (shared) are separate fields.
-            destroy_body(&mut state.world, state.mesh_body);
+            // C `MeshScale::DrawControls`: b3Shape_SetMesh(m_meshShapeId, m_mesh,
+            // m_scale) mutates the live shape in place. Disjoint field borrows:
+            // world (mut), mesh + mesh_shape (shared) are separate fields.
             state.scale = new_scale;
-            let body_def = default_body_def();
-            let shape_def = default_shape_def();
-            let body = create_body(&mut state.world, &body_def);
-            create_mesh_shape(&mut state.world, body, &shape_def, &state.mesh, new_scale);
-            state.mesh_body = body;
+            shape_set_mesh(&mut state.world, state.mesh_shape, &state.mesh, new_scale);
         }
         // C: start.x stays -2 (delta.x from init); Y/Z from sliders (line 826).
         state.start = Pos {

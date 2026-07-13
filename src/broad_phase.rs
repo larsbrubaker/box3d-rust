@@ -305,7 +305,7 @@ fn consider_move_pair(
                 world0: world.world_id,
                 generation: shape_b.generation,
             };
-            if !custom_filter_fcn(id_a, id_b, world.custom_filter_context) {
+            if !custom_filter_fcn(world, id_a, id_b, world.custom_filter_context) {
                 return;
             }
         }

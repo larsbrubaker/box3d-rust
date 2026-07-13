@@ -93,7 +93,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Gyroscopic Torque", "live", "bodies", "gyroscopic-torque"],
     ["Weeble", "live", "bodies", "weeble"],
     ["Disable", "live", "bodies", "disable"],
-    ["Cast", "partial", "bodies", "cast"],
+    // Live: ray / sphere-cast / overlap / CollideMover queries against a Shift-drag
+    // target; cast proxies render as translucent solids and the CollideMover patches
+    // as plane quads (C DrawPlane), matching the C sample's debug draw.
+    ["Cast", "live", "bodies", "cast"],
     ["Kinematic", "live", "bodies", "kinematic"],
     ["Lock Mixing", "live", "bodies", "lock-mixing"],
     ["Fixed Rotation", "live", "bodies", "fixed-rotation"],
@@ -105,11 +108,15 @@ export const SAMPLES: SampleEntry[] = [
     ["Rain", "partial", "benchmark", "rain"],
     ["Joint Grid", "partial", "benchmark", "joint-grid"],
     ["Falling Boxes", "live", "benchmark", "falling-boxes"],
+    // Partial: count is debug-scaled (4×4×4 = 64 cups; C release 16³ = 4096).
+    // Rendering is now faithful — cups draw from the exact 8-sided frustum hull.
     ["Candy Cups", "partial", "benchmark", "candy-cups"],
     ["Explosion", "live", "benchmark", "explosion"],
     ["Height Field", "live", "benchmark", "height-field"],
     ["Falling Trees", "partial", "benchmark", "trees"],
     ["Sensor", "partial", "sensors", "benchmark"],
+    // Partial: cube count is debug-scaled (grid 8; C release 20³ = 8000).
+    // Rendering is now faithful — the drum draws its real 36 wall + 4 rib hulls.
     ["Washer", "partial", "benchmark", "washer"],
     ["Large World", "partial", "benchmark", "large-world"],
     ["Hull", "partial", "benchmark", "hull"],
@@ -121,21 +128,24 @@ export const SAMPLES: SampleEntry[] = [
     ["CapsulePlane", "live", "character", "capsule-plane"],
     ["MoverOverlap", "live", "character", "mover-overlap"],
     ["Mover", "live", "character", "mover"],
+    // Partial: the s&box RigidbodyCharacter physics + trace step-up are ported, and the
+    // third-person camera now matches C — FPS mouse-look via the Pointer Lock API (C
+    // sapp_lock_mouse + sample.cpp MouseMove sensitivities) plus the boom raycast that
+    // clamps the eye off walls (sample_character.cpp :1571-1602, character_camera_boom).
+    // Remaining disclosed divergences: the mouse locks on a canvas click (browsers can't
+    // auto-lock like sapp_lock_mouse), and C's "Debug (V)" toggle isn't wired (the debug
+    // overlays are always drawn).
     ["Rigid Body", "partial", "character", "rigid-body"],
   ]),
   ...cat("Collision", "sample_collision.cpp", [
     ["Ray Curtain", "live", "queries", "ray-curtain"],
     ["Cast World", "live", "queries", "cast-world"],
-    // Partial: the scene recreates the mesh shape at each new scale rather than
-    // mutating the live shape in place via C's b3Shape_SetMesh (no in-place setter
-    // ported); the cast geometry and values are otherwise exact.
-    ["Mesh Scale", "partial", "queries", "mesh-scale"],
+    ["Mesh Scale", "live", "queries", "mesh-scale"],
     ["Shape Cast", "live", "queries", "shape-cast"],
     ["Overlap World", "live", "queries", "overlap-world"],
-    // Partial: collision uses the real `create_rock` hull (exact), but the rock is
-    // *rendered* as an icosahedron stand-in rather than drawing the actual hull
-    // surface — a disclosed visual-only divergence from the C sample.
-    ["Long Ray Cast", "partial", "queries", "long-ray-cast"],
+    // Live: the rock now renders from its real `create_rock` convex hull (solid
+    // faces + wireframe edges) — the same hull the ray cast collides against.
+    ["Long Ray Cast", "live", "queries", "long-ray-cast"],
     ["Initial Overlap", "live", "queries", "initial-overlap"],
     ["Shape Cast Debug", "live", "queries", "shape-cast-debug"],
     ["Distance Debug", "live", "queries", "distance-debug"],
@@ -147,18 +157,24 @@ export const SAMPLES: SampleEntry[] = [
   ]),
   ...cat("Compound", "sample_compound.cpp", [
     ["Simple", "partial", "compound", "simple"],
-    ["Spheres", "partial", "compound", "spheres"],
-    ["Hulls", "partial", "compound", "hulls"],
+    // Live: 20 compound spheres placed from the shared g_randomSeed XorShift stream
+    // (seed 12345), bit-identical to the C sample's RandomVec3 / RandomFloatRange order.
+    ["Spheres", "live", "compound", "spheres"],
+    // Live: 20 compound box hulls placed from the shared g_randomSeed XorShift stream
+    // (seed 12345), matching the C RandomFloatRange / RandomVec3 / RandomQuat order.
+    ["Hulls", "live", "compound", "hulls"],
     // Partial: physics matches C (2500-hull compound + dropped sphere), but the
     // static tiles are rendered as one instanced mesh and the placement RNG is
     // demo-local (not the C Random* stream).
     ["Tile Floor", "partial", "compound", "tile-floor"],
     // Partial: 4 box-mesh compound tiles matching C; placement RNG is demo-local.
     ["Mesh Tile", "partial", "compound", "mesh-tile"],
-    // Partial: the embedded character mover + sweeping ray/shape/overlap query are
-    // ported (WASD walkthrough), but the grid is fixed at the C debug value 8
-    // (release 200 is too heavy for serial wasm) and prop RNG is demo-local.
-    ["Village", "partial", "compound", "village"],
+    // Live: the embedded character mover + sweeping ray/shape/overlap query are
+    // ported (WASD walkthrough), and prop/building placement now consumes the shared
+    // g_randomSeed XorShift stream (seed 12345) in C order. Grid is fixed at the C
+    // debug value 8, so this reproduces the C *debug* build bit-for-bit (release 200
+    // is too heavy for serial wasm).
+    ["Village", "live", "compound", "village"],
   ]),
   ...cat("Continuous", "sample_continuous.cpp", [
     ["Thin Wall", "live", "continuous", "thin"],
@@ -166,11 +182,16 @@ export const SAMPLES: SampleEntry[] = [
     ["Spinning Stick", "live", "continuous", "spin"],
     ["Bullet vs Stack", "live", "continuous", "bullet"],
     ["Needle Mesh", "live", "continuous", "needle"],
-    ["Mesh Drop", "partial", "continuous", "mesh-drop"],
+    // Live: Generate reseeds from a performance.now()-derived tick value, matching
+    // C's `g_randomSeed = b3GetTicks()` (any tick value is faithful); Auto Generate
+    // regenerates on settle as in C `MeshDrop::Step`.
+    ["Mesh Drop", "live", "continuous", "mesh-drop"],
     ["Mesh Drop Unit Test", "live", "continuous", "mesh-drop-unit"],
     ["Hump Mesh", "live", "continuous", "hump"],
     ["Is Fast", "live", "continuous", "is-fast"],
-    ["Stall", "partial", "continuous", "stall"],
+    // The CCD stall threshold is set to C's 1.0 ms and shown; the C sample's only
+    // other use of it is a console log of slow CCD steps (no on-screen element).
+    ["Stall", "live", "continuous", "stall"],
   ]),
   ...cat("Determinism", "sample_determinism.cpp", [
     ["Falling Ragdolls", "live", "determinism", "falling-ragdolls"],
@@ -200,11 +221,10 @@ export const SAMPLES: SampleEntry[] = [
     // hand-ported inline. Values are bit-exact; only the load mechanism differs.
     ["Dump Loader", "partial", "issues", "dump-loader"],
     ["Crash", "live", "issues", "crash"],
-    // Partial: C sets m_mouseForceScale = 1e6 (a stronger picker pull); the shared
-    // MouseGrab has no force-scale knob, so the grab uses default strength. The six
-    // prismatic joints, ±6 limit, and constraintHertz 240 are exact; divergence is
-    // cosmetic (only affects mouse-drag strength).
-    ["Multiple Prismatic", "partial", "issues", "multiple-prismatic"],
+    // Live: the six prismatic joints, ±6 limit, and constraintHertz 240 are exact,
+    // and the scene now applies C's m_mouseForceScale = 1e6 via the shared grab's
+    // force-scale override, so the mouse-drag strength matches C too.
+    ["Multiple Prismatic", "live", "issues", "multiple-prismatic"],
     ["Hull Crash", "live", "issues", "hull-crash"],
     ["Convex Jitter", "live", "issues", "convex-jitter"],
     ["s&box mover", "live", "issues", "s-box-mover"],
@@ -311,16 +331,24 @@ export const SAMPLES: SampleEntry[] = [
   ...cat("Tree", "sample_tree.cpp", [
     // Partial: the AABB record files are fetched by JS (no fopen in the browser) and
     // query/build/profile timings are measured with performance.now() (no std::time in
-    // wasm); Save / Load + Load Scale are dropped because b3DynamicTree_Save/_Load are
-    // debug-only file I/O not ported in box3d-rust. Tree build, 1024-query generation
-    // (seed 12345 XorShift, exact), ray/overlap/closest profiling, leaf + per-level
-    // visualization, and all readouts are faithful.
+    // wasm). Save / Load + Load Scale ARE wired (tree_save/tree_load): Save downloads
+    // the serialized tree, Load re-reads it and rebuilds, Load Scale rescales — ported
+    // as a portable leaf format (magic + real B3_DYNAMIC_TREE_VERSION guard) rather than
+    // C's raw b3DynamicTree/b3TreeNode memory dump, which isn't portable across the
+    // C/Rust node layouts; a Save→Load round-trip reproduces the tree exactly (wasm
+    // round-trip test). Tree build, 1024-query generation (seed 12345 XorShift, exact),
+    // ray/overlap/closest profiling, leaf + per-level visualization, and all readouts
+    // are faithful.
     ["Benchmark", "partial", "tree", "benchmark"],
   ]),
   // Registered via g_replayIndex (RegisterReplay), not RegisterSample, so it is
   // its own single-entry category. Partial: transport + scrubber + faithful
-  // playback ship; the outline tree, query search, selection inspector, and
-  // keyframe-policy popup do not (see demos/replay.ts).
+  // playback ship, plus the outline scene tree + selection inspector (click a body in
+  // the outline or the 3D view to highlight it and read its live transform / velocity /
+  // state; C DrawOutlineTree + DrawBodyDetail). Still disclosed-skipped: the
+  // whole-recording query search index (too heavy for the browser) and the
+  // keyframe-policy popup (tunes a backward-seek keyframe ring our restart-and-replay
+  // seek never consumes, so it would have no effect). See demos/replay.ts.
   ...cat("Replay", "sample_replay.cpp", [
     ["Viewer", "partial", "replay"],
   ]),

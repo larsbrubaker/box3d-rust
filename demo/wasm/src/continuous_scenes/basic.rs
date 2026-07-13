@@ -8,6 +8,7 @@ use super::{bake_ground_mesh, clear_ground_edges, p};
 use crate::rng::XorShift32;
 use crate::sim_demo::{add_ground, new_sim, stop_recording_if_any, with_sim, SimBody, SIM};
 use box3d_rust::body::{create_body, destroy_body, make_body_id};
+use box3d_rust::core::{get_stall_threshold, set_stall_threshold};
 use box3d_rust::hull::{create_rock, make_box_hull};
 use box3d_rust::math_functions::{compute_cos_sin, Vec3, PI, VEC3_ONE, VEC3_ZERO};
 use box3d_rust::mesh::{create_mesh, create_torus_mesh, MeshData, MeshDef};
@@ -375,6 +376,10 @@ pub fn sim_reset_is_fast() -> u32 {
 #[wasm_bindgen]
 pub fn sim_reset_stall() -> u32 {
     clear_ground_edges();
+    // C `Stall` ctor: b3SetStallThreshold(0.001f) — log any CCD step over 1 ms.
+    // (The serial port emits no per-step wall-clock CCD log, but the threshold is
+    // set and read back for the on-screen readout, matching the C sample setup.)
+    set_stall_threshold(0.001);
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -447,4 +452,13 @@ pub fn sim_cont_stall_launch() -> u32 {
         });
         sim.bodies.len() as u32
     })
+}
+
+/// The active CCD stall threshold in milliseconds (C `b3GetStallThreshold` × 1000,
+/// the same scale solver.c/shape.c compare a step's duration against). The Stall
+/// scene sets it to 1.0 ms in [`sim_reset_stall`]; the page shows it as the readout
+/// the C sample configures.
+#[wasm_bindgen]
+pub fn sim_cont_stall_threshold_ms() -> f32 {
+    1000.0 * get_stall_threshold()
 }

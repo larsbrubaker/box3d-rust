@@ -6,6 +6,7 @@
 
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
+use crate::rng::XorShift32;
 use crate::sim_demo::{
     capsule_local_from_centers, new_sim, push_dynamic_sphere, stop_recording_if_any, DemoRng,
     SimBody, SIM,
@@ -49,9 +50,11 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
-/// Uniform random quaternion (Shoemake), fed by the demo-local LCG rather than the C
-/// `Random*` stream. The Shoemake math lives in `vis::random_quat_from`.
-fn random_quat(rng: &mut DemoRng) -> Quat {
+/// Uniform random quaternion (Shoemake), a bit-for-bit port of C `RandomQuat`
+/// (`utils.h`:113): consume `u1 ∈ [0,1]`, `u2`/`u3 ∈ [0, 2π)` from the shared
+/// `g_randomSeed` XorShift stream in that order. The Shoemake math lives in
+/// `vis::random_quat_from`.
+fn random_quat(rng: &mut XorShift32) -> Quat {
     let u1 = rng.range(0.0, 1.0);
     let u2 = rng.range(0.0, 2.0 * std::f32::consts::PI);
     let u3 = rng.range(0.0, 2.0 * std::f32::consts::PI);
@@ -137,12 +140,15 @@ pub fn sim_reset_compound_spheres() -> u32 {
         }
         let mut sim = new_sim();
 
-        let mut rng = DemoRng(0xC0FF_EE42);
+        // C `CompoundSpheres` (:112) resets `g_randomSeed = 12345` in the Sample
+        // ctor, then per sphere consumes `RandomVec3` (3 floats) for the center and
+        // `RandomFloatRange` (1 float) for the radius, in that order (:126-127).
+        let mut rng = XorShift32::with_seed(12345);
         let h = 10.0f32;
         let material = default_surface_material();
         let mut spheres = Vec::with_capacity(20);
         for _ in 0..20 {
-            let center = rng.vec3_range(
+            let center = rng.vec3(
                 Vec3 {
                     x: -h,
                     y: -h,
@@ -196,7 +202,11 @@ pub fn sim_reset_compound_hulls() -> u32 {
         }
         let mut sim = new_sim();
 
-        let mut rng = DemoRng(0xA011_C0DE);
+        // C `CompoundHulls` (:173) resets `g_randomSeed = 12345` in the Sample ctor,
+        // then per hull consumes, in order (:189-197): three `RandomFloatRange` for
+        // the extents (x,y,z), `RandomVec3` (3 floats) for the position, and
+        // `RandomQuat` (3 floats) for the orientation.
+        let mut rng = XorShift32::with_seed(12345);
         let h = 10.0f32;
         let material = default_surface_material();
         // Keep owned hulls alive for create_compound.
@@ -213,7 +223,7 @@ pub fn sim_reset_compound_hulls() -> u32 {
             box_hulls.push(make_box_hull(e.x, e.y, e.z));
             // C CompoundHulls :196-197 uses RandomVec3 for position and RandomQuat()
             // (Shoemake uniform random rotation) for orientation.
-            let p = rng.vec3_range(
+            let p = rng.vec3(
                 Vec3 {
                     x: -h,
                     y: -h,

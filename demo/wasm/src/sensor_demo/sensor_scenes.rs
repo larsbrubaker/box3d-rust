@@ -24,12 +24,10 @@ use box3d_rust::math_functions::{
 use box3d_rust::mesh::create_grid_mesh;
 use box3d_rust::shape::{
     create_capsule_shape, create_hull_shape, create_mesh_shape, create_sphere_shape,
-    shape_get_body, shape_get_user_data, shape_is_valid,
+    shape_get_body, shape_get_user_data, shape_is_sensor, shape_is_valid,
 };
 use box3d_rust::types::{default_body_def, default_shape_def, BodyType};
-use box3d_rust::world::world_set_custom_filter_callback;
-use std::cell::RefCell;
-use std::collections::HashSet;
+use box3d_rust::world::{world_set_custom_filter_callback, World};
 
 const ACTIVE_SENSOR_COLOR: u32 = 0x505050;
 const ACTIVE_USER_DATA: u64 = 1;
@@ -37,23 +35,33 @@ const ACTIVE_USER_DATA: u64 = 1;
 const BENCH_COLUMNS: i32 = 40;
 const BENCH_ROWS: i32 = 40;
 
-thread_local! {
-    /// shape.index1 of the Benchmark Sensor's filter-row sensors. The custom filter
-    /// reads these here (its `fn(ShapeId, ShapeId, u64)` signature has no `&World`,
-    /// and `STATE` is already borrowed while `world.step` runs).
-    static FILTER_ROW_SHAPES: RefCell<HashSet<i32>> = RefCell::new(HashSet::new());
-}
-
 /// Ports `BenchmarkSensor::Filter`/`FilterFcn` (sample_benchmark.cpp:922-946).
-/// `enableCustomFiltering` is set only on the filter-row sensors, so this callback
-/// is invoked solely for pairs involving one of them; C's `Filter` returns
-/// `userData->active(false) || userData->row(filterRow) != m_filterRow` → `false`,
-/// suppressing those sensor touches.
-fn bench_sensor_filter(shape_a: ShapeId, shape_b: ShapeId, _context: u64) -> bool {
-    FILTER_ROW_SHAPES.with(|set| {
-        let set = set.borrow();
-        !(set.contains(&shape_a.index1) || set.contains(&shape_b.index1))
-    })
+/// C reads the sensor shape's userData through `b3Shape_GetUserData(shapeId)`; the
+/// ported callback does the same via the `&World` it receives, decoding the demo's
+/// userData encoding (bit 0 = active, `>>1 - 1` = row) exactly as
+/// [`reset_benchmark`] writes it. C's `this` context (which carries `m_filterRow`)
+/// maps to the `u64` filter-row passed at registration. Returns
+/// `userData->active || userData->row != filterRow`, suppressing the filter-row
+/// sensor touches. `enableCustomFiltering` is set only on the filter row, so the
+/// callback is invoked solely for pairs involving one of those sensors.
+fn bench_sensor_filter(world: &World, shape_a: ShapeId, shape_b: ShapeId, context: u64) -> bool {
+    let filter_row = context as i32;
+    // C picks idA's userData if idA is the sensor, else idB's (else no data).
+    let user_data = if shape_is_sensor(world, shape_a) {
+        Some(shape_get_user_data(world, shape_a))
+    } else if shape_is_sensor(world, shape_b) {
+        Some(shape_get_user_data(world, shape_b))
+    } else {
+        None
+    };
+    match user_data {
+        Some(ud) => {
+            let active = (ud & 1) != 0;
+            let row = (ud >> 1) as i32 - 1;
+            active || row != filter_row
+        }
+        None => true,
+    }
 }
 
 pub(super) fn reset_visit() -> SensorState {
@@ -261,9 +269,11 @@ pub(super) fn reset_benchmark() -> SensorState {
     // pre-split module (`sensor_demo.rs` reset_benchmark).
     let rng = XorShift32::with_seed(42);
 
-    // b3World_SetCustomFilterCallback(m_worldId, FilterFcn, this).
-    FILTER_ROW_SHAPES.with(|set| set.borrow_mut().clear());
-    world_set_custom_filter_callback(&mut world, Some(bench_sensor_filter), 0);
+    // b3World_SetCustomFilterCallback(m_worldId, FilterFcn, this): C passes `this`
+    // (holding m_filterRow) as the context. We pass the filter row itself so the
+    // callback can compare against it, matching C's `m_filterRow` access.
+    let filter_row = BENCH_ROWS >> 1;
+    world_set_custom_filter_callback(&mut world, Some(bench_sensor_filter), filter_row as u64);
 
     let grid_size = 3.0;
     let half = 0.48 * grid_size;
@@ -291,7 +301,6 @@ pub(super) fn reset_benchmark() -> SensorState {
 
     let shift = 5.0;
     let x_center = 0.5 * shift * BENCH_COLUMNS as f32;
-    let filter_row = BENCH_ROWS >> 1;
     let cube = make_cube_hull(0.5);
     let y_start = 10.0;
     {
@@ -313,12 +322,7 @@ pub(super) fn reset_benchmark() -> SensorState {
                 let x = i as f32 * shift - x_center;
                 body_def.position = pos(x, y, 0.0);
                 let id = create_body(&mut world, &body_def);
-                let shape_id = create_hull_shape(&mut world, id, &shape_def, &cube.base);
-                if j == filter_row {
-                    FILTER_ROW_SHAPES.with(|set| {
-                        set.borrow_mut().insert(shape_id.index1);
-                    });
-                }
+                create_hull_shape(&mut world, id, &shape_def, &cube.base);
                 vis.push(VisBody::box_body(id.index1 - 1, 0.5, 0.5, 0.5), color, true);
             }
         }
