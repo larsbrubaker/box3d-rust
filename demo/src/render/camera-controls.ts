@@ -30,8 +30,6 @@ const PAN_SENS = 0.005;
 const RADIAL_ZOOM_SENS = 0.02;
 const ZOOM_EXP = 0.1; // NodeDesigner onWheel: Math.exp(±zoomSpeed)
 const MIN_DIST = 0.1;
-const MIN_SPEED = 0.06;
-const MAX_SPEED = 30000.0;
 const PITCH_LIM = HALF_PI - 0.01;
 const VIEW_DISTANCE = 1000.0;
 
@@ -671,7 +669,3 @@ export class CameraControls {
     this.dom.removeEventListener("touchcancel", this.onTouchEnd);
   }
 }
-
-// Keep speed clamp helpers referenced for fly-speed tuning API parity.
-void MIN_SPEED;
-void MAX_SPEED;
