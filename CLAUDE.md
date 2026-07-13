@@ -116,3 +116,7 @@ This project uses **PowerShell** on Windows. Heredocs (`<<'EOF'`) don't work —
 ## Demo Site
 
 The wasm demo site (`demo/`) will mirror the C `samples/` app: every sample category eventually gets an interactive browser demo (rendered with WebGL — Box3D scenes are 3D). Build with `bun run build` in `demo/`, develop with `bun run dev`. Deployed to GitHub Pages by `.github/workflows/deploy-demo.yml` on push to main. Until the collision layer lands, the site is a status/landing page that loads the wasm build and reports the port version — keeping the whole pipeline green from day one.
+
+## Orchestration pattern
+
+The main session (Fable 5) acts as planner and orchestrator only — it should not write or edit code directly. All implementation is delegated to the `implementer` subagent, one scoped step at a time. All post-change review is delegated to the `reviewer` subagent. The main session handles only planning, architecture decisions, and synthesizing subagent results.
