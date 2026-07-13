@@ -151,6 +151,22 @@ body {
   font-size: 10px;
 }
 
+.sidebar-footer .build-info {
+  margin-top: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.sidebar-footer .build-info a {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+
+.sidebar-footer .build-info a:hover {
+  color: var(--accent);
+}
+
 /* ============================================================================
    Main Content
    ============================================================================ */
@@ -413,6 +429,75 @@ body {
   display: block;
   width: 100%;
   height: 100%;
+  /* Own touch gestures on the canvas (orbit/pinch/pan) — the page UI outside the
+     canvas keeps native scrolling. Canvas only, per the touch handlers in
+     render/camera-controls.ts. */
+  touch-action: none;
+}
+
+/* --- Fallback sample-nav header (main.ts ensureSampleNav) ------------------ */
+/* Injected at the top of the Info panel on sample pages that don't use the
+   shared attachInteraction header. Generic (theme-var) styling for non-shell
+   pages; the `.demo-page.samples-shell .sample-nav-btn / .sample-csource` rules
+   below have higher specificity and take over inside the dark samples shell. */
+.sample-nav-header {
+  margin-bottom: 12px;
+}
+
+.sample-nav-header .sample-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sample-nav-header .sample-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sample-nav-header .sample-nav-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--surface-alt, #f0f0f0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sample-nav-header .sample-nav-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.sample-nav-header .sample-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sample-nav-header .sample-csource {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.sample-nav-header .sample-csource:hover {
+  text-decoration: underline;
 }
 
 .demo-controls {
@@ -1260,19 +1345,73 @@ body {
   margin-bottom: 4px;
 }
 
+.demo-page.samples-shell .sample-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .demo-page.samples-shell .sample-name {
   font-size: 16px;
   font-weight: 700;
   color: var(--samples-goldenrod);
   letter-spacing: -0.2px;
   line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ◀ / ▶ prev-next controls next to the sample name — same C-sorted order as the
+   [ / ] keys and the Sim menu. */
+.demo-page.samples-shell .sample-nav-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--samples-text);
+  background: var(--samples-frame-bg, #2e3036);
+  border: 1px solid var(--samples-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.demo-page.samples-shell .sample-nav-btn:hover:not(:disabled) {
+  background: var(--samples-accent, #477aa8);
+  border-color: var(--samples-accent, #477aa8);
+  color: #fff;
+}
+
+.demo-page.samples-shell .sample-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .demo-page.samples-shell .sample-category {
   font-size: 12px;
   color: #d3d3d3;
   margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+/* Link to the exact upstream C sample file at the pinned submodule commit. */
+.demo-page.samples-shell .sample-csource {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--samples-seagreen);
+  text-decoration: none;
   margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.demo-page.samples-shell .sample-csource:hover {
+  text-decoration: underline;
 }
 
 .demo-page.samples-shell .sample-paused {

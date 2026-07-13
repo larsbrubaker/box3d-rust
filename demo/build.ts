@@ -3,6 +3,7 @@
 
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { versionDefines } from "./build-version.ts";
 
 const ROOT = import.meta.dir;
 const DIST = join(ROOT, "dist");
@@ -20,6 +21,8 @@ const result = await Bun.build({
   format: "esm",
   minify: true,
   naming: "[dir]/[name].[ext]",
+  // Embed crate version + git hash for the sidebar footer (src/version.ts).
+  define: versionDefines(ROOT),
 });
 
 if (!result.success) {

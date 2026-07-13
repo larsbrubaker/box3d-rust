@@ -97,6 +97,9 @@ export class CameraControls {
   private radialZoomDY = 0;
   private scrollAccum = 0;
   private speedScrollAccum = 0;
+  // Multiplicative radius change from a two-finger pinch (1 = none). Touch only;
+  // see the touch handlers below.
+  private pinchFactor = 1;
 
   // Sticky button/key state (camera.h:247-255).
   private leftDown = false;
@@ -124,6 +127,14 @@ export class CameraControls {
   // across browsers and works without pointer lock.
   private lastX = 0;
   private lastY = 0;
+
+  // Touch gesture baseline (previous centroid + pinch distance). The C sample app
+  // has no touch spec — touch is a browser affordance layered on top, so these
+  // fields and the touch handlers below never touch the ported orbit/fly math.
+  private touchCount = 0;
+  private lastTouchX = 0;
+  private lastTouchY = 0;
+  private lastPinchDist = 0;
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
@@ -253,6 +264,13 @@ export class CameraControls {
           this.radius *= Math.pow(ZOOM_STEP, this.scrollAccum);
           this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
         }
+
+        // Two-finger pinch (touch): scale the orbit radius directly by the ratio
+        // of the previous to current finger spread, so spreading zooms in.
+        if (this.pinchFactor !== 1) {
+          this.radius *= this.pinchFactor;
+          this.radius = clampFloat(this.radius, MIN_DIST, VIEW_DISTANCE);
+        }
       }
 
       this.yaw = unwindAngle(this.yaw);
@@ -265,6 +283,7 @@ export class CameraControls {
     this.radialZoomDY = 0;
     this.scrollAccum = 0;
     this.speedScrollAccum = 0;
+    this.pinchFactor = 1;
 
     this.applyToCamera();
   }
@@ -295,6 +314,12 @@ export class CameraControls {
     window.addEventListener("keyup", this.onKeyUp);
     this.dom.addEventListener("contextmenu", this.onContextMenu);
     window.addEventListener("blur", this.onBlur);
+    // Touch (non-passive: we preventDefault to own the gesture and suppress the
+    // browser's compatibility mouse events / page scroll on the canvas).
+    this.dom.addEventListener("touchstart", this.onTouchStart, { passive: false });
+    this.dom.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    this.dom.addEventListener("touchend", this.onTouchEnd);
+    this.dom.addEventListener("touchcancel", this.onTouchEnd);
   }
 
   private isTextTarget(): boolean {
@@ -406,6 +431,86 @@ export class CameraControls {
     }
   };
 
+  // --- Touch (browser affordance; C samples app is mouse/keyboard only) -------
+  // Desktop mouse/keyboard behavior is unchanged. Gesture mapping:
+  //   one finger drag   -> orbit  (feeds the orbit accumulators, like Alt+drag)
+  //   two-finger pinch  -> zoom   (scales the orbit radius by the spread ratio)
+  //   two-finger drag   -> pan    (moves the pivot in view-space, like Alt+middle)
+  //   tap               -> select (handled by the pointer layer in interaction.ts)
+  // Baselines re-sync on finger add/remove so lifting one finger of a pinch never
+  // jerks the single-finger orbit.
+  private touchCentroidX(touches: TouchList): number {
+    return touches.length >= 2 ? (touches[0]!.clientX + touches[1]!.clientX) * 0.5 : touches[0]!.clientX;
+  }
+
+  private touchCentroidY(touches: TouchList): number {
+    return touches.length >= 2 ? (touches[0]!.clientY + touches[1]!.clientY) * 0.5 : touches[0]!.clientY;
+  }
+
+  private pinchDistance(touches: TouchList): number {
+    const dx = touches[0]!.clientX - touches[1]!.clientX;
+    const dy = touches[0]!.clientY - touches[1]!.clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  private syncTouchBaseline(touches: TouchList): void {
+    this.touchCount = touches.length;
+    if (touches.length === 0) return;
+    this.lastTouchX = this.touchCentroidX(touches);
+    this.lastTouchY = this.touchCentroidY(touches);
+    this.lastPinchDist = touches.length >= 2 ? this.pinchDistance(touches) : 0;
+  }
+
+  private onTouchStart = (e: TouchEvent): void => {
+    // Own the gesture: suppress page scroll/zoom and compatibility mouse events.
+    e.preventDefault();
+    this.syncTouchBaseline(e.touches);
+  };
+
+  private onTouchMove = (e: TouchEvent): void => {
+    e.preventDefault();
+    const touches = e.touches;
+    if (!this.enabled || touches.length === 0) {
+      this.syncTouchBaseline(touches);
+      return;
+    }
+
+    if (touches.length >= 2) {
+      const cx = this.touchCentroidX(touches);
+      const cy = this.touchCentroidY(touches);
+      const dist = this.pinchDistance(touches);
+      // Only fold deltas when the previous frame was also a 2-finger gesture,
+      // else a 1->2 transition would inject a spurious jump.
+      if (this.touchCount >= 2) {
+        this.panDX += cx - this.lastTouchX;
+        this.panDY += cy - this.lastTouchY;
+        if (this.lastPinchDist > 0 && dist > 0) {
+          // Spread fingers (dist grows) -> ratio < 1 -> radius shrinks -> zoom in.
+          this.pinchFactor *= this.lastPinchDist / dist;
+        }
+      }
+      this.lastTouchX = cx;
+      this.lastTouchY = cy;
+      this.lastPinchDist = dist;
+      this.touchCount = touches.length;
+    } else {
+      const t = touches[0]!;
+      if (this.touchCount === 1) {
+        this.orbitDX += t.clientX - this.lastTouchX;
+        this.orbitDY += t.clientY - this.lastTouchY;
+      }
+      this.lastTouchX = t.clientX;
+      this.lastTouchY = t.clientY;
+      this.lastPinchDist = 0;
+      this.touchCount = 1;
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent): void => {
+    // Re-baseline against the fingers still down (2->1 keeps orbiting smoothly).
+    this.syncTouchBaseline(e.touches);
+  };
+
   private onContextMenu = (e: Event): void => {
     // Right-drag drives fly-look, so the browser menu must not pop.
     e.preventDefault();
@@ -432,5 +537,9 @@ export class CameraControls {
     window.removeEventListener("keyup", this.onKeyUp);
     this.dom.removeEventListener("contextmenu", this.onContextMenu);
     window.removeEventListener("blur", this.onBlur);
+    this.dom.removeEventListener("touchstart", this.onTouchStart);
+    this.dom.removeEventListener("touchmove", this.onTouchMove);
+    this.dom.removeEventListener("touchend", this.onTouchEnd);
+    this.dom.removeEventListener("touchcancel", this.onTouchEnd);
   }
 }
