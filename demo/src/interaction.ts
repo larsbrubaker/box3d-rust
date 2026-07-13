@@ -220,7 +220,7 @@ function screenToNdc(canvas: HTMLCanvasElement, clientX: number, clientY: number
   return _ndc;
 }
 
-function pickRay(
+export function pickRay(
   demo: DemoScene,
   canvas: HTMLCanvasElement,
   clientX: number,
@@ -486,12 +486,12 @@ function floatBitsToRgb(bitsAsF32: number): [number, number, number] {
 }
 
 /** One debug label: a text string anchored at a world point, with a color. */
-type DebugLabel = { x: number; y: number; z: number; color: string; text: string };
+export type DebugLabel = { x: number; y: number; z: number; color: string; text: string };
 
 /** Parse the `sim_debug_text` JSON channel into labels (tolerant of an empty or
  *  malformed payload — the overlay simply clears in that case). Color accepts a
  *  packed 0xRRGGBB number or a CSS string; anything else falls back to white. */
-function parseDebugText(json: string | undefined): DebugLabel[] {
+export function parseDebugText(json: string | undefined): DebugLabel[] {
   if (!json) return [];
   let raw: unknown;
   try {
@@ -529,7 +529,7 @@ function normDebugColor(c: unknown): string {
  * so a steady label set costs no per-frame allocation. Sprites always face the
  * camera (THREE.Sprite), matching the C DrawString HUD behavior in 3D.
  */
-class TextLabelOverlay {
+export class TextLabelOverlay {
   private readonly group: THREE.Group;
   private readonly textureCache = new Map<string, THREE.Texture>();
   private readonly pool: THREE.Sprite[] = [];

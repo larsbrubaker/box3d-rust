@@ -44,7 +44,7 @@ fn with_far<R>(f: impl FnOnce(&mut FarState) -> R) -> R {
 fn new_world() -> World {
     // Restore the base Sample launch-speed scale (5.0) on every scene reset (the
     // far-world reset builds its world through here); overrides re-apply after.
-    crate::interact::reset_launch_speed_scale();
+    crate::interact::reset_scene_scales();
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,

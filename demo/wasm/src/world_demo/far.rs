@@ -62,7 +62,7 @@ fn with_far<R>(f: impl FnOnce(&mut FarScene) -> R) -> R {
 
 fn new_world() -> World {
     // Restore the base Sample launch-speed scale (5.0) on every scene reset.
-    interact::reset_launch_speed_scale();
+    interact::reset_scene_scales();
     let mut def = default_world_def();
     def.gravity = Vec3 {
         x: 0.0,

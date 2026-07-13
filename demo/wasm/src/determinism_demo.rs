@@ -81,7 +81,7 @@ fn build_ground_edges(data: &FallingRagdollData) -> Vec<f32> {
 }
 
 fn new_world() -> World {
-    interact::reset_launch_speed_scale();
+    interact::reset_scene_scales();
     // The C sample uses the Sample base world (b3DefaultWorldDef), gravity -10.
     World::new(&default_world_def())
 }

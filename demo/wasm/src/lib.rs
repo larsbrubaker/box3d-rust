@@ -23,10 +23,12 @@ mod rng;
 mod sensor_demo;
 #[macro_use]
 mod shell;
+mod continuous_scenes;
 mod shapes_demo;
 mod sim_compound;
 mod sim_continuous;
 mod sim_demo;
+mod stacking_scenes;
 mod village;
 mod vis;
 mod world_demo;

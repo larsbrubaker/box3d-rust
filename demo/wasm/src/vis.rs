@@ -16,7 +16,9 @@ use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::height_field::{
     get_height_field_triangle, get_height_field_triangle_count, HeightFieldData,
 };
-use box3d_rust::math_functions::{mul_transforms, Pos, Quat, Transform, Vec3};
+use box3d_rust::math_functions::{
+    mul_transforms, transform_point, Pos, Quat, Transform, Vec3, QUAT_IDENTITY,
+};
 use box3d_rust::mesh::{get_mesh_triangles, get_mesh_vertices, MeshData};
 use box3d_rust::world::World;
 
@@ -272,28 +274,50 @@ pub fn mesh_triangle_edges(mesh: &MeshData, scale: Vec3) -> Vec<f32> {
 /// (`vert * scale + offset`), for placing a mesh wireframe at a tile position or
 /// under a large-world base frame. The far-world and determinism ground grids use
 /// this; the near-origin call sites pass a zero offset via [`mesh_triangle_edges`].
+///
+/// This is the identity-rotation special case of [`mesh_triangle_edges_transform`]
+/// and delegates to it: a translation-only `Transform` (`QUAT_IDENTITY`) maps
+/// `vert * scale` to `vert * scale + offset` bit-for-bit — `rotate_vector` by the
+/// identity quaternion returns its argument for the finite, non-negative-zero
+/// vertices these grids produce.
 pub fn mesh_triangle_edges_offset(mesh: &MeshData, scale: Vec3, offset: Vec3) -> Vec<f32> {
+    mesh_triangle_edges_transform(
+        mesh,
+        scale,
+        Transform {
+            p: offset,
+            q: QUAT_IDENTITY,
+        },
+    )
+}
+
+/// Mesh triangle edges as interleaved endpoints `[x0,y0,z0, x1,y1,z1, ...]`, each
+/// vertex first scaled by `scale` then mapped through the full `transform`
+/// (`transform_point(transform, vert * scale)`). Handles rotated *and* scaled
+/// static grounds — e.g. the Ragdoll Incline's tilted grid meshes — where a plain
+/// translation offset is not enough. [`mesh_triangle_edges_offset`] is the
+/// translation-only special case and delegates here.
+pub fn mesh_triangle_edges_transform(
+    mesh: &MeshData,
+    scale: Vec3,
+    transform: Transform,
+) -> Vec<f32> {
     let verts = get_mesh_vertices(mesh);
     let tris = get_mesh_triangles(mesh);
     let mut edges = Vec::with_capacity(tris.len() * 18);
     for tri in tris {
-        let pts = [
-            Vec3 {
-                x: verts[tri.index1 as usize].x * scale.x + offset.x,
-                y: verts[tri.index1 as usize].y * scale.y + offset.y,
-                z: verts[tri.index1 as usize].z * scale.z + offset.z,
-            },
-            Vec3 {
-                x: verts[tri.index2 as usize].x * scale.x + offset.x,
-                y: verts[tri.index2 as usize].y * scale.y + offset.y,
-                z: verts[tri.index2 as usize].z * scale.z + offset.z,
-            },
-            Vec3 {
-                x: verts[tri.index3 as usize].x * scale.x + offset.x,
-                y: verts[tri.index3 as usize].y * scale.y + offset.y,
-                z: verts[tri.index3 as usize].z * scale.z + offset.z,
-            },
-        ];
+        let scaled = |i: i32| {
+            let v = verts[i as usize];
+            transform_point(
+                transform,
+                Vec3 {
+                    x: v.x * scale.x,
+                    y: v.y * scale.y,
+                    z: v.z * scale.z,
+                },
+            )
+        };
+        let pts = [scaled(tri.index1), scaled(tri.index2), scaled(tri.index3)];
         for e in 0..3 {
             let a = pts[e];
             let b = pts[(e + 1) % 3];

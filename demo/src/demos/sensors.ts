@@ -1,5 +1,11 @@
-// Sensors — Sensor Visit, Sensor Hits, Benchmark Sensor (sample_events / sample_benchmark).
+// Sensors route — hosts every sample_events.cpp scene plus Benchmark Sensor.
+//
+// Sensor scenes (verified exact): Sensor Visit, Sensor Hits, Benchmark Sensor.
+// Events scenes (sample_events.cpp): Hit, Move, Joint, Persistent Contact — these
+// add the debug-draw overlay (hit points / manifold impulses), 3D text labels,
+// ground-mesh wireframes, and per-scene HUD readouts.
 
+import * as THREE from "three";
 import {
   createButton,
   createButtonGroup,
@@ -8,15 +14,37 @@ import {
   createReadout,
   updateReadout,
 } from "../controls.ts";
+import {
+  DebugDrawOverlay,
+  makeInteractAdapter,
+  parseDebugText,
+  pickRay,
+  TextLabelOverlay,
+} from "../interaction.ts";
 import { getWasm, SENSOR_EVENT_STATS } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { DemoScene, setView } from "../three-scene.ts";
+import { DemoScene, makeWireEdges, setView } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
-type Scene = "visit" | "hits" | "benchmark";
+type Scene = "visit" | "hits" | "benchmark" | "hit" | "move" | "joint" | "persistent";
 
-export const SCENES: Scene[] = ["visit", "hits", "benchmark"];
+export const SCENES: Scene[] = ["visit", "hits", "benchmark", "hit", "move", "joint", "persistent"];
+
+// Scenes from the Events samples that use the overlay / text / HUD channels.
+const EVENTS_SCENES = new Set<Scene>(["hit", "move", "joint", "persistent"]);
+// Scenes whose ground is a triangle mesh drawn as a wireframe (not a pose box).
+const MESH_GROUND_SCENES = new Set<Scene>(["hit", "persistent"]);
+
+const SCENE_ID: Record<Scene, number> = {
+  visit: 0,
+  hits: 1,
+  benchmark: 2,
+  hit: 3,
+  move: 4,
+  joint: 5,
+  persistent: 6,
+};
 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
@@ -25,22 +53,30 @@ export function init(container: HTMLElement, initialScene?: string) {
   assertRouteScenes("sensors", SCENES);
   const { canvas, controls } = demoPage(
     container,
-    "Sensors",
-    "Events sensor samples from <code>sample_events.cpp</code> (Sensor Visit, Sensor Hits — both exact) " +
-      "plus <strong>Benchmark Sensor</strong>, which is a <em>Benchmark-category</em> sample from " +
-      "<code>sample_benchmark.cpp</code> hosted here for convenience.",
-    "Pick a sample · Launch (B) on Hits · Restart",
+    "Sensors & Events",
+    "Every <code>sample_events.cpp</code> scene — Sensor Visit, Sensor Hits, Hit, Move, Joint, " +
+      "Persistent Contact — plus <strong>Benchmark Sensor</strong> (a <em>Benchmark-category</em> " +
+      "sample from <code>sample_benchmark.cpp</code> hosted here for convenience).",
+    "Pick a sample · Launch (B) on Hits · Ctrl/Shift+click to grab/throw · Restart",
     wasm.version(),
     { category: "Events", samplesShell: true },
   );
 
   controls.appendChild(
     createInfoBox(
-      "<strong>Sensor Visit</strong> — kinematic sensor destroys the visitor on begin-touch.<br>" +
-        "<strong>Sensor Hits</strong> — static/kinematic mesh sensors + prismatic capsule; " +
-        "launch a bullet sphere (checkbox + <kbd>B</kbd>).<br>" +
-        "<strong>Benchmark Sensor</strong> (Benchmark category, not Events) — full C-scale 40×40 grid; lime tint on overlap; " +
-        "bottom active sensors destroy visitors; mid row fuchsia (custom filter active).",
+      "<strong>Sensor Visit / Sensor Hits</strong> — sensor overlap events (kinematic sensor destroys " +
+        "the visitor; launch a bullet sphere on Hits).<br>" +
+        "<strong>Hit</strong> — a welded capsule chain drops onto a 6-material grid mesh; contact-hit " +
+        "events draw yellow points + approach-speed rays labelled <em>speed, material</em>.<br>" +
+        "<strong>Move</strong> — a spinning tall box; body move/sleep events shown in the readout.<br>" +
+        "<strong>Joint</strong> — distance / prismatic / revolute / weld joints with force+torque " +
+        "thresholds; drive a joint over threshold to destroy it via joint events — " +
+        "<em>Ctrl+click</em> to grab and yank a body, or <em>Shift+click</em> to throw a projectile " +
+        "at one.<br>" +
+        "<strong>Persistent Contact</strong> — a rolling sphere; one contact id is tracked and its " +
+        "manifold impulses drawn (crimson).<br>" +
+        "<strong>Benchmark Sensor</strong> (Benchmark category) — full C-scale 40×40 grid; lime tint on " +
+        "overlap; mid row fuchsia (custom filter active).",
     ),
   );
 
@@ -53,6 +89,10 @@ export function init(container: HTMLElement, initialScene?: string) {
       [
         { label: "Sensor Visit", value: "visit" },
         { label: "Sensor Hits", value: "hits" },
+        { label: "Hit", value: "hit" },
+        { label: "Move", value: "move" },
+        { label: "Joint", value: "joint" },
+        { label: "Persistent Contact", value: "persistent" },
         { label: "Benchmark Sensor", value: "benchmark" },
       ],
       scene,
@@ -83,16 +123,45 @@ export function init(container: HTMLElement, initialScene?: string) {
   demo.camera.updateProjectionMatrix();
   const pool = createMeshPool();
 
-  function sceneId(): number {
-    if (scene === "hits") return 1;
-    if (scene === "benchmark") return 2;
-    return 0;
+  // Debug-draw overlay (hit points / approach-speed rays / manifold impulses) and
+  // 3D text labels (approach speed + material, impulse magnitudes).
+  const overlay = new DebugDrawOverlay(demo);
+  const textSprites = new TextLabelOverlay(demo);
+
+  // Ground mesh wireframe (Hit / Persistent Contact), rebuilt on reset.
+  const groundWireGroup = new THREE.Group();
+  demo.content.add(groundWireGroup);
+  function clearGroundWire() {
+    for (const child of [...groundWireGroup.children]) {
+      groundWireGroup.remove(child);
+      const seg = child as THREE.LineSegments;
+      seg.geometry.dispose();
+      (seg.material as THREE.Material).dispose();
+    }
+  }
+  function buildGroundWire() {
+    clearGroundWire();
+    if (!MESH_GROUND_SCENES.has(scene)) return;
+    const edges = wasm.sensor_ground_wireframe();
+    if (edges.length >= 6) groundWireGroup.add(makeWireEdges(edges, 0x556070));
   }
 
   function setCamera() {
+    // C m_camera->SetView(yaw, pitch, distance, target) per ctor.
     if (scene === "visit") setView(demo, 0, 30, 20, [0, 5, 0]);
     else if (scene === "hits") setView(demo, 0, 30, 40, [0, 5, 0]);
-    else setView(demo, 0, 0, 100, [0, 40, 0]);
+    else if (scene === "hit") setView(demo, 0, 30, 100, [0, 5, 0]);
+    else if (scene === "move") setView(demo, 0, 30, 40, [0, 5, 0]);
+    else if (scene === "joint") setView(demo, 0, 30, 40, [0, 5, 0]);
+    else if (scene === "persistent") setView(demo, 0, 30, 40, [0, 5, 0]);
+    else setView(demo, 0, 0, 100, [0, 40, 0]); // benchmark
+  }
+
+  // Move / Joint draw a box ground (pose index 0); Hit / Persistent draw a mesh
+  // wireframe instead, and the sensor scenes have no single ground box.
+  function groundIndexFor(): number | null {
+    if (scene === "hits" || scene === "move" || scene === "joint") return 0;
+    return null;
   }
 
   // Cache the sensor-index set (up to ~1600 u32 in the benchmark) and refetch it only when
@@ -101,9 +170,13 @@ export function init(container: HTMLElement, initialScene?: string) {
   let sensorTopoVersion = -1;
 
   function reset() {
-    wasm.sensor_reset(sceneId());
+    wasm.sensor_reset(SCENE_ID[scene]);
     sensorTopoVersion = -1; // force a refetch of the sensor-index set after reset
     if (hitsRow) hitsRow.style.display = scene === "hits" ? "" : "none";
+    overlay.clear();
+    textSprites.clear();
+    readout.innerHTML = "";
+    buildGroundWire();
     setCamera();
   }
 
@@ -117,6 +190,91 @@ export function init(container: HTMLElement, initialScene?: string) {
   };
   window.addEventListener("keydown", onKey);
 
+  // --- Grab / throw interaction on the Events scenes ---
+  // sample_events.cpp is driven by the same Sample mouse shell as the dynamics
+  // samples. The wasm mouse-shell exports (sensor_mouse_down/move/up/active,
+  // sensor_spawn_random, sensor_delete_at_ray) map through makeInteractAdapter's
+  // "sensor" prefix. Ctrl+click grabs a dynamic body with the mouse spring;
+  // Shift+click throws a projectile along the pick ray — throwing bodies into the
+  // Joint scene is what drives its joint-break events over threshold, matching C.
+  // Guarded on the export family's existence so the page still loads if the wasm
+  // pkg is mid-rebuild (interact stays null and no handlers attach).
+  const hasMouseShell =
+    typeof (wasm as Record<string, unknown>).sensor_mouse_down === "function";
+  const interact = hasMouseShell ? makeInteractAdapter(wasm, "sensor") : null;
+  let dragging = false;
+  let grabFraction = 0;
+  let suppressContext = false;
+
+  const onPointerDown = (e: PointerEvent) => {
+    if (!interact || !EVENTS_SCENES.has(scene)) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    if (e.shiftKey) {
+      const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
+      interact.sim_spawn_random(
+        origin.x, origin.y, origin.z, translation.x, translation.y, translation.z,
+      );
+      e.preventDefault();
+      e.stopPropagation();
+      suppressContext = true;
+      return;
+    }
+    if (e.ctrlKey) {
+      const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
+      const grab = interact.sim_mouse_down(
+        origin.x, origin.y, origin.z, translation.x, translation.y, translation.z,
+      );
+      if (grab[0]! > 0.5) {
+        dragging = true;
+        const hit = new THREE.Vector3(grab[1]!, grab[2]!, grab[3]!);
+        const t2 = translation.dot(translation);
+        grabFraction = t2 > 0 ? hit.sub(origin).dot(translation) / t2 : 0;
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          /* pointer may not be capturable (e.g. synthetic events) */
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (!interact || !dragging || !interact.sim_mouse_active()) return;
+    const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
+    origin.addScaledVector(translation, grabFraction);
+    interact.sim_mouse_move(origin.x, origin.y, origin.z);
+    e.preventDefault();
+  };
+
+  const onPointerUp = (e: PointerEvent) => {
+    if (interact && dragging) {
+      interact.sim_mouse_up();
+      dragging = false;
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+  };
+
+  const onContext = (e: Event) => {
+    if (suppressContext) {
+      e.preventDefault();
+      suppressContext = false;
+    }
+  };
+
+  if (interact) {
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+    canvas.addEventListener("contextmenu", onContext);
+  }
+
   let frame = 0;
   const stop = runLoop(() => {
     wasm.sensor_step(1 / 60, 4);
@@ -128,22 +286,31 @@ export function init(container: HTMLElement, initialScene?: string) {
     syncMeshesFromPoses(demo.content, pool, wasm.sensor_poses(), {
       sensorIndices: sensorIndicesCache,
       colors: wasm.sensor_colors(),
-      groundIndex: scene === "hits" ? 0 : null,
+      groundIndex: groundIndexFor(),
     });
+
+    if (EVENTS_SCENES.has(scene)) {
+      overlay.update(wasm.sensor_overlay());
+      textSprites.update(parseDebugText(wasm.sensor_debug_text()));
+    }
+
     frame += 1;
     if (frame % 10 === 0) {
-      const st = wasm.sensor_event_stats();
-      if (scene === "benchmark") {
-        updateReadout(readout, [
-          { label: "max begin touch", value: String(st[SENSOR_EVENT_STATS.begin]) },
-          { label: "max end touch", value: String(st[SENSOR_EVENT_STATS.end]) },
-          { label: "begin this step", value: String(st[SENSOR_EVENT_STATS.beginThisStep]) },
-          { label: "end this step", value: String(st[SENSOR_EVENT_STATS.endThisStep]) },
-        ]);
+      if (EVENTS_SCENES.has(scene)) {
+        // Events scenes drive the readout from the HUD JSON channel.
+        try {
+          const rows = JSON.parse(wasm.sensor_hud()) as { label: string; value: string }[];
+          updateReadout(readout, Array.isArray(rows) ? rows : []);
+        } catch {
+          /* leave the readout as-is on a malformed frame */
+        }
       } else {
+        const st = wasm.sensor_event_stats();
+        const beginLabel = scene === "benchmark" ? "max begin touch" : "begin touch count";
+        const endLabel = scene === "benchmark" ? "max end touch" : "end touch count";
         updateReadout(readout, [
-          { label: "begin touch count", value: String(st[SENSOR_EVENT_STATS.begin]) },
-          { label: "end touch count", value: String(st[SENSOR_EVENT_STATS.end]) },
+          { label: beginLabel, value: String(st[SENSOR_EVENT_STATS.begin]) },
+          { label: endLabel, value: String(st[SENSOR_EVENT_STATS.end]) },
           { label: "begin this step", value: String(st[SENSOR_EVENT_STATS.beginThisStep]) },
           { label: "end this step", value: String(st[SENSOR_EVENT_STATS.endThisStep]) },
         ]);
@@ -155,6 +322,17 @@ export function init(container: HTMLElement, initialScene?: string) {
   return () => {
     stop();
     window.removeEventListener("keydown", onKey);
+    if (interact) {
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
+      canvas.removeEventListener("contextmenu", onContext);
+    }
+    overlay.dispose();
+    textSprites.dispose();
+    clearGroundWire();
+    demo.content.remove(groundWireGroup);
     disposeMeshPool(pool);
     demo.dispose();
   };

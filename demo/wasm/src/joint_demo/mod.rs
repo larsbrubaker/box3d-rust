@@ -1,4 +1,23 @@
-//! Joint demos — Ball and Chain, Revolute, Gear Lift, Driving (sample_joint.cpp).
+//! Joint demos — the full `sample_joint.cpp` set.
+//!
+//! `mod.rs` owns the shared [`JointState`], the scene enum, the RNG-free helpers
+//! (`add_ground_box`, `new_world`, `xf_at`), and every wasm export that is scene
+//! agnostic (stepping, pose/style packing, the mouse-grab surface, spawn/delete,
+//! counters, debug overlays). Each family of scenes lives in a submodule that owns
+//! its `joint_reset_*` builder plus its live-control setters:
+//!
+//! - [`basic`]     — Distance Joint, Filter, Motor Joint, Top Down Friction
+//! - [`pendulum`]  — Prismatic, Spherical, Parallel Spring, Weld (hanging box + limits)
+//! - [`vehicle`]   — Wheel
+//! - [`structures`]— Door, Bridge, Motion Locks
+//!
+//! Ball and Chain, Revolute, Gear Lift and Driving (the batch-1 scenes) keep their
+//! verified-exact builders here.
+
+mod basic;
+mod pendulum;
+mod structures;
+mod vehicle;
 
 use crate::interact::{self, MouseGrab};
 use crate::joint_drive;
@@ -24,7 +43,7 @@ use box3d_rust::math_functions::{
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
     default_body_def, default_revolute_joint_def, default_shape_def, default_spherical_joint_def,
-    default_world_def, BodyType,
+    default_world_def, BodyType, MotionLocks,
 };
 use box3d_rust::world::{world_get_gravity, World};
 use std::cell::RefCell;
@@ -40,6 +59,18 @@ pub(crate) enum JointScene {
     Revolute,
     GearLift,
     Driving,
+    Distance,
+    Filter,
+    Motor,
+    TopDownFriction,
+    Prismatic,
+    Spherical,
+    Parallel,
+    Weld,
+    Wheel,
+    Door,
+    Bridge,
+    MotionLocks,
 }
 
 pub(crate) struct JointState {
@@ -47,7 +78,7 @@ pub(crate) struct JointState {
     pub bodies: Vec<VisBody>,
     pub grab: MouseGrab,
     pub scene: JointScene,
-    /// Revolute hinge or Gear Lift driver.
+    /// Revolute hinge or Gear Lift driver (also Prismatic/Spherical/Parallel/Weld/Wheel primary).
     pub control_joint: JointId,
     /// Revolute sample plank body, for the energy readout (C Render()).
     pub hinge_body: BodyId,
@@ -63,6 +94,27 @@ pub(crate) struct JointState {
     pub spin_speed: f32,
     pub throttle_x: f32,
     pub throttle_y: f32,
+    /// Generic joint list (Distance links, Motion Locks per-body joints).
+    pub joints: Vec<JointId>,
+    /// Generic body list (Bridge planks, Motion Locks bodies).
+    pub aux_bodies: Vec<BodyId>,
+    /// Motor Joint animation state (C MotorJoint::Step).
+    pub motor_target: BodyId,
+    pub motor_body: BodyId,
+    pub motor_speed: f32,
+    pub motor_time: f32,
+    /// Door scene (C Door): the two revolute hinges, live-tunable, plus tracked errors.
+    pub door_id: BodyId,
+    pub door_ground: BodyId,
+    pub door_joint1: JointId,
+    pub door_joint2: JointId,
+    pub door_magnitude: f32,
+    pub door_two_joints: bool,
+    pub door_enable_limit: bool,
+    pub door_hertz: f32,
+    pub door_damping: f32,
+    pub door_error1: f32,
+    pub door_error2: f32,
 }
 
 pub(crate) fn with_state<R>(f: impl FnOnce(&mut JointState) -> R) -> R {
@@ -91,6 +143,19 @@ pub(crate) fn xf_at(px: f32, py: f32, pz: f32) -> Transform {
     }
 }
 
+/// `Sample::AddGroundBox( extent )` — ground body at `(0,-1,0)` with an
+/// `extent × 1 × extent` box hull. Pushed as the first `VisBody` (index 0) so the
+/// JS mesh sync renders it with the procedural ground material.
+pub(crate) fn add_ground_box(world: &mut World, bodies: &mut Vec<VisBody>, extent: f32) -> BodyId {
+    let mut def = default_body_def();
+    def.position = pos(0.0, -1.0, 0.0);
+    let ground = create_body(world, &def);
+    let hull = make_box_hull(extent, 1.0, extent);
+    create_hull_shape(world, ground, &default_shape_def(), &hull.base);
+    bodies.push(VisBody::box_body(ground.index1 - 1, extent, 1.0, extent));
+    ground
+}
+
 pub(crate) fn empty_state(world: World, bodies: Vec<VisBody>, scene: JointScene) -> JointState {
     JointState {
         world,
@@ -110,13 +175,31 @@ pub(crate) fn empty_state(world: World, bodies: Vec<VisBody>, scene: JointScene)
         spin_speed: 30.0,
         throttle_x: 0.0,
         throttle_y: 0.0,
+        joints: Vec::new(),
+        aux_bodies: Vec::new(),
+        motor_target: NULL_BODY_ID,
+        motor_body: NULL_BODY_ID,
+        motor_speed: 0.0,
+        motor_time: 0.0,
+        door_id: NULL_BODY_ID,
+        door_ground: NULL_BODY_ID,
+        door_joint1: NULL_JOINT_ID,
+        door_joint2: NULL_JOINT_ID,
+        door_magnitude: 50000.0,
+        door_two_joints: true,
+        door_enable_limit: false,
+        door_hertz: 120.0,
+        door_damping: 0.0,
+        door_error1: 0.0,
+        door_error2: 0.0,
     }
 }
 
-fn install(state: JointState) -> u32 {
-    // Restore the base Sample launch-speed scale (5.0) on every scene reset; all
-    // joint scene resets funnel through install(). Overrides re-apply after reset.
-    crate::interact::reset_launch_speed_scale();
+pub(crate) fn install(state: JointState) -> u32 {
+    // Restore the base Sample launch-speed scale (5.0) and the default debug-draw
+    // joint/force scales on every scene reset; all joint scene resets funnel
+    // through install(). Overrides re-apply after reset.
+    crate::interact::reset_scene_scales();
     let count = state.bodies.len() as u32;
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(state);
@@ -189,13 +272,9 @@ pub fn joint_reset_hinge() -> u32 {
     let mut bodies = Vec::new();
 
     // Visual/collision ground (Sample::AddGroundBox).
-    let mut ground_def = default_body_def();
-    ground_def.position = pos(0.0, -1.0, 0.0);
-    let ground = create_body(&mut world, &ground_def);
+    let ground = add_ground_box(&mut world, &mut bodies, 20.0);
+    let _ = ground;
     let shape_def = default_shape_def();
-    let ground_hull = make_box_hull(20.0, 1.0, 20.0);
-    create_hull_shape(&mut world, ground, &shape_def, &ground_hull.base);
-    bodies.push(VisBody::box_body(ground.index1 - 1, 20.0, 1.0, 20.0));
 
     // Shapeless joint parent body at the same pose (C RevoluteJoint).
     let mut anchor_def = default_body_def();
@@ -374,10 +453,15 @@ pub fn joint_revolute_energy() -> Vec<f32> {
 pub fn joint_step(dt: f32, sub_steps: i32) -> u32 {
     with_state(|state| {
         state.grab.pre_step(&mut state.world, dt);
-        if state.scene == JointScene::Driving {
-            joint_drive::pre_step(state);
+        match state.scene {
+            JointScene::Driving => joint_drive::pre_step(state),
+            JointScene::Motor => basic::motor_pre_step(state, dt),
+            _ => {}
         }
         state.world.step(dt, sub_steps);
+        if let JointScene::Door = state.scene {
+            structures::door_update_errors(state);
+        }
         state.bodies.len() as u32
     })
 }
@@ -445,6 +529,16 @@ pub fn joint_terrain_wireframe() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn joint_mouse_down(ox: f32, oy: f32, oz: f32, tx: f32, ty: f32, tz: f32) -> Vec<f32> {
     with_state(|state| {
+        // Door: ctrl-click casts a ray and applies a launch impulse (C Door::MouseDown),
+        // rather than starting a grab.
+        if let JointScene::Door = state.scene {
+            structures::door_ray_impulse(
+                state,
+                interact::pos(ox, oy, oz),
+                interact::vec3(tx, ty, tz),
+            );
+            return vec![0.0, 0.0, 0.0, 0.0];
+        }
         if state.grab.begin(
             &mut state.world,
             interact::pos(ox, oy, oz),
@@ -545,4 +639,14 @@ pub fn joint_counters() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn joint_debug_draw(_flags: u32) -> Vec<f32> {
     with_state(|state| interact::collect_debug_draw(&mut state.world))
+}
+
+/// Shared apply of a full `MotionLocks` set to a slice of bodies, waking each
+/// (C MotionLocks::DrawControls loops calling `b3Body_SetMotionLocks` + `SetAwake`).
+pub(crate) fn apply_motion_locks(state: &mut JointState, locks: MotionLocks) {
+    let ids: Vec<BodyId> = state.aux_bodies.clone();
+    for body in ids {
+        box3d_rust::body::body_set_motion_locks(&mut state.world, body, locks);
+        box3d_rust::body::body_set_awake(&mut state.world, body, true);
+    }
 }

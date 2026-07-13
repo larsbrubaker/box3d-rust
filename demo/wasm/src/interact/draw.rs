@@ -83,6 +83,16 @@ pub fn set_draw_scales(joint_scale: f32, force_scale: f32) {
     FORCE_SCALE.with(|c| c.set(force_scale));
 }
 
+/// Restore the debug-draw joint/force scales to their `b3DebugDraw` defaults (both
+/// 1.0). These live in thread-locals, so without an explicit reset a scene that set
+/// a small `forceScale` (e.g. the Cylinder stacks' 0.001, Mesh Drop's 0.1) would
+/// leak its value onto every subsequent demo. Called at each world-construction
+/// seam via [`crate::interact::reset_scene_scales`]; a scene needing a non-default
+/// scale re-applies it after reset (via `set_draw_scales` / `sim_set_draw_scales`).
+pub fn reset_draw_scales() {
+    set_draw_scales(1.0, 1.0);
+}
+
 /// Whether dynamic bodies should draw translucent this frame — the
 /// transparent-dynamic view mode (`MENU_TRANSPARENT`, C `SetTransparentDynamic`).
 /// The style-word builders read this for `push_shape_styles`' `transparent_dynamic`.

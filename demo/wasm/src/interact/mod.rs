@@ -200,6 +200,17 @@ pub fn reset_launch_speed_scale() {
     LAUNCH_SPEED_SCALE.with(|c| c.set(DEFAULT_LAUNCH_SPEED_SCALE));
 }
 
+/// Reset every per-scene scale that lives in a thread-local — the projectile
+/// launch-speed scale and the debug-draw joint/force scales — back to its base
+/// default. Called at each world-construction seam (`new_world` / `new_sim` /
+/// scene `install`) so no scene's override leaks across a page/world switch; a
+/// scene that overrides one re-applies it *after* the reset. Consolidated into one
+/// helper so a new demo cannot reset one scale and forget the other.
+pub fn reset_scene_scales() {
+    reset_launch_speed_scale();
+    reset_draw_scales();
+}
+
 /// Fixed bullet-sphere radius (`sample.cpp` :1247, `b3Sphere{ zero, 0.25f }`).
 const PROJECTILE_RADIUS: f32 = 0.25;
 /// Density multiplier applied to the default shape density (`sample.cpp` :1248,
