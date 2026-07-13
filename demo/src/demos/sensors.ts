@@ -8,14 +8,16 @@ import {
   createReadout,
   updateReadout,
 } from "../controls.ts";
-import { getWasm } from "../wasm.ts";
+import { getWasm, SENSOR_EVENT_STATS } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
 import { DemoScene, setView } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
 
 type Scene = "visit" | "hits" | "benchmark";
 
-export function init(container: HTMLElement) {
+const SENSOR_SCENES: Scene[] = ["visit", "hits", "benchmark"];
+
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
@@ -38,7 +40,8 @@ export function init(container: HTMLElement) {
     ),
   );
 
-  let scene: Scene = "visit";
+  let scene: Scene =
+    initialScene && SENSOR_SCENES.includes(initialScene as Scene) ? (initialScene as Scene) : "visit";
   let hitsRow: HTMLElement | null = null;
 
   controls.appendChild(
@@ -48,7 +51,7 @@ export function init(container: HTMLElement) {
         { label: "Sensor Hits", value: "hits" },
         { label: "Benchmark Sensor", value: "benchmark" },
       ],
-      "visit",
+      scene,
       (v) => {
         scene = v as Scene;
         reset();
@@ -128,17 +131,17 @@ export function init(container: HTMLElement) {
       const st = wasm.sensor_event_stats();
       if (scene === "benchmark") {
         updateReadout(readout, [
-          { label: "max begin touch", value: String(st[0]) },
-          { label: "max end touch", value: String(st[1]) },
-          { label: "begin this step", value: String(st[2]) },
-          { label: "end this step", value: String(st[3]) },
+          { label: "max begin touch", value: String(st[SENSOR_EVENT_STATS.begin]) },
+          { label: "max end touch", value: String(st[SENSOR_EVENT_STATS.end]) },
+          { label: "begin this step", value: String(st[SENSOR_EVENT_STATS.beginThisStep]) },
+          { label: "end this step", value: String(st[SENSOR_EVENT_STATS.endThisStep]) },
         ]);
       } else {
         updateReadout(readout, [
-          { label: "begin touch count", value: String(st[0]) },
-          { label: "end touch count", value: String(st[1]) },
-          { label: "begin this step", value: String(st[2]) },
-          { label: "end this step", value: String(st[3]) },
+          { label: "begin touch count", value: String(st[SENSOR_EVENT_STATS.begin]) },
+          { label: "end touch count", value: String(st[SENSOR_EVENT_STATS.end]) },
+          { label: "begin this step", value: String(st[SENSOR_EVENT_STATS.beginThisStep]) },
+          { label: "end this step", value: String(st[SENSOR_EVENT_STATS.endThisStep]) },
         ]);
       }
     }

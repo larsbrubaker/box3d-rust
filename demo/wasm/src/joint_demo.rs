@@ -388,6 +388,22 @@ pub fn joint_poses() -> Vec<f32> {
     })
 }
 
+/// Packed engine-driven style words parallel to [`joint_poses`]. Gear Lift and
+/// other joint scenes set `custom_color` on their shapes, so those ride through
+/// the engine color here.
+#[wasm_bindgen]
+pub fn joint_styles() -> Vec<u32> {
+    with_state(|state| crate::draw_data::shape_styles(&mut state.world, &state.bodies))
+}
+
+/// Overlay text labels (mass / sleep / body names / contact + joint labels) as a
+/// JSON array. Schema documented on [`crate::interact::collect_debug_text`].
+/// Empty (`"[]"`) when no text-relevant view flag is set.
+#[wasm_bindgen]
+pub fn joint_debug_text() -> String {
+    with_state(|state| crate::interact::collect_debug_text(&mut state.world))
+}
+
 #[wasm_bindgen]
 pub fn joint_body_count() -> u32 {
     with_state(|state| state.bodies.len() as u32)
@@ -524,6 +540,6 @@ pub fn joint_counters() -> Vec<f32> {
 }
 
 #[wasm_bindgen]
-pub fn joint_debug_draw(flags: u32) -> Vec<f32> {
-    with_state(|state| interact::collect_debug_draw(&mut state.world, flags))
+pub fn joint_debug_draw(_flags: u32) -> Vec<f32> {
+    with_state(|state| interact::collect_debug_draw(&mut state.world))
 }

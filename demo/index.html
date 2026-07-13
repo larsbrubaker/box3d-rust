@@ -5,8 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Box3D for Rust — Interactive Physics Demos</title>
   <link rel="stylesheet" href="./styles/main.css">
+  <link rel="stylesheet" href="./styles/shell.css">
 </head>
 <body>
+  <!-- Menu bar (Sim / View / Render / Samples / Help) — filled by main.ts,
+       mirrors the C samples app's DrawMenuBar. -->
+  <div id="menubar" class="menubar"></div>
+
   <button id="menu-toggle" class="menu-toggle" aria-label="Toggle navigation">
     <span></span><span></span><span></span>
   </button>
@@ -14,62 +19,13 @@
 
   <nav id="sidebar">
     <div class="sidebar-header">
-      <h1 class="logo">Box3D<span class="logo-accent">.rs</span></h1>
-      <p class="tagline">Interactive 3D Physics Demos</p>
+      <a href="#/" class="logo-link">
+        <h1 class="logo">Box3D<span class="logo-accent">.rs</span></h1>
+      </a>
+      <p class="tagline">Erin Catto's Samples · Rust port</p>
     </div>
-    <ul class="nav-list">
-      <li><a href="#/" class="nav-link active" data-route="home">
-        <span class="nav-icon">&#9670;</span> Home
-      </a></li>
-      <li class="nav-section">Collision Layer</li>
-      <li><a href="#/manifolds" class="nav-link" data-route="manifolds">
-        <span class="nav-icon">&#9649;</span> Contact Manifolds
-      </a></li>
-      <li><a href="#/hull" class="nav-link" data-route="hull">
-        <span class="nav-icon">&#11042;</span> Box Hull
-      </a></li>
-      <li><a href="#/height-field" class="nav-link" data-route="height-field">
-        <span class="nav-icon">&#8776;</span> Height Field
-      </a></li>
-      <li><a href="#/mesh" class="nav-link" data-route="mesh">
-        <span class="nav-icon">&#9638;</span> Mesh
-      </a></li>
-      <li class="nav-section">Dynamics</li>
-      <li><a href="#/compound" class="nav-link" data-route="compound">
-        <span class="nav-icon">&#9638;</span> Compound
-      </a></li>
-      <li><a href="#/stacking" class="nav-link" data-route="stacking">
-        <span class="nav-icon">&#8801;</span> Stacking
-      </a></li>
-      <li><a href="#/benchmark" class="nav-link" data-route="benchmark">
-        <span class="nav-icon">&#9881;</span> Benchmark
-      </a></li>
-      <li><a href="#/ragdolls" class="nav-link" data-route="ragdolls">
-        <span class="nav-icon">&#9823;</span> Ragdolls
-      </a></li>
-      <li><a href="#/joints" class="nav-link" data-route="joints">
-        <span class="nav-icon">&#9878;</span> Joints
-      </a></li>
-      <li><a href="#/continuous" class="nav-link" data-route="continuous">
-        <span class="nav-icon">&#9889;</span> Continuous
-      </a></li>
-      <li><a href="#/sensors" class="nav-link" data-route="sensors">
-        <span class="nav-icon">&#9673;</span> Sensors
-      </a></li>
-      <li><a href="#/queries" class="nav-link" data-route="queries">
-        <span class="nav-icon">&#9678;</span> Cast World
-      </a></li>
-      <li><a href="#/far-pyramid" class="nav-link" data-route="far-pyramid">
-        <span class="nav-icon">&#9651;</span> Far Pyramid
-      </a></li>
-      <li><a href="#/character" class="nav-link" data-route="character">
-        <span class="nav-icon">&#128100;</span> Character
-      </a></li>
-      <li class="nav-section">About</li>
-      <li><a href="#/roadmap" class="nav-link" data-route="roadmap">
-        <span class="nav-icon">&#9776;</span> Demo Roadmap
-      </a></li>
-    </ul>
+    <!-- Category→sample tree, filled by main.ts from the registry. -->
+    <div id="sample-tree" class="sample-tree"></div>
     <div class="sidebar-footer">
       <p><a href="https://github.com/larsbrubaker/box3d-rust" target="_blank">Source on GitHub</a></p>
       <p>Rust port of <a href="https://github.com/erincatto/box3d" target="_blank">Box3D</a></p>

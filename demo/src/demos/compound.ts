@@ -9,7 +9,7 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { COLORS, DemoScene, setView } from "../three-scene.ts";
+import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 import {
   formatVillageStats,
   loadBuildingGeometry,
@@ -22,15 +22,17 @@ const STRIDE = 13;
 
 type Mode = "simple" | "spheres" | "hulls" | "village";
 
+const COMPOUND_MODES: Mode[] = ["simple", "spheres", "hulls", "village"];
+
 /** Camera helper matching the C samples' `Camera::SetView(yaw, pitch, distance, target)`. */
-export function init(container: HTMLElement) {
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Compound",
     "Compound shape gallery from <code>sample_compound.cpp</code>: Simple, Spheres, Hulls, " +
       "and Village (real <code>building.obj</code> compound meshes from the C samples, MIT).",
-    "Drag body · Shift spawn · Ctrl delete · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
     { category: "Compound", samplesShell: true },
   );
@@ -52,7 +54,8 @@ export function init(container: HTMLElement) {
     "color:#d4d4d4;background:rgba(0,0,0,0.45);border-radius:4px;white-space:pre-wrap;";
   controls.appendChild(statsEl);
 
-  let mode: Mode = "village";
+  let mode: Mode =
+    initialScene && COMPOUND_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "village";
 
   const demo = new DemoScene(canvas, { target: [0, 4, 0], distance: 48 });
   demo.camera.far = 800;
@@ -61,22 +64,17 @@ export function init(container: HTMLElement) {
   const meshes: THREE.Object3D[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x6b7280,
-    roughness: 0.88,
-    metalness: 0.08,
-  });
-  const propMat = new THREE.MeshStandardMaterial({
-    color: 0x8b7355,
-    roughness: 0.7,
-    metalness: 0.05,
-  });
-  const dynamicMat = new THREE.MeshStandardMaterial({
-    color: COLORS.accent,
-    roughness: 0.45,
-    metalness: 0.15,
-  });
+  // Each mesh owns its material; engine style words color every body per-body.
   const buildingMat = makeBuildingMaterial();
+
+  function disposeMesh(m: THREE.Object3D) {
+    demo.content.remove(m);
+    const mm = m as THREE.Mesh;
+    if (mm.geometry && mm.geometry !== boxGeo && mm.geometry !== sphereGeo) {
+      mm.geometry.dispose();
+    }
+    if (mm.material) (mm.material as THREE.Material).dispose();
+  }
   let buildingInstanced: THREE.InstancedMesh | null = null;
   let buildingGeo: THREE.BufferGeometry | null = null;
 
@@ -96,27 +94,7 @@ export function init(container: HTMLElement) {
   }
 
   function clearMeshes() {
-    for (const m of meshes) {
-      demo.content.remove(m);
-    }
-    const mesh = meshes[0] as THREE.Mesh | undefined;
-    if (
-      mesh?.geometry &&
-      mesh.geometry !== boxGeo &&
-      mesh.geometry !== sphereGeo
-    ) {
-      // disposed per-mesh below when replaced
-    }
-    for (const m of meshes) {
-      const mm = m as THREE.Mesh;
-      if (
-        mm.geometry &&
-        mm.geometry !== boxGeo &&
-        mm.geometry !== sphereGeo
-      ) {
-        mm.geometry.dispose();
-      }
-    }
+    for (const m of meshes) disposeMesh(m);
     meshes.length = 0;
     clearBuildings();
   }
@@ -174,7 +152,7 @@ export function init(container: HTMLElement) {
         { label: "Hulls", value: "hulls" },
         { label: "Village", value: "village" },
       ],
-      "village",
+      mode,
       (v) => {
         mode = v as Mode;
         reset();
@@ -217,20 +195,11 @@ export function init(container: HTMLElement) {
   const stop = runLoop(() => {
     ctrl.tickFrame();
     const poses = wasm.sim_body_poses();
+    const styles = wasm.sim_body_styles();
     const n = Math.floor(poses.length / STRIDE);
     while (meshes.length > n) {
-      const m = meshes.pop()!;
-      demo.content.remove(m);
+      disposeMesh(meshes.pop()!);
     }
-
-    const staticCount =
-      mode === "village"
-        ? n // C Village is fully static (all compound children)
-        : mode === "simple"
-          ? 1
-          : mode === "spheres" || mode === "hulls"
-            ? 20
-            : 0;
 
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;
@@ -241,12 +210,6 @@ export function init(container: HTMLElement) {
       let mesh = meshes[i] as THREE.Mesh | undefined;
       const wantSphere = kind === 1;
       const wantCapsule = kind === 2;
-      const isStatic = i < staticCount;
-      const mat = isStatic
-        ? wantSphere || wantCapsule
-          ? propMat
-          : groundMat
-        : dynamicMat;
 
       if (wantCapsule) {
         const radius = hx;
@@ -255,16 +218,15 @@ export function init(container: HTMLElement) {
           !mesh ||
           (mesh.geometry as THREE.CapsuleGeometry)?.type !== "CapsuleGeometry";
         if (needNew) {
-          if (mesh) demo.content.remove(mesh);
+          if (mesh) disposeMesh(mesh);
           mesh = new THREE.Mesh(
             new THREE.CapsuleGeometry(radius, halfLen * 2, 4, 10),
-            mat,
+            makeShapeMaterial(),
           );
           demo.content.add(mesh);
           meshes[i] = mesh;
-        } else {
-          mesh.material = mat;
         }
+        applyShapeStyle(mesh, styles[i]!);
         mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
         quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
         mesh.quaternion.copy(quat);
@@ -276,18 +238,12 @@ export function init(container: HTMLElement) {
         (wantSphere && mesh.geometry !== sphereGeo) ||
         (!wantSphere && mesh.geometry !== boxGeo)
       ) {
-        if (mesh) {
-          demo.content.remove(mesh);
-          if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) {
-            mesh.geometry.dispose();
-          }
-        }
-        mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, mat);
+        if (mesh) disposeMesh(mesh);
+        mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, makeShapeMaterial());
         demo.content.add(mesh);
         meshes[i] = mesh;
-      } else {
-        mesh.material = mat;
       }
+      applyShapeStyle(mesh, styles[i]!);
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       mesh.quaternion.copy(quat);
@@ -304,9 +260,6 @@ export function init(container: HTMLElement) {
     demo.dispose();
     boxGeo.dispose();
     sphereGeo.dispose();
-    groundMat.dispose();
-    propMat.dispose();
-    dynamicMat.dispose();
     buildingMat.dispose();
   };
 }

@@ -8,20 +8,19 @@ use box3d_rust::body::{
     body_set_target_transform, create_body, destroy_body, is_body_awake,
 };
 use box3d_rust::debug_draw::{DebugDraw, HexColor};
-use box3d_rust::geometry::{Capsule, Sphere};
-use box3d_rust::hull::make_box_hull;
+use box3d_rust::geometry::Sphere;
 use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
 use box3d_rust::joint::{create_motor_joint, destroy_joint, joint_is_valid};
 use box3d_rust::math_functions::{
     length, Aabb, Pos, Transform, Vec3, WorldTransform, QUAT_IDENTITY, VEC3_ZERO,
 };
-use box3d_rust::shape::{
-    create_capsule_shape, create_hull_shape, create_sphere_shape, shape_get_body,
-};
+use box3d_rust::shape::{create_sphere_shape, shape_get_body};
 use box3d_rust::types::{
     default_body_def, default_motor_joint_def, default_query_filter, default_shape_def, BodyType,
 };
 use box3d_rust::world::{world_cast_ray_closest, world_draw, world_get_counters, World};
+use std::cell::Cell;
+use wasm_bindgen::prelude::*;
 
 /// Mouse-grab state for one demo world (C Sample mouse body + motor joint).
 #[derive(Clone, Copy)]
@@ -163,19 +162,24 @@ pub struct SpawnedBody {
     pub kind: u8,
 }
 
-thread_local! {
-    static SPAWN_SEED: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
-}
+/// `m_launchSpeedScale` from the base `Sample` constructor (`sample.cpp` :330).
+/// Individual samples override it (e.g. Compound Village sets 2.0) — a
+/// per-demo override hook can arrive with those sample ports.
+const LAUNCH_SPEED_SCALE: f32 = 5.0;
+/// Projectile launch speed: `20.0 * m_launchSpeedScale` (`sample.cpp` :1243).
+const PROJECTILE_SPEED: f32 = 20.0 * LAUNCH_SPEED_SCALE;
+/// Fixed bullet-sphere radius (`sample.cpp` :1247, `b3Sphere{ zero, 0.25f }`).
+const PROJECTILE_RADIUS: f32 = 0.25;
+/// Density multiplier applied to the default shape density (`sample.cpp` :1248,
+/// `shapeDef.density *= 4.0f`).
+const PROJECTILE_DENSITY_SCALE: f32 = 4.0;
 
-fn next_rand() -> u32 {
-    SPAWN_SEED.with(|s| {
-        let next = s.get().wrapping_mul(1664525).wrapping_add(1013904223);
-        s.set(next);
-        next
-    })
-}
-
-/// Spawn a random dynamic shape along a pick ray. Returns a render descriptor.
+/// Spawn the C sample's shift-click projectile along a pick ray: a dynamic
+/// bullet **sphere** of radius 0.25 at `origin + 2·direction`, launched at
+/// `20·launchSpeedScale·direction`, with the default shape density boosted ×4.
+/// Mirrors `Sample::MouseDown`'s plain shift branch (`sample.cpp` :1238-1250) —
+/// no `MOD_CTRL` (cylinder) / `MOD_ALT` (ragdoll) variant. Returns a render
+/// descriptor (`kind = 1`, sphere).
 pub fn spawn_random(world: &mut World, origin: Pos, translation: Vec3) -> Option<SpawnedBody> {
     let len = length(translation);
     if len < 1e-8 {
@@ -189,69 +193,35 @@ pub fn spawn_random(world: &mut World, origin: Pos, translation: Vec3) -> Option
 
     let mut body_def = default_body_def();
     body_def.type_ = BodyType::Dynamic;
+    // position = pickRay.origin + 2.0f * direction (sample.cpp :1242)
     body_def.position = Pos {
         x: origin.x + 2.0 * direction.x,
         y: origin.y + 2.0 * direction.y,
         z: origin.z + 2.0 * direction.z,
     };
+    // linearVelocity = (20.0f * m_launchSpeedScale) * direction (sample.cpp :1243)
     body_def.linear_velocity = Vec3 {
-        x: 12.0 * direction.x,
-        y: 12.0 * direction.y,
-        z: 12.0 * direction.z,
+        x: PROJECTILE_SPEED * direction.x,
+        y: PROJECTILE_SPEED * direction.y,
+        z: PROJECTILE_SPEED * direction.z,
     };
-    body_def.is_bullet = true;
+    body_def.is_bullet = true; // sample.cpp :1244
 
     let body_id = create_body(world, &body_def);
-    let mut shape_def = default_shape_def();
-    shape_def.density = 1.0;
 
-    let kind = (next_rand() % 3) as u8;
-    let half_extents = match kind {
-        0 => {
-            let hx = 0.25 + (next_rand() % 40) as f32 * 0.01;
-            let hy = 0.25 + (next_rand() % 40) as f32 * 0.01;
-            let hz = 0.25 + (next_rand() % 40) as f32 * 0.01;
-            let hull = make_box_hull(hx, hy, hz);
-            create_hull_shape(world, body_id, &shape_def, &hull.base);
-            [hx, hy, hz]
-        }
-        1 => {
-            let r = 0.2 + (next_rand() % 35) as f32 * 0.01;
-            shape_def.density = 4.0;
-            let sphere = Sphere {
-                center: VEC3_ZERO,
-                radius: r,
-            };
-            create_sphere_shape(world, body_id, &shape_def, &sphere);
-            [r, r, r]
-        }
-        _ => {
-            let half_len = 0.25 + (next_rand() % 30) as f32 * 0.01;
-            let r = 0.12 + (next_rand() % 20) as f32 * 0.01;
-            let capsule = Capsule {
-                center1: Vec3 {
-                    x: 0.0,
-                    y: -half_len,
-                    z: 0.0,
-                },
-                center2: Vec3 {
-                    x: 0.0,
-                    y: half_len,
-                    z: 0.0,
-                },
-                radius: r,
-            };
-            create_capsule_shape(world, body_id, &shape_def, &capsule);
-            // Renderer uses half_extents[0]=radius, [1]=half length for capsules in stride-11
-            // demos; stride-15 demos use capsule centers. Callers map this.
-            [r, half_len, r]
-        }
+    // b3Sphere sphere = { b3Vec3_zero, 0.25f }; shapeDef.density *= 4.0f (:1247-1249)
+    let mut shape_def = default_shape_def();
+    shape_def.density *= PROJECTILE_DENSITY_SCALE;
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: PROJECTILE_RADIUS,
     };
+    create_sphere_shape(world, body_id, &shape_def, &sphere);
 
     Some(SpawnedBody {
         body_index: body_id.index1 - 1,
-        half_extents,
-        kind,
+        half_extents: [PROJECTILE_RADIUS, PROJECTILE_RADIUS, PROJECTILE_RADIUS],
+        kind: 1, // sphere
     })
 }
 
@@ -312,22 +282,92 @@ pub fn counters_with_sleep(world: &World) -> [f32; 7] {
     ]
 }
 
-/// Bit flags for [`collect_debug_draw`].
-pub const DRAW_CONTACTS: u32 = 1 << 0;
-pub const DRAW_CONTACT_NORMALS: u32 = 1 << 1;
-pub const DRAW_CONTACT_FORCES: u32 = 1 << 2;
-pub const DRAW_JOINTS: u32 = 1 << 3;
-pub const DRAW_JOINT_EXTRAS: u32 = 1 << 4;
-pub const DRAW_BOUNDS: u32 = 1 << 5;
-pub const DRAW_MASS: u32 = 1 << 6;
-pub const DRAW_ISLANDS: u32 = 1 << 7;
+/// Menu view-flag bits, in the exact order the demo menu bar emits them and that
+/// [`sim_set_debug_flags`] consumes. Mirrors the C sample's `ApplyGuiFlags`
+/// option set (`debug_adapter.c` :212-232) plus the two style-path modes
+/// (`shapes`, `transparent`) that the mesh + style pipeline handles instead of
+/// the overlay collector.
+pub const MENU_SHAPES: u32 = 1 << 0;
+pub const MENU_TRANSPARENT: u32 = 1 << 1;
+pub const MENU_JOINTS: u32 = 1 << 2;
+pub const MENU_JOINT_EXTRAS: u32 = 1 << 3;
+pub const MENU_BOUNDS: u32 = 1 << 4;
+pub const MENU_MASS: u32 = 1 << 5;
+pub const MENU_SLEEP: u32 = 1 << 6;
+pub const MENU_BODY_NAMES: u32 = 1 << 7;
+pub const MENU_GRAPH_COLORS: u32 = 1 << 8;
+pub const MENU_ISLANDS: u32 = 1 << 9;
+pub const MENU_CONTACTS: u32 = 1 << 10;
+pub const MENU_CONTACT_NORMALS: u32 = 1 << 11;
+pub const MENU_CONTACT_FEATURES: u32 = 1 << 12;
+pub const MENU_CONTACT_FORCES: u32 = 1 << 13;
+pub const MENU_FRICTION_FORCES: u32 = 1 << 14;
+pub const MENU_ANCHOR_A: u32 = 1 << 15;
+
+thread_local! {
+    /// Current 16-bit menu mask (see `MENU_*`). Global + demo-agnostic: the menu
+    /// sets it once via `sim_set_debug_flags`; every demo's overlay + style pass
+    /// reads it. Default 0 (no overlays, opaque dynamics).
+    static DEBUG_FLAGS: Cell<u32> = const { Cell::new(0) };
+    /// `b3DebugDraw.jointScale` (default 1).
+    static JOINT_SCALE: Cell<f32> = const { Cell::new(1.0) };
+    /// `b3DebugDraw.forceScale` (default 1).
+    static FORCE_SCALE: Cell<f32> = const { Cell::new(1.0) };
+}
+
+/// Set the global 16-bit view-flag mask (see `MENU_*`).
+pub fn set_debug_flags(mask: u32) {
+    DEBUG_FLAGS.with(|c| c.set(mask));
+}
+
+/// Read the global 16-bit view-flag mask.
+pub fn debug_flags() -> u32 {
+    DEBUG_FLAGS.with(|c| c.get())
+}
+
+/// Set the global joint/force draw scales (`b3DebugDraw.jointScale`/`forceScale`).
+pub fn set_draw_scales(joint_scale: f32, force_scale: f32) {
+    JOINT_SCALE.with(|c| c.set(joint_scale));
+    FORCE_SCALE.with(|c| c.set(force_scale));
+}
+
+/// Whether dynamic bodies should draw translucent this frame — the
+/// transparent-dynamic view mode (`MENU_TRANSPARENT`, C `SetTransparentDynamic`).
+/// The style-word builders read this for `push_shape_styles`' `transparent_dynamic`.
+pub fn transparent_dynamic() -> bool {
+    debug_flags() & MENU_TRANSPARENT != 0
+}
+
+/// Set the global view-flag mask. See `MENU_*` for the bit order.
+#[wasm_bindgen]
+pub fn sim_set_debug_flags(mask: u32) {
+    set_debug_flags(mask);
+}
+
+/// Set the global joint/force draw scales for the debug overlay.
+#[wasm_bindgen]
+pub fn sim_set_draw_scales(joint_scale: f32, force_scale: f32) {
+    set_draw_scales(joint_scale, force_scale);
+}
+
+/// One engine `draw_string` label: world position, packed color, and the text.
+struct TextEntry {
+    p: Pos,
+    color: HexColor,
+    text: String,
+}
 
 struct CollectDraw {
+    /// 16-bit menu mask (see `MENU_*`).
     flags: u32,
+    joint_scale: f32,
+    force_scale: f32,
     /// Interleaved segments: x1,y1,z1, x2,y2,z2, rgb_u32_as_f32
     segments: Vec<f32>,
     /// Interleaved points: x,y,z, size, rgb_u32_as_f32
     points: Vec<f32>,
+    /// Recorded `draw_string` labels (overlay text channel).
+    strings: Vec<TextEntry>,
 }
 
 impl CollectDraw {
@@ -353,6 +393,14 @@ impl DebugDraw for CollectDraw {
         self.points.push(p.z as f32);
         self.points.push(size);
         Self::push_color(&mut self.points, color);
+    }
+
+    fn draw_string(&mut self, p: Pos, s: &str, color: HexColor) {
+        self.strings.push(TextEntry {
+            p,
+            color,
+            text: s.to_string(),
+        });
     }
 
     fn draw_bounds(&mut self, aabb: Aabb, color: HexColor) {
@@ -529,43 +577,75 @@ impl DebugDraw for CollectDraw {
         }
     }
 
+    // Shapes are rendered as solid meshes from the pose/style stream, never as
+    // overlay geometry, so the overlay collector always leaves draw_shapes off.
+    fn force_scale(&self) -> f32 {
+        self.force_scale
+    }
+    fn joint_scale(&self) -> f32 {
+        self.joint_scale
+    }
     fn draw_joints(&self) -> bool {
-        self.flags & DRAW_JOINTS != 0
+        self.flags & MENU_JOINTS != 0
     }
     fn draw_joint_extras(&self) -> bool {
-        self.flags & DRAW_JOINT_EXTRAS != 0
+        self.flags & MENU_JOINT_EXTRAS != 0
     }
     fn draw_bounds_boxes(&self) -> bool {
-        self.flags & DRAW_BOUNDS != 0
+        self.flags & MENU_BOUNDS != 0
     }
     fn draw_mass(&self) -> bool {
-        self.flags & DRAW_MASS != 0
+        self.flags & MENU_MASS != 0
     }
-    fn draw_contacts(&self) -> bool {
-        self.flags & DRAW_CONTACTS != 0
+    fn draw_sleep(&self) -> bool {
+        self.flags & MENU_SLEEP != 0
     }
-    fn draw_contact_normals(&self) -> bool {
-        self.flags & DRAW_CONTACT_NORMALS != 0
+    fn draw_body_names(&self) -> bool {
+        self.flags & MENU_BODY_NAMES != 0
     }
-    fn draw_contact_forces(&self) -> bool {
-        self.flags & DRAW_CONTACT_FORCES != 0
+    fn draw_graph_colors(&self) -> bool {
+        self.flags & MENU_GRAPH_COLORS != 0
     }
     fn draw_islands(&self) -> bool {
-        self.flags & DRAW_ISLANDS != 0
+        self.flags & MENU_ISLANDS != 0
+    }
+    fn draw_contacts(&self) -> bool {
+        self.flags & MENU_CONTACTS != 0
+    }
+    fn draw_contact_normals(&self) -> bool {
+        self.flags & MENU_CONTACT_NORMALS != 0
+    }
+    fn draw_contact_features(&self) -> bool {
+        self.flags & MENU_CONTACT_FEATURES != 0
+    }
+    fn draw_contact_forces(&self) -> bool {
+        self.flags & MENU_CONTACT_FORCES != 0
+    }
+    fn draw_friction_forces(&self) -> bool {
+        self.flags & MENU_FRICTION_FORCES != 0
+    }
+    fn draw_anchor_a(&self) -> bool {
+        self.flags & MENU_ANCHOR_A != 0
     }
 }
 
 /// Collect debug-draw geometry.
 ///
 /// Layout: `[seg_count, point_count, ...segments (7 floats each), ...points (5 floats each)]`
-pub fn collect_debug_draw(world: &mut World, flags: u32) -> Vec<f32> {
-    if flags == 0 {
+pub fn collect_debug_draw(world: &mut World) -> Vec<f32> {
+    let flags = debug_flags();
+    // `shapes` and `transparent` drive the solid-mesh + style path, not the
+    // overlay; only the remaining bits produce overlay segments/points.
+    if flags & !(MENU_SHAPES | MENU_TRANSPARENT) == 0 {
         return vec![0.0, 0.0];
     }
     let mut draw = CollectDraw {
         flags,
+        joint_scale: JOINT_SCALE.with(|c| c.get()),
+        force_scale: FORCE_SCALE.with(|c| c.get()),
         segments: Vec::new(),
         points: Vec::new(),
+        strings: Vec::new(),
     };
     world_draw(world, &mut draw, u64::MAX);
     let seg_count = (draw.segments.len() / 7) as f32;
@@ -576,6 +656,92 @@ pub fn collect_debug_draw(world: &mut World, flags: u32) -> Vec<f32> {
     out.extend_from_slice(&draw.segments);
     out.extend_from_slice(&draw.points);
     out
+}
+
+/// Menu bits that make `world_draw` emit `draw_string` labels: mass (`draw.rs`
+/// :440), sleep (:473), body names (:421), contact separation/feature/force text
+/// (:237/:252/:249/:288), and joint force/torque labels (`joint/draw.rs` :611).
+/// When none are set the engine produces no text, so we skip the draw pass.
+const TEXT_FLAGS: u32 = MENU_MASS
+    | MENU_SLEEP
+    | MENU_BODY_NAMES
+    | MENU_CONTACT_NORMALS
+    | MENU_CONTACT_FEATURES
+    | MENU_CONTACT_FORCES
+    | MENU_JOINT_EXTRAS;
+
+/// Collect the engine's `draw_string` overlay text for the currently-enabled
+/// view flags and serialize it as a JSON array.
+///
+/// # Schema
+///
+/// ```json
+/// [{"x":1.0,"y":2.0,"z":3.0,"color":16777215,"text":"  0.42"}]
+/// ```
+///
+/// One object per label the engine draws this frame, in `world_draw` emission
+/// order. `x`/`y`/`z` are the label's world-space anchor (`f32`); `color` is the
+/// packed 0xRRGGBB color as a decimal `u32` (e.g. `16777215` = white); `text` is
+/// the JSON-escaped label. Returns `"[]"` when no text-relevant flag is set.
+pub fn collect_debug_text(world: &mut World) -> String {
+    let flags = debug_flags();
+    if flags & TEXT_FLAGS == 0 {
+        return "[]".to_string();
+    }
+    let mut draw = CollectDraw {
+        flags,
+        joint_scale: JOINT_SCALE.with(|c| c.get()),
+        force_scale: FORCE_SCALE.with(|c| c.get()),
+        segments: Vec::new(),
+        points: Vec::new(),
+        strings: Vec::new(),
+    };
+    world_draw(world, &mut draw, u64::MAX);
+
+    let mut out = String::from("[");
+    for (i, e) in draw.strings.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"x\":");
+        push_json_number(&mut out, e.p.x as f32);
+        out.push_str(",\"y\":");
+        push_json_number(&mut out, e.p.y as f32);
+        out.push_str(",\"z\":");
+        push_json_number(&mut out, e.p.z as f32);
+        out.push_str(",\"color\":");
+        out.push_str(&(e.color.0 & 0x00FF_FFFF).to_string());
+        out.push_str(",\"text\":\"");
+        push_json_escaped(&mut out, &e.text);
+        out.push_str("\"}");
+    }
+    out.push(']');
+    out
+}
+
+/// Append a finite-or-not `f32` as a JSON number, falling back to `0` for
+/// non-finite values (JSON has no NaN/Infinity literal).
+fn push_json_number(out: &mut String, v: f32) {
+    if v.is_finite() {
+        out.push_str(&v.to_string());
+    } else {
+        out.push('0');
+    }
+}
+
+/// Append `s` to `out` with the JSON string escapes required inside `"..."`.
+fn push_json_escaped(out: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
 }
 
 /// Raycast closest hit for demos that only need hit info.

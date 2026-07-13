@@ -1,5 +1,39 @@
 // Reusable UI control builders (mirrors box2d-rust demo/src/controls.ts).
 
+/**
+ * Shared range-`<input>` core: wires a slider so it keeps `valueSpan` in sync via
+ * `format` and calls `onInput` on every change. Both the side-panel slider
+ * (`createSlider`) and the menu-bar slider (`main.ts` sliderItem) build on this
+ * so the input-handling logic lives in exactly one place.
+ */
+export function buildRangeInput(
+  min: number,
+  max: number,
+  step: number,
+  value: number,
+  valueSpan: HTMLElement,
+  format: (v: number) => string,
+  onInput: (v: number) => void,
+  opts: { stopClick?: boolean } = {},
+): HTMLInputElement {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  input.value = String(value);
+  valueSpan.textContent = format(value);
+  // Menu sliders live inside a click-to-toggle dropdown; swallow the input's own
+  // click so dragging the thumb doesn't close the menu.
+  if (opts.stopClick) input.addEventListener("click", (ev) => ev.stopPropagation());
+  input.addEventListener("input", () => {
+    const v = parseFloat(input.value);
+    valueSpan.textContent = format(v);
+    onInput(v);
+  });
+  return input;
+}
+
 export function createSlider(
   label: string, min: number, max: number, value: number, step: number,
   onChange: (val: number) => void,
@@ -7,28 +41,41 @@ export function createSlider(
   const group = document.createElement("div");
   group.className = "control-group";
   const lbl = document.createElement("label");
-  const labelText = document.createTextNode(label);
+  lbl.appendChild(document.createTextNode(label));
   const valSpan = document.createElement("span");
   valSpan.className = "slider-value";
-  valSpan.textContent = formatSliderValue(value, step);
-  lbl.appendChild(labelText);
   lbl.appendChild(valSpan);
 
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = String(value);
-  input.addEventListener("input", () => {
-    const v = parseFloat(input.value);
-    valSpan.textContent = formatSliderValue(v, step);
-    onChange(v);
-  });
+  const input = buildRangeInput(min, max, step, value, valSpan, (v) => formatSliderValue(v, step), onChange);
 
   group.appendChild(lbl);
   group.appendChild(input);
   return group;
+}
+
+/**
+ * Shared menu tick-button used by the View/Render menu's checkbox and radio
+ * items (`main.ts` checkItem/radioItem). Builds the `menu-item menu-check`
+ * button with its `.menu-tick` glyph span; the caller wires the click handler
+ * (checkbox toggles the mark, radio sets it and clears its group). Returns both
+ * the button and the tick span so callers and bus subscribers can update it.
+ */
+export function createMenuTickItem(
+  label: string,
+  marked: boolean,
+  mark: "✓" | "●",
+  flag?: string,
+): { el: HTMLButtonElement; tick: HTMLSpanElement } {
+  const el = document.createElement("button");
+  el.className = "menu-item menu-check";
+  if (flag) el.dataset.flag = flag;
+  const tick = document.createElement("span");
+  tick.className = "menu-tick";
+  tick.textContent = marked ? mark : "";
+  const text = document.createElement("span");
+  text.textContent = label;
+  el.append(tick, text);
+  return { el, tick };
 }
 
 function formatSliderValue(v: number, step: number): string {

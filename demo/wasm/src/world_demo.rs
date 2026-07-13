@@ -227,6 +227,36 @@ pub fn world_far_pyramid_poses() -> Vec<f32> {
         out
     })
 }
+/// Packed engine-driven style words parallel to [`world_far_pyramid_poses`].
+#[wasm_bindgen]
+pub fn world_far_pyramid_styles() -> Vec<u32> {
+    with_far(|state| {
+        crate::draw_data::shape_styles_indexed(
+            &mut state.world,
+            state.bodies.iter().map(|b| b.body_index),
+        )
+    })
+}
+
+/// Two representative style words for the Far Pyramid: `[ground, first box]`.
+///
+/// `bodies[0]` is the static ground slab and `bodies[1]` is the first (bottom
+/// row) dynamic box. The renderer uses these to color the instanced pyramid
+/// without polling the full per-body style array every frame. Only those two
+/// bodies are resolved (a 2-entry index slice), so this stays cheap even at the
+/// pyramid's ~820-body count. Returns `[]` if the scene has fewer than 2 bodies.
+#[wasm_bindgen]
+pub fn world_far_pyramid_style_pair() -> Vec<u32> {
+    with_far(|state| {
+        if state.bodies.len() < 2 {
+            return Vec::new();
+        }
+        crate::draw_data::shape_styles_indexed(
+            &mut state.world,
+            [state.bodies[0].body_index, state.bodies[1].body_index],
+        )
+    })
+}
 #[wasm_bindgen]
 pub fn world_far_pyramid_body_count() -> u32 {
     with_far(|s| s.bodies.len() as u32)
@@ -326,9 +356,9 @@ pub fn world_far_pyramid_counters() -> Vec<f32> {
     with_far(|s| interact::counters_with_sleep(&s.world).to_vec())
 }
 #[wasm_bindgen]
-pub fn world_far_pyramid_debug_draw(flags: u32) -> Vec<f32> {
+pub fn world_far_pyramid_debug_draw(_flags: u32) -> Vec<f32> {
     with_far(|state| {
-        let mut data = interact::collect_debug_draw(&mut state.world, flags);
+        let mut data = interact::collect_debug_draw(&mut state.world);
         shift_debug_draw(&mut data, state.base);
         data
     })

@@ -9,21 +9,28 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { applyBodyColor, DemoScene, makeBodyMaterial, setView } from "../three-scene.ts";
+import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
 
 type Mode = "thin" | "bounce" | "bullet";
 
-export function init(container: HTMLElement) {
+const CONTINUOUS_MODES: Mode[] = ["thin", "bounce", "bullet"];
+const CONTINUOUS_NAMES: Record<Mode, string> = {
+  thin: "Thin Wall",
+  bounce: "Bounce House",
+  bullet: "Bullet vs Stack",
+};
+
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
     "Continuous",
     "Official Continuous samples from <code>sample_continuous.cpp</code>: Thin Wall, " +
       "Bounce House, and Bullet vs Stack — fast bodies with continuous collision.",
-    "Pick a sample · Launch (L) on Bullet vs Stack · drag · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · L launch (Bullet) · P/O/R",
     wasm.version(),
     { category: "Continuous", samplesShell: true },
   );
@@ -37,7 +44,8 @@ export function init(container: HTMLElement) {
     ),
   );
 
-  let mode: Mode = "thin";
+  let mode: Mode =
+    initialScene && CONTINUOUS_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "thin";
   let launchRow: HTMLElement | null = null;
 
   const demo = new DemoScene(canvas, {
@@ -45,18 +53,19 @@ export function init(container: HTMLElement) {
     distance: 30,
     shadowExtent: 48,
   });
+  // Each mesh owns its material — engine style words color bodies per-body.
   const meshes: THREE.Mesh[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
-  const staticMat = makeBodyMaterial(0, true);
-  const dynamicMat = makeBodyMaterial(2, true);
-  const sleepMat = makeBodyMaterial(2, false);
+
+  function disposeMesh(m: THREE.Mesh) {
+    demo.content.remove(m);
+    if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
+    (m.material as THREE.Material).dispose();
+  }
 
   function clearMeshes() {
-    for (const m of meshes) {
-      demo.content.remove(m);
-      if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
-    }
+    for (const m of meshes) disposeMesh(m);
     meshes.length = 0;
   }
 
@@ -70,31 +79,19 @@ export function init(container: HTMLElement) {
     }
   }
 
-  function pickMat(bodyType: number, awake: boolean): THREE.MeshStandardMaterial {
-    const mat = bodyType === 0 ? staticMat : awake ? dynamicMat : sleepMat;
-    applyBodyColor(mat, bodyType, awake);
-    return mat;
-  }
-
-  function ensureMesh(i: number, kind: number, bodyType: number, awake: boolean): THREE.Mesh {
+  function ensureMesh(i: number, kind: number, bodyType: number): THREE.Mesh {
     let mesh = meshes[i];
     const wantSphere = kind === 1;
     const wantCapsule = kind === 2;
-    const mat = pickMat(bodyType, awake);
 
     if (wantCapsule) {
       if (!mesh || mesh.geometry.type !== "CapsuleGeometry") {
-        if (mesh) {
-          demo.content.remove(mesh);
-          if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
-        }
-        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), mat);
+        if (mesh) disposeMesh(mesh);
+        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), makeShapeMaterial());
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         demo.content.add(mesh);
         meshes[i] = mesh;
-      } else {
-        mesh.material = mat;
       }
       return mesh;
     }
@@ -104,17 +101,12 @@ export function init(container: HTMLElement) {
       (wantSphere && mesh.geometry !== sphereGeo) ||
       (!wantSphere && mesh.geometry !== boxGeo)
     ) {
-      if (mesh) {
-        demo.content.remove(mesh);
-        if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
-      }
-      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, mat);
+      if (mesh) disposeMesh(mesh);
+      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, makeShapeMaterial());
       mesh.castShadow = bodyType !== 0;
       mesh.receiveShadow = true;
       demo.content.add(mesh);
       meshes[i] = mesh;
-    } else {
-      mesh.material = mat;
     }
     return mesh;
   }
@@ -159,7 +151,7 @@ export function init(container: HTMLElement) {
     canvas,
     controls,
     onRestart: reset,
-    sampleName: "Thin Wall",
+    sampleName: CONTINUOUS_NAMES[mode],
     sampleCategory: "Continuous",
     params: [
       {
@@ -171,20 +163,15 @@ export function init(container: HTMLElement) {
           { label: "Bounce House", value: "bounce" },
           { label: "Bullet vs Stack", value: "bullet" },
         ],
-        default: "thin",
+        default: mode,
         restart: true,
       },
     ],
     onParamsChange: (values: ParamValues, key: string) => {
       if (key !== "sample") return;
       mode = String(values.sample) as Mode;
-      const names: Record<Mode, string> = {
-        thin: "Thin Wall",
-        bounce: "Bounce House",
-        bullet: "Bullet vs Stack",
-      };
       const nameEl = controls.querySelector(".sample-name");
-      if (nameEl) nameEl.textContent = names[mode];
+      if (nameEl) nameEl.textContent = CONTINUOUS_NAMES[mode];
     },
   }) as SimControllerWithTick;
 
@@ -194,18 +181,17 @@ export function init(container: HTMLElement) {
   const stop = runLoop(() => {
     ctrl.tickFrame();
     const poses = wasm.sim_body_poses();
+    const styles = wasm.sim_body_styles();
     const n = Math.floor(poses.length / STRIDE);
     while (meshes.length > n) {
-      const m = meshes.pop()!;
-      demo.content.remove(m);
-      if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
+      disposeMesh(meshes.pop()!);
     }
     for (let i = 0; i < n; i++) {
       const o = i * STRIDE;
       const kind = poses[o + 10]!;
       const bodyType = poses[o + 11]! | 0;
-      const awake = poses[o + 12]! > 0.5;
-      const mesh = ensureMesh(i, kind, bodyType, awake);
+      const mesh = ensureMesh(i, kind, bodyType);
+      applyShapeStyle(mesh, styles[i]!);
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       mesh.quaternion.copy(quat);
@@ -237,8 +223,5 @@ export function init(container: HTMLElement) {
     demo.dispose();
     boxGeo.dispose();
     sphereGeo.dispose();
-    staticMat.dispose();
-    dynamicMat.dispose();
-    sleepMat.dispose();
   };
 }

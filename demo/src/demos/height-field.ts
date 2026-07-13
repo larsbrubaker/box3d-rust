@@ -12,6 +12,7 @@ import {
   makeSegment,
   makeTriangleMesh,
   makeWireEdges,
+  setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
 
@@ -44,6 +45,10 @@ export function init(container: HTMLElement) {
     target: [4, 0, 4],
     distance: 16,
   });
+  // Preserve this sample's current flatter framing (yaw 35°, pitch 20°) now that
+  // the DemoScene default is the C camera (pitch -25°). The C per-sample camera
+  // for Height Field lands with this sample's batch-3 rebuild.
+  setView(demo, 35, 20, 16, [4, 0, 4]);
   demo.content.add(makeAxes(2));
   demo.content.add(makeTriangleMesh(positions, COLORS.shape, 0.7));
   demo.content.add(makeWireEdges(wire, COLORS.muted));

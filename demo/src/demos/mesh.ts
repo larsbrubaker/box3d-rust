@@ -12,11 +12,13 @@ import {
   makeTriangleMesh,
   makeWireBox,
   makeWireEdges,
+  setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
 
-export function init(container: HTMLElement) {
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
+  const initialMesh = initialScene === "grid" ? "grid" : "box";
   const { canvas, controls } = demoPage(
     container,
     "Mesh",
@@ -27,7 +29,7 @@ export function init(container: HTMLElement) {
     wasm.version(),
   );
 
-  let stats = wasm.mesh_build_box();
+  let stats = initialMesh === "grid" ? wasm.mesh_build_grid() : wasm.mesh_build_box();
   let wire = wasm.mesh_wireframe();
   let aabb = wasm.mesh_aabb();
 
@@ -43,7 +45,7 @@ export function init(container: HTMLElement) {
         { label: "Box", value: "box" },
         { label: "Grid", value: "grid" },
       ],
-      "box",
+      initialMesh,
       (v) => {
         stats = v === "grid" ? wasm.mesh_build_grid() : wasm.mesh_build_box();
         wire = wasm.mesh_wireframe();
@@ -56,6 +58,10 @@ export function init(container: HTMLElement) {
   controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { distance: 11 });
+  // Preserve this sample's current flatter framing (yaw 35°, pitch 20°) now that
+  // the DemoScene default is the C camera (pitch -25°). The C per-sample camera
+  // for Mesh lands with this sample's batch-3 rebuild.
+  setView(demo, 35, 20, 11, [0, 0, 0]);
 
   function rebuildMesh() {
     demo.clearContent();

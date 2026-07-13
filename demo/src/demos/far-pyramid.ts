@@ -9,12 +9,7 @@ import {
 import { getWasm, type Box3dWasm } from "../wasm.ts";
 import { createCanvasOverlay } from "../controls.ts";
 import { demoPage, runLoop } from "./common.ts";
-import {
-  DEBUG_BODY_COLORS,
-  DemoScene,
-  makeBodyMaterial,
-  setView,
-} from "../three-scene.ts";
+import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 
 const STRIDE = 11;
 const OFFSET_M = 10_000_000;
@@ -41,22 +36,6 @@ function farInteract(wasm: Box3dWasm): InteractWasm {
     sim_set_enable_continuous: (flag) => wasm.world_far_pyramid_set_enable_continuous(flag),
     sim_set_recycle_distance: (m) => wasm.world_far_pyramid_set_recycle_distance(m),
   };
-}
-
-function makeSkyGradient(): THREE.Texture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 2;
-  canvas.height = 256;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, "#5a8fc4");
-  g.addColorStop(0.55, "#9bb0c4");
-  g.addColorStop(1, "#c4b8a0");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 2, 256);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }
 
 export function init(container: HTMLElement) {
@@ -87,14 +66,17 @@ export function init(container: HTMLElement) {
   });
   demo.camera.far = 500;
   demo.camera.updateProjectionMatrix();
-  demo.scene.fog = new THREE.Fog(0x9bb0c4, 80, 220);
-  const sky = makeSkyGradient();
-  demo.scene.background = sky;
+  // No fog / no background texture: the Preetham sky dome (DemoScene.env.sky)
+  // already fills the background and owns the horizon, so a background texture is
+  // dead (occluded by the dome) and fog clashes with the sky's horizon band. C
+  // has no fog here either — it culls with drawDistance, not distance fog.
 
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
-  const groundMat = makeBodyMaterial(0, true);
-  const boxMat = makeBodyMaterial(2, true);
-  boxMat.color.setHex(DEBUG_BODY_COLORS.dynamicAwake);
+  // The pyramid boxes render as one InstancedMesh (single material), so they
+  // share one representative engine style (the first dynamic box); the ground
+  // takes its own. Both come from the [groundStyle, boxStyle] style pair below.
+  const groundMat = makeShapeMaterial();
+  const boxMat = makeShapeMaterial();
 
   let boxInstances: THREE.InstancedMesh | null = null;
   let groundMesh: THREE.Mesh | null = null;
@@ -147,12 +129,27 @@ export function init(container: HTMLElement) {
 
   reset();
 
+  // batch-2 fix #7: this demo consumes only [groundStyle, boxStyle], so prefer
+  // the Rust `world_far_pyramid_style_pair()` (2 words) over the full-engine
+  // `world_far_pyramid_styles()` (~2870 words) when the sibling export is
+  // present. Feature-checked so the demo keeps building until it lands; the
+  // wasm.ts typed declaration is owned by the wasm/interaction sibling, so a
+  // local cast bridges the gap here.
+  const stylePairFn = (
+    wasm as unknown as { world_far_pyramid_style_pair?: () => Uint32Array }
+  ).world_far_pyramid_style_pair?.bind(wasm);
+
   const stop = runLoop(() => {
     ctrl.tickFrame();
     const poses = wasm.world_far_pyramid_poses();
+    const styles = stylePairFn ? stylePairFn() : wasm.world_far_pyramid_styles();
     const n = Math.floor(poses.length / STRIDE);
     const dyn = Math.max(0, n - 1);
     ensureBoxes(dyn);
+
+    // The pyramid boxes render as one InstancedMesh, so a single representative
+    // style (body 1) colors every instance.
+    if (boxInstances && n > 1) applyShapeStyle(boxInstances, styles[1]!);
 
     if (n > 0) {
       if (!groundMesh) {
@@ -160,6 +157,7 @@ export function init(container: HTMLElement) {
         groundMesh.receiveShadow = true;
         demo.content.add(groundMesh);
       }
+      applyShapeStyle(groundMesh, styles[0]!); // ground is body 0
       const o = 0;
       groundMesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       _q.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
@@ -188,7 +186,6 @@ export function init(container: HTMLElement) {
     stop();
     clearVisuals();
     demo.dispose();
-    sky.dispose();
     boxGeo.dispose();
     groundMat.dispose();
     boxMat.dispose();

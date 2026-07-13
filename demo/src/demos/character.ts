@@ -13,6 +13,7 @@ import {
   DemoScene,
   makeTriangleMesh,
   makeWireEdges,
+  setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
@@ -25,7 +26,9 @@ import {
 
 type Mode = "mover" | "village";
 
-export function init(container: HTMLElement) {
+const CHARACTER_MODES: Mode[] = ["mover", "village"];
+
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
@@ -53,7 +56,8 @@ export function init(container: HTMLElement) {
     "color:#d4d4d4;background:rgba(0,0,0,0.45);border-radius:4px;white-space:pre-wrap;";
   controls.appendChild(statsEl);
 
-  let mode: Mode = "mover";
+  let mode: Mode =
+    initialScene && CHARACTER_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "mover";
   let villageGrid = 16;
 
   controls.appendChild(
@@ -63,7 +67,7 @@ export function init(container: HTMLElement) {
         { label: "Village", value: "village" },
         { label: "Respawn", value: "restart" },
       ],
-      "mover",
+      mode,
       (v) => {
         if (v === "restart") {
           reset();
@@ -78,11 +82,14 @@ export function init(container: HTMLElement) {
   controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { target: [7.5, 1, 9], distance: 14 });
+  // Preserve this sample's current flatter framing (yaw 35°, pitch 20°) now that
+  // the DemoScene default is the C camera (pitch -25°). reset() below overrides
+  // this with the per-mode mover/village camera each respawn; the C per-sample
+  // camera lands with this sample's batch-3 rebuild.
+  setView(demo, 35, 20, 14, [7.5, 1, 9]);
   demo.camera.far = 800;
   demo.camera.updateProjectionMatrix();
   const pool = createMeshPool();
-  // Mover capsule: blue like C DrawSolidCapsule
-  pool.dynamicMat.color.setHex(0x2563eb);
   let terrainMesh: THREE.Mesh | null = null;
   let terrainWire: THREE.LineSegments | null = null;
   const buildingMat = makeBuildingMaterial();
@@ -222,16 +229,12 @@ export function init(container: HTMLElement) {
     wasm.character_set_input(throttleX, throttleY, jump, sprint, fwdX, fwdZ, rightX, rightZ);
     wasm.character_step(1 / 60, 4);
     const poses = wasm.character_poses();
-    syncMeshesFromPoses(demo.content, pool, poses, { groundIndex: null });
-
-    // Color the last mesh (mover) blue; static capsules keep bone palette.
-    const n = Math.floor(poses.length / 16);
-    if (n > 0) {
-      const mover = pool.meshes[n - 1] as THREE.Mesh | undefined;
-      if (mover && mover.material) {
-        (mover.material as THREE.MeshStandardMaterial).color?.setHex?.(0x2563eb);
-      }
-    }
+    // Engine style words drive every body's color; the final word is the mover
+    // capsule (C DrawSolidCapsule blue), packed by `character_styles`.
+    syncMeshesFromPoses(demo.content, pool, poses, {
+      groundIndex: null,
+      styles: wasm.character_styles(),
+    });
 
     const dbg = wasm.character_debug_lines();
     debugPositions[0] = dbg[0]!;

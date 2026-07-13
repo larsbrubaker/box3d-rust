@@ -78,7 +78,7 @@ export function init(container: HTMLElement) {
   const stop = runLoop(() => {
     wasm.ragdoll_step(1 / 60, 4);
     const poses = wasm.ragdoll_poses();
-    syncMeshesFromPoses(demo.content, pool, poses);
+    syncMeshesFromPoses(demo.content, pool, poses, { styles: wasm.ragdoll_styles() });
     frame += 1;
     if (frame % 20 === 0) {
       updateReadout(readout, [
