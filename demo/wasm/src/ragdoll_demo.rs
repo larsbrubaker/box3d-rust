@@ -167,6 +167,12 @@ pub fn ragdoll_poses() -> Vec<f32> {
     })
 }
 
+/// Packed engine-driven style words parallel to [`ragdoll_poses`].
+#[wasm_bindgen]
+pub fn ragdoll_styles() -> Vec<u32> {
+    with_state(|state| crate::draw_data::shape_styles(&mut state.world, &state.bodies))
+}
+
 #[wasm_bindgen]
 pub fn ragdoll_body_count() -> u32 {
     with_state(|state| state.bodies.len() as u32)

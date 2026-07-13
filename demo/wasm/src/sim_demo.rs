@@ -524,6 +524,28 @@ pub fn sim_body_poses() -> Vec<f32> {
     })
 }
 
+/// Packed engine-driven style words, one per body, parallel to
+/// [`sim_body_poses`]. Bit layout in `draw_data`; consumed by the TS
+/// `applyShapeStyle` resolver. Colors track the live engine draw state
+/// (awake/sleep/fast/bullet/custom), so this is polled every frame.
+#[wasm_bindgen]
+pub fn sim_body_styles() -> Vec<u32> {
+    with_sim(|sim| {
+        crate::draw_data::shape_styles_indexed(
+            &mut sim.world,
+            sim.bodies.iter().map(|b| b.body_index),
+        )
+    })
+}
+
+/// Overlay text labels (mass / sleep / body names / contact + joint labels) as a
+/// JSON array. Schema documented on [`interact::collect_debug_text`]. Empty
+/// (`"[]"`) when no text-relevant view flag is set.
+#[wasm_bindgen]
+pub fn sim_debug_text() -> String {
+    with_sim(|sim| interact::collect_debug_text(&mut sim.world))
+}
+
 /// Body count in the current scene.
 #[wasm_bindgen]
 pub fn sim_body_count() -> u32 {
@@ -628,10 +650,11 @@ pub fn sim_counters() -> Vec<f32> {
     with_sim(|sim| interact::counters_with_sleep(&sim.world).to_vec())
 }
 
-/// Debug-draw geometry for the current flags bitmask. See `interact::DRAW_*`.
+/// Debug-draw overlay geometry for the current global view flags.
+/// The `_flags` argument is legacy; the mask now comes from `sim_set_debug_flags`.
 #[wasm_bindgen]
-pub fn sim_debug_draw(flags: u32) -> Vec<f32> {
-    with_sim(|sim| interact::collect_debug_draw(&mut sim.world, flags))
+pub fn sim_debug_draw(_flags: u32) -> Vec<f32> {
+    with_sim(|sim| interact::collect_debug_draw(&mut sim.world))
 }
 
 /// Destroy a tracked body by render-list index (unused by UI; available for tests).

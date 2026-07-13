@@ -47,6 +47,8 @@ const SHAPE_HEIGHT = 2;
 const HIT_COLORS = [0xdc2626, 0x16a34a, 0x2563eb];
 
 function queryAsInteract(wasm: CastWorldWasm): InteractWasm {
+  // `query_debug_text` is a per-demo export the Rust agent may add; guard it.
+  const queryDebugText = (wasm as unknown as { query_debug_text?: () => string }).query_debug_text;
   return {
     sim_step: (dt, n) => wasm.query_step(dt, n),
     sim_body_poses: () => wasm.query_poses(),
@@ -58,6 +60,11 @@ function queryAsInteract(wasm: CastWorldWasm): InteractWasm {
     sim_delete_at_ray: (ox, oy, oz, tx, ty, tz) => wasm.query_delete_at_ray(ox, oy, oz, tx, ty, tz),
     sim_counters: () => wasm.query_counters(),
     sim_debug_draw: (flags) => wasm.query_debug_draw(flags),
+    // Debug-flag mask + draw scales are GLOBAL wasm exports; forward them so the
+    // View menu / panel drive the Cast World overlay too.
+    sim_set_debug_flags: (m) => wasm.sim_set_debug_flags(m),
+    sim_set_draw_scales: (j, f) => wasm.sim_set_draw_scales(j, f),
+    sim_debug_text: queryDebugText ? () => queryDebugText.call(wasm) : undefined,
   };
 }
 
@@ -96,7 +103,7 @@ export function init(container: HTMLElement) {
     "Queries",
     "Official Collision sample <strong>Cast World</strong> from <code>sample_collision.cpp</code> — " +
       "ray / sphere / capsule / box casts with Any / Closest / Multiple / Sorted modes.",
-    "Ctrl-click aim · drag bodies · spawn shapes · P/O/R",
+    "Ctrl+click aim · click select · spawn via buttons · P/O/R",
     wasm.version(),
     { category: "Collision", samplesShell: true },
   );
@@ -468,7 +475,7 @@ export function init(container: HTMLElement) {
   const readout = controls.querySelector(".info-readout") as HTMLElement | null;
   const stop = runLoop(() => {
     ctrl.tickFrame();
-    syncMeshesFromPoses(demo.content, pool, wasm.query_poses());
+    syncMeshesFromPoses(demo.content, pool, wasm.query_poses(), { styles: wasm.query_styles() });
     updateCastViz();
     // Surfaces / ignore AABBs update infrequently enough via spawn buttons; refresh lightly.
     syncIgnoreAabbs();

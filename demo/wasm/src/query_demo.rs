@@ -509,6 +509,20 @@ pub fn query_poses() -> Vec<f32> {
     })
 }
 
+/// Packed engine-driven style words parallel to [`query_poses`].
+#[wasm_bindgen]
+pub fn query_styles() -> Vec<u32> {
+    with_state(|state| crate::draw_data::shape_styles(&mut state.world, &state.vis))
+}
+
+/// Overlay text labels (mass / sleep / body names / contact + joint labels) as a
+/// JSON array. Schema documented on [`crate::interact::collect_debug_text`].
+/// Empty (`"[]"`) when no text-relevant view flag is set.
+#[wasm_bindgen]
+pub fn query_debug_text() -> String {
+    with_state(|state| crate::interact::collect_debug_text(&mut state.world))
+}
+
 #[wasm_bindgen]
 pub fn query_set_params(cast_type: i32, mode: i32, radius: f32, initial_overlap: i32) {
     with_state(|state| {
@@ -762,6 +776,6 @@ pub fn query_counters() -> Vec<f32> {
 }
 
 #[wasm_bindgen]
-pub fn query_debug_draw(flags: u32) -> Vec<f32> {
-    with_state(|state| interact::collect_debug_draw(&mut state.world, flags))
+pub fn query_debug_draw(_flags: u32) -> Vec<f32> {
+    with_state(|state| interact::collect_debug_draw(&mut state.world))
 }

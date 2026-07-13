@@ -583,6 +583,20 @@ pub fn character_poses() -> Vec<f32> {
     })
 }
 
+/// Style words parallel to [`character_poses`]: one per tracked body, then a
+/// final word for the mover capsule. The mover is the character controller and
+/// has no physics shape, so it gets a fixed style — the C sample's mover blue
+/// (0x2563EB), body-type dynamic — instead of an engine-captured color.
+#[wasm_bindgen]
+pub fn character_styles() -> Vec<u32> {
+    with_state(|state| {
+        let mut out = crate::draw_data::shape_styles(&mut state.world, &state.bodies);
+        const MOVER_STYLE: u32 = 0x0025_63EB | (2u32 << crate::draw_data::STYLE_BODY_TYPE_SHIFT);
+        out.push(MOVER_STYLE);
+        out
+    })
+}
+
 #[wasm_bindgen]
 pub fn character_status() -> Vec<f32> {
     with_state(|state| {
@@ -676,3 +690,7 @@ pub fn character_village_buildings() -> Vec<f32> {
 pub fn character_village_stats() -> Vec<f32> {
     with_state(|state| state.village_stats.to_vec())
 }
+
+#[cfg(test)]
+#[path = "character_demo_tests.rs"]
+mod tests;

@@ -13,11 +13,12 @@ import {
   makeSolidBox,
   makeSphere,
   makeWireBox,
+  setView,
 } from "../three-scene.ts";
 
 const KIND_NAMES = ["spheres", "capsules", "hull-sphere", "hull-hull"];
 
-export function init(container: HTMLElement) {
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const { canvas, controls } = demoPage(
     container,
@@ -29,7 +30,8 @@ export function init(container: HTMLElement) {
     wasm.version(),
   );
 
-  let kind = 0;
+  // Deep link (`#/manifolds/<slug>`) selects the pair; scene key is "0".."3".
+  let kind = initialScene && /^[0-3]$/.test(initialScene) ? parseInt(initialScene, 10) : 0;
   let target: [number, number, number] = [1.8, 0.4, 0.2];
 
   controls.appendChild(
@@ -45,7 +47,7 @@ export function init(container: HTMLElement) {
       { label: "Hull·Sphere", value: "2" },
       { label: "Hull·Hull", value: "3" },
     ],
-    "0",
+    String(kind),
     (v) => {
       kind = parseInt(v, 10);
     },
@@ -55,6 +57,10 @@ export function init(container: HTMLElement) {
   controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { distance: 10 });
+  // Preserve this sample's current flatter framing (yaw 35°, pitch 20°) now that
+  // the DemoScene default is the C camera (pitch -25°). The C per-sample camera
+  // for Contact Manifolds lands with this sample's batch-3 rebuild.
+  setView(demo, 35, 20, 10, [0, 0, 0]);
   canvas.addEventListener("pointermove", (e) => {
     if (e.buttons) return;
     const rect = canvas.getBoundingClientRect();

@@ -1,7 +1,7 @@
 // Shared mesh sync for dynamics demos using the 16-float pose stride.
 
 import * as THREE from "three";
-import { COLORS } from "../three-scene.ts";
+import { applyShapeStyle, COLORS, makeShapeMaterial } from "../three-scene.ts";
 
 export const POSE_STRIDE = 16;
 export const KIND_BOX = 0;
@@ -27,6 +27,8 @@ export type MeshPool = {
   sensorMat: THREE.MeshStandardMaterial;
   boneMats: THREE.MeshStandardMaterial[];
   colorMats: Map<number, THREE.MeshStandardMaterial>;
+  /** Per-mesh materials for the engine-driven style path (index-aligned to `meshes`). */
+  styleMats: THREE.MeshStandardMaterial[];
 };
 
 export function createMeshPool(): MeshPool {
@@ -63,6 +65,7 @@ export function createMeshPool(): MeshPool {
         }),
     ),
     colorMats: new Map(),
+    styleMats: [],
   };
 }
 
@@ -76,6 +79,8 @@ export function disposeMeshPool(pool: MeshPool) {
   for (const m of pool.boneMats) m.dispose();
   for (const m of pool.colorMats.values()) m.dispose();
   pool.colorMats.clear();
+  for (const m of pool.styleMats) m.dispose();
+  pool.styleMats.length = 0;
   for (const mesh of pool.meshes) {
     mesh.traverse((child) => {
       const m = child as THREE.Mesh;
@@ -157,6 +162,13 @@ export function syncMeshesFromPoses(
     sensorIndices?: ArrayLike<number>;
     groundIndex?: number | null;
     colors?: ArrayLike<number>;
+    /**
+     * Packed engine style words parallel to `poses` (one per body). When given,
+     * each mesh gets its own material driven by `applyShapeStyle` — the
+     * engine-color path — and the legacy `colors`/pool-material selection is
+     * bypassed.
+     */
+    styles?: ArrayLike<number>;
   } = {},
 ) {
   const n = Math.floor(poses.length / POSE_STRIDE);
@@ -166,6 +178,7 @@ export function syncMeshesFromPoses(
     opts.sensorIndices !== undefined
       ? new Set(Array.from(opts.sensorIndices, (v) => Number(v)))
       : null;
+  const styles = opts.styles;
 
   while (pool.meshes.length > n) {
     const m = pool.meshes.pop()!;
@@ -176,10 +189,21 @@ export function syncMeshesFromPoses(
   for (let i = 0; i < n; i++) {
     const o = i * POSE_STRIDE;
     const kind = poses[o + 14]!;
-    const poseColor = Math.round(poses[o + 15]!) & 0xffffff;
-    const color =
-      opts.colors !== undefined ? (opts.colors[i]! | 0) : poseColor;
-    const mat = materialFor(pool, i, kind, color, sensorIndex, sensorIndices, groundIndex);
+    let mat: THREE.Material;
+    if (styles !== undefined) {
+      // Engine-color path: one owned material per mesh slot, written by
+      // applyShapeStyle after the mesh is positioned below.
+      let sm = pool.styleMats[i];
+      if (!sm) {
+        sm = makeShapeMaterial();
+        pool.styleMats[i] = sm;
+      }
+      mat = sm;
+    } else {
+      const poseColor = Math.round(poses[o + 15]!) & 0xffffff;
+      const color = opts.colors !== undefined ? (opts.colors[i]! | 0) : poseColor;
+      mat = materialFor(pool, i, kind, color, sensorIndex, sensorIndices, groundIndex);
+    }
     let obj = pool.meshes[i];
 
     if (kind === KIND_CAPSULE) {
@@ -298,6 +322,10 @@ export function syncMeshesFromPoses(
       _quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       obj.quaternion.copy(_quat);
       obj.scale.set(poses[o + 7]!, poses[o + 8]!, poses[o + 9]!);
+    }
+
+    if (styles !== undefined) {
+      applyShapeStyle(pool.meshes[i] as THREE.Mesh, styles[i]!);
     }
   }
 }

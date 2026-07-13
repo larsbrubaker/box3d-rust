@@ -652,8 +652,8 @@ pub fn bench_counters() -> Vec<f32> {
 }
 
 #[wasm_bindgen]
-pub fn bench_debug_draw(flags: u32) -> Vec<f32> {
-    with_bench(|bench| interact::collect_debug_draw(&mut bench.world, flags))
+pub fn bench_debug_draw(_flags: u32) -> Vec<f32> {
+    with_bench(|bench| interact::collect_debug_draw(&mut bench.world))
 }
 
 #[wasm_bindgen]

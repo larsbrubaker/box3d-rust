@@ -8,21 +8,23 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { demoPage, runLoop } from "./common.ts";
-import { applyBodyColor, DemoScene, makeBodyMaterial, setView } from "../three-scene.ts";
+import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 
 /** `[px..qw, hx,hy,hz, kind, bodyType, awake]` */
 const STRIDE = 13;
 
 type Mode = "jenga" | "boxes" | "pyramid" | "spheres" | "single";
 
-export function init(container: HTMLElement) {
+const STACKING_MODES: Mode[] = ["jenga", "boxes", "pyramid", "spheres", "single"];
+
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const { canvas, controls, page } = demoPage(
     container,
     "Stacking",
     "Official Stacking samples — Jenga Stack, Box Stack, Pyramid2D (planar), Sphere Stack, " +
       "and Single Box — driven by the ported <code>World::step</code> scalar solver.",
-    "Drag body · Shift spawn · Ctrl delete · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
     { category: "Stacking", samplesShell: true },
   );
@@ -38,7 +40,9 @@ export function init(container: HTMLElement) {
   );
 
   // Jenga is the 3D showcase; Pyramid2D must never be the default (it looks like a 2D sim).
-  let mode: Mode = "jenga";
+  // A deep link (`#/stacking/<slug>`) can request a specific scene via initialScene.
+  let mode: Mode =
+    initialScene && STACKING_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "jenga";
   // C JengaStack DrawControls radio: Hull (default) or Capsule.
   let jengaShape: "hull" | "capsule" = "hull";
 
@@ -47,18 +51,20 @@ export function init(container: HTMLElement) {
   hud.style.display = "none";
 
   const demo = new DemoScene(canvas, { target: [0, 2, 0], distance: 14, shadowExtent: 36 });
+  // Each mesh owns its material — engine style words color bodies per-body
+  // (sleep/wake/fast/bullet), so a shared material can't be used.
   const meshes: THREE.Mesh[] = [];
   const boxGeo = new THREE.BoxGeometry(2, 2, 2);
   const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
-  const staticMat = makeBodyMaterial(0, true);
-  const dynamicMat = makeBodyMaterial(2, true);
-  const sleepMat = makeBodyMaterial(2, false);
+
+  function disposeMesh(m: THREE.Mesh) {
+    demo.content.remove(m);
+    if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
+    (m.material as THREE.Material).dispose();
+  }
 
   function clearMeshes() {
-    for (const m of meshes) {
-      demo.content.remove(m);
-      if (m.geometry !== boxGeo && m.geometry !== sphereGeo) m.geometry.dispose();
-    }
+    for (const m of meshes) disposeMesh(m);
     meshes.length = 0;
   }
 
@@ -77,47 +83,30 @@ export function init(container: HTMLElement) {
     }
   }
 
-  function pickMat(bodyType: number, awake: boolean): THREE.MeshStandardMaterial {
-    const mat = bodyType === 0 ? staticMat : awake ? dynamicMat : sleepMat;
-    applyBodyColor(mat, bodyType, awake);
-    return mat;
-  }
-
-  function ensureMesh(i: number, kind: number, bodyType: number, awake: boolean): THREE.Mesh {
+  function ensureMesh(i: number, kind: number, bodyType: number): THREE.Mesh {
     let mesh = meshes[i];
     const wantSphere = kind === 1;
     const wantCapsule = kind === 2;
-    const mat = pickMat(bodyType, awake);
 
     if (wantCapsule) {
       if (!mesh || mesh.geometry.type !== "CapsuleGeometry") {
-        if (mesh) {
-          demo.content.remove(mesh);
-          if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
-        }
-        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), mat);
+        if (mesh) disposeMesh(mesh);
+        mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 10), makeShapeMaterial());
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         demo.content.add(mesh);
         meshes[i] = mesh;
-      } else {
-        mesh.material = mat;
       }
       return mesh;
     }
 
     if (!mesh || (wantSphere && mesh.geometry !== sphereGeo) || (!wantSphere && mesh.geometry !== boxGeo)) {
-      if (mesh) {
-        demo.content.remove(mesh);
-        if (mesh.geometry !== boxGeo && mesh.geometry !== sphereGeo) mesh.geometry.dispose();
-      }
-      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, mat);
+      if (mesh) disposeMesh(mesh);
+      mesh = new THREE.Mesh(wantSphere ? sphereGeo : boxGeo, makeShapeMaterial());
       mesh.castShadow = bodyType !== 0;
       mesh.receiveShadow = true;
       demo.content.add(mesh);
       meshes[i] = mesh;
-    } else {
-      mesh.material = mat;
     }
     return mesh;
   }
@@ -160,7 +149,7 @@ export function init(container: HTMLElement) {
         { label: "Sphere Stack", value: "spheres" },
         { label: "Single Box", value: "single" },
       ],
-      "jenga",
+      mode,
       (v) => {
         mode = v as Mode;
         jengaControls.style.display = mode === "jenga" ? "" : "none";
@@ -187,10 +176,10 @@ export function init(container: HTMLElement) {
   const stop = runLoop(() => {
     ctrl.tickFrame();
     const poses = wasm.sim_body_poses();
+    const styles = wasm.sim_body_styles();
     const n = Math.floor(poses.length / STRIDE);
     while (meshes.length > n) {
-      const m = meshes.pop()!;
-      demo.content.remove(m);
+      disposeMesh(meshes.pop()!);
     }
     // Single Box HUD: C SingleBox::Step prints the cube's position (body 1, after ground).
     if (mode === "single" && n > 1) {
@@ -202,8 +191,8 @@ export function init(container: HTMLElement) {
       const o = i * STRIDE;
       const kind = poses[o + 10]!;
       const bodyType = poses[o + 11]! | 0;
-      const awake = poses[o + 12]! > 0.5;
-      const mesh = ensureMesh(i, kind, bodyType, awake);
+      const mesh = ensureMesh(i, kind, bodyType);
+      applyShapeStyle(mesh, styles[i]!);
       mesh.position.set(poses[o]!, poses[o + 1]!, poses[o + 2]!);
       quat.set(poses[o + 3]!, poses[o + 4]!, poses[o + 5]!, poses[o + 6]!);
       mesh.quaternion.copy(quat);
@@ -233,8 +222,5 @@ export function init(container: HTMLElement) {
     demo.dispose();
     boxGeo.dispose();
     sphereGeo.dispose();
-    staticMat.dispose();
-    dynamicMat.dispose();
-    sleepMat.dispose();
   };
 }

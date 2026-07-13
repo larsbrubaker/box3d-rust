@@ -11,6 +11,8 @@ import {
   createTextInput,
 } from "./controls.ts";
 import type { DemoScene } from "./three-scene.ts";
+import { demoBus, emitInitialState, viewFlags } from "./bus.ts";
+import { VIEW_BITS, OVERLAY_MASK, TEXT_MASK } from "./view-flags.ts";
 
 /** Wasm bindings needed by the interaction layer (sim_* today; other demos can adapt). */
 export type InteractWasm = {
@@ -33,44 +35,60 @@ export type InteractWasm = {
   sim_stop_recording?(): Uint8Array;
   sim_is_recording?(): boolean;
   sim_record_start_step?(): number;
+  /** Set the sim's debug-draw flag mask (16-bit; see VIEW_BITS). Added by the wasm agent. */
+  sim_set_debug_flags?(mask: number): void;
+  /** Set the sim's debug-draw joint / force scales. Added by the wasm agent. */
+  sim_set_draw_scales?(joint: number, force: number): void;
+  /** JSON array of `{x,y,z,color,text}` debug labels for the current view mask.
+   *  Optional: only some demos emit text (body names / mass / sleep / contact
+   *  features). Adapters forward the demo's own `*_debug_text` export here. */
+  sim_debug_text?: () => string;
 };
 
-export const DRAW_CONTACTS = 1 << 0;
-export const DRAW_CONTACT_NORMALS = 1 << 1;
-export const DRAW_CONTACT_FORCES = 1 << 2;
-export const DRAW_JOINTS = 1 << 3;
-export const DRAW_JOINT_EXTRAS = 1 << 4;
-export const DRAW_BOUNDS = 1 << 5;
-export const DRAW_MASS = 1 << 6;
-export const DRAW_ISLANDS = 1 << 7;
+// The 16-bit view-flag mask (bit order, defaults, labels) lives in the shared
+// leaf view-flags.ts. VIEW_BITS/OVERLAY_MASK/TEXT_MASK are imported above; this
+// module keys the panel + menu into that one table via the `view.flag` bus.
+
+/** A single visibility predicate: the param shows only while `values[key] === equals`. */
+export type ParamVisibility = { key: string; equals: boolean | number | string };
+
+/** Fields shared by every param kind. */
+type ParamCommon = {
+  key: string;
+  label: string;
+  /** Restart the scene when this value changes (default true). */
+  restart?: boolean;
+  /**
+   * Render this param inside a titled section. Consecutive defs with the same
+   * `group` share one section; the section auto-hides when all its members are
+   * hidden by `visibleWhen`.
+   */
+  group?: string;
+  /**
+   * Show this param only while the predicate(s) hold. Re-evaluated whenever any
+   * param changes. An array requires every predicate to pass (logical AND).
+   * Hidden params keep their current values.
+   */
+  visibleWhen?: ParamVisibility | ParamVisibility[];
+};
 
 export type ParamDef =
-  | {
+  | (ParamCommon & {
       type: "slider";
-      key: string;
-      label: string;
       min: number;
       max: number;
       step: number;
       default: number;
-      /** Restart the scene when this value changes (default true). */
-      restart?: boolean;
-    }
-  | {
+    })
+  | (ParamCommon & {
       type: "checkbox";
-      key: string;
-      label: string;
       default: boolean;
-      restart?: boolean;
-    }
-  | {
+    })
+  | (ParamCommon & {
       type: "select";
-      key: string;
-      label: string;
       options: { label: string; value: string }[];
       default: string;
-      restart?: boolean;
-    };
+    });
 
 export type ParamValues = Record<string, number | boolean | string>;
 
@@ -82,7 +100,6 @@ export type SimController = {
   subSteps: number;
   /** Solver frequency in Hz (C sample Hertz). dt = 1/hertz. */
   hertz: number;
-  debugFlags: number;
   /** Rolling average step time in ms. */
   stepMsAvg: number;
   stepCount: number;
@@ -118,11 +135,7 @@ export type AttachInteractionOpts = {
 
 const _ndc = new THREE.Vector2();
 const _raycaster = new THREE.Raycaster();
-const _hitPlane = new THREE.Plane();
-const _planeHit = new THREE.Vector3();
-const _camDir = new THREE.Vector3();
 const _grabPoint = new THREE.Vector3();
-const _camOffset = new THREE.Vector3();
 
 function screenToNdc(canvas: HTMLCanvasElement, clientX: number, clientY: number): THREE.Vector2 {
   const rect = canvas.getBoundingClientRect();
@@ -144,25 +157,8 @@ function pickRay(
   return { origin, translation };
 }
 
-function dragPointOnCameraPlane(
-  demo: DemoScene,
-  canvas: HTMLCanvasElement,
-  clientX: number,
-  clientY: number,
-  planePoint: THREE.Vector3,
-): THREE.Vector3 {
-  screenToNdc(canvas, clientX, clientY);
-  _raycaster.setFromCamera(_ndc, demo.camera);
-  demo.camera.getWorldDirection(_camDir);
-  _hitPlane.setFromNormalAndCoplanarPoint(_camDir, planePoint);
-  if (_raycaster.ray.intersectPlane(_hitPlane, _planeHit)) {
-    return _planeHit.clone();
-  }
-  return _raycaster.ray.origin.clone().add(
-    _raycaster.ray.direction.clone().multiplyScalar(planePoint.distanceTo(_raycaster.ray.origin)),
-  );
-}
-
+// Read yaw/pitch/radius/pivot straight from the camera controller (C samples
+// read these off the Camera; no need to reverse-engineer from position).
 function cameraReadout(demo: DemoScene): {
   px: number;
   py: number;
@@ -171,12 +167,9 @@ function cameraReadout(demo: DemoScene): {
   pitch: number;
   radius: number;
 } {
-  const t = demo.controls.target;
-  _camOffset.copy(demo.camera.position).sub(t);
-  const radius = Math.max(1e-6, _camOffset.length());
-  const yaw = (Math.atan2(_camOffset.x, _camOffset.z) * 180) / Math.PI;
-  const pitch = (Math.asin(Math.max(-1, Math.min(1, _camOffset.y / radius))) * 180) / Math.PI;
-  return { px: t.x, py: t.y, pz: t.z, yaw, pitch, radius };
+  const c = demo.controls;
+  const t = c.pivot;
+  return { px: t.x, py: t.y, pz: t.z, yaw: c.yawDeg, pitch: c.pitchDeg, radius: c.radius };
 }
 
 function downloadBytes(filename: string, data: Uint8Array) {
@@ -187,6 +180,12 @@ function downloadBytes(filename: string, data: Uint8Array) {
   a.download = filename || "recording.b3rec";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function paramVisible(vw: ParamVisibility | ParamVisibility[] | undefined, values: ParamValues): boolean {
+  if (!vw) return true;
+  const conds = Array.isArray(vw) ? vw : [vw];
+  return conds.every((c) => values[c.key] === c.equals);
 }
 
 /** Build a declarative parameter panel; returns current values + dispose. */
@@ -203,41 +202,86 @@ export function createParamPanel(
   title.textContent = "Parameters";
   section.appendChild(title);
 
-  for (const def of defs) {
-    const restart = def.restart !== false;
+  // Track each control's element + predicate so visibility can be re-evaluated on
+  // any change. Group sections auto-hide when all their members are hidden.
+  type Group = { name: string; container: HTMLElement; members: ParamDef[] };
+  const entries: { el: HTMLElement; def: ParamDef }[] = [];
+  const groups: Group[] = [];
+  let currentGroup: Group | null = null;
+
+  const containerFor = (def: ParamDef): HTMLElement => {
+    if (def.group == null) {
+      currentGroup = null;
+      return section;
+    }
+    if (currentGroup && currentGroup.name === def.group) {
+      currentGroup.members.push(def);
+      return currentGroup.container;
+    }
+    const container = document.createElement("div");
+    container.className = "param-group";
+    container.style.marginTop = "0.5rem";
+    const gt = document.createElement("div");
+    gt.className = "control-section-title";
+    gt.textContent = def.group;
+    container.appendChild(gt);
+    section.appendChild(container);
+    currentGroup = { name: def.group, container, members: [def] };
+    groups.push(currentGroup);
+    return container;
+  };
+
+  const buildControl = (def: ParamDef, restart: boolean): HTMLElement => {
     if (def.type === "slider") {
       values[def.key] = def.default;
-      section.appendChild(
-        createSlider(def.label, def.min, def.max, def.default, def.step, (v) => {
-          values[def.key] = def.step >= 1 ? Math.round(v) : v;
-          onChange(values, def.key, restart);
-        }),
-      );
-    } else if (def.type === "checkbox") {
+      return createSlider(def.label, def.min, def.max, def.default, def.step, (v) => {
+        values[def.key] = def.step >= 1 ? Math.round(v) : v;
+        onChange(values, def.key, restart);
+        applyVisibility();
+      });
+    }
+    if (def.type === "checkbox") {
       values[def.key] = def.default;
-      section.appendChild(
-        createCheckbox(def.label, def.default, (v) => {
-          values[def.key] = v;
-          onChange(values, def.key, restart);
-        }),
-      );
-    } else {
-      values[def.key] = def.default;
-      const group = document.createElement("div");
-      group.className = "control-group";
-      const lbl = document.createElement("label");
-      lbl.textContent = def.label;
-      group.appendChild(lbl);
-      group.appendChild(
-        createButtonGroup(def.options, def.default, (v) => {
-          values[def.key] = v;
-          onChange(values, def.key, restart);
-        }),
-      );
-      section.appendChild(group);
+      return createCheckbox(def.label, def.default, (v) => {
+        values[def.key] = v;
+        onChange(values, def.key, restart);
+        applyVisibility();
+      });
+    }
+    values[def.key] = def.default;
+    const group = document.createElement("div");
+    group.className = "control-group";
+    const lbl = document.createElement("label");
+    lbl.textContent = def.label;
+    group.appendChild(lbl);
+    group.appendChild(
+      createButtonGroup(def.options, def.default, (v) => {
+        values[def.key] = v;
+        onChange(values, def.key, restart);
+        applyVisibility();
+      }),
+    );
+    return group;
+  };
+
+  function applyVisibility() {
+    for (const e of entries) {
+      e.el.style.display = paramVisible(e.def.visibleWhen, values) ? "" : "none";
+    }
+    for (const g of groups) {
+      const any = g.members.some((m) => paramVisible(m.visibleWhen, values));
+      g.container.style.display = any ? "" : "none";
     }
   }
 
+  for (const def of defs) {
+    const container = containerFor(def);
+    const el = buildControl(def, def.restart !== false);
+    container.appendChild(el);
+    entries.push({ el, def });
+  }
+
+  applyVisibility();
   parent.appendChild(section);
   return {
     values,
@@ -345,6 +389,130 @@ function floatBitsToRgb(bitsAsF32: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
 }
 
+/** One debug label: a text string anchored at a world point, with a color. */
+type DebugLabel = { x: number; y: number; z: number; color: string; text: string };
+
+/** Parse the `sim_debug_text` JSON channel into labels (tolerant of an empty or
+ *  malformed payload — the overlay simply clears in that case). Color accepts a
+ *  packed 0xRRGGBB number or a CSS string; anything else falls back to white. */
+function parseDebugText(json: string | undefined): DebugLabel[] {
+  if (!json) return [];
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  const labels: DebugLabel[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o.text !== "string" || o.text.length === 0) continue;
+    labels.push({
+      x: Number(o.x) || 0,
+      y: Number(o.y) || 0,
+      z: Number(o.z) || 0,
+      color: normDebugColor(o.color),
+      text: o.text,
+    });
+  }
+  return labels;
+}
+
+function normDebugColor(c: unknown): string {
+  if (typeof c === "number") return `#${(c & 0xffffff).toString(16).padStart(6, "0")}`;
+  if (typeof c === "string" && c.length > 0) return c;
+  return "#ffffff";
+}
+
+/**
+ * Billboarded text labels for the `sim_debug_text` channel (body names, mass,
+ * sleep timers, contact feature ids). Each unique `color|text` is rasterized to
+ * a canvas texture once and cached; sprites are pooled and reused across frames
+ * so a steady label set costs no per-frame allocation. Sprites always face the
+ * camera (THREE.Sprite), matching the C DrawString HUD behavior in 3D.
+ */
+class TextLabelOverlay {
+  private readonly group: THREE.Group;
+  private readonly textureCache = new Map<string, THREE.Texture>();
+  private readonly pool: THREE.Sprite[] = [];
+
+  constructor(private readonly demo: DemoScene) {
+    this.group = new THREE.Group();
+    this.demo.dynamic.add(this.group);
+  }
+
+  private textureFor(text: string, color: string): THREE.Texture {
+    const key = `${color} ${text}`;
+    const cached = this.textureCache.get(key);
+    if (cached) return cached;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    const font = "600 32px system-ui, -apple-system, sans-serif";
+    ctx.font = font;
+    const pad = 8;
+    const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+    const h = 32 + pad * 2;
+    canvas.width = w;
+    canvas.height = h;
+    // measureText resets after the canvas resize, so re-apply the font.
+    ctx.font = font;
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; // legibility plate behind the glyphs
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = color;
+    ctx.fillText(text, pad, h / 2);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    this.textureCache.set(key, tex);
+    return tex;
+  }
+
+  update(labels: DebugLabel[]) {
+    while (this.pool.length < labels.length) {
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ transparent: true, depthTest: true }),
+      );
+      this.pool.push(sprite);
+      this.group.add(sprite);
+    }
+    for (let i = 0; i < this.pool.length; i++) {
+      const sprite = this.pool[i]!;
+      const l = labels[i];
+      if (!l) {
+        sprite.visible = false;
+        continue;
+      }
+      const tex = this.textureFor(l.text, l.color);
+      const mat = sprite.material as THREE.SpriteMaterial;
+      mat.map = tex;
+      mat.needsUpdate = true;
+      const img = tex.image as HTMLCanvasElement;
+      const worldH = 0.5; // ~0.5 m tall labels; scale width to preserve aspect
+      sprite.scale.set(worldH * (img.width / img.height), worldH, 1);
+      sprite.position.set(l.x, l.y, l.z);
+      sprite.visible = true;
+    }
+  }
+
+  clear() {
+    for (const s of this.pool) s.visible = false;
+  }
+
+  dispose() {
+    for (const s of this.pool) {
+      this.group.remove(s);
+      (s.material as THREE.SpriteMaterial).dispose();
+    }
+    this.pool.length = 0;
+    for (const tex of this.textureCache.values()) tex.dispose();
+    this.textureCache.clear();
+    this.demo.dynamic.remove(this.group);
+  }
+}
+
 /**
  * Attach Samples App Info panel + pause/step/restart, hotkeys, Solver/Recording,
  * pick-drag, spawn/delete, and debug-draw toggles to a dynamics demo.
@@ -374,7 +542,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     timeScale: 1,
     subSteps: 4,
     hertz: 60,
-    debugFlags: 0,
     stepMsAvg: 0,
     stepCount: 0,
     params: {},
@@ -434,8 +601,10 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   let paramDispose = () => {};
   if (paramDefs.length > 0) {
     const panel = createParamPanel(controls, paramDefs, (values, key, shouldRestart) => {
-      state.params = { ...values };
+      // onParamsChange may clamp values in place; copy after it so state.params
+      // (and any restart that reads it) sees the corrected values.
       onParamsChange?.(values, key);
+      state.params = { ...values };
       if (shouldRestart) state.restart();
     });
     state.params = { ...panel.values };
@@ -575,27 +744,55 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     }
   }
 
+  // --- Debug-draw state: one 16-bit mask (VIEW_BITS order) is the single source ---
+  // The View menu (main.ts) and the checkbox panel below are two UIs over the
+  // same flags. Both route through the `view.flag` bus event; the subscriber
+  // (further down) folds each change into `viewMask` and pushes it to the sim via
+  // the guarded sim_set_debug_flags. tickFrame then fetches the overlay/text
+  // channels off that one mask. There is no parallel client-side flag word.
+  let viewMask = 0;
+  const drawScales = { joint: 1, force: 1 };
+  const pushDebugFlags = () => {
+    wasm.sim_set_debug_flags?.(viewMask);
+  };
+  const pushDrawScales = () => {
+    wasm.sim_set_draw_scales?.(drawScales.joint, drawScales.force);
+  };
+  const setViewBit = (key: string, on: boolean) => {
+    const bit = VIEW_BITS[key];
+    if (bit === undefined) return;
+    if (on) viewMask |= bit;
+    else viewMask &= ~bit;
+  };
+
   // --- Debug draw toggles ---
   const dbg = createCollapsingSection("Debug draw", false);
   controls.appendChild(dbg.root);
 
-  const flagDefs: { label: string; flag: number }[] = [
-    { label: "Contacts", flag: DRAW_CONTACTS },
-    { label: "Contact normals", flag: DRAW_CONTACT_NORMALS },
-    { label: "Contact forces", flag: DRAW_CONTACT_FORCES },
-    { label: "Joints", flag: DRAW_JOINTS },
-    { label: "Joint frames", flag: DRAW_JOINT_EXTRAS },
-    { label: "AABBs", flag: DRAW_BOUNDS },
-    { label: "Mass axes", flag: DRAW_MASS },
-    { label: "Islands", flag: DRAW_ISLANDS },
+  // A curated subset of the View-menu flags, surfaced as native checkboxes. Each
+  // toggle initializes from the shared `viewFlags` state and emits `view.flag`
+  // (the same event the menu uses) so the menu tick, the mask, and any other
+  // subscriber all stay in lockstep. The `view.flag` subscriber below writes the
+  // checkbox back when the change originates in the menu.
+  const panelFlagDefs: { label: string; viewKey: string }[] = [
+    { label: "Contacts", viewKey: "contacts" },
+    { label: "Contact normals", viewKey: "contactNormals" },
+    { label: "Contact forces", viewKey: "contactForces" },
+    { label: "Joints", viewKey: "joints" },
+    { label: "Joint frames", viewKey: "jointExtras" },
+    { label: "AABBs", viewKey: "bounds" },
+    { label: "Mass axes", viewKey: "mass" },
+    { label: "Islands", viewKey: "islands" },
   ];
-  for (const f of flagDefs) {
-    dbg.body.appendChild(
-      createCheckbox(f.label, false, (on) => {
-        if (on) state.debugFlags |= f.flag;
-        else state.debugFlags &= ~f.flag;
-      }),
-    );
+  const panelCheckboxes = new Map<string, HTMLInputElement>();
+  for (const f of panelFlagDefs) {
+    const el = createCheckbox(f.label, viewFlags[f.viewKey] ?? false, (on) => {
+      viewFlags[f.viewKey] = on;
+      demoBus.emit("view.flag", { name: f.viewKey, value: on });
+    });
+    const input = el.querySelector("input") as HTMLInputElement | null;
+    if (input) panelCheckboxes.set(f.viewKey, input);
+    dbg.body.appendChild(el);
   }
 
   // --- Keyboard / mouse legend (C Controls window, adapted) ---
@@ -603,68 +800,122 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   controls.appendChild(keys.root);
   keys.body.innerHTML = `
     <table class="key-legend">
-      <tr><td>P / Space</td><td>Pause / resume</td></tr>
-      <tr><td>O / S</td><td>Single step (Shift: 5)</td></tr>
+      <tr><td>P</td><td>Pause / resume</td></tr>
+      <tr><td>O (Shift+O)</td><td>Single / 5× step</td></tr>
       <tr><td>R</td><td>Restart sample</td></tr>
-      <tr><td>Drag</td><td>Grab body</td></tr>
-      ${
-        enableSpawnDelete
-          ? "<tr><td>Shift-click</td><td>Spawn shape</td></tr><tr><td>Ctrl-click</td><td>Delete body</td></tr>"
-          : ""
-      }
-      <tr><td>Orbit</td><td>Left-drag empty / right-drag</td></tr>
+      <tr><td>[ / ]</td><td>Prev / next sample</td></tr>
+      <tr><td>F</td><td>Frame selection</td></tr>
+      <tr><td>Tab</td><td>Hide / show UI</td></tr>
+      <tr><td>Left-click</td><td>Select body</td></tr>
+      <tr><td>Ctrl + click</td><td>Grab body</td></tr>
+      ${enableSpawnDelete ? "<tr><td>Shift + click</td><td>Spawn body</td></tr>" : ""}
+      <tr><td>Alt + drag</td><td>Orbit / pan / zoom</td></tr>
+      <tr><td>Right-drag + WASD</td><td>Fly camera</td></tr>
       <tr><td>Scroll</td><td>Zoom</td></tr>
     </table>
   `;
 
   const debugOverlay = new DebugDrawOverlay(demo);
+  const textOverlay = new TextLabelOverlay(demo);
 
-  // --- Pointer interaction ---
+  // --- Pointer interaction (C Sample::MouseDown/Move, sample.cpp:1136-1289) ---
+  //   plain left-click : select the body under the cursor (store for F-frame)
+  //   Ctrl + left-drag : grab a dynamic body with the motor-joint mouse spring
+  //   Shift + left     : spawn the bullet sphere along the pick ray
+  // Camera gestures (Alt+drag orbit/pan/zoom, right-drag fly) live in the camera
+  // controller, so nothing here disables it. Grab tracks the drag point along the
+  // pick ray at the initial hit fraction, exactly like C MouseMove:1288.
   let dragging = false;
+  let grabFraction = 0;
   let suppressClick = false;
+  /** Current selection as a world-space box, used by F-frame. null = nothing selected. */
+  let selection: THREE.Box3 | null = null;
+
+  // Fraction of the pick ray at which `hit` lies: hit = origin + f·translation.
+  const rayFraction = (
+    origin: THREE.Vector3,
+    translation: THREE.Vector3,
+    hit: THREE.Vector3,
+  ): number => {
+    const tl2 = translation.dot(translation);
+    return tl2 > 0 ? _grabPoint.copy(hit).sub(origin).dot(translation) / tl2 : 0;
+  };
+
+  const selectAt = (clientX: number, clientY: number) => {
+    screenToNdc(canvas, clientX, clientY);
+    _raycaster.setFromCamera(_ndc, demo.camera);
+    const hits = _raycaster.intersectObjects(demo.content.children, true);
+    if (hits.length === 0) {
+      selection = null; // C ClearSelection on empty space
+      return;
+    }
+    const hit = hits[0]!;
+    const obj = hit.object;
+    // InstancedMesh AABBs cover the whole cloud, so frame a unit box at the hit
+    // point instead; single meshes use their own world AABB.
+    if ((obj as THREE.InstancedMesh).isInstancedMesh) {
+      selection = new THREE.Box3().setFromCenterAndSize(hit.point, new THREE.Vector3(1, 1, 1));
+    } else {
+      const box = new THREE.Box3().setFromObject(obj);
+      selection = box.isEmpty() || !isFinite(box.min.x)
+        ? new THREE.Box3().setFromCenterAndSize(hit.point, new THREE.Vector3(1, 1, 1))
+        : box;
+    }
+  };
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
-    const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
 
+    // Shift+click spawns the bullet body (C sample.cpp:1211). Shift+Ctrl (cylinder)
+    // and Shift+Alt (human) are batch-3: their wasm exports don't exist yet.
     if (e.shiftKey && enableSpawnDelete) {
+      const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
       wasm.sim_spawn_random(origin.x, origin.y, origin.z, translation.x, translation.y, translation.z);
       e.preventDefault();
       e.stopPropagation();
       suppressClick = true;
       return;
     }
-    if (e.ctrlKey && enableSpawnDelete) {
-      wasm.sim_delete_at_ray(origin.x, origin.y, origin.z, translation.x, translation.y, translation.z);
-      e.preventDefault();
-      e.stopPropagation();
-      suppressClick = true;
+
+    // Ctrl+click grabs a dynamic body (C sample.cpp:1161).
+    if (e.ctrlKey) {
+      const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
+      const grab = wasm.sim_mouse_down(
+        origin.x,
+        origin.y,
+        origin.z,
+        translation.x,
+        translation.y,
+        translation.z,
+      );
+      if (grab[0]! > 0.5) {
+        dragging = true;
+        const hit = new THREE.Vector3(grab[1]!, grab[2]!, grab[3]!);
+        grabFraction = rayFraction(origin, translation, hit);
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          /* pointer may not be capturable (e.g. synthetic events) */
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }
       return;
     }
 
-    const grab = wasm.sim_mouse_down(
-      origin.x,
-      origin.y,
-      origin.z,
-      translation.x,
-      translation.y,
-      translation.z,
-    );
-    if (grab[0]! > 0.5) {
-      dragging = true;
-      demo.controls.enabled = false;
-      canvas.setPointerCapture(e.pointerId);
-      _grabPoint.set(grab[1]!, grab[2]!, grab[3]!);
-      e.preventDefault();
-      e.stopPropagation();
+    // Plain left-click selects the body under the cursor (C sample.cpp:1143).
+    if (!e.altKey && !e.metaKey) {
+      selectAt(e.clientX, e.clientY);
     }
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!dragging || !wasm.sim_mouse_active()) return;
-    const p = dragPointOnCameraPlane(demo, canvas, e.clientX, e.clientY, _grabPoint);
-    _grabPoint.copy(p);
-    wasm.sim_mouse_move(p.x, p.y, p.z);
+    // Track the drag point along the current pick ray at the initial hit
+    // fraction (C MouseMove:1288: m_mousePoint = origin + fraction·translation).
+    const { origin, translation } = pickRay(demo, canvas, e.clientX, e.clientY);
+    origin.addScaledVector(translation, grabFraction);
+    wasm.sim_mouse_move(origin.x, origin.y, origin.z);
     e.preventDefault();
   };
 
@@ -672,7 +923,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     if (dragging) {
       wasm.sim_mouse_up();
       dragging = false;
-      demo.controls.enabled = true;
       try {
         canvas.releasePointerCapture(e.pointerId);
       } catch {
@@ -693,27 +943,60 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   };
   canvas.addEventListener("contextmenu", onContext);
 
-  // --- Hotkeys (C: P pause, O step, R restart; Space/S kept as aliases) ---
-  const onKey = (e: KeyboardEvent) => {
-    const tag = (e.target as HTMLElement)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (e.code === "Space" || e.code === "KeyP") {
-      e.preventDefault();
-      state.setPaused(!state.paused);
-    } else if (
-      (e.code === "KeyS" || e.code === "KeyO") &&
-      !e.ctrlKey &&
-      !e.metaKey
-    ) {
-      e.preventDefault();
-      state.setPaused(true);
-      state.requestStep(e.shiftKey ? 5 : 1);
-    } else if (e.code === "KeyR" && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault();
-      state.restart();
+  // Frame the current selection, or the whole scene when nothing is selected
+  // (C main.cpp:226 F key + Camera::Frame, camera.cpp:153). Keeps the current
+  // yaw/pitch and refits the radius so the box fills the view.
+  const frameSelection = () => {
+    let box = selection;
+    if (!box || box.isEmpty()) {
+      box = new THREE.Box3().setFromObject(demo.content);
     }
+    if (box.isEmpty() || !isFinite(box.min.x)) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const ext = box.getSize(new THREE.Vector3()).multiplyScalar(0.5); // half extents
+    const r = Math.sqrt(ext.x * ext.x + ext.y * ext.y + ext.z * ext.z);
+    const c = demo.controls;
+    if (r < 1e-6) {
+      c.setView(c.yawDeg, c.pitchDeg, c.radius, [center.x, center.y, center.z]);
+      return;
+    }
+    const aspect = demo.camera.aspect > 0 ? demo.camera.aspect : 1;
+    const halfFovY = 0.5 * demo.camera.fov * (Math.PI / 180);
+    const invTan = 1 / Math.tan(halfFovY);
+    const distV = r * invTan;
+    const distH = (r * invTan) / aspect;
+    const d = Math.max(distV, distH) * 1.5; // C main.cpp:245 padding
+    c.setView(c.yawDeg, c.pitchDeg, d, [center.x, center.y, center.z]);
   };
-  window.addEventListener("keydown", onKey);
+
+  // --- Event-bus consumers (menu bar + global keys dispatch here) ---
+  const unsubscribers: (() => void)[] = [];
+  unsubscribers.push(
+    demoBus.on("sim.pause", () => state.setPaused(!state.paused)),
+    demoBus.on("sim.step", () => {
+      state.setPaused(true);
+      state.requestStep(1);
+    }),
+    demoBus.on("sim.restart", () => state.restart()),
+    demoBus.on("sim.frame", () => frameSelection()),
+    demoBus.on("view.flag", ({ name, value }) => {
+      setViewBit(name, value);
+      pushDebugFlags();
+      // Reflect menu-originated changes back onto the panel checkbox (no-op when
+      // the panel itself emitted the event).
+      const cb = panelCheckboxes.get(name);
+      if (cb && cb.checked !== value) cb.checked = value;
+    }),
+    demoBus.on("view.scale", ({ name, value }) => {
+      if (name === "joint") drawScales.joint = value;
+      else if (name === "force") drawScales.force = value;
+      else return; // drawDistance et al. are not part of the draw-scale setter
+      pushDrawScales();
+    }),
+  );
+  // Sync current menu state into the freshly-attached layer (the module-level
+  // emit ran at boot, before this demo mounted).
+  emitInitialState();
 
   let frame = 0;
   let stepEma = 0;
@@ -748,10 +1031,22 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       stepped = true;
     }
 
-    if (state.debugFlags !== 0) {
-      debugOverlay.update(wasm.sim_debug_draw(state.debugFlags));
+    // Overlay lines/points: the mask is set globally via sim_set_debug_flags, so
+    // the legacy `sim_debug_draw(flags)` arg is ignored by the wasm; pass viewMask
+    // for clarity. Only fetch when an overlay-relevant bit is set (the solid-mesh
+    // bits shapes/transparent alone produce no overlay geometry).
+    if ((viewMask & OVERLAY_MASK) !== 0) {
+      debugOverlay.update(wasm.sim_debug_draw(viewMask));
     } else {
       debugOverlay.clear();
+    }
+
+    // Text labels (body names / mass / sleep / contact features): fetch only when
+    // a text-relevant bit is set and the adapter exposes the channel.
+    if ((viewMask & TEXT_MASK) !== 0 && wasm.sim_debug_text) {
+      textOverlay.update(parseDebugText(wasm.sim_debug_text()));
+    } else {
+      textOverlay.clear();
     }
 
     frame += 1;
@@ -774,7 +1069,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   withTick.tickFrame = tickFrame;
 
   state.dispose = () => {
-    window.removeEventListener("keydown", onKey);
+    for (const off of unsubscribers) off();
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
@@ -783,6 +1078,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     wasm.sim_mouse_up();
     if (wasm.sim_is_recording?.()) wasm.sim_stop_recording?.();
     debugOverlay.dispose();
+    textOverlay.dispose();
     paramDispose();
     demo.controls.enabled = true;
   };

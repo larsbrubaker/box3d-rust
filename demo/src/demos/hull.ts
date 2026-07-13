@@ -9,6 +9,7 @@ import {
   makeAxes,
   makeSolidBox,
   makeWireEdges,
+  setView,
 } from "../three-scene.ts";
 
 export function init(container: HTMLElement) {
@@ -39,6 +40,10 @@ export function init(container: HTMLElement) {
   controls.appendChild(readout);
 
   const demo = new DemoScene(canvas, { distance: 9 });
+  // Preserve this sample's current flatter framing (yaw 35°, pitch 20°) now that
+  // the DemoScene default is the C camera (pitch -25°). The C per-sample camera
+  // for Box Hull lands with this sample's batch-3 rebuild.
+  setView(demo, 35, 20, 9, [0, 0, 0]);
 
   const stop = runLoop(() => {
     demo.clearContent();

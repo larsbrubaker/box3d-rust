@@ -88,12 +88,38 @@ the accepted stand-in.
 
 ## Batches
 
-- **Batch 1 — fidelity + integrity (branch `demo-fidelity-batch1`, in flight)**:
-  exact-value fixes to all partial demos above (friction/density/counts/
-  cameras/controls), remove invented routes (#/bodies scene, #/geometry,
-  #/tree, #/math, #/terrain) and invented sliders, fix Cast World pre-spawn,
-  honest LIVE/PLANNED labeling with real sample counts.
-- **Batch 2 — rendering/controls/UI shell parity** (list above).
+- **Batch 1 — fidelity + integrity: DONE** (merged to main, f52e1f8).
+- **Batch 2 — rendering/controls/UI shell parity: DONE** (branch
+  `demo-render-ui-batch2`). Landed: AgX tonemap, Preetham sky→PMREM IBL,
+  3-cascade CSM (add-time dirty-flag registration), GTAO, procedural C
+  ground grid, C camera controller (Alt orbit/pan/zoom, right-drag fly +
+  WASD, C sensitivities, default yaw 35/pitch −25), Ctrl+click grab
+  (ray-fraction), click select, C-exact Shift+click bullet sphere
+  (20·scale, scale 5.0 = 100 m/s, r 0.25, ×4 density), global keys
+  P/O/Shift+O/R/[ ]/F/Tab, menu bar (Sim/View/Render/Samples/Help) with all
+  15 draw flags + scales, 150-entry sample registry + category tree + deep
+  links, engine-driven shape colors via captured `world_draw` style words,
+  overlay text channel (body names/mass/sleep/contact features as
+  JSON→sprites), ParamDef group/visibleWhen, typed telemetry consts,
+  single-source view-flags/render-defaults modules.
+  **Carry-overs (fold into batch 3):**
+  - Fat debug lines: `render/lines.ts` ready; overlay still draws 1px
+    `LineSegments` — adopt Line2 at C's 1.5px default.
+  - Instanced/translucent style application (benchmark + sensors forks) —
+    do with the Benchmark-family ports (`instanceColor` plumbing).
+  - Registry↔page scene keys stringly-typed in 2-3 places — design a
+    single-registration pattern before mass sample ports.
+  - Style capture is per-frame full-world (buffers reused; no change
+    gating) — add dirty/version gating if profiling demands.
+  - Engine API gap: `CustomFilterFcn = fn(ShapeId,ShapeId,u64)` has no
+    context/world access; C callbacks read shape userData mid-step. Fix as
+    its own tested library change.
+  - Shift+Ctrl (cylinder) / Shift+Alt (human) launch variants need wasm
+    exports; per-sample `launchSpeedScale` override hook (Village = 2).
+  - Character NaN report not reproducible (regression tests added:
+    `character_demo_tests.rs`, `mover_tests.rs::integration`) — watch.
+  - Gesture legend/hints are hand-written strings; derive from a gesture
+    config if they churn again.
 - **Batch 3+ — port missing samples per category**, priority: Bodies (9),
   Shapes (12), Joints (12), Stacking (9), Events (4), Manifold (5+4 rebuilds),
   Collision (11), Mesh (6+3 rebuilds, ship .obj assets), Continuous (7),

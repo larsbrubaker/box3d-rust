@@ -31,12 +31,15 @@ export interface Box3dWasm {
   sim_reset_single_box(): number;
   sim_step(dt: number, sub_steps: number): number;
   sim_body_poses(): Float32Array;
+  /** Packed engine style words parallel to `sim_body_poses()`; see `applyShapeStyle`. */
+  sim_body_styles(): Uint32Array;
   sim_body_count(): number;
 
   ragdoll_reset(): number;
   ragdoll_set_joint_params(friction: number, hertz: number, damping: number): void;
   ragdoll_step(dt: number, sub_steps: number): number;
   ragdoll_poses(): Float32Array;
+  ragdoll_styles(): Uint32Array;
   ragdoll_body_count(): number;
 
   joint_reset_chain(): number;
@@ -68,6 +71,7 @@ export interface Box3dWasm {
   joint_revolute_energy(): Float32Array;
   joint_step(dt: number, sub_steps: number): number;
   joint_poses(): Float32Array;
+  joint_styles(): Uint32Array;
   joint_body_count(): number;
   joint_chassis_pose(): Float32Array;
   joint_terrain_wireframe(): Float32Array;
@@ -99,6 +103,7 @@ export interface Box3dWasm {
   query_reset(): void;
   query_step(dt: number, sub_steps: number): number;
   query_poses(): Float32Array;
+  query_styles(): Uint32Array;
   query_set_params(cast_type: number, mode: number, radius: number, initial_overlap: number): void;
   query_set_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): void;
   query_add_shapes(shape_type: number, count: number): number;
@@ -133,6 +138,13 @@ export interface Box3dWasm {
   sim_delete_at_ray(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): number;
   sim_counters(): Float32Array;
   sim_debug_draw(flags: number): Float32Array;
+  /** Global 16-bit view-flag mask (see `VIEW_FLAGS` in view-flags.ts); drives overlays + transparent dynamics. */
+  sim_set_debug_flags(mask: number): void;
+  /** Global joint/force draw scales for the debug overlay. */
+  sim_set_draw_scales(joint_scale: number, force_scale: number): void;
+  /** Debug text labels for the current view mask, as a JSON array of
+   *  `{x,y,z,color,text}`. The flags come from `sim_set_debug_flags`. */
+  sim_debug_text(): string;
   sim_step_count(): number;
   sim_set_enable_sleep(flag: boolean): void;
   sim_set_enable_warm_starting(flag: boolean): void;
@@ -165,6 +177,10 @@ export interface Box3dWasm {
   world_far_pyramid_step(dt: number, sub_steps: number): number;
   world_far_pyramid_step_count(): number;
   world_far_pyramid_poses(): Float32Array;
+  world_far_pyramid_styles(): Uint32Array;
+  /** `[groundStyle, boxStyle]` — the packed engine style words for the Far
+   *  Pyramid ground + boxes (consumed by the renderer agent). */
+  world_far_pyramid_style_pair(): Uint32Array;
   world_far_pyramid_body_count(): number;
   world_far_pyramid_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   world_far_pyramid_mouse_move(px: number, py: number, pz: number): void;
@@ -193,12 +209,52 @@ export interface Box3dWasm {
   ): void;
   character_step(dt: number, sub_steps: number): number;
   character_poses(): Float32Array;
+  character_styles(): Uint32Array;
   character_status(): Float32Array;
   character_debug_lines(): Float32Array;
   character_terrain_wireframe(): Float32Array;
   character_village_buildings(): Float32Array;
   character_village_stats(): Float32Array;
 }
+
+// --- Typed telemetry layouts (single source of truth for the positional
+// Float32Arrays crossing the wasm boundary). Keep these in lockstep with the
+// Rust builders they mirror. ---
+
+/** Layout of `joint_drive_telemetry()` — demo/wasm/src/joint_drive.rs `telemetry()`. */
+export const DRIVE_TELEMETRY = {
+  length: 9,
+  speed: 0,
+  spinL: 1,
+  spinR: 2,
+  spinTorqueL: 3,
+  spinTorqueR: 4,
+  steerL: 5,
+  steerR: 6,
+  steerTorqueL: 7,
+  steerTorqueR: 8,
+} as const;
+
+/** Layout of `joint_revolute_energy()` — demo/wasm/src/joint_demo.rs `joint_revolute_energy()`. */
+export const REVOLUTE_ENERGY = {
+  length: 3,
+  kinetic: 0,
+  potential: 1,
+  total: 2,
+} as const;
+
+/** Layout of `sensor_event_stats()` — demo/wasm/src/sensor_demo.rs `sensor_event_stats()`. */
+export const SENSOR_EVENT_STATS = {
+  length: 5,
+  begin: 0,
+  end: 1,
+  beginThisStep: 2,
+  endThisStep: 3,
+  benchmarkFlag: 4,
+} as const;
+
+// The global view-flag mask bit positions live in view-flags.ts (`VIEW_FLAGS`),
+// the single source of truth shared with the View menu, the panel, and the bus.
 
 let wasmModule: Box3dWasm | null = null;
 

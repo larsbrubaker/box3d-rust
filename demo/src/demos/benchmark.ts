@@ -38,7 +38,9 @@ function benchInteract(wasm: Box3dWasm): InteractWasm {
   };
 }
 
-export function init(container: HTMLElement) {
+const BENCH_MODES: Mode[] = ["pyramid", "junkyard", "trees"];
+
+export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   const interact = benchInteract(wasm);
   const { canvas, controls } = demoPage(
@@ -46,7 +48,7 @@ export function init(container: HTMLElement) {
     "Benchmark",
     "High-visibility Benchmark samples — Large Pyramid, Junkyard, and Falling Trees — " +
       "ported from <code>benchmarks.c</code> with browser-scaled body counts.",
-    "Drag body · Shift spawn · Ctrl delete · Space/S/R",
+    "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
     { category: "Benchmark", samplesShell: true },
   );
@@ -61,7 +63,8 @@ export function init(container: HTMLElement) {
     ),
   );
 
-  let mode: Mode = "pyramid";
+  let mode: Mode =
+    initialScene && BENCH_MODES.includes(initialScene as Mode) ? (initialScene as Mode) : "pyramid";
   let treeGridSize = 100;
 
   const demo = new DemoScene(canvas, { target: [0, 8, 0], distance: 55, fov: 50 });
@@ -178,7 +181,7 @@ export function init(container: HTMLElement) {
         { label: "Junkyard", value: "junkyard" },
         { label: "Falling Trees", value: "trees" },
       ],
-      "pyramid",
+      mode,
       (v) => {
         mode = v as Mode;
         treeGrid.style.display = mode === "trees" ? "" : "none";
@@ -201,7 +204,7 @@ export function init(container: HTMLElement) {
       if (mode === "trees") reset();
     },
   );
-  treeGrid.style.display = "none";
+  treeGrid.style.display = mode === "trees" ? "" : "none";
   controls.appendChild(treeGrid);
 
   const ctrl = attachInteraction({

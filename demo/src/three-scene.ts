@@ -2,7 +2,57 @@
 // muted sky, soft shadows, grid floor, flat-ish materials, C debug body colors.
 
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { CameraControls } from "./render/camera-controls";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import {
+  SUN_DIR,
+  SUN_COLOR,
+  SUN_AMBIENT,
+  BODY_TYPE_ROUGHNESS,
+  BODY_TYPE_METALLIC,
+  MATERIAL_PRESET_ROUGHNESS,
+  MATERIAL_PRESET_METALLIC,
+  CAMERA_FOV_DEG,
+  CAMERA_NEAR,
+  CAMERA_FAR,
+} from "./render/constants";
+import { setupSkyEnvironment, type SkyEnvironment } from "./render/environment";
+import { makeGroundGrid } from "./render/grid";
+import { CsmManager } from "./render/shadows";
+// Render-settings state lives in a three-free leaf so main.ts can drive it
+// without importing this module (see render-settings.ts for the why).
+import {
+  type RenderSettings,
+  getRenderSettings,
+  setActiveScene,
+  clearActiveScene,
+} from "./render-settings.ts";
+// Re-export the render-settings surface so existing `three-scene.ts` importers
+// (and this module's own users) keep a single, unchanged entry point.
+export {
+  type RenderSettings,
+  applyRenderSettings,
+  getRenderSettings,
+} from "./render-settings.ts";
+
+/** Base directional-light intensity (sun). Tuned against AgX + Preetham IBL. */
+const SUN_INTENSITY = 2.6;
+
+/**
+ * Base tone-map exposure at 0 EV stops. Three's Sky addon and PMREM env emit
+ * radiance in a different magnitude than C's physically-scaled Preetham, so the
+ * exposure that reads correctly is not 1.0. C compensates with exposureEv=-2.5
+ * (renderer.c:1249); here we fold an equivalent baseline into the scene so the
+ * *stops* semantics stay literal: toneMappingExposure = BASE_EXPOSURE * 2^stops,
+ * i.e. each +1 stop still doubles brightness, and 0 stops is the calibrated look.
+ */
+const BASE_EXPOSURE = 0.42;
+
+/** IBL ambient strength (scene.environmentIntensity) when IBL is enabled. */
+const IBL_INTENSITY = 0.55;
 
 export const COLORS = {
   accent: 0x2563eb,
@@ -15,90 +65,125 @@ export const COLORS = {
   bg: 0x6b7a8f,
 } as const;
 
-/** C physics_world.c debug shape palette (b3HexColor). */
-export const DEBUG_BODY_COLORS = {
-  static: 0xa9a9a9, // DarkGray
-  kinematicAwake: 0x4682b4, // SteelBlue
-  kinematicSleep: 0xb0c4de, // LightSteelBlue
-  dynamicAwake: 0xd2b48c, // Tan
-  dynamicSleep: 0x778899, // LightSlateGray
-  bullet: 0x40e0d0, // Turquoise
-  sensor: 0xf5deb3, // Wheat
-} as const;
-
-/** body_type: 0 static, 1 kinematic, 2 dynamic (matches b3BodyType). */
-export function debugBodyColor(bodyType: number, awake: boolean): number {
-  if (bodyType === 0) return DEBUG_BODY_COLORS.static;
-  if (bodyType === 1) {
-    return awake ? DEBUG_BODY_COLORS.kinematicAwake : DEBUG_BODY_COLORS.kinematicSleep;
-  }
-  return awake ? DEBUG_BODY_COLORS.dynamicAwake : DEBUG_BODY_COLORS.dynamicSleep;
-}
-
-/** Roughness / metalness from C debug_adapter kBodyType* + material presets. */
-export function debugBodyMaterialProps(
-  bodyType: number,
-  awake: boolean,
-): { roughness: number; metalness: number } {
-  if (bodyType === 0) return { roughness: 0.85, metalness: 0.0 }; // matte
-  if (bodyType === 1) {
-    return awake
-      ? { roughness: 0.35, metalness: 0.85 } // metallic
-      : { roughness: 0.85, metalness: 0.0 }; // matte
-  }
-  return awake
-    ? { roughness: 0.65, metalness: 0.0 } // soft
-    : { roughness: 0.95, metalness: 0.0 }; // dead
-}
-
-export function makeBodyMaterial(
-  bodyType: number,
-  awake: boolean,
-  opacity = 1,
-): THREE.MeshStandardMaterial {
-  const props = debugBodyMaterialProps(bodyType, awake);
+/**
+ * Per-mesh material for the engine-driven style path. Each dynamics mesh owns
+ * one; `applyShapeStyle` writes color / roughness / metalness / opacity into it
+ * from the packed style word emitted by the Rust `*_styles()` exports.
+ */
+export function makeShapeMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: debugBodyColor(bodyType, awake),
-    roughness: props.roughness,
-    metalness: props.metalness,
-    transparent: opacity < 1,
-    opacity,
+    color: 0xffffff,
+    roughness: 0.5,
+    metalness: 0,
     flatShading: true,
     side: THREE.DoubleSide,
   });
 }
 
-/** Apply C debug colorization to an existing standard material. */
-export function applyBodyColor(
-  mat: THREE.MeshStandardMaterial,
-  bodyType: number,
-  awake: boolean,
-) {
-  const props = debugBodyMaterialProps(bodyType, awake);
-  mat.color.setHex(debugBodyColor(bodyType, awake));
-  mat.roughness = props.roughness;
-  mat.metalness = props.metalness;
+/**
+ * Apply one packed engine style word (from a Rust `*_styles()` export) to a
+ * mesh's material, reproducing the C debug adapter's material resolution
+ * (`debug_adapter.c` DrawShape :832-861):
+ *
+ * ```text
+ *  bits 23..0   0xRRGGBB base color (sRGB)
+ *  bits 26..24  b3DebugMaterial preset (0 default … 5 metal)
+ *  bits 28..27  body type (0 static, 1 kinematic, 2 dynamic)
+ *  bit  29      transparent (alpha 0.5)
+ * ```
+ *
+ * Engine colors change per frame (sleep/wake, fast, bullet, speed-capped), so
+ * this is the shared "apply on change" primitive: it caches the last word on
+ * `mesh.userData.styleWord` and no-ops when the word is unchanged, so callers
+ * can simply call it every frame with `styles[i]`. Each mesh must own its own
+ * material (colors differ per body) — pair with `makeShapeMaterial`.
+ */
+export function applyShapeStyle(mesh: THREE.Mesh, style: number): void {
+  if (mesh.userData.styleWord === style) return;
+  mesh.userData.styleWord = style;
+
+  const mat = mesh.material as THREE.MeshStandardMaterial;
+  const rgb = style & 0xffffff;
+  const preset = (style >>> 24) & 0x7;
+  const bodyType = (style >>> 27) & 0x3;
+  const transparent = (style >>> 29) & 0x1;
+
+  // Base color is sRGB; the renderer's SRGB output space converts to linear.
+  mat.color.setHex(rgb);
+  let roughness: number;
+  let metalness: number;
+  if (preset >= 1 && preset <= 5) {
+    roughness = MATERIAL_PRESET_ROUGHNESS[preset]!;
+    metalness = MATERIAL_PRESET_METALLIC[preset]!;
+  } else {
+    roughness = BODY_TYPE_ROUGHNESS[bodyType]!;
+    metalness = BODY_TYPE_METALLIC[bodyType]!;
+  }
+  mat.roughness = roughness;
+  mat.metalness = metalness;
+
+  const wantTransparent = transparent === 1;
+  if (mat.transparent !== wantTransparent) {
+    mat.transparent = wantTransparent;
+    mat.needsUpdate = true; // toggling transparency recompiles the material
+  }
+  mat.opacity = wantTransparent ? 0.5 : 1.0;
 }
 
 const _yUp = new THREE.Vector3(0, 1, 0);
 const _tmp = new THREE.Vector3();
 const _tmp2 = new THREE.Vector3();
 
+/**
+ * Prefer cascaded shadow maps (CSM) over a single directional shadow. CSM
+ * matches C's 3-cascade setup; the single-light path is the robust fallback if
+ * CSM ever misbehaves with instanced meshes. Flip to false to force the
+ * fallback everywhere.
+ */
+const PREFER_CSM = true;
+
 export class DemoScene {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly renderer: THREE.WebGLRenderer;
-  readonly controls: OrbitControls;
+  readonly controls: CameraControls;
   /** Cleared each frame for dynamic overlays (rays, hits, contacts). */
   readonly dynamic: THREE.Group;
   /** Persistent content (shapes that change infrequently). */
   readonly content: THREE.Group;
+  /** The sun key light (also the plain-shadow caster when CSM is off). */
   readonly keyLight: THREE.DirectionalLight;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly ro: ResizeObserver;
   private disposed = false;
-  private readonly grid: THREE.GridHelper;
+
+  private readonly ambient: THREE.AmbientLight;
+  private readonly ground: THREE.Mesh;
+  private readonly shadowExtent: number;
+
+  private readonly env: SkyEnvironment;
+  private composer: EffectComposer | null = null;
+  private readonly renderPass: RenderPass;
+  private readonly gtaoPass: GTAOPass;
+  private csm: CsmManager | null = null;
+
+  // CSM material registration is add-time driven, not per-frame. The `content`
+  // and `dynamic` groups' `add` is wrapped (see hookCsmDirty) to raise these
+  // flags whenever a demo inserts a mesh; render() re-walks a subtree only when
+  // its flag is set (and once when a fresh CsmManager is created). Split per group
+  // so a demo that rebuilds `dynamic` overlays every frame doesn't force a
+  // needless re-walk of stable `content`.
+  private contentCsmDirty = true;
+  private dynamicCsmDirty = true;
+
+  // Cached debug-view override materials (created once, reused across switches)
+  // so applyDebugView never leaks a MeshDepth/MeshNormalMaterial per settings
+  // change. Disposed in dispose().
+  private depthMaterial: THREE.MeshDepthMaterial | null = null;
+  private normalMaterial: THREE.MeshNormalMaterial | null = null;
+
+  private settings: RenderSettings = getRenderSettings();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -108,18 +193,23 @@ export class DemoScene {
       fov?: number;
       /** Shadow camera half-extent (default 28). */
       shadowExtent?: number;
+      /** Ground-grid plane size (default 200). */
       gridSize?: number;
+      /** Unused now (grid is a shader plane); kept for API compatibility. */
       gridDivisions?: number;
     } = {},
   ) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(COLORS.sky);
-    this.scene.fog = new THREE.Fog(COLORS.sky, 28, 90);
 
-    this.camera = new THREE.PerspectiveCamera(opts.fov ?? 45, 1, 0.05, 200);
+    // Camera projection per C main.cpp:88-89 (fov 50°, near 0.1, far 1000).
+    this.camera = new THREE.PerspectiveCamera(
+      opts.fov ?? CAMERA_FOV_DEG,
+      1,
+      CAMERA_NEAR,
+      CAMERA_FAR,
+    );
     const dist = opts.distance ?? 12;
-    this.camera.position.set(dist * 0.55, dist * 0.35, dist * 0.75);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -130,20 +220,37 @@ export class DemoScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // Tone mapping = AgX. C uses Sobotka "Minimal AgX" (samples/shaders/post/
+    // tonemap.glsl) with exposure in EV stops and a saturation knob (1.4). Three
+    // ships THREE.AgXToneMapping, the closest built-in — not bit-identical to
+    // Minimal AgX and with no saturation control, but the same filmic family.
+    // Exposure semantics: toneMappingExposure = 2^stops (see applySettings).
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = BASE_EXPOSURE * Math.pow(2, this.settings.exposureStops);
 
-    this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.08;
-    this.controls.target.set(...(opts.target ?? [0, 0, 0]));
-    this.controls.update();
+    // Preetham sky (background dome) + PMREM environment for IBL ambient.
+    this.env = setupSkyEnvironment(this.renderer);
+    this.env.sky.frustumCulled = false;
+    this.scene.add(this.env.sky);
 
-    const ambient = new THREE.AmbientLight(0xc8d0dc, 0.42);
-    const key = new THREE.DirectionalLight(0xfff5e8, 1.05);
-    key.position.set(8, 16, 6);
-    key.castShadow = true;
+    // Faithful port of the C sample camera (orbit + fly), replacing OrbitControls.
+    // The controller's own defaults are the C camera's (yaw 35°, pitch -25°,
+    // radius 25; camera.cpp:73-102). The constructor frames from opts.distance/
+    // target using those same C defaults (yaw 35°, pitch -25°) so any future
+    // sample that never calls setView inherits the C-correct camera. The handful
+    // of batch-2 collision demos that want today's flatter over-the-shoulder tilt
+    // call setView(demo, 35, 20, …) explicitly; the dynamics demos call setView in
+    // their reset(). No smooth damping — C has none.
+    this.controls = new CameraControls(this.camera, canvas);
+    this.controls.setView(35, -25, dist, opts.target ?? [0, 0, 0]);
+
+    this.ambient = new THREE.AmbientLight(SUN_COLOR, SUN_AMBIENT);
+
+    const key = new THREE.DirectionalLight(SUN_COLOR, SUN_INTENSITY);
+    key.position.copy(SUN_DIR).multiplyScalar(40);
+    key.target.position.set(0, 0, 0);
     const extent = opts.shadowExtent ?? 28;
+    this.shadowExtent = extent;
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
@@ -154,34 +261,159 @@ export class DemoScene {
     key.shadow.camera.top = extent;
     key.shadow.camera.bottom = -extent;
     this.keyLight = key;
+    this.scene.add(this.ambient, key, key.target);
 
-    const fill = new THREE.DirectionalLight(0xa8b8d0, 0.28);
-    fill.position.set(-6, 4, -8);
-    this.scene.add(ambient, key, fill);
-
-    const gridSize = opts.gridSize ?? 40;
-    const gridDiv = opts.gridDivisions ?? 40;
-    this.grid = new THREE.GridHelper(gridSize, gridDiv, 0x7a8494, 0x5c6574);
-    this.grid.position.y = 0.001;
-    const gridMat = this.grid.material as THREE.LineBasicMaterial | THREE.LineBasicMaterial[];
-    if (Array.isArray(gridMat)) {
-      for (const m of gridMat) {
-        m.transparent = true;
-        m.opacity = 0.55;
-      }
-    } else {
-      gridMat.transparent = true;
-      gridMat.opacity = 0.55;
-    }
-    this.scene.add(this.grid);
+    // Shader-based ground grid (geom.glsl ground mode) replacing the old lines.
+    this.ground = makeGroundGrid((opts.gridSize ?? 200), undefined, 0xa9a9a9);
+    this.scene.add(this.ground);
 
     this.content = new THREE.Group();
     this.dynamic = new THREE.Group();
+    // Raise the CSM dirty flag on insertion instead of walking every frame.
+    this.hookCsmDirty(this.content, () => {
+      this.contentCsmDirty = true;
+    });
+    this.hookCsmDirty(this.dynamic, () => {
+      this.dynamicCsmDirty = true;
+    });
     this.scene.add(this.content, this.dynamic);
+
+    // Post-processing chain: scene (offscreen, linear HDR) -> GTAO -> OutputPass
+    // (applies AgX tone map + sRGB). RenderPass renders offscreen, so Three
+    // skips per-material tone mapping there and OutputPass applies it once.
+    this.renderPass = new RenderPass(this.scene, this.camera);
+    this.gtaoPass = new GTAOPass(this.scene, this.camera, 1, 1);
+    try {
+      const composer = new EffectComposer(this.renderer);
+      composer.addPass(this.renderPass);
+      composer.addPass(this.gtaoPass);
+      composer.addPass(new OutputPass());
+      this.composer = composer;
+    } catch {
+      // Fall back to direct rendering (still AgX via renderer.toneMapping).
+      this.composer = null;
+    }
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas.parentElement ?? canvas);
     this.resize();
+
+    setActiveScene(this);
+    this.applySettings(getRenderSettings());
+  }
+
+  /**
+   * Wrap a group's `add` so inserting a child raises the given CSM dirty flag.
+   * Keeps CSM material registration add-time driven: render() re-walks the
+   * subtree only when something actually changed, not once per frame.
+   */
+  private hookCsmDirty(group: THREE.Group, mark: () => void): void {
+    const origAdd = group.add.bind(group);
+    group.add = ((...objs: THREE.Object3D[]) => {
+      mark();
+      return origAdd(...objs);
+    }) as THREE.Group["add"];
+  }
+
+  /** Apply the shared render settings to this scene's pipeline. */
+  applySettings(s: RenderSettings) {
+    if (this.disposed) return;
+    this.settings = { ...s };
+
+    // Exposure: EV stops -> linear multiplier (relative to the calibrated base).
+    this.renderer.toneMappingExposure = BASE_EXPOSURE * Math.pow(2, s.exposureStops);
+
+    // IBL ambient: env map when on, small flat ambient fills in when off.
+    this.scene.environment = s.ibl ? this.env.envTexture : null;
+    this.scene.environmentIntensity = s.ibl ? IBL_INTENSITY * s.sunStrength : 0;
+    this.ambient.intensity = s.ibl ? SUN_AMBIENT : 0.5;
+
+    // Shadows.
+    this.updateShadowSystem(s.shadows);
+    // Sun strength scales the active sun light(s).
+    if (this.csm) this.csm.setIntensity(SUN_INTENSITY * s.sunStrength);
+    else this.keyLight.intensity = SUN_INTENSITY * s.sunStrength;
+
+    // GTAO.
+    this.gtaoPass.enabled = s.gtao && this.composer !== null;
+    this.applyGtaoQuality(s.gtaoQuality);
+
+    // Debug view outputs.
+    this.applyDebugView(s.debugView);
+  }
+
+  private updateShadowSystem(shadows: boolean) {
+    this.renderer.shadowMap.enabled = shadows;
+    if (shadows && PREFER_CSM) {
+      if (!this.csm) {
+        try {
+          this.csm = new CsmManager({
+            scene: this.scene,
+            camera: this.camera,
+            maxFar: Math.max(this.shadowExtent * 4, 120),
+            intensity: SUN_INTENSITY * this.settings.sunStrength,
+          });
+          // A fresh CsmManager has an empty material set, so force a one-time
+          // re-registration of the existing content/dynamic subtrees.
+          this.contentCsmDirty = true;
+          this.dynamicCsmDirty = true;
+        } catch {
+          this.csm = null;
+        }
+      }
+      // CSM owns the sun; the key light stays as a dormant API handle.
+      this.keyLight.castShadow = false;
+      this.keyLight.intensity = this.csm ? 0 : SUN_INTENSITY * this.settings.sunStrength;
+      if (!this.csm) this.keyLight.castShadow = true; // fallback if CSM failed
+    } else {
+      if (this.csm) {
+        this.csm.dispose();
+        this.csm = null;
+      }
+      this.keyLight.intensity = SUN_INTENSITY * this.settings.sunStrength;
+      this.keyLight.castShadow = shadows;
+    }
+  }
+
+  private applyGtaoQuality(q: 0 | 1 | 2) {
+    // XeGTAO (C) has no direct Three equivalent; map quality to sample count +
+    // radius. GTAOPass modulates the whole beauty, not just ambient (addon
+    // limitation vs C which multiplies only IBL ambient) — softened via blend.
+    const presets = [
+      { samples: 16, radius: 0.5, distanceExponent: 1, thickness: 1, scale: 1 }, // 0 medium
+      { samples: 16, radius: 0.35, distanceExponent: 1, thickness: 1, scale: 1 }, // 1 high
+      { samples: 32, radius: 0.25, distanceExponent: 1, thickness: 1, scale: 1 }, // 2 ultra
+    ] as const;
+    const p = presets[q] ?? presets[0];
+    this.gtaoPass.updateGtaoMaterial({ ...p });
+    this.gtaoPass.blendIntensity = 0.9;
+  }
+
+  private applyDebugView(view: number) {
+    // 0 = lit (required). 1 = depth, 3 = view-space normals, 4 = AO isolated.
+    // 2 = cascade-index has no cheap Three equivalent, so it clamps to lit.
+    this.scene.overrideMaterial = null;
+    // Reset GTAO to composite unless AO is explicitly requested.
+    this.gtaoPass.output = (GTAOPass as unknown as { OUTPUT: Record<string, number> }).OUTPUT
+      .Default;
+    switch (view) {
+      case 1:
+        // Reuse the cached override material (allocate on first use) instead of
+        // constructing a new MeshDepthMaterial on every settings change.
+        this.scene.overrideMaterial = this.depthMaterial ??= new THREE.MeshDepthMaterial();
+        break;
+      case 3:
+        this.scene.overrideMaterial = this.normalMaterial ??= new THREE.MeshNormalMaterial();
+        break;
+      case 4:
+        this.gtaoPass.enabled = true;
+        this.gtaoPass.output = (
+          GTAOPass as unknown as { OUTPUT: Record<string, number> }
+        ).OUTPUT.AO;
+        break;
+      default:
+        break; // 0 and 2 -> lit
+    }
   }
 
   resize() {
@@ -192,6 +424,9 @@ export class DemoScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    const dpr = this.renderer.getPixelRatio();
+    this.composer?.setSize(w * dpr, h * dpr);
+    this.csm?.updateFrustums();
   }
 
   clearGroup(group: THREE.Group) {
@@ -213,18 +448,44 @@ export class DemoScene {
   render() {
     if (this.disposed) return;
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this.csm) {
+      // Register newly-added materials for cascaded shadows only when a subtree
+      // actually changed (add-time dirty flags), not every frame.
+      if (this.contentCsmDirty) {
+        this.csm.registerSubtree(this.content);
+        this.csm.registerMaterial(this.ground.material as THREE.Material);
+        this.contentCsmDirty = false;
+      }
+      if (this.dynamicCsmDirty) {
+        this.csm.registerSubtree(this.dynamic);
+        this.dynamicCsmDirty = false;
+      }
+      this.csm.update();
+    }
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    clearActiveScene(this);
     this.ro.disconnect();
     this.controls.dispose();
     this.clearContent();
     this.clearDynamic();
-    this.scene.remove(this.grid);
-    disposeObject(this.grid);
+    this.csm?.dispose();
+    this.scene.remove(this.ground);
+    disposeObject(this.ground);
+    this.scene.remove(this.env.sky);
+    this.env.dispose();
+    this.gtaoPass.dispose();
+    this.composer?.dispose();
+    // Detach and dispose the cached debug-view override materials (they live
+    // outside the scene graph, so the traversal below won't reach them).
+    this.scene.overrideMaterial = null;
+    this.depthMaterial?.dispose();
+    this.normalMaterial?.dispose();
     this.scene.traverse((obj) => {
       if (obj !== this.content && obj !== this.dynamic) disposeObject(obj);
     });
@@ -243,9 +504,9 @@ function disposeObject(obj: THREE.Object3D) {
   });
 }
 
-/// C `camera::SetView(yaw, pitch, distance, target)` → orbit camera position.
-/// x = target.x + d·cos(pitch)·sin(yaw), y = target.y + d·sin(pitch),
-/// z = target.z + d·cos(pitch)·cos(yaw); angles in degrees.
+/// C `camera::SetView(yaw, pitch, distance, target)` (camera.cpp:195) — routes to
+/// the orbit/fly camera controller so every demo call site keeps working unchanged.
+/// eye = target + distance · ForwardFromAngles(yaw, pitch); angles in degrees.
 export function setView(
   demo: DemoScene,
   yawDeg: number,
@@ -253,15 +514,7 @@ export function setView(
   distance: number,
   target: [number, number, number],
 ) {
-  demo.controls.target.set(target[0], target[1], target[2]);
-  const yaw = (yawDeg * Math.PI) / 180;
-  const pitch = (pitchDeg * Math.PI) / 180;
-  demo.camera.position.set(
-    target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
-    target[1] + distance * Math.sin(pitch),
-    target[2] + distance * Math.cos(pitch) * Math.cos(yaw),
-  );
-  demo.controls.update();
+  demo.controls.setView(yawDeg, pitchDeg, distance, target);
 }
 
 export function makeAxes(len = 1.5): THREE.AxesHelper {
