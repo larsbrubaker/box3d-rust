@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "WASM bindings for the Box3D Rust physics engine demos"
 license = "MIT"
+publish = false
 
 [lib]
 crate-type = ["cdylib"]
