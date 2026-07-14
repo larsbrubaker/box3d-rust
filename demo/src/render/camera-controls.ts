@@ -33,8 +33,39 @@ const MIN_DIST = 0.1;
 const PITCH_LIM = HALF_PI - 0.01;
 const VIEW_DISTANCE = 1000.0;
 
+// Deliberate divergence from NodeDesigner: our demo scenes are vast empty ground
+// viewed at grazing angles (low pitch, eye a few metres up, orbit radius ~30 m),
+// so the ground-plane / previous-hit / pivot-plane fallback anchors otherwise land
+// near the horizon (100+ m out for a 30 m scene). We clamp those non-mesh fallback
+// anchors to 2x the orbit radius so pan/orbit sensitivity stays proportionate to
+// the scene. Genuine mesh hits are never clamped — pointing at real geometry far
+// away is intentional and must keep working.
+export const MAX_ANCHOR_FACTOR = 2.0;
+
 function clampFloat(a: number, lower: number, upper: number): number {
   return a < lower ? lower : upper < a ? upper : a;
+}
+
+/**
+ * Distance along the ray (origin + t*dir) at which to place a NON-mesh fallback
+ * anchor, clamped so it never exceeds MAX_ANCHOR_FACTOR * radius. `point` is the
+ * candidate anchor (a plane intersection); the returned t is the candidate's own
+ * projected distance when it is within bounds, or the clamped bound when it is
+ * too far. Exported so findIntersectionPoint and its tests share one definition.
+ *
+ * Only meaningful for in-front candidates (t >= 0): a behind-camera point yields a
+ * negative t, which reads as "within bounds", so callers must ensure candidates
+ * come from a forward ray intersection.
+ */
+export function boundAnchorDistance(
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  point: THREE.Vector3,
+  radius: number,
+): number {
+  const t = point.clone().sub(origin).dot(dir);
+  const maxT = MAX_ANCHOR_FACTOR * radius;
+  return t > maxT ? maxT : t;
 }
 
 function unwindAngle(radians: number): number {
@@ -266,7 +297,7 @@ export class CameraControls {
     if (this.hasPreviousHit) {
       const viewDir = _tmpV.copy(this.camera.position).sub(this.previousHitPoint).normalize();
       _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, this.previousHitPoint);
-      if (_raycaster.ray.intersectPlane(_hitPlaneScratch, out)) return out;
+      if (_raycaster.ray.intersectPlane(_hitPlaneScratch, out)) return this.clampFarAnchor(out);
     }
 
     // Reject coplanar ground hits (pitch≈0): Three returns ray origin → zoom no-op.
@@ -278,17 +309,41 @@ export class CameraControls {
       if (t > MIN_DIST) {
         const viewDir = _tmpV.copy(this.camera.position).sub(out).normalize();
         _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, out);
-        if (_raycaster.ray.intersectPlane(_hitPlaneScratch, _tmpV2)) return _tmpV2.clone();
-        return out.clone();
+        if (_raycaster.ray.intersectPlane(_hitPlaneScratch, _tmpV2)) out.copy(_tmpV2);
+        return this.clampFarAnchor(out);
       }
     }
 
     const viewDir = _tmpV.copy(this.camera.position).sub(this.pivot).normalize();
     _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, this.pivot);
-    if (_raycaster.ray.intersectPlane(_hitPlaneScratch, out)) return out;
+    if (_raycaster.ray.intersectPlane(_hitPlaneScratch, out)) return this.clampFarAnchor(out);
 
     const distance = this.camera.position.distanceTo(this.pivot);
-    return _raycaster.ray.origin.clone().addScaledVector(_raycaster.ray.direction, distance);
+    out.copy(_raycaster.ray.origin).addScaledVector(_raycaster.ray.direction, distance);
+    return this.clampFarAnchor(out);
+  }
+
+  /**
+   * Clamp a NON-mesh fallback anchor so it never sits farther than
+   * MAX_ANCHOR_FACTOR * radius down the ray. If the candidate is within bounds it
+   * is returned unchanged. Otherwise fall back to the camera-facing plane through
+   * the pivot (geometrically bounded to ≤ ~1.16*radius inside a 50° fov), and if
+   * even that intersection is missing or too far, to origin + dir * radius.
+   */
+  private clampFarAnchor(candidate: THREE.Vector3): THREE.Vector3 {
+    const origin = _raycaster.ray.origin;
+    const dir = _raycaster.ray.direction;
+    const maxT = MAX_ANCHOR_FACTOR * this.radius;
+    const t = boundAnchorDistance(origin, dir, candidate, this.radius);
+    if (t < maxT) return candidate;
+
+    const viewDir = _tmpV.copy(this.camera.position).sub(this.pivot).normalize();
+    _hitPlaneScratch.setFromNormalAndCoplanarPoint(viewDir, this.pivot);
+    if (_raycaster.ray.intersectPlane(_hitPlaneScratch, _tmpV2)) {
+      const pt = _tmpV.copy(_tmpV2).sub(origin).dot(dir);
+      if (pt > 0 && pt <= maxT) return candidate.copy(_tmpV2);
+    }
+    return candidate.copy(origin).addScaledVector(dir, this.radius);
   }
 
   /** NodeDesigner zoomToCursor: slide eye along eye→point, keep look vector. */
@@ -390,12 +445,13 @@ export class CameraControls {
 
   private onMouseDown = (e: MouseEvent): void => {
     if (this.isUiTarget(e)) return;
+    // NodeDesigner preventDefault()s at the top of onMouseDown for every button
+    // (stops middle-click autoscroll, text selection, and native drag). Optional
+    // chaining keeps synthetic test events (which omit preventDefault) working.
+    e.preventDefault?.();
     if (e.button === 0) this.leftDown = true;
     else if (e.button === 2) this.rightDown = true;
-    else if (e.button === 1) {
-      this.middleDown = true;
-      e.preventDefault();
-    }
+    else if (e.button === 1) this.middleDown = true;
     this.altDown = e.altKey;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
