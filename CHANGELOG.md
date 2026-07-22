@@ -3,6 +3,17 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## 0.2.1
+
+No public API or behavioral changes; existing code upgrades without modification.
+
+- Added unit tests for the mesh creation path (degenerate-triangle filtering and
+  vertex weld / identify-edges via `create_mesh`).
+- Release-profile tuning (fat LTO, single codegen unit) for in-repo builds.
+- Demo site: zoom-to-cursor camera navigation, InstancedMesh sample coverage,
+  `M` diagnostics drawer with full debug-draw flags, and Mesh Viewer /
+  benchmark fidelity fixes matching the C reference.
+
 ## 0.2.0
 
 ### Breaking

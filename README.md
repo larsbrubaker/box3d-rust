@@ -125,9 +125,9 @@ and the completed [box2d-rust](https://github.com/larsbrubaker/box2d-rust) port.
 
 ## API style
 
-For 0.1, the public API is a direct C-mirror (same shapes, defs, and call patterns as Box3D /
+The public API is a direct C-mirror (same shapes, defs, and call patterns as Box3D /
 [box2d-rust](https://github.com/larsbrubaker/box2d-rust)), not a Rust-ergonomic wrapper. A thin
-ergonomic layer may be considered after 0.1 if downstream users ask for one.
+ergonomic layer may be considered later if downstream users ask for one.
 
 ## Development
 
