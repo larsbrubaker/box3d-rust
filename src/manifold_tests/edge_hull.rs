@@ -5,9 +5,9 @@
 //! SPDX-License-Identifier: MIT
 
 use super::{
-    check_edge_contact, ensure_small, exact_quat, exact_rotation, hull_edge_segment, min_separation,
-    normal_length, slide_x, v, Rng, AXIS_X, AXIS_Y, AXIS_Z, HALF_DIAGONAL, HALF_ROOT2, ROOT2,
-    TILT_ANGLES, TILT_AXES,
+    check_edge_contact, ensure_small, exact_quat, exact_rotation, hull_edge_segment,
+    min_separation, normal_length, slide_x, v, Rng, AXIS_X, AXIS_Y, AXIS_Z, HALF_DIAGONAL,
+    HALF_ROOT2, ROOT2, TILT_ANGLES, TILT_AXES,
 };
 use crate::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
 use crate::manifold::{collide_hulls, LocalManifold, SatCache, SeparatingFeature};
@@ -54,7 +54,14 @@ fn crossed_edge_test() {
 
         let mut manifold = LocalManifold::default();
         let mut cache = SatCache::default();
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, slide_x(d), &mut cache);
+        collide_hulls(
+            &mut manifold,
+            8,
+            &hull_a.base,
+            &hull_b.base,
+            slide_x(d),
+            &mut cache,
+        );
 
         assert_eq!(manifold.point_count, 1);
         assert!(edge_pair(&cache));
@@ -117,7 +124,14 @@ fn edge_axis_scale_test() {
 
         let mut manifold = LocalManifold::default();
         let mut cache = SatCache::default();
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, slide_x(d), &mut cache);
+        collide_hulls(
+            &mut manifold,
+            8,
+            &hull_a.base,
+            &hull_b.base,
+            slide_x(d),
+            &mut cache,
+        );
 
         // Differencing coordinates of magnitude d costs precision proportional to the scale
         let tolerance = 1e-5 * s + 1e-6;
@@ -204,7 +218,14 @@ fn edge_endpoint_test() {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
         };
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+        collide_hulls(
+            &mut manifold,
+            8,
+            &hull_a.base,
+            &hull_b.base,
+            transform,
+            &mut cache,
+        );
 
         assert_eq!(manifold.point_count, 1);
         ensure_small(manifold.points[0].separation - expected, 1e-5);
@@ -223,7 +244,14 @@ fn edge_endpoint_test() {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
         };
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+        collide_hulls(
+            &mut manifold,
+            8,
+            &hull_a.base,
+            &hull_b.base,
+            transform,
+            &mut cache,
+        );
 
         assert_eq!(manifold.point_count, 0);
         assert_eq!(cache.type_, SeparatingFeature::InvalidAxis as u8);
@@ -262,7 +290,14 @@ fn parallel_edge_test() {
 
             let mut manifold = LocalManifold::default();
             let mut cache = SatCache::default();
-            collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+            collide_hulls(
+                &mut manifold,
+                8,
+                &hull_a.base,
+                &hull_b.base,
+                transform,
+                &mut cache,
+            );
 
             assert_eq!(manifold.point_count, 4);
             assert!(
@@ -302,7 +337,14 @@ fn parallel_edge_manual_test() {
                 type_: SeparatingFeature::ManualEdgePairAxis as u8,
                 ..Default::default()
             };
-            collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+            collide_hulls(
+                &mut manifold,
+                8,
+                &hull_a.base,
+                &hull_b.base,
+                transform,
+                &mut cache,
+            );
 
             if angle == 0.0 {
                 // Every pair is parallel so the query finds nothing and leaves the cache alone
@@ -355,7 +397,14 @@ fn overlap_never_empty_test() {
 
         let mut manifold = LocalManifold::default();
         let mut cache = SatCache::default();
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+        collide_hulls(
+            &mut manifold,
+            8,
+            &hull_a.base,
+            &hull_b.base,
+            transform,
+            &mut cache,
+        );
 
         assert!(manifold.point_count > 0);
         ensure_small(normal_length(&manifold) - 1.0, 1e-5);
@@ -365,72 +414,126 @@ fn overlap_never_empty_test() {
     }
 }
 
-// Two long roof ridges laid across each other. Unlike the stacked cubes the axis of minimum
-// penetration really is the edge pair, so the query has to hand the winning pair to the contact
-// builder. Closing the crossing angle drives that pair toward parallel, where the cross product
-// the builder needs to orient the contact loses its precision.
+// A crossed ridge pair must land on a four point roof face contact. The clipped face
+// separation can be no deeper than root2 times the vertical overlap. (CheckRoofFaceContact)
+fn check_roof_face_contact(manifold: &LocalManifold, cache: &SatCache, overlap: f32) {
+    assert_eq!(manifold.point_count, 4);
+    assert!(
+        cache.type_ == SeparatingFeature::FaceAxisA as u8
+            || cache.type_ == SeparatingFeature::FaceAxisB as u8
+    );
+
+    // A roof face of one hull, so 45 degrees off the vertical
+    ensure_small(manifold.normal.y - HALF_ROOT2, 1e-4);
+
+    let min_separation = min_separation(manifold);
+    assert!(min_separation < -HALF_ROOT2 * overlap + 1e-4);
+    assert!(min_separation > -ROOT2 * overlap - 1e-4);
+}
+
+// Two long roof ridges laid across each other. The axis of minimum penetration is the edge
+// pair, but a one point edge contact is weak for stacking. The collider builds the roof face
+// contact first and only switches to the edge contact when the edge axis beats the clipped
+// face separation by more than the slop. This pins all three regimes of that policy.
 #[test]
 fn ridge_crossing_test() {
     let hull_a = make_transformed_box_hull(1.5, 0.1, 0.1, exact_rotation(AXIS_X, 0.25 * PI));
     let hull_b = make_transformed_box_hull(1.5, 0.1, 0.1, exact_rotation(AXIS_X, 0.25 * PI));
 
     let ridge_y = 0.1 * ROOT2;
-    let overlap = 0.01;
-    let lift = 2.0 * ridge_y - overlap;
 
-    // Well clear of the rejection threshold. The ridges cross over the origin and the axis is y.
-    let crossing_angles = [0.02f32, 0.1, 0.5];
+    // Shallow overlap. The edge axis is better by only ( root2 - 1 ) * overlap, inside the
+    // slop, so the four point face contact carries the crossing at every angle.
+    {
+        let overlap = 0.01;
+        let lift = 2.0 * ridge_y - overlap;
+        let crossing_angles = [0.0f32, 1e-3, 0.02, 0.1, 0.5];
 
-    for &angle in &crossing_angles {
-        let transform = Transform {
-            p: v(0.0, lift, 0.0),
-            q: exact_quat(AXIS_Y, angle),
-        };
+        for &angle in &crossing_angles {
+            let transform = Transform {
+                p: v(0.0, lift, 0.0),
+                q: exact_quat(AXIS_Y, angle),
+            };
 
-        let mut manifold = LocalManifold::default();
-        let mut cache = SatCache::default();
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+            let mut manifold = LocalManifold::default();
+            let mut cache = SatCache::default();
+            collide_hulls(
+                &mut manifold,
+                8,
+                &hull_a.base,
+                &hull_b.base,
+                transform,
+                &mut cache,
+            );
 
-        assert_eq!(manifold.point_count, 1);
-        assert!(edge_pair(&cache));
-        ensure_small(manifold.normal.x, 1e-5);
-        ensure_small(manifold.normal.y - 1.0, 1e-5);
-        ensure_small(manifold.normal.z, 1e-5);
-        ensure_small(manifold.points[0].separation + overlap, 1e-4);
-        ensure_small(manifold.points[0].point.y - (ridge_y - 0.5 * overlap), 1e-4);
-
-        // Where the point lands along the ridges is ill conditioned at a shallow crossing since
-        // the closest point solve divides by the square of the sine of the angle. It only has to
-        // land near the crossing, not at the end of a three meter beam.
-        ensure_small(manifold.points[0].point.x, 0.01);
-        ensure_small(manifold.points[0].point.z, 0.01);
+            check_roof_face_contact(&manifold, &cache, overlap);
+        }
     }
 
-    // Inside the rejection threshold. A one point edge contact off a parallel pair would have a
-    // normal built from noise, so the query drops the pair and the roof faces carry the contact.
-    let shallow_angles = [0.0f32, 1e-4, 1e-3, 0.003];
+    // Deep overlap at a clear crossing. The edge axis now beats the clipped face separation
+    // by more than the slop, so the edge contact replaces the face contact.
+    {
+        let overlap = 0.05;
+        let lift = 2.0 * ridge_y - overlap;
+        let crossing_angles = [0.05f32, 0.1, 0.2, 0.5];
 
-    for &angle in &shallow_angles {
-        let transform = Transform {
-            p: v(0.0, lift, 0.0),
-            q: exact_quat(AXIS_Y, angle),
-        };
+        for &angle in &crossing_angles {
+            let transform = Transform {
+                p: v(0.0, lift, 0.0),
+                q: exact_quat(AXIS_Y, angle),
+            };
 
-        let mut manifold = LocalManifold::default();
-        let mut cache = SatCache::default();
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+            let mut manifold = LocalManifold::default();
+            let mut cache = SatCache::default();
+            collide_hulls(
+                &mut manifold,
+                8,
+                &hull_a.base,
+                &hull_b.base,
+                transform,
+                &mut cache,
+            );
 
-        assert_eq!(manifold.point_count, 4);
-        assert_ne!(cache.type_, SeparatingFeature::EdgePairAxis as u8);
+            assert_eq!(manifold.point_count, 1);
+            assert!(edge_pair(&cache));
+            ensure_small(manifold.normal.x, 1e-4);
+            ensure_small(manifold.normal.y - 1.0, 1e-4);
+            ensure_small(manifold.normal.z, 1e-4);
+            ensure_small(manifold.points[0].separation + overlap, 1e-4);
+            ensure_small(manifold.points[0].point.y - (ridge_y - 0.5 * overlap), 1e-4);
 
-        // A roof face of one hull, so 45 degrees off the vertical
-        ensure_small(manifold.normal.x, 1e-4);
-        ensure_small(manifold.normal.y - HALF_ROOT2, 1e-4);
-        ensure_small(manifold.normal.z.abs() - HALF_ROOT2, 1e-4);
+            // Only has to land near the crossing, not at the end of a three meter beam
+            ensure_small(manifold.points[0].point.x, 0.01);
+            ensure_small(manifold.points[0].point.z, 0.01);
+        }
+    }
 
-        let min = min_separation(&manifold);
-        assert!(min < 0.0);
-        assert!(min > -2.0 * overlap);
+    // Deep overlap near parallel. A one point edge contact off a parallel pair would have a
+    // normal built from noise, so the roof faces keep the contact.
+    {
+        let overlap = 0.05;
+        let lift = 2.0 * ridge_y - overlap;
+        let shallow_angles = [0.0f32, 1e-4, 1e-3, 0.003];
+
+        for &angle in &shallow_angles {
+            let transform = Transform {
+                p: v(0.0, lift, 0.0),
+                q: exact_quat(AXIS_Y, angle),
+            };
+
+            let mut manifold = LocalManifold::default();
+            let mut cache = SatCache::default();
+            collide_hulls(
+                &mut manifold,
+                8,
+                &hull_a.base,
+                &hull_b.base,
+                transform,
+                &mut cache,
+            );
+
+            check_roof_face_contact(&manifold, &cache, overlap);
+        }
     }
 }
 
@@ -460,13 +563,21 @@ fn edge_axis_oracle_test() {
 
                 let mut manifold = LocalManifold::default();
                 let mut cache = SatCache::default();
-                collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+                collide_hulls(
+                    &mut manifold,
+                    8,
+                    &hull_a.base,
+                    &hull_b.base,
+                    transform,
+                    &mut cache,
+                );
 
                 if !edge_pair(&cache) || manifold.point_count != 1 {
                     continue;
                 }
 
-                let (p1, e1) = hull_edge_segment(&hull_a.base, cache.index_a as i32, TRANSFORM_IDENTITY);
+                let (p1, e1) =
+                    hull_edge_segment(&hull_a.base, cache.index_a as i32, TRANSFORM_IDENTITY);
                 let (p2, e2) = hull_edge_segment(&hull_b.base, cache.index_b as i32, transform);
 
                 let center_a = hull_a.base.center;
@@ -509,7 +620,14 @@ fn edge_axis_random_oracle_test() {
 
         let mut manifold = LocalManifold::default();
         let mut cache = SatCache::default();
-        collide_hulls(&mut manifold, 8, &hull_a.base, &hull_b.base, transform, &mut cache);
+        collide_hulls(
+            &mut manifold,
+            8,
+            &hull_a.base,
+            &hull_b.base,
+            transform,
+            &mut cache,
+        );
 
         if !edge_pair(&cache) || manifold.point_count != 1 {
             continue;

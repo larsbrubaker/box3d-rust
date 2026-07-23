@@ -16,8 +16,8 @@ use super::simd_scalar::{
     add_w, dot3_w, embed_index_w, load_w, min_index_w, min_w, mul_w, neg_w, splat_w, store_w,
     sub_w, zero_w,
 };
-use super::types::{AxisQuery, SeparatingFeature};
-use crate::constants::{huge, linear_slop, speculative_distance, PARALLEL_EDGE_TOL};
+use super::types::{AxisQuery, SeparatingAxis, SeparatingFeature};
+use crate::constants::{huge, speculative_distance, PARALLEL_EDGE_TOL};
 use crate::core::NULL_INDEX;
 use crate::hull::{
     get_hull_edges, get_hull_planes, get_hull_soa_normals, get_hull_soa_vertices,
@@ -159,26 +159,36 @@ pub(crate) fn compute_separating_axis(
     hull_a: &HullData,
     hull_b: &HullData,
     xf_b: Transform,
-    axis_override: SeparatingFeature,
+    early_return: bool,
 ) -> AxisQuery {
-    debug_assert!(
-        axis_override == SeparatingFeature::InvalidAxis
-            || axis_override == SeparatingFeature::ManualFaceAxisA
-            || axis_override == SeparatingFeature::ManualFaceAxisB
-            || axis_override == SeparatingFeature::ManualEdgePairAxis
-    );
-
     let r = make_matrix_from_quat(xf_b.q);
     let inv_r = transpose(r);
 
     let speculative = speculative_distance();
 
     let mut res = AxisQuery {
-        normal: VEC3_ZERO,
-        separation: f32::NEG_INFINITY,
-        index_a: NULL_INDEX,
-        index_b: NULL_INDEX,
-        type_: SeparatingFeature::InvalidAxis,
+        face_a: SeparatingAxis {
+            normal: VEC3_ZERO,
+            separation: f32::NEG_INFINITY,
+            index_a: NULL_INDEX,
+            index_b: NULL_INDEX,
+            type_: SeparatingFeature::FaceAxisA,
+        },
+        face_b: SeparatingAxis {
+            normal: VEC3_ZERO,
+            separation: f32::NEG_INFINITY,
+            index_a: NULL_INDEX,
+            index_b: NULL_INDEX,
+            type_: SeparatingFeature::FaceAxisB,
+        },
+        edge: SeparatingAxis {
+            normal: VEC3_ZERO,
+            separation: f32::NEG_INFINITY,
+            index_a: NULL_INDEX,
+            index_b: NULL_INDEX,
+            type_: SeparatingFeature::EdgePairAxis,
+        },
+        separated_feature: SeparatingFeature::InvalidAxis,
     };
 
     let face_count_a = hull_a.face_count;
@@ -194,32 +204,24 @@ pub(crate) fn compute_separating_axis(
     let h_b = aabb_extents(hull_b.aabb);
 
     // Test A's face planes against B's vertices.
-    if axis_override != SeparatingFeature::ManualFaceAxisB
-        && axis_override != SeparatingFeature::ManualEdgePairAxis
-    {
-        for i in 0..face_count_a {
-            let plane = planes_a[i as usize];
-            let direction = neg(mul_mv(inv_r, plane.normal));
-            let plane_separation = dot(plane.normal, xf_b.p) - plane.offset;
-            let bias_b = dot(direction, c_b) + 1.0625 * dot(abs(direction), h_b);
-            let (support, vertex_index) =
-                get_support_wide(direction, vx_b, vy_b, vz_b, soa_vertex_count_b, bias_b);
-            let separation = plane_separation - support;
-            if separation > res.separation {
-                res.type_ = SeparatingFeature::FaceAxisA;
-                res.separation = separation;
-                res.index_a = i;
-                res.index_b = vertex_index;
-                res.normal = plane.normal;
-                if separation > speculative {
-                    return res;
-                }
+    for i in 0..face_count_a {
+        let plane = planes_a[i as usize];
+        let direction = neg(mul_mv(inv_r, plane.normal));
+        let plane_separation = dot(plane.normal, xf_b.p) - plane.offset;
+        let bias_b = dot(direction, c_b) + 1.0625 * dot(abs(direction), h_b);
+        let (support, vertex_index) =
+            get_support_wide(direction, vx_b, vy_b, vz_b, soa_vertex_count_b, bias_b);
+        let separation = plane_separation - support;
+        if separation > res.face_a.separation {
+            res.face_a.normal = plane.normal;
+            res.face_a.separation = separation;
+            res.face_a.index_a = i;
+            res.face_a.index_b = vertex_index;
+            if separation > speculative && early_return {
+                res.separated_feature = SeparatingFeature::FaceAxisA;
+                return res;
             }
         }
-    }
-
-    if axis_override == SeparatingFeature::ManualFaceAxisA {
-        return res;
     }
 
     let face_count_b = hull_b.face_count;
@@ -235,31 +237,25 @@ pub(crate) fn compute_separating_axis(
     let h_a = aabb_extents(hull_a.aabb);
 
     // Test B's face planes against A's vertices.
-    if axis_override != SeparatingFeature::ManualEdgePairAxis {
-        for i in 0..face_count_b {
-            let plane = planes_b[i as usize];
-            let direction = neg(mul_mv(r, plane.normal));
-            let plane_separation = dot(direction, xf_b.p) - plane.offset;
-            let bias_a = dot(direction, c_a) + 1.0625 * dot(abs(direction), h_a);
-            let (support, vertex_index) =
-                get_support_wide(direction, vx_a, vy_a, vz_a, soa_vertex_count_a, bias_a);
-            let separation = plane_separation - support;
-            if separation > res.separation {
-                res.type_ = SeparatingFeature::FaceAxisB;
-                res.separation = separation;
-                res.index_a = vertex_index;
-                res.index_b = i;
-                // This points from A to B and is in frame A
-                res.normal = direction;
-                if separation > speculative {
-                    return res;
-                }
+    for i in 0..face_count_b {
+        let plane = planes_b[i as usize];
+        let direction = neg(mul_mv(r, plane.normal));
+        let plane_separation = dot(direction, xf_b.p) - plane.offset;
+        let bias_a = dot(direction, c_a) + 1.0625 * dot(abs(direction), h_a);
+        let (support, vertex_index) =
+            get_support_wide(direction, vx_a, vy_a, vz_a, soa_vertex_count_a, bias_a);
+        let separation = plane_separation - support;
+        if separation > res.face_b.separation {
+            res.face_b.normal = direction;
+            res.face_b.separation = separation;
+            res.face_b.index_a = vertex_index;
+            res.face_b.index_b = i;
+            // This points from A to B and is in frame A
+            if separation > speculative && early_return {
+                res.separated_feature = SeparatingFeature::FaceAxisB;
+                return res;
             }
         }
-    }
-
-    if axis_override == SeparatingFeature::ManualFaceAxisB {
-        return res;
     }
 
     // Transform B into A's space once, into SoA arrays. Extra space so
@@ -399,8 +395,7 @@ pub(crate) fn compute_separating_axis(
         a_v0y[na] = vy_a[v0];
         a_v0z[na] = vz_a[v0];
 
-        a_tol[na] =
-            squared_tol * (a_dx[na] * a_dx[na] + a_dy[na] * a_dy[na] + a_dz[na] * a_dz[na]);
+        a_tol[na] = squared_tol * (a_dx[na] * a_dx[na] + a_dy[na] * a_dy[na] + a_dz[na] * a_dz[na]);
         na += 1;
 
         i += 2;
@@ -421,9 +416,6 @@ pub(crate) fn compute_separating_axis(
     store_w(&mut a_v0y[na..], zero);
     store_w(&mut a_v0z[na..], zero);
     store_w(&mut a_tol[na..], zero);
-
-    // Prefer face contact for more contact points.
-    let mut abs_face_bias = 0.1 * linear_slop();
 
     let edge_count_b = (half_edge_count_b / 2) as usize;
 
@@ -487,22 +479,20 @@ pub(crate) fn compute_separating_axis(
             let sz = a_v0z[i] + bv0z;
 
             let separation = -(sx * nx + (sy * ny + sz * nz));
-            if separation > res.separation + abs_face_bias {
-                res.normal = Vec3 {
+            if separation > res.edge.separation {
+                res.edge.normal = Vec3 {
                     x: nx,
                     y: ny,
                     z: nz,
                 };
-                res.separation = separation;
-                res.type_ = SeparatingFeature::EdgePairAxis;
+                res.edge.separation = separation;
 
                 // Half edge index
-                res.index_a = 2 * i as i32;
-                res.index_b = 2 * j as i32;
+                res.edge.index_a = 2 * i as i32;
+                res.edge.index_b = 2 * j as i32;
 
-                // Edge beats face, remove bias
-                abs_face_bias = 0.0;
-                if separation > speculative {
+                if separation > speculative && early_return {
+                    res.separated_feature = SeparatingFeature::EdgePairAxis;
                     return res;
                 }
             }

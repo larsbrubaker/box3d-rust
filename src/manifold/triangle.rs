@@ -4,7 +4,7 @@
 //! SPDX-License-Identifier: MIT
 
 use super::types::{
-    make_feature_pair, ClipVertex, EdgeQuery, FaceQuery, FeatureOwner, LocalManifold,
+    make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, SeparatingAxis, SeparatingFeature,
     TriangleFeature, FEATURE_PAIR_SINGLE,
 };
 use crate::constants::speculative_distance;
@@ -94,21 +94,25 @@ fn clip_segment_to_triangle_face(
 }
 
 /// Face query of a triangle plane against a capsule. (static b3QueryTriangleFaceAndCapsule)
-fn query_triangle_face_and_capsule(plane: Plane, capsule: &Capsule) -> FaceQuery {
+fn query_triangle_face_and_capsule(plane: Plane, capsule: &Capsule) -> SeparatingAxis {
     let separation1 = plane_separation(plane, capsule.center1);
     let separation2 = plane_separation(plane, capsule.center2);
 
     if separation1 < separation2 {
-        FaceQuery {
+        SeparatingAxis {
+            normal: plane.normal,
             separation: separation1,
-            face_index: 0,
-            vertex_index: 0,
+            index_a: 0,
+            index_b: 0,
+            type_: SeparatingFeature::InvalidAxis,
         }
     } else {
-        FaceQuery {
+        SeparatingAxis {
+            normal: plane.normal,
             separation: separation2,
-            face_index: 0,
-            vertex_index: 1,
+            index_a: 0,
+            index_b: 1,
+            type_: SeparatingFeature::InvalidAxis,
         }
     }
 }
@@ -118,7 +122,7 @@ fn query_triangle_and_capsule_edges(
     vertices: &[Vec3; 3],
     plane: Plane,
     capsule: &Capsule,
-) -> EdgeQuery {
+) -> SeparatingAxis {
     // Work in the local space of the capsule
     let p1 = capsule.center1;
     let p2 = capsule.center2;
@@ -177,11 +181,12 @@ fn query_triangle_and_capsule_edges(
         edge_index = index as i32;
     }
 
-    EdgeQuery {
+    SeparatingAxis {
         normal: max_normal,
         separation: max_separation,
         index_a: max_index1,
         index_b: max_index2,
+        type_: SeparatingFeature::InvalidAxis,
     }
 }
 
@@ -253,7 +258,7 @@ fn build_triangle_and_capsule_edge_contact(
     triangle: &[Vec3; 3],
     plane: Plane,
     capsule: &Capsule,
-    query: EdgeQuery,
+    query: SeparatingAxis,
 ) {
     debug_assert!((0..3).contains(&query.index_a));
 
@@ -324,12 +329,13 @@ fn build_triangle_and_capsule_edge_contact(
     );
 }
 
-/// Collide a sphere and a triangle. (b3CollideSphereAndTriangle)
-pub fn collide_sphere_and_triangle(
+/// Collide a triangle and sphere. Normal points from triangle to sphere.
+/// (b3CollideTriangleAndSphere)
+pub fn collide_triangle_and_sphere(
     manifold: &mut LocalManifold,
     capacity: i32,
-    sphere_a: &Sphere,
-    triangle_b: &[Vec3; 3],
+    triangle_a: &[Vec3; 3],
+    sphere_b: &Sphere,
 ) {
     manifold.point_count = 0;
 
@@ -337,10 +343,10 @@ pub fn collide_sphere_and_triangle(
         return;
     }
 
-    let center = sphere_a.center;
-    let v1 = triangle_b[0];
-    let v2 = triangle_b[1];
-    let v3 = triangle_b[2];
+    let center = sphere_b.center;
+    let v1 = triangle_a[0];
+    let v2 = triangle_a[1];
+    let v3 = triangle_a[2];
     let plane = make_plane_from_points(v1, v2, v3);
 
     let offset = plane_separation(plane, center);
@@ -349,16 +355,22 @@ pub fn collide_sphere_and_triangle(
         return;
     }
 
+    let radius = sphere_b.radius;
+
+    // Closest point on triangle to sphere center
     let closest = closest_point_on_triangle(v1, v2, v3, center);
 
+    // Test separating axis
     let squared_distance = distance_squared(closest.point, center);
     let speculative = speculative_distance();
-    let max_distance = sphere_a.radius + speculative;
+    let max_distance = radius + speculative;
     if squared_distance > max_distance * max_distance {
         return;
     }
 
     let distance = squared_distance.sqrt();
+
+    // Normal points from triangle to sphere
     let normal = if distance * distance > 1000.0 * f32::MIN_POSITIVE {
         mul_sv(1.0 / distance, sub(center, closest.point))
     } else {
@@ -366,10 +378,8 @@ pub fn collide_sphere_and_triangle(
     };
 
     // contact point mid-way
-    let contact_point = mul_sv(
-        0.5,
-        add(mul_sub(center, sphere_a.radius, normal), closest.point),
-    );
+    // p = 0.5 * (c + q) - 0.5 * r * n
+    let contact_point = mul_sv(0.5, add(sub(center, mul_sv(radius, normal)), closest.point));
 
     manifold.normal = normal;
     manifold.point_count = 1;
@@ -378,16 +388,17 @@ pub fn collide_sphere_and_triangle(
 
     let mp = &mut manifold.points[0];
     mp.point = contact_point;
-    mp.separation = distance - sphere_a.radius;
+    mp.separation = distance - radius;
     mp.pair = FEATURE_PAIR_SINGLE;
 }
 
-/// Collide a capsule and a triangle. (b3CollideCapsuleAndTriangle)
-pub fn collide_capsule_and_triangle(
+/// Collide a triangle and capsule. Normal points from triangle to capsule.
+/// (b3CollideTriangleAndCapsule)
+pub fn collide_triangle_and_capsule(
     manifold: &mut LocalManifold,
     capacity: i32,
-    capsule_a: &Capsule,
-    triangle_b: &[Vec3; 3],
+    triangle_a: &[Vec3; 3],
+    capsule_b: &Capsule,
     cache: &mut SimplexCache,
 ) {
     manifold.point_count = 0;
@@ -396,11 +407,11 @@ pub fn collide_capsule_and_triangle(
         return;
     }
 
-    let v1 = triangle_b[0];
-    let v2 = triangle_b[1];
-    let v3 = triangle_b[2];
+    let v1 = triangle_a[0];
+    let v2 = triangle_a[1];
+    let v3 = triangle_a[2];
     let plane = make_plane_from_points(v1, v2, v3);
-    let capsule_center = lerp(capsule_a.center1, capsule_a.center2, 0.5);
+    let capsule_center = lerp(capsule_b.center1, capsule_b.center2, 0.5);
 
     let offset = plane_separation(plane, capsule_center);
     if offset < 0.0 {
@@ -409,15 +420,15 @@ pub fn collide_capsule_and_triangle(
     }
 
     let distance_input = DistanceInput {
-        proxy_a: make_proxy(triangle_b, 0.0),
-        proxy_b: make_proxy(&[capsule_a.center1, capsule_a.center2], 0.0),
+        proxy_a: make_proxy(triangle_a, 0.0),
+        proxy_b: make_proxy(&[capsule_b.center1, capsule_b.center2], 0.0),
         transform: TRANSFORM_IDENTITY,
         use_radii: false,
     };
 
     let distance_output = shape_distance(&distance_input, cache, None);
 
-    let radius = capsule_a.radius;
+    let radius = capsule_b.radius;
     if distance_output.distance > radius + speculative_distance() {
         // Shapes are separated, persist the cache
         return;
@@ -433,18 +444,18 @@ pub fn collide_capsule_and_triangle(
         if cos_angle > K_TOLERANCE {
             let mut segment = [
                 ClipVertex {
-                    position: capsule_a.center1,
+                    position: capsule_b.center1,
                     separation: 0.0,
                     pair: make_feature_pair(FeatureOwner::ShapeA, 0, FeatureOwner::ShapeA, 0),
                 },
                 ClipVertex {
-                    position: capsule_a.center2,
+                    position: capsule_b.center2,
                     separation: 0.0,
                     pair: make_feature_pair(FeatureOwner::ShapeA, 1, FeatureOwner::ShapeA, 1),
                 },
             ];
 
-            if clip_segment_to_triangle_face(&mut segment, triangle_b, plane) {
+            if clip_segment_to_triangle_face(&mut segment, triangle_a, plane) {
                 let distance1 = plane_separation(plane, segment[0].position);
                 let distance2 = plane_separation(plane, segment[1].position);
 
@@ -492,19 +503,19 @@ pub fn collide_capsule_and_triangle(
     }
 
     // Deep penetration
-    let face_query = query_triangle_face_and_capsule(plane, capsule_a);
+    let face_query = query_triangle_face_and_capsule(plane, capsule_b);
     if face_query.separation > radius {
         return;
     }
 
-    let edge_query = query_triangle_and_capsule_edges(triangle_b, plane, capsule_a);
+    let edge_query = query_triangle_and_capsule_edges(triangle_a, plane, capsule_b);
     if edge_query.separation > radius {
         return;
     }
 
     // Create face contact
     let mut face_separation = face_query.separation - radius;
-    build_triangle_and_capsule_face_contact(manifold, triangle_b, plane, capsule_a);
+    build_triangle_and_capsule_face_contact(manifold, triangle_a, plane, capsule_b);
     if manifold.point_count == 2 {
         face_separation = min_float(manifold.points[0].separation, manifold.points[1].separation);
     }
@@ -517,6 +528,6 @@ pub fn collide_capsule_and_triangle(
     if manifold.point_count == 0
         || edge_separation > K_REL_EDGE_TOLERANCE * face_separation + k_abs_tolerance
     {
-        build_triangle_and_capsule_edge_contact(manifold, triangle_b, plane, capsule_a, edge_query);
+        build_triangle_and_capsule_edge_contact(manifold, triangle_a, plane, capsule_b, edge_query);
     }
 }

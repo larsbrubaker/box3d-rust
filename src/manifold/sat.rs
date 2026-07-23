@@ -3,15 +3,15 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::types::{EdgeQuery, FaceQuery, LocalManifold, LocalManifoldPoint};
+use super::types::{LocalManifold, LocalManifoldPoint, SeparatingAxis, SeparatingFeature};
 use crate::constants::speculative_distance;
 use crate::core::NULL_INDEX;
 use crate::distance::get_point_support;
 use crate::geometry::Capsule;
 use crate::hull::{get_hull_edges, get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
-    abs_float, arbitrary_perp, cross, dot, length_squared, lerp, max_float, min_float, mul_sub, neg,
-    normalize, plane_separation, sub, transform_point, Transform, VEC3_ZERO,
+    abs_float, arbitrary_perp, cross, dot, length_squared, lerp, max_float, min_float, mul_sub,
+    neg, normalize, plane_separation, sub, transform_point, Transform, VEC3_ZERO,
 };
 
 /// Face directions for hull vs capsule. (static b3QueryFaceDirectionHullAndCapsule)
@@ -19,7 +19,7 @@ pub(crate) fn query_face_direction_hull_and_capsule(
     hull: &HullData,
     capsule: &Capsule,
     capsule_transform: Transform,
-) -> FaceQuery {
+) -> SeparatingAxis {
     let mut max_face_index = -1;
     let mut max_vertex_index = -1;
     let mut max_face_separation = -f32::MAX;
@@ -42,11 +42,13 @@ pub(crate) fn query_face_direction_hull_and_capsule(
         }
     }
 
-    FaceQuery {
+    SeparatingAxis {
+        normal: planes[max_face_index as usize].normal,
         separation: max_face_separation,
         // Match C's (uint8_t) cast into the int fields.
-        face_index: max_face_index as u8 as i32,
-        vertex_index: max_vertex_index as u8 as i32,
+        index_a: max_face_index as u8 as i32,
+        index_b: max_vertex_index as u8 as i32,
+        type_: SeparatingFeature::InvalidAxis,
     }
 }
 
@@ -55,7 +57,7 @@ pub(crate) fn query_edge_direction_hull_and_capsule(
     hull: &HullData,
     capsule: &Capsule,
     capsule_transform: Transform,
-) -> EdgeQuery {
+) -> SeparatingAxis {
     // Find axis of minimum penetration
     let mut max_normal = VEC3_ZERO;
     let mut max_separation = -f32::MAX;
@@ -129,11 +131,12 @@ pub(crate) fn query_edge_direction_hull_and_capsule(
     }
 
     // Save result
-    EdgeQuery {
+    SeparatingAxis {
         normal: max_normal,
         separation: max_separation,
         index_a: max_index_a,
         index_b: max_index_b,
+        type_: SeparatingFeature::InvalidAxis,
     }
 }
 

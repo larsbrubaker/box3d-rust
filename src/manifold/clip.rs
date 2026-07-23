@@ -15,6 +15,8 @@ use crate::math_functions::{
 /// Find the incident face given a reference normal and closest vertex.
 /// (b3FindIncidentFace)
 pub fn find_incident_face(hull: &HullData, ref_normal: Vec3, vertex_index: i32) -> i32 {
+    debug_assert!(0 <= vertex_index && vertex_index < hull.vertex_count);
+
     let vertices = get_hull_vertices(hull);
     let edges = get_hull_edges(hull);
     let planes = get_hull_planes(hull);

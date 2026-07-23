@@ -26,9 +26,9 @@ const RAGDOLL_SLEEP_STEP: i32 = 297;
 #[cfg(feature = "double-precision")]
 const RAGDOLL_HASH: u32 = 0x27FF_38C1;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_SLEEP_STEP: i32 = 258;
+const WAVE_PILE_SLEEP_STEP: i32 = 297;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_HASH: u32 = 0xA3CD_C61B;
+const WAVE_PILE_HASH: u32 = 0x420C_A784;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(feature = "double-precision")]
@@ -47,9 +47,9 @@ const RAGDOLL_SLEEP_STEP: i32 = 308;
 #[cfg(not(feature = "double-precision"))]
 const RAGDOLL_HASH: u32 = 0x1E5E_DD79;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_SLEEP_STEP: i32 = 239;
+const WAVE_PILE_SLEEP_STEP: i32 = 273;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_HASH: u32 = 0xA2F4_D472;
+const WAVE_PILE_HASH: u32 = 0x4723_3541;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(not(feature = "double-precision"))]
@@ -156,7 +156,10 @@ fn wave_pile_test() {
             data.sleep_step, data.hash, WAVE_PILE_SLEEP_STEP, WAVE_PILE_HASH
         );
     }
-    assert_eq!(data.sleep_step, WAVE_PILE_SLEEP_STEP, "wave pile sleep step");
+    assert_eq!(
+        data.sleep_step, WAVE_PILE_SLEEP_STEP,
+        "wave pile sleep step"
+    );
     assert_eq!(data.hash, WAVE_PILE_HASH, "wave pile hash");
 }
 
@@ -252,6 +255,9 @@ fn mesh_drop_test() {
             data.sleep_step, data.hash, MESH_DROP_SLEEP_STEP, MESH_DROP_HASH
         );
     }
-    assert_eq!(data.sleep_step, MESH_DROP_SLEEP_STEP, "mesh drop sleep step");
+    assert_eq!(
+        data.sleep_step, MESH_DROP_SLEEP_STEP,
+        "mesh drop sleep step"
+    );
     assert_eq!(data.hash, MESH_DROP_HASH, "mesh drop hash");
 }

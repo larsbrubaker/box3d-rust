@@ -5,10 +5,10 @@
 
 use super::triangle::get_triangle_feature;
 use super::triangle_face::{
-    collide_hull_and_triangle_edges, collide_hull_face, collide_triangle_face,
+    collide_hull_face, collide_triangle_and_hull_edges, collide_triangle_face,
 };
 use super::types::{
-    EdgeQuery, FaceQuery, LocalManifold, SatCache, SeparatingFeature, TriangleFeature,
+    LocalManifold, SatCache, SeparatingAxis, SeparatingFeature, TriangleFeature,
     FEATURE_PAIR_SINGLE,
 };
 use crate::constants::{linear_slop, speculative_distance};
@@ -53,30 +53,34 @@ fn get_triangle_support(points: &[Vec3; 3], direction: Vec3) -> i32 {
 }
 
 /// Face query: triangle plane vs hull. (static b3QueryTriangleFace)
-fn query_triangle_face(triangle: &TriangleData, hull: &HullData) -> FaceQuery {
+fn query_triangle_face(triangle: &TriangleData, hull: &HullData) -> SeparatingAxis {
     let hull_points = get_hull_points(hull);
     let plane = triangle.plane;
-    let vertex_index = find_hull_support_vertex(hull, neg(plane.normal));
+    let normal = neg(plane.normal);
+    let vertex_index = find_hull_support_vertex(hull, normal);
     let support = hull_points[vertex_index as usize];
     let separation = plane_separation(plane, support);
 
-    FaceQuery {
+    SeparatingAxis {
+        normal: plane.normal,
         separation,
-        face_index: 0,
-        vertex_index,
+        index_a: 0,
+        index_b: vertex_index,
+        type_: SeparatingFeature::FaceAxisA,
     }
 }
 
 /// Face query: hull faces vs triangle. (static b3QueryHullFace)
-fn query_hull_face(triangle: &TriangleData, hull: &HullData) -> FaceQuery {
+fn query_hull_face(triangle: &TriangleData, hull: &HullData) -> SeparatingAxis {
     let hull_planes = get_hull_planes(hull);
     let face_count = hull.face_count;
 
     let triangle_points = [triangle.v1, triangle.v2, triangle.v3];
 
-    let mut max_face_index = -1;
-    let mut max_vertex_index = -1;
-    let mut max_face_separation = -f32::MAX;
+    let mut max_normal = VEC3_ZERO;
+    let mut max_face_separation = f32::NEG_INFINITY;
+    let mut max_face_index = NULL_INDEX;
+    let mut max_vertex_index = NULL_INDEX;
 
     for face_index in 0..face_count {
         let plane = hull_planes[face_index as usize];
@@ -84,26 +88,31 @@ fn query_hull_face(triangle: &TriangleData, hull: &HullData) -> FaceQuery {
         let support = triangle_points[vertex_index as usize];
         let separation = plane_separation(plane, support);
         if separation > max_face_separation {
+            max_normal = plane.normal;
+            max_face_separation = separation;
             max_face_index = face_index;
             max_vertex_index = vertex_index;
-            max_face_separation = separation;
         }
     }
 
-    FaceQuery {
+    // Normal points from triangle to hull
+    SeparatingAxis {
+        normal: neg(max_normal),
         separation: max_face_separation,
-        face_index: max_face_index,
-        vertex_index: max_vertex_index,
+        index_a: max_vertex_index,
+        index_b: max_face_index,
+        type_: SeparatingFeature::FaceAxisB,
     }
 }
 
-/// Test all Minkowski edge pairs. (static b3QueryTriangleAndHullEdges)
-fn query_triangle_and_hull_edges(triangle: &TriangleData, hull: &HullData) -> EdgeQuery {
-    let mut result = EdgeQuery {
+/// Test all Minkowski edge pairs. A: hull, B: triangle. (static b3QueryTriangleAndHullEdges)
+fn query_triangle_and_hull_edges(triangle: &TriangleData, hull: &HullData) -> SeparatingAxis {
+    let mut result = SeparatingAxis {
         normal: VEC3_ZERO,
-        separation: -f32::MAX,
+        separation: f32::NEG_INFINITY,
         index_a: NULL_INDEX,
         index_b: NULL_INDEX,
+        type_: SeparatingFeature::EdgePairAxis,
     };
 
     let triangle_points = [triangle.v1, triangle.v2, triangle.v3];
@@ -171,16 +180,16 @@ fn query_triangle_and_hull_edges(triangle: &TriangleData, hull: &HullData) -> Ed
     result
 }
 
-/// Collide a hull and a triangle in the local space of the hull.
-/// (b3CollideHullAndTriangle)
-pub fn collide_hull_and_triangle(
+/// Collide a triangle and hull. Normal points from triangle to hull. The triangle is in the
+/// local space of the hull for efficiency. (b3CollideTriangleAndHull)
+pub fn collide_triangle_and_hull(
     manifold: &mut LocalManifold,
     capacity: i32,
-    hull_a: &HullData,
     v1: Vec3,
     v2: Vec3,
     v3: Vec3,
     triangle_flags: i32,
+    hull_b: &HullData,
     cache: &mut SatCache,
     enable_speculative: bool,
 ) {
@@ -194,7 +203,7 @@ pub fn collide_hull_and_triangle(
     let triangle_plane = make_plane_from_points(v1, v2, v3);
     let linear_slop = linear_slop();
 
-    let offset = plane_separation(triangle_plane, hull_a.center);
+    let offset = plane_separation(triangle_plane, hull_b.center);
     if cache.type_ == SeparatingFeature::BacksideAxis as u8 {
         // Use hysteresis to avoid jitter on wavy meshes
         if abs_float(cache.separation - offset) < linear_slop {
@@ -225,9 +234,9 @@ pub fn collide_hull_and_triangle(
         flags: triangle_flags,
     };
 
-    let edges = get_hull_edges(hull_a);
-    let hull_planes = get_hull_planes(hull_a);
-    let hull_points = get_hull_points(hull_a);
+    let edges = get_hull_edges(hull_b);
+    let hull_planes = get_hull_planes(hull_b);
+    let hull_points = get_hull_points(hull_b);
 
     let speculative = if enable_speculative {
         speculative_distance()
@@ -241,17 +250,19 @@ pub fn collide_hull_and_triangle(
         t if t == SeparatingFeature::FaceAxisA as u8 => {
             debug_assert!(cache.index_a == 0);
 
-            let vertex_index = find_hull_support_vertex(hull_a, neg(triangle_plane.normal));
+            let vertex_index = find_hull_support_vertex(hull_b, neg(triangle_plane.normal));
             let support = hull_points[vertex_index as usize];
             let separation = plane_separation(triangle_plane, support);
             if separation > speculative {
                 return;
             }
 
-            let face_query = FaceQuery {
+            let face_query = SeparatingAxis {
+                normal: triangle_plane.normal,
                 separation,
-                face_index: cache.index_a as i32,
-                vertex_index,
+                index_a: cache.index_a as i32,
+                index_b: vertex_index,
+                type_: SeparatingFeature::FaceAxisA,
             };
 
             let mut local_cache = *cache;
@@ -259,7 +270,7 @@ pub fn collide_hull_and_triangle(
                 manifold,
                 capacity,
                 &triangle,
-                hull_a,
+                hull_b,
                 face_query,
                 &mut local_cache,
                 enable_speculative,
@@ -275,7 +286,7 @@ pub fn collide_hull_and_triangle(
             *cache = SatCache::default();
         }
         t if t == SeparatingFeature::FaceAxisB as u8 => {
-            debug_assert!((cache.index_b as i32) < hull_a.face_count);
+            debug_assert!((cache.index_b as i32) < hull_b.face_count);
 
             let plane = hull_planes[cache.index_b as usize];
 
@@ -299,10 +310,12 @@ pub fn collide_hull_and_triangle(
             let is_deep = separation < -2.0 * linear_slop;
 
             if !is_deep {
-                let face_query = FaceQuery {
+                let face_query = SeparatingAxis {
+                    normal: neg(plane.normal),
                     separation,
-                    face_index: cache.index_b as i32,
-                    vertex_index: vertex_index as i32,
+                    index_a: vertex_index as i32,
+                    index_b: cache.index_b as i32,
+                    type_: SeparatingFeature::FaceAxisB,
                 };
 
                 let mut local_cache = *cache;
@@ -310,7 +323,7 @@ pub fn collide_hull_and_triangle(
                     manifold,
                     capacity,
                     &triangle,
-                    hull_a,
+                    hull_b,
                     face_query,
                     &mut local_cache,
                     enable_speculative,
@@ -333,7 +346,7 @@ pub fn collide_hull_and_triangle(
             let tri_point = triangle_points[index_a as usize];
             let tri_edge = triangle_edges[index_a as usize];
 
-            debug_assert!((cache.index_b as i32) < hull_a.edge_count - 1);
+            debug_assert!((cache.index_b as i32) < hull_b.edge_count - 1);
             let index_b = cache.index_b as i32;
 
             let edge2 = &edges[index_b as usize];
@@ -373,21 +386,22 @@ pub fn collide_hull_and_triangle(
                     if abs_float(cache.separation - separation) < linear_slop {
                         // Try to rebuild contact from last features
                         // Flip normal to point from triangle to hull
-                        let edge_query = EdgeQuery {
+                        let edge_query = SeparatingAxis {
                             normal: neg(axis),
                             separation,
                             index_a,
                             index_b,
+                            type_: SeparatingFeature::EdgePairAxis,
                         };
 
                         // Read cache but don't modify it
                         let mut local_cache = *cache;
-                        collide_hull_and_triangle_edges(
+                        collide_triangle_and_hull_edges(
                             manifold,
                             capacity,
                             tri_point,
                             tri_edge,
-                            hull_a,
+                            hull_b,
                             edge_query,
                             &mut local_cache,
                         );
@@ -404,12 +418,12 @@ pub fn collide_hull_and_triangle(
             *cache = SatCache::default();
         }
         t if t == SeparatingFeature::ManualFaceAxisA as u8 => {
-            let face_query_a = query_triangle_face(&triangle, hull_a);
+            let face_query_a = query_triangle_face(&triangle, hull_b);
             collide_triangle_face(
                 manifold,
                 capacity,
                 &triangle,
-                hull_a,
+                hull_b,
                 face_query_a,
                 cache,
                 enable_speculative,
@@ -417,12 +431,12 @@ pub fn collide_hull_and_triangle(
             return;
         }
         t if t == SeparatingFeature::ManualFaceAxisB as u8 => {
-            let face_query_b = query_hull_face(&triangle, hull_a);
+            let face_query_b = query_hull_face(&triangle, hull_b);
             collide_hull_face(
                 manifold,
                 capacity,
                 &triangle,
-                hull_a,
+                hull_b,
                 face_query_b,
                 cache,
                 enable_speculative,
@@ -430,16 +444,16 @@ pub fn collide_hull_and_triangle(
             return;
         }
         t if t == SeparatingFeature::ManualEdgePairAxis as u8 => {
-            let edge_query = query_triangle_and_hull_edges(&triangle, hull_a);
+            let edge_query = query_triangle_and_hull_edges(&triangle, hull_b);
             if edge_query.index_a != NULL_INDEX {
                 let triangle_point = triangle_points[edge_query.index_a as usize];
                 let triangle_edge = triangle_edges[edge_query.index_a as usize];
-                collide_hull_and_triangle_edges(
+                collide_triangle_and_hull_edges(
                     manifold,
                     capacity,
                     triangle_point,
                     triangle_edge,
-                    hull_a,
+                    hull_b,
                     edge_query,
                     cache,
                 );
@@ -454,26 +468,29 @@ pub fn collide_hull_and_triangle(
     // Cache miss
     cache.hit = 0;
 
-    let face_query_a = query_triangle_face(&triangle, hull_a);
+    let face_query_a = query_triangle_face(&triangle, hull_b);
     if face_query_a.separation > speculative {
+        // Separating axis found
         cache.separation = face_query_a.separation;
         cache.type_ = SeparatingFeature::FaceAxisA as u8;
-        cache.index_a = 0;
-        cache.index_b = u8::MAX;
+        cache.index_a = face_query_a.index_a as u8;
+        cache.index_b = face_query_a.index_b as u8;
         return;
     }
 
-    let face_query_b = query_hull_face(&triangle, hull_a);
+    let face_query_b = query_hull_face(&triangle, hull_b);
     if face_query_b.separation > speculative {
+        // Separating axis found
         cache.separation = face_query_b.separation;
         cache.type_ = SeparatingFeature::FaceAxisB as u8;
-        cache.index_a = u8::MAX;
-        cache.index_b = face_query_b.face_index as u8;
+        cache.index_a = face_query_b.index_a as u8;
+        cache.index_b = face_query_b.index_b as u8;
         return;
     }
 
-    let edge_query = query_triangle_and_hull_edges(&triangle, hull_a);
+    let edge_query = query_triangle_and_hull_edges(&triangle, hull_b);
     if edge_query.separation > speculative {
+        // Separating axis found
         cache.separation = edge_query.separation;
         cache.type_ = SeparatingFeature::EdgePairAxis as u8;
         cache.index_a = edge_query.index_a as u8;
@@ -481,32 +498,32 @@ pub fn collide_hull_and_triangle(
         return;
     }
 
+    let clip_separation;
+
     // Don't admit a hull face significantly opposed to the triangle face.
     // Need a tolerance to avoid ghost collisions.
-    let hull_normal = hull_planes[face_query_b.face_index as usize].normal;
-    let pushing_down = dot(hull_normal, triangle_plane.normal) > 0.25;
-    let clipped_face_separation =
-        if face_query_b.separation >= face_query_a.separation && !pushing_down {
-            collide_hull_face(
-                manifold,
-                capacity,
-                &triangle,
-                hull_a,
-                face_query_b,
-                cache,
-                enable_speculative,
-            )
-        } else {
-            collide_triangle_face(
-                manifold,
-                capacity,
-                &triangle,
-                hull_a,
-                face_query_a,
-                cache,
-                enable_speculative,
-            )
-        };
+    let pushing_down = dot(face_query_b.normal, triangle_plane.normal) < -0.25;
+    if face_query_b.separation >= face_query_a.separation && !pushing_down {
+        clip_separation = collide_hull_face(
+            manifold,
+            capacity,
+            &triangle,
+            hull_b,
+            face_query_b,
+            cache,
+            enable_speculative,
+        );
+    } else {
+        clip_separation = collide_triangle_face(
+            manifold,
+            capacity,
+            &triangle,
+            hull_b,
+            face_query_a,
+            cache,
+            enable_speculative,
+        );
+    }
 
     // Does an edge axis exist?
     if edge_query.index_a != NULL_INDEX {
@@ -515,19 +532,18 @@ pub fn collide_hull_and_triangle(
         let max_face_separation = max_float(face_query_a.separation, face_query_b.separation);
 
         if (manifold.point_count == 0 && edge_query.separation > max_face_separation)
-            || (manifold.point_count == 1
-                && edge_query.separation > clipped_face_separation + linear_slop)
+            || (manifold.point_count == 1 && edge_query.separation > clip_separation + linear_slop)
         {
             debug_assert!((0..3).contains(&edge_query.index_a));
             let triangle_point = triangle_points[edge_query.index_a as usize];
             let triangle_edge = triangle_edges[edge_query.index_a as usize];
             manifold.point_count = 0;
-            collide_hull_and_triangle_edges(
+            collide_triangle_and_hull_edges(
                 manifold,
                 capacity,
                 triangle_point,
                 triangle_edge,
-                hull_a,
+                hull_b,
                 edge_query,
                 cache,
             );
@@ -558,5 +574,8 @@ pub fn collide_hull_and_triangle(
             manifold.points[0].separation = output.distance;
             manifold.points[0].pair = FEATURE_PAIR_SINGLE;
         }
+
+        // No way to cache this scenario
+        *cache = SatCache::default();
     }
 }

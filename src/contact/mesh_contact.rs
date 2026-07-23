@@ -17,7 +17,7 @@ use crate::distance::SimplexCache;
 use crate::geometry::ShapeType;
 use crate::height_field::{get_height_field_material_indices, get_height_field_triangle};
 use crate::manifold::{
-    collide_capsule_and_triangle, collide_hull_and_triangle, collide_sphere_and_triangle,
+    collide_triangle_and_capsule, collide_triangle_and_hull, collide_triangle_and_sphere,
     make_feature_id, LocalManifold, Manifold, SatCache, SeparatingFeature, TriangleFeature,
 };
 use crate::math_functions::{
@@ -103,9 +103,8 @@ pub fn compute_mesh_manifolds(
     let relative_matrix = make_matrix_from_quat(transform_a_to_b.q);
     let linear_slop = linear_slop();
     let rest_offset = mesh_rest_offset();
-    let enable_speculative = (world.contacts[contact_id as usize].flags
-        & contact_flags::ENABLE_SPECULATIVE_POINTS)
-        != 0;
+    let enable_speculative =
+        (world.contacts[contact_id as usize].flags & contact_flags::ENABLE_SPECULATIVE_POINTS) != 0;
 
     let point_buffer_capacity = MAX_POINTS_PER_TRIANGLE * triangle_count;
     let mut point_buffer =
@@ -178,7 +177,7 @@ pub fn compute_mesh_manifolds(
                     unreachable!()
                 };
                 let cache = ensure_simplex(&mut triangle_caches[index].cache);
-                collide_capsule_and_triangle(&mut local, point_capacity, capsule, &vertices, cache);
+                collide_triangle_and_capsule(&mut local, point_capacity, &vertices, capsule, cache);
             }
             ShapeType::Hull => {
                 let ShapeGeometry::Hull(hull) = geom_b else {
@@ -188,14 +187,14 @@ pub fn compute_mesh_manifolds(
                 if is_fast && cache.type_ == SeparatingFeature::EdgePairAxis as u8 {
                     *cache = SatCache::default();
                 }
-                collide_hull_and_triangle(
+                collide_triangle_and_hull(
                     &mut local,
                     point_capacity,
-                    hull,
                     vertices[0],
                     vertices[1],
                     vertices[2],
                     triangle.flags,
+                    hull,
                     cache,
                     enable_speculative,
                 );
@@ -206,7 +205,7 @@ pub fn compute_mesh_manifolds(
                 let ShapeGeometry::Sphere(sphere) = geom_b else {
                     unreachable!()
                 };
-                collide_sphere_and_triangle(&mut local, point_capacity, sphere, &vertices);
+                collide_triangle_and_sphere(&mut local, point_capacity, &vertices, sphere);
             }
             _ => {
                 debug_assert!(false, "mesh contact expects sphere/capsule/hull B");

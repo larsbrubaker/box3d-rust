@@ -96,6 +96,10 @@ pub const PARALLEL_EDGE_TOL: f32 = 0.005;
 /// (B3_MAX_MANIFOLD_POINTS)
 pub const MAX_MANIFOLD_POINTS: usize = 4;
 
+/// Increase this if your application needs more accurate restitution. Doing so will
+/// slow down the simulation. Must be 1 or more. (B3_RESTITUTION_ITERATIONS)
+pub const RESTITUTION_ITERATIONS: i32 = 1;
+
 /// Max clip points written per triangle during mesh narrow phase.
 /// (B3_MAX_POINTS_PER_TRIANGLE)
 pub const MAX_POINTS_PER_TRIANGLE: usize = 32;

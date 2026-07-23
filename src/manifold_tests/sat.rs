@@ -10,7 +10,7 @@ use crate::hull::{
     get_hull_edges, get_hull_planes, get_hull_points, make_box_hull, make_offset_box_hull,
     make_transformed_box_hull, HullData,
 };
-use crate::manifold::{compute_separating_axis, SeparatingFeature};
+use crate::manifold::{compute_separating_axis, get_best_axis, SeparatingFeature};
 use crate::math_functions::{
     cross, dot, length, max_float, min_float, mul_add, mul_sv, neg, normalize, rotate_vector,
     transform_point, Transform, Vec3, PI, QUAT_IDENTITY, VEC3_ZERO,
@@ -156,12 +156,8 @@ fn face_axis_a_separated_test() {
         },
         q: QUAT_IDENTITY,
     };
-    let q = compute_separating_axis(
-        &hull_a.base,
-        &hull_b.base,
-        xf_b,
-        SeparatingFeature::InvalidAxis,
-    );
+    let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+    let q = get_best_axis(&aq);
 
     assert_eq!(q.type_, SeparatingFeature::FaceAxisA);
     ensure_small(q.separation - 0.2, 1e-5);
@@ -201,12 +197,8 @@ fn face_axis_b_separated_test() {
         q: QUAT_IDENTITY,
     };
 
-    let q = compute_separating_axis(
-        &hull_a.base,
-        &hull_b.base,
-        xf_b,
-        SeparatingFeature::InvalidAxis,
-    );
+    let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+    let q = get_best_axis(&aq);
 
     assert_eq!(q.type_, SeparatingFeature::FaceAxisB);
     ensure_small(q.separation - gap, 1e-5);
@@ -242,12 +234,8 @@ fn face_far_separated_test() {
         },
         q: QUAT_IDENTITY,
     };
-    let q = compute_separating_axis(
-        &hull_a.base,
-        &hull_b.base,
-        xf_b,
-        SeparatingFeature::InvalidAxis,
-    );
+    let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+    let q = get_best_axis(&aq);
 
     assert_eq!(q.type_, SeparatingFeature::FaceAxisA);
     ensure_small(q.separation - 2.0, 1e-5);
@@ -287,12 +275,8 @@ fn offset_face_axis_b_test() {
         q: QUAT_IDENTITY,
     };
 
-    let q = compute_separating_axis(
-        &hull_a.base,
-        &hull_b.base,
-        xf_b,
-        SeparatingFeature::InvalidAxis,
-    );
+    let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+    let q = get_best_axis(&aq);
 
     assert_eq!(q.type_, SeparatingFeature::FaceAxisB);
     ensure_small(q.separation - gap, 1e-4);
@@ -338,12 +322,8 @@ fn edge_pair_sweep_test() {
             },
             q: QUAT_IDENTITY,
         };
-        let q = compute_separating_axis(
-            &hull_a.base,
-            &hull_b.base,
-            xf_b,
-            SeparatingFeature::InvalidAxis,
-        );
+        let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+        let q = get_best_axis(&aq);
 
         assert_eq!(q.type_, SeparatingFeature::EdgePairAxis);
         ensure_small(q.separation - expected, 1e-4);
@@ -428,12 +408,8 @@ fn separating_axis_oracle_test() {
             q: exact_quat(rng.next_direction(), angle_b),
         };
 
-        let q = compute_separating_axis(
-            &hull_a.base,
-            &hull_b.base,
-            xf_b,
-            SeparatingFeature::InvalidAxis,
-        );
+        let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+        let q = get_best_axis(&aq);
 
         let (oracle_sep, _oracle_normal) = oracle_separation(&hull_a.base, &hull_b.base, xf_b);
 
@@ -533,12 +509,8 @@ fn offset_hull_oracle_test() {
             };
         }
 
-        let q = compute_separating_axis(
-            &hull_a.base,
-            &hull_b.base,
-            xf_b,
-            SeparatingFeature::InvalidAxis,
-        );
+        let aq = compute_separating_axis(&hull_a.base, &hull_b.base, xf_b, true);
+        let q = get_best_axis(&aq);
 
         let (oracle_sep, _oracle_normal) = oracle_separation(&hull_a.base, &hull_b.base, xf_b);
 

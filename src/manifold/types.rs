@@ -160,44 +160,50 @@ pub(crate) struct ClipVertex {
 /// Maximum vertices in a clipped polygon buffer. (B3_MAX_CLIP_POINTS)
 pub(crate) const MAX_CLIP_POINTS: usize = 64;
 
-/// Face SAT query result. (b3FaceQuery)
+/// A single separating axis (face-A, face-B, or edge-pair). (b3SeparatingAxis)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub(crate) struct FaceQuery {
-    pub separation: f32,
-    pub face_index: i32,
-    pub vertex_index: i32,
-}
-
-/// Edge-pair SAT query result. (b3EdgeQuery)
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub(crate) struct EdgeQuery {
+pub(crate) struct SeparatingAxis {
     pub normal: Vec3,
     pub separation: f32,
     pub index_a: i32,
     pub index_b: i32,
-}
-
-/// Separating axis query result from the SIMD hull collision path. (b3AxisQuery)
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct AxisQuery {
-    pub normal: Vec3,
-    pub separation: f32,
-    pub index_a: i32,
-    pub index_b: i32,
-    /// [`SeparatingFeature`] describing which axis type won.
+    /// [`SeparatingFeature`] describing which axis type this is.
     pub type_: SeparatingFeature,
 }
 
-impl Default for AxisQuery {
-    fn default() -> Self {
-        AxisQuery {
-            normal: VEC3_ZERO,
-            separation: 0.0,
-            index_a: 0,
-            index_b: 0,
-            type_: SeparatingFeature::InvalidAxis,
+/// Separating axis query result from the SIMD hull collision path. Holds the best
+/// axis of each of the three feature types plus the feature that separated the hulls
+/// (if any). (b3AxisQuery)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct AxisQuery {
+    pub face_a: SeparatingAxis,
+    pub face_b: SeparatingAxis,
+    pub edge: SeparatingAxis,
+    /// The feature that separated the hulls, or [`SeparatingFeature::InvalidAxis`] if
+    /// the hulls are not separated. (separatedFeature)
+    pub separated_feature: SeparatingFeature,
+}
+
+/// Return the deepest of the three axes. Used by SAT tests. (b3GetBestAxis)
+#[cfg(test)]
+pub(crate) fn get_best_axis(query: &AxisQuery) -> SeparatingAxis {
+    debug_assert!(query.face_a.type_ == SeparatingFeature::FaceAxisA);
+    debug_assert!(query.edge.type_ == SeparatingFeature::EdgePairAxis);
+    debug_assert!(query.face_b.type_ == SeparatingFeature::FaceAxisB);
+
+    if query.face_a.separation > query.face_b.separation {
+        if query.edge.separation > query.face_a.separation {
+            return query.edge;
         }
+
+        return query.face_a;
     }
+
+    if query.edge.separation > query.face_b.separation {
+        return query.edge;
+    }
+
+    query.face_b
 }
 
 /// Cached separating axis feature. (b3SeparatingFeature)

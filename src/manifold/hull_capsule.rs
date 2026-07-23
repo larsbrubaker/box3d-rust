@@ -9,8 +9,7 @@ use super::sat::{
     query_face_direction_hull_and_capsule,
 };
 use super::types::{
-    make_feature_pair, ClipVertex, EdgeQuery, FaceQuery, FeatureOwner, LocalManifold,
-    FEATURE_PAIR_SINGLE,
+    make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, SeparatingAxis, FEATURE_PAIR_SINGLE,
 };
 use crate::constants::{linear_slop, speculative_distance};
 use crate::core::NULL_INDEX;
@@ -30,10 +29,10 @@ fn build_hull_face_and_capsule_contact(
     hull_a: &HullData,
     capsule_b: &Capsule,
     transform_b_to_a: Transform,
-    query: FaceQuery,
+    query: SeparatingAxis,
 ) -> bool {
     let planes = get_hull_planes(hull_a);
-    let ref_face = query.face_index;
+    let ref_face = query.index_a;
     let ref_plane = planes[ref_face as usize];
 
     let mut segment_b = [
@@ -97,7 +96,7 @@ fn build_hull_and_capsule_edge_contact(
     hull_a: &HullData,
     capsule_b: &Capsule,
     transform_b_to_a: Transform,
-    query: EdgeQuery,
+    query: SeparatingAxis,
 ) -> bool {
     if capacity < 1 {
         return false;

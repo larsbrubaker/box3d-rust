@@ -22,9 +22,10 @@ use box3d_rust::distance::SimplexCache;
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
 use box3d_rust::manifold::{
-    collide_capsule_and_sphere, collide_capsule_and_triangle, collide_capsules,
-    collide_hull_and_capsule, collide_hull_and_sphere, collide_hull_and_triangle, collide_hulls,
-    collide_sphere_and_triangle, collide_spheres, LocalManifold, SatCache, SeparatingFeature,
+    collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
+    collide_hull_and_sphere, collide_hulls, collide_spheres, collide_triangle_and_capsule,
+    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, SatCache,
+    SeparatingFeature,
 };
 use box3d_rust::math_functions::{
     inv_mul_transforms, make_quat_from_axis_angle, rotate_vector, transform_point, Quat, Transform,
@@ -419,7 +420,7 @@ impl ManifoldDemo {
             }
             Kind::TriangleSphere => {
                 let local = self.local_triangle_in_b();
-                collide_sphere_and_triangle(&mut self.manifold, cap, &self.sphere_b, &local);
+                collide_triangle_and_sphere(&mut self.manifold, cap, &local, &self.sphere_b);
             }
             Kind::CapsuleCapsule => {
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
@@ -450,11 +451,11 @@ impl ManifoldDemo {
                     self.simplex_cache = SimplexCache::default();
                 }
                 let local = self.local_triangle_in_b();
-                collide_capsule_and_triangle(
+                collide_triangle_and_capsule(
                     &mut self.manifold,
                     cap,
-                    &self.capsule_b,
                     &local,
+                    &self.capsule_b,
                     &mut self.simplex_cache,
                 );
             }
@@ -473,14 +474,14 @@ impl ManifoldDemo {
             Kind::TriangleHull => {
                 self.apply_manual_sat_feature();
                 let local = self.local_triangle_in_b();
-                collide_hull_and_triangle(
+                collide_triangle_and_hull(
                     &mut self.manifold,
                     cap,
-                    &self.hull_b.base,
                     local[0],
                     local[1],
                     local[2],
                     self.triangle_flags,
+                    &self.hull_b.base,
                     &mut self.sat_cache,
                     true,
                 );

@@ -5,16 +5,16 @@
 //! SPDX-License-Identifier: MIT
 
 use super::{
-    check_edge_contact, ensure_small, exact_quat, exact_rotation, hull_edge_segment, min_separation,
-    v, AXIS_X, AXIS_Y, HALF_DIAGONAL, HALF_ROOT2, TILT_ANGLES, TILT_AXES,
+    check_edge_contact, ensure_small, exact_quat, exact_rotation, hull_edge_segment,
+    min_separation, v, AXIS_X, AXIS_Y, HALF_DIAGONAL, HALF_ROOT2, TILT_ANGLES, TILT_AXES,
 };
 use crate::constants::speculative_distance;
 use crate::distance::SimplexCache;
 use crate::geometry::{Capsule, Sphere};
 use crate::hull::{make_box_hull, make_transformed_box_hull};
 use crate::manifold::{
-    collide_capsule_and_triangle, collide_hull_and_capsule, collide_hull_and_sphere,
-    collide_hull_and_triangle, LocalManifold, SatCache, SeparatingFeature, TriangleFeature,
+    collide_hull_and_capsule, collide_hull_and_sphere, collide_triangle_and_capsule,
+    collide_triangle_and_hull, LocalManifold, SatCache, SeparatingFeature, TriangleFeature,
 };
 use crate::math_functions::{
     add, cross, dot, lerp, mul_add, mul_sv, neg, normalize, rotate_vector, sub, PI,
@@ -63,7 +63,17 @@ fn triangle_edge_test() {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
         };
-        collide_hull_and_triangle(&mut manifold, 8, &hull.base, v1, v2, v3, 0, &mut cache, true);
+        collide_triangle_and_hull(
+            &mut manifold,
+            8,
+            v1,
+            v2,
+            v3,
+            0,
+            &hull.base,
+            &mut cache,
+            true,
+        );
 
         let expected_normal = neg(axis);
         let expected_point = mul_add(hull_point, 0.5 * gap, axis);
@@ -92,7 +102,17 @@ fn triangle_edge_test() {
 
         let mut manifold = LocalManifold::default();
         let mut cache = SatCache::default();
-        collide_hull_and_triangle(&mut manifold, 8, &hull.base, v1, v2, v3, 0, &mut cache, true);
+        collide_triangle_and_hull(
+            &mut manifold,
+            8,
+            v1,
+            v2,
+            v3,
+            0,
+            &hull.base,
+            &mut cache,
+            true,
+        );
 
         assert_eq!(manifold.point_count, 0);
         assert!(edge_pair(&cache));
@@ -119,7 +139,17 @@ fn triangle_parallel_edge_test() {
 
             let mut manifold = LocalManifold::default();
             let mut cache = SatCache::default();
-            collide_hull_and_triangle(&mut manifold, 8, &hull.base, v1, v2, v3, 0, &mut cache, true);
+            collide_triangle_and_hull(
+                &mut manifold,
+                8,
+                v1,
+                v2,
+                v3,
+                0,
+                &hull.base,
+                &mut cache,
+                true,
+            );
 
             assert_eq!(manifold.point_count, 4);
             assert_eq!(cache.type_, SeparatingFeature::FaceAxisA as u8);
@@ -247,14 +277,14 @@ fn triangle_hull_edge_sweep_test() {
                     type_: SeparatingFeature::ManualEdgePairAxis as u8,
                     ..Default::default()
                 };
-                collide_hull_and_triangle(
+                collide_triangle_and_hull(
                     &mut manifold,
                     8,
-                    &hull.base,
                     v1,
                     v2,
                     v3,
                     0,
+                    &hull.base,
                     &mut cache,
                     true,
                 );
@@ -266,7 +296,8 @@ fn triangle_hull_edge_sweep_test() {
                 let p1 = triangle_verts[cache.index_a as usize];
                 let e1 = triangle_edges[cache.index_a as usize];
 
-                let (p2, e2) = hull_edge_segment(&hull.base, cache.index_b as i32, TRANSFORM_IDENTITY);
+                let (p2, e2) =
+                    hull_edge_segment(&hull.base, cache.index_b as i32, TRANSFORM_IDENTITY);
 
                 // Normal points from the triangle into the hull
                 let orient_ref = sub(hull.base.center, triangle_center);
@@ -318,7 +349,7 @@ fn capsule_triangle_edge_deep_test() {
 
                     let mut manifold = LocalManifold::default();
                     let mut cache = SimplexCache::default();
-                    collide_capsule_and_triangle(&mut manifold, 8, &capsule, &triangle, &mut cache);
+                    collide_triangle_and_capsule(&mut manifold, 8, &triangle, &capsule, &mut cache);
 
                     // Only the edge contacts exercise the new axis. Face contacts are handled elsewhere.
                     let feature = manifold.feature as u8;

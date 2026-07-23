@@ -11,7 +11,9 @@ use super::integrate::{finalize_bodies, integrate_positions, integrate_velocitie
 use super::StepContext;
 use crate::body::body_flags;
 use crate::broad_phase::{proxy_id, proxy_type};
-use crate::constants::{GRAPH_COLOR_COUNT, RELAX_ITERATIONS, SOLVER_ITERATIONS};
+use crate::constants::{
+    GRAPH_COLOR_COUNT, RELAX_ITERATIONS, RESTITUTION_ITERATIONS, SOLVER_ITERATIONS,
+};
 use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::contact_solver::{
     apply_restitution, apply_restitution_convex, flag_hit_events, prepare_color_contacts,
@@ -247,7 +249,7 @@ pub fn solve(world: &mut World, context: &StepContext) {
     }
 
     // Restitution
-    {
+    for _ in 0..RESTITUTION_ITERATIONS {
         let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
         // Overflow always uses Mesh restitution (C: b3ApplyRestitution_Overflow)
         apply_restitution(

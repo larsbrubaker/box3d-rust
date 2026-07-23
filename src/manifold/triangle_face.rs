@@ -6,7 +6,7 @@
 use super::clip::{clip_polygon, find_incident_face, flip_pair};
 use super::triangle_hull::TriangleData;
 use super::types::{
-    make_feature_pair, ClipVertex, EdgeQuery, FaceQuery, FeatureOwner, LocalManifold, SatCache,
+    make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, SatCache, SeparatingAxis,
     SeparatingFeature, TriangleFeature, MAX_CLIP_POINTS,
 };
 use crate::constants::speculative_distance;
@@ -21,10 +21,14 @@ pub(crate) fn collide_hull_face(
     point_capacity: i32,
     triangle: &TriangleData,
     hull: &HullData,
-    query: FaceQuery,
+    query: SeparatingAxis,
     cache: &mut SatCache,
     enable_speculative: bool,
 ) -> f32 {
+    debug_assert!(query.type_ == SeparatingFeature::FaceAxisB);
+    debug_assert!(0 <= query.index_a && query.index_a < 3);
+    debug_assert!(0 <= query.index_b && query.index_b < hull.face_count);
+
     manifold.point_count = 0;
 
     let hull_faces = get_hull_faces(hull);
@@ -32,7 +36,7 @@ pub(crate) fn collide_hull_face(
     let hull_planes = get_hull_planes(hull);
     let hull_points = get_hull_points(hull);
 
-    let ref_face = query.face_index;
+    let ref_face = query.index_b;
     let ref_plane = hull_planes[ref_face as usize];
 
     let mut buffer1 = [ClipVertex::default(); MAX_CLIP_POINTS];
@@ -148,8 +152,8 @@ pub(crate) fn collide_hull_face(
 
     cache.separation = min_separation;
     cache.type_ = SeparatingFeature::FaceAxisB as u8;
-    cache.index_a = query.vertex_index as u8;
-    cache.index_b = query.face_index as u8;
+    cache.index_a = query.index_a as u8;
+    cache.index_b = query.index_b as u8;
     min_separation
 }
 
@@ -159,20 +163,22 @@ pub(crate) fn collide_triangle_face(
     point_capacity: i32,
     triangle: &TriangleData,
     hull: &HullData,
-    query: FaceQuery,
+    query: SeparatingAxis,
     cache: &mut SatCache,
     enable_speculative: bool,
 ) -> f32 {
+    debug_assert!(query.type_ == SeparatingFeature::FaceAxisA);
+    debug_assert!(query.index_a == 0);
+    debug_assert!(0 <= query.index_b && query.index_b < hull.vertex_count);
     debug_assert!(manifold.point_count == 0);
 
     let hull_faces = get_hull_faces(hull);
     let hull_edges = get_hull_edges(hull);
     let hull_points = get_hull_points(hull);
 
-    debug_assert!(query.face_index == 0);
     let ref_plane = triangle.plane;
 
-    let inc_face = find_incident_face(hull, ref_plane.normal, query.vertex_index);
+    let inc_face = find_incident_face(hull, ref_plane.normal, query.index_b);
 
     // Build clip polygon from incident face
     let mut buffer1 = [ClipVertex::default(); 2 * MAX_CLIP_POINTS];
@@ -296,23 +302,25 @@ pub(crate) fn collide_triangle_face(
 
     cache.separation = min_separation;
     cache.type_ = SeparatingFeature::FaceAxisA as u8;
-    cache.index_a = query.face_index as u8;
-    cache.index_b = query.vertex_index as u8;
+    cache.index_a = query.index_a as u8;
+    cache.index_b = query.index_b as u8;
     min_separation
 }
 
-/// Build edge-edge contact between hull and triangle. (static b3CollideHullAndTriangleEdges)
-pub(crate) fn collide_hull_and_triangle_edges(
+/// Build edge-edge contact between triangle and hull. (static b3CollideTriangleAndHullEdges)
+pub(crate) fn collide_triangle_and_hull_edges(
     manifold: &mut LocalManifold,
     capacity: i32,
     triangle_point: Vec3,
     triangle_edge: Vec3,
     hull: &HullData,
-    query: EdgeQuery,
+    query: SeparatingAxis,
     cache: &mut SatCache,
 ) {
+    debug_assert!(query.type_ == SeparatingFeature::EdgePairAxis);
+    debug_assert!(0 <= query.index_a && query.index_a < 3);
+    debug_assert!(0 <= query.index_b && query.index_b < hull.edge_count);
     debug_assert!(query.separation <= 2.0 * speculative_distance());
-    debug_assert!(query.index_a < 3);
 
     let p_a = triangle_point;
     let e_a = triangle_edge;

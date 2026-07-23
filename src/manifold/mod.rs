@@ -25,8 +25,8 @@ pub use clip::{find_incident_face, flip_pair};
 pub use hull_capsule::collide_hull_and_capsule;
 pub use hulls::collide_hulls;
 pub use spheres::{collide_capsule_and_sphere, collide_hull_and_sphere, collide_spheres};
-pub use triangle::{collide_capsule_and_triangle, collide_sphere_and_triangle};
-pub use triangle_hull::collide_hull_and_triangle;
+pub use triangle::{collide_triangle_and_capsule, collide_triangle_and_sphere};
+pub use triangle_hull::collide_triangle_and_hull;
 pub use types::{
     make_feature_id, make_feature_pair, FeatureOwner, FeaturePair, LocalManifold,
     LocalManifoldPoint, Manifold, ManifoldPoint, SatCache, SeparatingFeature, TriangleFeature,
@@ -35,3 +35,5 @@ pub use types::{
 
 #[cfg(test)]
 pub(crate) use separating_axis::compute_separating_axis;
+#[cfg(test)]
+pub(crate) use types::get_best_axis;
