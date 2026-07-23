@@ -2,11 +2,12 @@
 //! Indices replace C pointers; `SENTINEL` is the list head, `UNLINKED` is C's NULL.
 
 use crate::core::NULL_INDEX;
-use crate::math_functions::{Plane, Vec3, VEC3_ZERO};
+use crate::math_functions::{max_int, Plane, Vec3, VEC3_ZERO};
 
 pub(super) const MARK_VISIBLE: i32 = 0;
 pub(super) const MARK_DELETE: i32 = 1;
-pub(super) const HULL_LIMIT: i32 = 255;
+// Final hull is index-encoded with uint8_t, so vertex/edge/face counts are capped at 256.
+pub(super) const HULL_MAX_COUNT: i32 = u8::MAX as i32 + 1;
 
 /// Not in a list (C NULL).
 pub(super) const UNLINKED: i32 = -2;
@@ -129,26 +130,20 @@ pub(super) struct HullWorkSizes {
 
 pub(super) fn compute_hull_work_sizes(point_count: i32, clamped_max_count: i32) -> HullWorkSizes {
     let m = clamped_max_count;
-    let mut edge_capacity = 24 * m - 48;
-    if edge_capacity < 48 {
-        edge_capacity = 48;
-    }
-    let mut face_capacity = 5 * m - 10;
-    if face_capacity < 16 {
-        face_capacity = 16;
-    }
-    let mut horizon_capacity = 3 * m - 6;
-    if horizon_capacity < 6 {
-        horizon_capacity = 6;
-    }
-    let mut merged_faces_capacity = 2 * m - 4;
-    if merged_faces_capacity < 4 {
-        merged_faces_capacity = 4;
-    }
-    let mut horizon_stack_capacity = 2 * m - 4;
-    if horizon_stack_capacity < 4 {
-        horizon_stack_capacity = 4;
-    }
+
+    // Edges and faces use free-list recycling; capacity is proportional to live hull size.
+    // edgeCapacity: peak is ~twice live edges plus cone edges. Minimum 48.
+    let edge_capacity = max_int(48, 24 * m - 48);
+
+    // faceCapacity: peak intermediate state live faces (<=2*M-4) plus full cone (<=3*M-6). Minimum 16.
+    let face_capacity = max_int(16, 5 * m - 10);
+
+    // Horizon/cone bounded by current half-edge count. Merged faces by face count.
+    let horizon_capacity = max_int(6, 3 * m - 6);
+    let merged_faces_capacity = max_int(4, 2 * m - 4);
+
+    // Horizon DFS depth is bounded by the number of live faces (Euler: <=2*M-4).
+    let horizon_stack_capacity = max_int(4, 2 * m - 4);
 
     HullWorkSizes {
         vertex_capacity: point_count + 4,
@@ -404,12 +399,14 @@ impl HullBuilder {
     }
 
     pub fn retire_face(&mut self, face: i32) {
+        // Sometimes a cone face gets merged and never added to the list.
         if list_contains(&self.faces[face as usize].link) {
             self.face_list_remove(face);
         }
         self.faces[face as usize].edge = NULL_INDEX;
+        // link.prev is already UNLINKED after Remove (or was never set).
+        debug_assert!(self.faces[face as usize].link.prev == UNLINKED);
         self.faces[face as usize].link.next = self.face_free_head;
-        self.faces[face as usize].link.prev = UNLINKED;
         self.face_free_head = face;
     }
 

@@ -1,10 +1,10 @@
 //! Hull creation: CreateHull, Clone, Destroy, Cylinder/Cone/Rock.
 
-use super::builder_pool::{compute_hull_work_sizes, HullBuilder, HULL_LIMIT, SENTINEL};
+use super::builder_pool::{compute_hull_work_sizes, HullBuilder, HULL_MAX_COUNT, SENTINEL};
 use super::types::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION};
 use super::validate::is_valid_hull;
 use crate::constants::{MAX_HULL_EDGES, MAX_HULL_FACES, MAX_HULL_VERTICES};
-use crate::core::{hash, non_zero_hash, HASH_INIT};
+use crate::core::{hash, non_zero_hash, HASH_INIT, NULL_INDEX};
 use crate::math_functions::{
     add, align_up8, clamp_int, compute_cos_sin, cos, cross, length, make_matrix_from_quat,
     make_plane_from_normal_and_point, max, min, mul, mul_mv, mul_sm, mul_sv, plane_separation,
@@ -156,32 +156,34 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
     }
 
     let max_half_edge_count = 2 * MAX_HULL_EDGES;
-    if builder.final_vertex_count >= MAX_HULL_VERTICES
-        || builder.final_face_count >= MAX_HULL_FACES
-        || builder.final_half_edge_count >= max_half_edge_count
+    if builder.final_vertex_count > MAX_HULL_VERTICES
+        || builder.final_face_count > MAX_HULL_FACES
+        || builder.final_half_edge_count > max_half_edge_count
     {
         return None;
     }
 
-    let mut temp_vertices = Vec::with_capacity(HULL_LIMIT as usize);
+    // Walk lists into temp arrays bounded by HULL_MAX_COUNT, stamping final_index on each node so
+    // the resolution pass below is O(E + F) instead of O(E^2 + F^2).
+    let mut temp_vertices = Vec::with_capacity(HULL_MAX_COUNT as usize);
     let mut vertex_count = 0i32;
     let mut node = builder.vertex_list.next;
     while node != SENTINEL {
-        debug_assert!(vertex_count <= HULL_LIMIT - 1);
+        debug_assert!(vertex_count < HULL_MAX_COUNT);
         builder.vertices[node as usize].final_index = vertex_count;
         temp_vertices.push(node);
         vertex_count += 1;
         node = builder.vertices[node as usize].link.next;
     }
 
-    let mut temp_faces = Vec::with_capacity(HULL_LIMIT as usize);
-    let mut temp_edges = vec![0i32; HULL_LIMIT as usize];
+    let mut temp_faces = Vec::with_capacity(HULL_MAX_COUNT as usize);
+    let mut temp_edges = vec![0i32; HULL_MAX_COUNT as usize];
     let mut face_count = 0i32;
     let mut edge_count = 0i32;
 
     let mut face_node = builder.face_list.next;
     while face_node != SENTINEL {
-        debug_assert!(face_count <= HULL_LIMIT - 1);
+        debug_assert!(face_count < HULL_MAX_COUNT);
         let face = face_node;
         builder.faces[face as usize].final_index = face_count;
         temp_faces.push(face);
@@ -191,7 +193,7 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         let mut edge = start;
         loop {
             if builder.edges[edge as usize].final_index < 0 {
-                debug_assert!(edge_count + 1 <= HULL_LIMIT - 1);
+                debug_assert!(edge_count + 1 < HULL_MAX_COUNT);
                 builder.edges[edge as usize].final_index = edge_count;
                 temp_edges[edge_count as usize] = edge;
                 edge_count += 1;
@@ -352,12 +354,12 @@ pub fn clone_and_transform_hull(
     if safe_scale.x * safe_scale.y * safe_scale.z < 0.0 {
         // Reflected: reverse edge winding for each face.
         for i in 0..face_count {
-            let start_edge_index = hull.faces[i].edge;
+            let start_edge_index = hull.faces[i].edge as i32;
             let mut current_edge_index = start_edge_index;
-            let mut prev_edge_index: u8 = u8::MAX;
+            let mut prev_edge_index: i32 = NULL_INDEX;
 
             loop {
-                let edge_next = hull.edges[current_edge_index as usize].next;
+                let edge_next = hull.edges[current_edge_index as usize].next as i32;
                 if edge_next == start_edge_index {
                     prev_edge_index = current_edge_index;
                     break;
@@ -368,14 +370,14 @@ pub fn clone_and_transform_hull(
                 }
             }
 
-            debug_assert!(prev_edge_index != u8::MAX);
+            debug_assert!(prev_edge_index != NULL_INDEX);
 
             current_edge_index = start_edge_index;
 
             loop {
-                let next_index = hull.edges[current_edge_index as usize].next;
-                let twin = hull.edges[current_edge_index as usize].twin;
-                hull.edges[current_edge_index as usize].next = prev_edge_index;
+                let next_index = hull.edges[current_edge_index as usize].next as i32;
+                let twin = hull.edges[current_edge_index as usize].twin as i32;
+                hull.edges[current_edge_index as usize].next = prev_edge_index as u8;
 
                 if current_edge_index < twin {
                     let a = hull.edges[current_edge_index as usize].origin;

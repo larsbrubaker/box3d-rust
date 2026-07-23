@@ -548,7 +548,22 @@ impl HullBuilder {
                 && list_contains(&self.faces[face as usize].link)
             {
                 debug_assert!(list_empty(&self.faces[face as usize].conflict_list_head));
-                self.face_list_remove(face);
+
+                // Each half-edge is owned by exactly one face, so ring walks over the
+                // dead region retire every interior edge exactly once. Merge deleted
+                // faces are already off the face list.
+                let start = self.faces[face as usize].edge;
+                let mut edge = start;
+                loop {
+                    let next = self.edges[edge as usize].next;
+                    self.retire_edge(edge);
+                    edge = next;
+                    if edge == start {
+                        break;
+                    }
+                }
+
+                self.retire_face(face);
             }
         }
 
@@ -654,7 +669,7 @@ impl HullBuilder {
             return false;
         }
 
-        let mut budget = clamp_int(max_vertex_count - 4, 0, HULL_LIMIT - 4);
+        let mut budget = clamp_int(max_vertex_count - 4, 0, HULL_MAX_COUNT - 4);
         let mut vertex = self.next_conflict_vertex();
         while vertex != NULL_INDEX && budget > 0 {
             self.add_vertex_to_hull(vertex);
