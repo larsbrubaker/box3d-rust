@@ -11,6 +11,9 @@ use box3d_rust::math_functions::Vec3;
 
 /// `(offset, count)` into [`WHEEL1_VERTS`] for each of the 37 decomposition pieces
 /// (C `WheelHullSpan s_metalWheel1Hulls[37]`).
+// Verbatim data table: keep the C source's compact row layout instead of letting
+// rustfmt explode each tuple/vertex onto its own line.
+#[rustfmt::skip]
 pub static WHEEL1_HULLS: [(usize, usize); 37] = [
     (0, 29), (29, 8), (37, 8), (45, 8), (53, 8),
     (61, 8), (69, 8), (77, 8), (85, 8), (93, 8),
@@ -23,6 +26,7 @@ pub static WHEEL1_HULLS: [(usize, usize); 37] = [
 ];
 
 /// The 317 wheel vertices (C `s_metalWheel1Verts[317]`), s&box mesh units.
+#[rustfmt::skip]
 pub static WHEEL1_VERTS: [Vec3; 317] = [
     Vec3 { x: 0.010279, y: 0.086341, z: 0.051768 },
     Vec3 { x: -0.010314, y: -0.084708, z: 0.051804 },

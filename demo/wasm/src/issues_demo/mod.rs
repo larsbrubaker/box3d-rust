@@ -323,7 +323,11 @@ fn ghost_post_step(state: &mut IssuesState) {
 #[wasm_bindgen]
 pub fn issues_ghost_hud() -> Vec<f32> {
     with_state(|state| match &state.ghost {
-        Some(g) => vec![g.launch_count as f32, g.max_launch_speed, g.vertical_velocity],
+        Some(g) => vec![
+            g.launch_count as f32,
+            g.max_launch_speed,
+            g.vertical_velocity,
+        ],
         None => Vec::new(),
     })
 }

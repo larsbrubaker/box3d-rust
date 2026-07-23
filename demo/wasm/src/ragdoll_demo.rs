@@ -264,7 +264,11 @@ fn build_pile(state: &mut RagdollState) {
     // though only x and z are used, so the seeded call order must be preserved.
     set_random_seed(42);
     let a = 0.1 * PILE_COUNT as f32;
-    let lower = Vec3 { x: -a, y: -a, z: -a };
+    let lower = Vec3 {
+        x: -a,
+        y: -a,
+        z: -a,
+    };
     let upper = Vec3 { x: a, y: a, z: a };
     for i in 0..PILE_COUNT {
         let offset = random_vec3(lower, upper);

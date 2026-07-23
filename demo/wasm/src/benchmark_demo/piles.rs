@@ -454,10 +454,7 @@ struct ConvexPileRandom {
 impl ConvexPileRandom {
     /// `NextConvexPileRandom` (`benchmarks.c` :921).
     fn next(&mut self) -> u32 {
-        self.state = self
-            .state
-            .wrapping_mul(2147001325)
-            .wrapping_add(715136305);
+        self.state = self.state.wrapping_mul(2147001325).wrapping_add(715136305);
         self.state
     }
 
@@ -503,7 +500,12 @@ pub(crate) fn build_convex_pile() -> BenchScene {
         };
         let ground = create_body(&mut scene.world, &body_def);
         let box_hull = make_box_hull(250.0, 1.0, 250.0);
-        create_hull_shape(&mut scene.world, ground, &default_shape_def(), &box_hull.base);
+        create_hull_shape(
+            &mut scene.world,
+            ground,
+            &default_shape_def(),
+            &box_hull.base,
+        );
         scene
             .bodies
             .push(VisBody::box_body(ground.index1 - 1, 250.0, 1.0, 250.0));

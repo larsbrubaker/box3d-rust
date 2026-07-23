@@ -649,9 +649,17 @@ fn create_floor_chunk(state: &mut IssuesState, chunk: i32, x0u: f32, x1u: f32) {
 
     let bd = default_body_def();
     let body = create_body(&mut state.world, &bd);
-    create_mesh_shape(&mut state.world, body, &default_shape_def(), &mesh, VEC3_ONE);
+    create_mesh_shape(
+        &mut state.world,
+        body,
+        &default_shape_def(),
+        &mesh,
+        VEC3_ONE,
+    );
 
-    state
-        .static_wire
-        .extend(mesh_triangle_edges_offset(&mesh, VEC3_ONE, vec3(0.0, 0.0, 0.0)));
+    state.static_wire.extend(mesh_triangle_edges_offset(
+        &mesh,
+        VEC3_ONE,
+        vec3(0.0, 0.0, 0.0),
+    ));
 }

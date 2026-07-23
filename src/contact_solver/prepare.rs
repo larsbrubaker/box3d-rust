@@ -5,12 +5,12 @@
 
 use super::{ContactConstraint, ManifoldConstraint, ManifoldConstraintPoint};
 use crate::body::{BodySim, BodyState};
+use crate::constants::{speculative_distance, MIN_FRICTION_WEIGHT};
 use crate::contact::{contact_flags, Contact};
 use crate::core::NULL_INDEX;
-use crate::constants::{speculative_distance, MIN_FRICTION_WEIGHT};
 use crate::math_functions::{
-    add, add_mm, clamp_float, cross, distance, dot, invert2, invert_matrix, mul_add, mul_mv, mul_sv,
-    perp, sub, Vec2, MAT2_ZERO, MAT3_ZERO, VEC3_ZERO,
+    add, add_mm, clamp_float, cross, distance, dot, invert2, invert_matrix, mul_add, mul_mv,
+    mul_sv, perp, sub, Vec2, MAT2_ZERO, MAT3_ZERO, VEC3_ZERO,
 };
 use crate::solver::StepContext;
 

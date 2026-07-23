@@ -7,7 +7,9 @@
 
 use super::{install, pos, push_box_rot};
 use crate::sim_demo::{add_ground, SimState};
-use box3d_rust::math_functions::{make_quat_from_axis_angle, normalize, Quat, Vec3, PI, QUAT_IDENTITY};
+use box3d_rust::math_functions::{
+    make_quat_from_axis_angle, normalize, Quat, Vec3, PI, QUAT_IDENTITY,
+};
 use wasm_bindgen::prelude::*;
 
 /// Edge Crossing (`sample_stacking.cpp` :852). For each of three rows a base box
@@ -41,20 +43,35 @@ pub fn sim_reset_edge_crossing() -> u32 {
         // at `20·base_y`) for every `0.1·π` angle across `[-π, π]`, marching +1 in x.
         let put = |sim: &mut SimState, x: f32, y: f32, z: f32, rot: Quat, dims: (f32, f32, f32)| {
             push_box_rot(
-                sim, pos(x, y, z), rot, dims.0, dims.1, dims.2, 1000.0, 0.6, 0.0,
+                sim,
+                pos(x, y, z),
+                rot,
+                dims.0,
+                dims.1,
+                dims.2,
+                1000.0,
+                0.6,
+                0.0,
             );
         };
         let row = |sim: &mut SimState,
-                       z: f32,
-                       base_dims: (f32, f32, f32),
-                       base_y: f32,
-                       drop_dims: (f32, f32, f32),
-                       drop_y: f32| {
+                   z: f32,
+                   base_dims: (f32, f32, f32),
+                   base_y: f32,
+                   drop_dims: (f32, f32, f32),
+                   drop_y: f32| {
             let mut x = -10.0f32;
             let mut angle = -PI;
             while angle < PI + 0.001 {
                 put(sim, x, base_y, z, QUAT_IDENTITY, base_dims);
-                put(sim, x, drop_y, z, make_quat_from_axis_angle(axis, angle), drop_dims);
+                put(
+                    sim,
+                    x,
+                    drop_y,
+                    z,
+                    make_quat_from_axis_angle(axis, angle),
+                    drop_dims,
+                );
                 x += 1.0;
                 angle += 0.1 * PI;
             }

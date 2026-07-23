@@ -83,10 +83,26 @@ fn emit_patch(
             let cz0 = z0 + (z1 - z0) * iz as f32 / count_z as f32;
             let cz1 = z0 + (z1 - z0) * (iz + 1) as f32 / count_z as f32;
 
-            let a = Vec3 { x: SRC * cx0, y: SRC * y, z: SRC * cz0 };
-            let b = Vec3 { x: SRC * cx1, y: SRC * y, z: SRC * cz0 };
-            let c = Vec3 { x: SRC * cx1, y: SRC * y, z: SRC * cz1 };
-            let d = Vec3 { x: SRC * cx0, y: SRC * y, z: SRC * cz1 };
+            let a = Vec3 {
+                x: SRC * cx0,
+                y: SRC * y,
+                z: SRC * cz0,
+            };
+            let b = Vec3 {
+                x: SRC * cx1,
+                y: SRC * y,
+                z: SRC * cz0,
+            };
+            let c = Vec3 {
+                x: SRC * cx1,
+                y: SRC * y,
+                z: SRC * cz1,
+            };
+            let d = Vec3 {
+                x: SRC * cx0,
+                y: SRC * y,
+                z: SRC * cz1,
+            };
 
             // Alternate the split diagonal like typical cooked map data.
             if (ix + iz) & 1 != 0 {
@@ -117,10 +133,26 @@ fn emit_slope(
         let z1 =
             -(HALF_WIDTH_U as f32) + 2.0 * HALF_WIDTH_U as f32 * (iz + 1) as f32 / count_z as f32;
 
-        let l0 = Vec3 { x: SRC * x_low, y: SRC * y_low, z: SRC * z0 };
-        let l1 = Vec3 { x: SRC * x_low, y: SRC * y_low, z: SRC * z1 };
-        let h0 = Vec3 { x: SRC * x_high, y: SRC * y_high, z: SRC * z0 };
-        let h1 = Vec3 { x: SRC * x_high, y: SRC * y_high, z: SRC * z1 };
+        let l0 = Vec3 {
+            x: SRC * x_low,
+            y: SRC * y_low,
+            z: SRC * z0,
+        };
+        let l1 = Vec3 {
+            x: SRC * x_low,
+            y: SRC * y_low,
+            z: SRC * z1,
+        };
+        let h0 = Vec3 {
+            x: SRC * x_high,
+            y: SRC * y_high,
+            z: SRC * z0,
+        };
+        let h1 = Vec3 {
+            x: SRC * x_high,
+            y: SRC * y_high,
+            z: SRC * z1,
+        };
 
         emit_triangle(vertices, indices, l0, l1, h1);
         emit_triangle(vertices, indices, l0, h1, h0);
@@ -144,10 +176,26 @@ fn emit_wall(
         let z1 =
             -(HALF_WIDTH_U as f32) + 2.0 * HALF_WIDTH_U as f32 * (iz + 1) as f32 / count_z as f32;
 
-        let b0 = Vec3 { x: SRC * x, y: SRC * y0, z: SRC * z0 };
-        let b1 = Vec3 { x: SRC * x, y: SRC * y0, z: SRC * z1 };
-        let t0 = Vec3 { x: SRC * x, y: SRC * y1, z: SRC * z0 };
-        let t1 = Vec3 { x: SRC * x, y: SRC * y1, z: SRC * z1 };
+        let b0 = Vec3 {
+            x: SRC * x,
+            y: SRC * y0,
+            z: SRC * z0,
+        };
+        let b1 = Vec3 {
+            x: SRC * x,
+            y: SRC * y0,
+            z: SRC * z1,
+        };
+        let t0 = Vec3 {
+            x: SRC * x,
+            y: SRC * y1,
+            z: SRC * z0,
+        };
+        let t1 = Vec3 {
+            x: SRC * x,
+            y: SRC * y1,
+            z: SRC * z1,
+        };
 
         if facing > 0 {
             emit_triangle(vertices, indices, b0, b1, t1);
@@ -247,7 +295,15 @@ pub fn create_floor_chunk(chunk: i32, x0u: f32, x1u: f32) -> (Vec<Vec3>, Vec<i32
 
         // Chamfers sloping below the walkable plane.
         if pit_left && bx >= x0u && bx < x1u {
-            emit_slope(&mut vertices, &mut indices, bx, pit_top, bx + CHAMFER_WIDTH_U, 0.0, 8.0);
+            emit_slope(
+                &mut vertices,
+                &mut indices,
+                bx,
+                pit_top,
+                bx + CHAMFER_WIDTH_U,
+                0.0,
+                8.0,
+            );
         }
         if pit_right && bx + BEAM_WIDTH_U > x0u && bx + BEAM_WIDTH_U <= x1u {
             emit_slope(
@@ -266,10 +322,26 @@ pub fn create_floor_chunk(chunk: i32, x0u: f32, x1u: f32) -> (Vec<Vec3>, Vec<i32
             let pit_l = bx + BEAM_WIDTH_U;
             let pit_r = bx + BEAM_PITCH_U;
             if pit_l >= x0u && pit_l < x1u {
-                emit_wall(&mut vertices, &mut indices, pit_l, pit_bottom, pit_top, 1, 16.0);
+                emit_wall(
+                    &mut vertices,
+                    &mut indices,
+                    pit_l,
+                    pit_bottom,
+                    pit_top,
+                    1,
+                    16.0,
+                );
             }
             if pit_r > x0u && pit_r <= x1u {
-                emit_wall(&mut vertices, &mut indices, pit_r, pit_bottom, pit_top, -1, 16.0);
+                emit_wall(
+                    &mut vertices,
+                    &mut indices,
+                    pit_r,
+                    pit_bottom,
+                    pit_top,
+                    -1,
+                    16.0,
+                );
             }
             if let Some((s0, s1)) = clip_span(pit_l, pit_r, x0u, x1u) {
                 emit_patch(

@@ -156,7 +156,11 @@ impl Rng {
 
 /// Pull the tail point and edge vector of a hull half-edge in a given frame.
 /// (HullEdgeSegment)
-pub(super) fn hull_edge_segment(hull: &HullData, edge_index: i32, transform: Transform) -> (Vec3, Vec3) {
+pub(super) fn hull_edge_segment(
+    hull: &HullData,
+    edge_index: i32,
+    transform: Transform,
+) -> (Vec3, Vec3) {
     let edges = get_hull_edges(hull);
     let points = get_hull_points(hull);
     let e = &edges[edge_index as usize];

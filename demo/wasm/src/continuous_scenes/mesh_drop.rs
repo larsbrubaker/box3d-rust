@@ -206,7 +206,12 @@ fn build_mesh_drop_ground(sim: &mut crate::sim_demo::SimState, amplitude: f32) {
 
 /// Spawn the 32×32 Mesh Drop projectile grid with velocities from `seed`.
 /// Matches `MeshDrop::Generate` (:522) with `simulateAll = true`.
-fn build_mesh_drop_bodies(sim: &mut crate::sim_demo::SimState, shape: u32, collide: bool, seed: u32) {
+fn build_mesh_drop_bodies(
+    sim: &mut crate::sim_demo::SimState,
+    shape: u32,
+    collide: bool,
+    seed: u32,
+) {
     let mut rng = XorShift32::with_seed(seed);
     let grid = MESH_DROP_GRID;
     for i in 0..grid {

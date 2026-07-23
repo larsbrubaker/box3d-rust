@@ -307,14 +307,7 @@ pub fn blend_w(a: FloatW, b: FloatW, mask: FloatW) -> FloatW {
 
 /// Component-wise 3D dot product across the four lanes. (b3Dot3W)
 #[inline]
-pub fn dot3_w(
-    ax: FloatW,
-    ay: FloatW,
-    az: FloatW,
-    bx: FloatW,
-    by: FloatW,
-    bz: FloatW,
-) -> FloatW {
+pub fn dot3_w(ax: FloatW, ay: FloatW, az: FloatW, bx: FloatW, by: FloatW, bz: FloatW) -> FloatW {
     FloatW {
         x: ax.x * bx.x + (ay.x * by.x + az.x * bz.x),
         y: ax.y * bx.y + (ay.y * by.y + az.y * bz.y),
