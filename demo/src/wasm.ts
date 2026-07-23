@@ -662,8 +662,13 @@ export interface Box3dWasm {
   world_far_set_enable_continuous(flag: boolean): void;
   world_far_set_recycle_distance(meters: number): void;
 
-  // Falling Ragdolls determinism soak (`sample_determinism.cpp`).
-  determinism_reset(): number;
+  // Determinism soak scenes (`sample_determinism.cpp`). One shared world/prefix:
+  // determinism_reset* selects the scene, the rest of the exports are scene-agnostic.
+  determinism_reset(): number; // Falling Ragdolls
+  determinism_reset_wave_pile(): number;
+  determinism_reset_query_spawn(): number;
+  determinism_reset_mesh_drop(): number;
+  determinism_query_viz(): Float32Array; // Query Spawn per-cycle overlay data
   determinism_step(dt: number, sub_steps: number): number;
   determinism_step_count(): number;
   determinism_poses(): Float32Array;
@@ -672,6 +677,7 @@ export interface Box3dWasm {
   determinism_done(): boolean;
   determinism_sleep_step(): number;
   determinism_hash(): number;
+  determinism_query_hash(): number; // Query Spawn accumulated query hash
   determinism_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   determinism_mouse_move(px: number, py: number, pz: number): void;
   determinism_mouse_up(): void;

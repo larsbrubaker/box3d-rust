@@ -49,14 +49,19 @@ The core library and test sync to `c52908c` is complete. The samples app moved
 too; the demo site still mirrors the `540ea38` samples. Port the user-visible
 sample changes into `demo/`:
 
-- [ ] New Mover sample (`samples/mover.cpp`/`mover.h`, ~347 lines) — character
-      mover demo category
-- [ ] `sample_issues.cpp` +858 lines of new Issues samples
-- [ ] `sample_stacking.cpp` (+247), `sample_determinism.cpp` (reworked),
-      `sample_benchmark.cpp`, `sample_bodies.cpp`, `sample_continuous.cpp`
-      updates; `shared/benchmarks.c` changes
+- [ ] Changed scenes: Jenga Stack rework (`sample_stacking.cpp` — camera,
+      ground 20, count 30, 1×0.1×0.1 boxes, rollingResistance 0.05), manifold
+      fixture updates (`sample_manifold.cpp` — capsule 0.15 radius, triangle
+      verts), Continuous Mesh Drop "Collide" checkbox + grid 20 probe index
+- [ ] New samples with no library helper: Benchmark Convex Pile (PEEL LCG seed
+      42), Stacking Edge Crossing, Bodies Gyroscopic Precession (now enabled
+      upstream), Issues: Restitution Overshoot, Slide Twist Off Center, GMod
+      Wheel Stack (317-vert data), s&box Ghost Collisions (~400 LOC procedural
+      mesh)
 - [ ] Update `demo/src/registry.ts` rows accordingly; renderer/shader work in
-      `samples/gfx` (e.g. shadow PCF) is optional visual polish
+      `samples/gfx` (e.g. shadow PCF) is optional visual polish. Note:
+      `samples/mover.cpp` is only a refactor extracting the already-ported
+      character mover into shared code — no new demo sample needed.
 
 ## Test-parity gap (pre-existing, found during the 2026-07 sync)
 

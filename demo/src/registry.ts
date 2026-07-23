@@ -10,7 +10,7 @@
 //               and/or on the page.
 //   `planned` — no route yet.
 //
-// Enumerated from the pinned submodule (pinned at c52908c). 147 active entries
+// Enumerated from the pinned submodule (pinned at c52908c). 150 active entries
 // across 19 categories. This inventory is mid-migration from the 540ea38 samples
 // to c52908c: the c52908c removals (Stacking "Card House Thick", Issues "Dump
 // Loader", Continuous "Mesh Drop Unit Test" — the last moved to Determinism) are
@@ -216,6 +216,16 @@ export const SAMPLES: SampleEntry[] = [
   ]),
   ...cat("Determinism", "sample_determinism.cpp", [
     ["Falling Ragdolls", "live", "determinism", "falling-ragdolls"],
+    // Live: 100 mixed convex bodies on a wave height field; sleep step + hash HUD.
+    ["Wave Pile", "live", "determinism", "wave-pile"],
+    // Live: zero-gravity query-driven spawning with the ray / overlap AABB / swept
+    // sphere / spawn overlay. The on-screen cadence (advance every 10th step) differs
+    // from the unit-test cadence, so the hashes differ from the pinned constants —
+    // disclosed on the page (matching the C QuerySpawn::Step comment).
+    ["Query Spawn", "live", "determinism", "query-spawn"],
+    // Live: 20×20 grid of thin fast boxes on a wave mesh (moved from Continuous at
+    // c52908c); sleep step + hash HUD, force draw scale 0.1.
+    ["Mesh Drop", "live", "determinism", "mesh-drop"],
   ]),
   ...cat("Events", "sample_events.cpp", [
     ["Sensor Visit", "live", "sensors", "visit"],
