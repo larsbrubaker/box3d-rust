@@ -3,7 +3,7 @@
 //!
 //! - Box     (RagdollOnBox, :11)  — one human on a ground box (unchanged original).
 //! - Mesh    (RagdollOnMesh, :81) — one human on a walled grid mesh, parallel anchors.
-//! - Pile    (RagdollPile, :207)  — `e_count` humans stacked on a grid mesh.
+//! - Pile    (RagdollPile, :208)  — `e_count` humans scattered on a grid mesh.
 //! - Incline (RagdollIncline, :264) — a human slides down two tilted grid grounds,
 //!   de-motorized after 2 s.
 //!
@@ -18,7 +18,8 @@ use box3d_rust::body::{create_body, get_body_transform};
 use box3d_rust::hull::make_box_hull;
 use box3d_rust::human::{
     create_human, human_create_parallel_anchors, human_set_joint_damping_ratio,
-    human_set_joint_friction_torque, human_set_joint_spring_hertz, Human, BONE_COUNT,
+    human_set_joint_friction_torque, human_set_joint_spring_hertz, random_vec3, set_random_seed,
+    Human, BONE_COUNT,
 };
 use box3d_rust::math_functions::{
     make_quat_from_axis_angle, Transform, Vec3, PI, QUAT_IDENTITY, VEC3_AXIS_Z, VEC3_ONE,
@@ -238,8 +239,9 @@ fn build_mesh(state: &mut RagdollState) {
     state.humans.push(human);
 }
 
-/// RagdollPile (:207): `PILE_COUNT` humans stacked over a grid-mesh ground at
-/// `{0, -1, 0}`, each with `groupIndex = i`, torque 10 / hertz 0.5 / damping 0.7.
+/// RagdollPile (:208): `PILE_COUNT` humans scattered over a grid-mesh ground at
+/// `{0, -1, 0}` via a seeded `RandomVec3` (g_randomSeed = 42), each with
+/// `groupIndex = i`, torque 10 / hertz 0.5 / damping 0.7.
 fn build_pile(state: &mut RagdollState) {
     let mut ground_def = default_body_def();
     ground_def.type_ = BodyType::Static;
@@ -257,8 +259,16 @@ fn build_pile(state: &mut RagdollState) {
         &mut state.ground_edges,
     );
 
+    // C c52908c seeds g_randomSeed = 42 and scatters each human via RandomVec3.
+    // RandomVec3 consumes three RandomFloatRange draws (x, y, z) per iteration even
+    // though only x and z are used, so the seeded call order must be preserved.
+    set_random_seed(42);
+    let a = 0.1 * PILE_COUNT as f32;
+    let lower = Vec3 { x: -a, y: -a, z: -a };
+    let upper = Vec3 { x: a, y: a, z: a };
     for i in 0..PILE_COUNT {
-        let position = pos(0.1 * i as f32, 2.0 + 0.5 * i as f32, -0.1 * i as f32);
+        let offset = random_vec3(lower, upper);
+        let position = pos(offset.x, 2.0, offset.z);
         let mut human = Human::default();
         create_human(
             &mut human,

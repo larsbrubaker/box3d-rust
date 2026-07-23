@@ -277,7 +277,6 @@ export interface Box3dWasm {
   sim_reset_spinning_stick(): number;
   sim_reset_needle_mesh(): number;
   sim_reset_mesh_drop(): number;
-  sim_reset_mesh_drop_unit(): number;
   sim_reset_hump_mesh(): number;
   sim_reset_is_fast(): number;
   sim_reset_stall(): number;
@@ -295,8 +294,6 @@ export interface Box3dWasm {
   sim_cont_mesh_drop_generate(ticks: number): number;
   /** Bodies that moved on the last step (`b3BodyEvents.moveCount`) — drives Auto Generate. */
   sim_cont_mesh_drop_move_count(): number;
-  /** Minimum tracked-body mass-center height (Mesh Drop Unit Test failure readout). */
-  sim_cont_min_body_height(): number;
 
   sensor_reset(scene: number): number;
   sensor_set_bullet(flag: boolean): void;
@@ -464,7 +461,6 @@ export interface Box3dWasm {
   sim_reset_sphere_stack(): number;
 
   // --- Stacking batch 3b (sample_stacking.cpp) ---
-  sim_reset_card_house_thick(): number;
   sim_reset_card_house(): number;
   sim_reset_capsule_stack(): number;
   sim_reset_cylinder(): number;
@@ -725,7 +721,6 @@ export interface Box3dWasm {
   character_follow_target(): Float32Array;
 
   // --- Issues category (sample_issues.cpp; demo/wasm/src/issues_demo/).
-  issues_reset_dump_loader(): number;
   issues_reset_crash(): number;
   issues_reset_multiple_prismatic(): number;
   issues_reset_hull_crash(): number;

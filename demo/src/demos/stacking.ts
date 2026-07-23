@@ -1,6 +1,6 @@
 // Stacking — the full sample_stacking.cpp roster. Batch 1: Jenga, Box Stack,
-// Pyramid2D (planar), Sphere Stack, Single Box. Batch 3b adds Card House Thick,
-// Card House, Capsule Stack, Cylinder, Cylinder Stack, Dominoes, Wedge, Arch, and
+// Pyramid2D (planar), Sphere Stack, Single Box. Batch 3b adds Card House,
+// Capsule Stack, Cylinder, Cylinder Stack, Dominoes, Wedge, Arch, and
 // Double Domino — all driven by the ported World::step scalar solver.
 //
 // Parametric kinds 0/1/3 (box/sphere/cylinder) render as per-kind InstancedMeshes
@@ -35,7 +35,6 @@ type Mode =
   | "pyramid"
   | "spheres"
   | "single"
-  | "card-house-thick"
   | "card-house"
   | "capsule-stack"
   | "cylinder"
@@ -51,7 +50,6 @@ export const SCENES: Mode[] = [
   "pyramid",
   "spheres",
   "single",
-  "card-house-thick",
   "card-house",
   "capsule-stack",
   "cylinder",
@@ -80,7 +78,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     container,
     "Stacking",
     "The full official Stacking roster — Jenga, Box Stack, Pyramid2D (planar), Sphere/Capsule " +
-      "stacks, both Card Houses, Cylinder + Cylinder Stack, Dominoes, Wedge, Arch, and Double " +
+      "stacks, Card House, Cylinder + Cylinder Stack, Dominoes, Wedge, Arch, and Double " +
       "Domino — driven by the ported <code>World::step</code> scalar solver.",
     "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
@@ -224,16 +222,13 @@ export function init(container: HTMLElement, initialScene?: string) {
         setView(demo, 0, 25, 10, [0, 0, 0]); // SingleBox :278
         break;
       case "boxes":
-        setView(demo, 0, 15, 50, [0, 20, 0]); // BoxStack :432
+        setView(demo, 40, 15, 50, [0, 20, 0]); // BoxStack :356 (c52908c)
         break;
       case "pyramid":
-        setView(demo, 0, 30, 50, [0, 5, 0]); // Pyramid2D :895
+        setView(demo, 40, 15, 50, [0, 12, 0]); // Pyramid2D :814 (c52908c)
         break;
       case "spheres":
         setView(demo, 0, 15, 50, [0, 10, 0]); // SphereStack :173
-        break;
-      case "card-house-thick":
-        setView(demo, 0, 25, 10, [0, 2, 0]); // CardHouseThick :21
         break;
       case "card-house":
         setView(demo, 30, 10, 3, [0.75, 1.0, 0.4]); // CardHouse :100
@@ -320,9 +315,6 @@ export function init(container: HTMLElement, initialScene?: string) {
       case "spheres":
         wasm.sim_reset_sphere_stack();
         break;
-      case "card-house-thick":
-        wasm.sim_reset_card_house_thick();
-        break;
       case "card-house":
         wasm.sim_reset_card_house();
         break;
@@ -381,7 +373,6 @@ export function init(container: HTMLElement, initialScene?: string) {
         { label: "Sphere Stack", value: "spheres" },
         { label: "Capsule Stack (planar)", value: "capsule-stack" },
         { label: "Single Box", value: "single" },
-        { label: "Card House Thick", value: "card-house-thick" },
         { label: "Card House", value: "card-house" },
         { label: "Cylinder", value: "cylinder" },
         { label: "Cylinder Stack", value: "cylinder-stack" },

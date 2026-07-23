@@ -238,7 +238,8 @@ fn new_world() -> World {
     World::new(&def)
 }
 
-/// Exact Single Box sample: cube half-extents 0.5 at y=0.5, Ï‰y = 10.
+/// Exact Single Box sample: cube half-extents 0.5 at y=0.5, starting at rest.
+/// C c52908c comments out `angularVelocity = {0, 10, 0}`, so the cube spins no more.
 #[wasm_bindgen]
 pub fn sim_reset_single_box() -> u32 {
     SIM.with(|cell| {
@@ -248,22 +249,9 @@ pub fn sim_reset_single_box() -> u32 {
         let mut sim = new_sim();
         add_ground(&mut sim, 20.0);
         // C SingleBox uses b3DefaultShapeDef(): density = water (1000), friction 0.6.
+        // The initial angular velocity is commented out in C c52908c: starts at rest.
         push_dynamic_box_ex(
-            &mut sim,
-            0.0,
-            0.5,
-            0.0,
-            0.5,
-            0.5,
-            0.5,
-            1000.0,
-            0.6,
-            0.0,
-            Vec3 {
-                x: 0.0,
-                y: 10.0,
-                z: 0.0,
-            },
+            &mut sim, 0.0, 0.5, 0.0, 0.5, 0.5, 0.5, 1000.0, 0.6, 0.0, VEC3_ZERO,
         );
         let total = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);

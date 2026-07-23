@@ -11,10 +11,6 @@
 //!
 //! # Deviations from C (disclosed)
 //!
-//! - **Dump Loader** reproduces the recorded body/shape defs inline: the C "dump" is
-//!   emitted C++ source (`b3World_Dump` output `#include`d into the constructor), not a
-//!   runtime-loadable format, and box3d-rust ports no dump *loader* API. Values are
-//!   bit-exact; the only divergence is hand-porting the recorded calls.
 //! - **Multiple Prismatic** sets `m_mouseForceScale = 1e6` in C (a stronger picker
 //!   pull); [`issues_reset_multiple_prismatic`] applies the same override via
 //!   [`crate::interact::set_grab_force_scale`], so the mouse grab matches C exactly.
@@ -113,11 +109,6 @@ fn install(state: IssuesState) -> u32 {
 }
 
 // --- Scene resets ----------------------------------------------------------
-
-#[wasm_bindgen]
-pub fn issues_reset_dump_loader() -> u32 {
-    install(scenes::build_dump_loader())
-}
 
 #[wasm_bindgen]
 pub fn issues_reset_crash() -> u32 {

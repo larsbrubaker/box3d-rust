@@ -1,6 +1,7 @@
 // Continuous — the full sample_continuous.cpp suite: Thin Wall, Bounce House,
-// Spinning Stick, Bullet vs Stack, Needle Mesh, Mesh Drop, Mesh Drop Unit Test,
-// Hump Mesh, Is Fast, and Stall. Fast bodies exercising continuous collision.
+// Spinning Stick, Bullet vs Stack, Needle Mesh, Mesh Drop, Hump Mesh, Is Fast,
+// and Stall. Fast bodies exercising continuous collision. (The Mesh Drop Unit
+// Test moved to the Determinism category upstream at c52908c; ported in a later batch.)
 //
 // Parametric kinds 0/1/3 (box/sphere/cylinder) render as per-kind InstancedMeshes
 // with unit geometries + matrix scale and per-instance engine-style colors
@@ -46,7 +47,6 @@ type Mode =
   | "bullet"
   | "needle"
   | "mesh-drop"
-  | "mesh-drop-unit"
   | "hump"
   | "is-fast"
   | "stall";
@@ -58,7 +58,6 @@ export const SCENES: Mode[] = [
   "bullet",
   "needle",
   "mesh-drop",
-  "mesh-drop-unit",
   "hump",
   "is-fast",
   "stall",
@@ -71,7 +70,6 @@ const CONTINUOUS_NAMES: Record<Mode, string> = {
   bullet: "Bullet vs Stack",
   needle: "Needle Mesh",
   "mesh-drop": "Mesh Drop",
-  "mesh-drop-unit": "Mesh Drop Unit Test",
   hump: "Hump Mesh",
   "is-fast": "Is Fast",
   stall: "Stall",
@@ -85,7 +83,6 @@ const CAMERAS: Record<Mode, [number, number, number, [number, number, number]]> 
   bullet: [15, 20, 30, [0, 2, 0]],
   needle: [45, 25, 4, [0, 1.2, 0]],
   "mesh-drop": [0, 30, 20, [0, 0, 0]],
-  "mesh-drop-unit": [0, 30, 20, [0, 0, 0]],
   hump: [45, 25, 10, [0, 1.2, 0]],
   "is-fast": [0, 15, 50, [0, 15, 0]],
   stall: [130, 15, 15, [0, 2, 0]],
@@ -365,9 +362,6 @@ export function init(container: HTMLElement, initialScene?: string) {
         wasm.sim_cont_mesh_drop_set_type(0);
         wasm.sim_cont_mesh_drop_set_amplitude(0.5);
         wasm.sim_reset_mesh_drop();
-        break;
-      case "mesh-drop-unit":
-        wasm.sim_reset_mesh_drop_unit();
         break;
       case "hump":
         wasm.sim_reset_hump_mesh();

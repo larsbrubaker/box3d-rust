@@ -26,7 +26,6 @@ import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh
 
 /** Scene keys hosted by this page (validated against the registry in registry.test). */
 export const SCENES = [
-  "dump-loader",
   "crash",
   "multiple-prismatic",
   "hull-crash",
@@ -55,15 +54,6 @@ interface SceneConfig {
 }
 
 const CONFIG: Record<Scene, SceneConfig> = {
-  "dump-loader": {
-    name: "Dump Loader",
-    reset: "issues_reset_dump_loader",
-    camera: { yaw: 45, pitch: 30, distance: 15, target: [0, 2, 0] },
-    desc:
-      "Official Issues sample <strong>Dump Loader</strong> — a recorded scene (one rotated " +
-      "cube on a large ground box) rebuilt from <code>box3d_dump.inl</code>.",
-    hint: "Recorded single_box dump",
-  },
   crash: {
     name: "Crash",
     reset: "issues_reset_crash",

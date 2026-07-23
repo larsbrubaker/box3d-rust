@@ -5,7 +5,6 @@
 //! - Spinning Stick   (`sample_continuous.cpp` SpinningStick, :149) — [`basic`]
 //! - Needle Mesh      (NeedleMesh, :281) — [`basic`]
 //! - Mesh Drop        (MeshDrop, :413) — [`mesh_drop`]
-//! - Mesh Drop Unit Test (MeshDropUnitTest + `shared/stability.c` CreateMeshDrop) — [`mesh_drop`]
 //! - Hump Mesh        (HumpMesh, :799) — [`basic`]
 //! - Is Fast          (IsFast, :911) — [`basic`]
 //! - Stall            (Stall, :998) — [`basic`]

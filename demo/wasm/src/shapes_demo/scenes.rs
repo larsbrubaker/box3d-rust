@@ -40,7 +40,7 @@ pub(crate) fn build_inclined_plane() -> ShapeState {
     let box_hull = make_box_hull(1.0, 1.0, 1.0);
     body_def.type_ = BodyType::Dynamic;
     for index in 0..5 {
-        body_def.position = pos(-10.0 + 5.0 * index as f32, 15.75, -10.6);
+        body_def.position = pos(-10.0 + 5.0 * index as f32, 14.25, -10.6);
         let box_body = create_body(&mut world, &body_def);
         shape_def.base_material.friction = (index + 1) as f32 * (index + 1) as f32 * 0.04;
         create_hull_shape_at(&mut world, box_body, &shape_def, &box_hull);
@@ -54,8 +54,8 @@ pub(crate) fn build_inclined_plane() -> ShapeState {
 pub(crate) fn build_rolling_resistance() -> ShapeState {
     let mut world = new_world();
     let mut bodies = Vec::new();
-    let ground = add_ground_box(&mut world, 50.0);
-    bodies.push(VisBody::box_body(ground.index1 - 1, 50.0, 1.0, 50.0));
+    let ground = add_ground_box(&mut world, 80.0);
+    bodies.push(VisBody::box_body(ground.index1 - 1, 80.0, 1.0, 80.0));
 
     let mut body_def = default_body_def();
     let mut shape_def = default_shape_def();

@@ -1,6 +1,6 @@
 //! Live `World::step` demos for the remaining Stacking samples (batch 3b):
-//! Card House Thick, Card House, Capsule Stack, Cylinder, Cylinder Stack,
-//! Dominoes, Wedge, Arch, Double Domino.
+//! Card House, Capsule Stack, Cylinder, Cylinder Stack, Dominoes, Wedge, Arch,
+//! Double Domino.
 //!
 //! These reuse the shared [`crate::sim_demo`] `SimState`/`SimBody`/`SIM` machinery
 //! (so `sim_step`, `sim_body_poses`, `sim_body_styles`, and the mouse interaction

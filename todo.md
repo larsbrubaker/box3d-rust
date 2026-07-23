@@ -21,11 +21,10 @@ documented in `demo/src/registry.ts` — only these:
 
 1. Character / Rigid Body — pointer-lock on canvas click (browser)
 2. Collision / Time of Impact — intentional label correction
-3. Issues / Dump Loader — no dump loader API; hand-ported defs
-4. Mesh / Height Field — scaled for browser render
-5. Mesh / Creation Benchmark — performance.now vs b3GetTicks
-6. Tree / Benchmark — fetch/performance.now/portable save format
-7. Replay / Viewer — query search index + keyframe-policy skipped
+3. Mesh / Height Field — scaled for browser render
+4. Mesh / Creation Benchmark — performance.now vs b3GetTicks
+5. Tree / Benchmark — fetch/performance.now/portable save format
+6. Replay / Viewer — query search index + keyframe-policy skipped
 
 About content lives on the home page. Separate `#/math` and `#/roadmap`
 About routes are deliberately not added (and not removed if ever present):

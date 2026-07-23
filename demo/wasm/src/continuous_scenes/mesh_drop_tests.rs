@@ -17,23 +17,6 @@ fn mesh_drop_ground_wireframe_is_finite() {
     }
 }
 
-/// The Mesh Drop Unit Test ground (wave mesh, no walls) must likewise be finite.
-#[test]
-fn mesh_drop_unit_ground_wireframe_is_finite() {
-    let _ = super::sim_reset_mesh_drop_unit();
-    let wire = super::super::sim_cont_ground_wireframe();
-    assert!(
-        !wire.is_empty(),
-        "unit-test ground wireframe unexpectedly empty"
-    );
-    for (i, v) in wire.iter().enumerate() {
-        assert!(
-            v.is_finite(),
-            "unit-test ground wireframe float {i} is not finite: {v}"
-        );
-    }
-}
-
 /// The pose stream driving the renderer must be finite too (the ground body plus
 /// every projectile).
 #[test]

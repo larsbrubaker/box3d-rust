@@ -1,6 +1,6 @@
-//! Mesh Drop (`MeshDrop`, :413) and Mesh Drop Unit Test (`shared/stability.c`
-//! CreateMeshDrop): 1024 small shapes rain into a wave-mesh basin. Shared state
-//! and helpers live in the parent module.
+//! Mesh Drop (`MeshDrop`, :413): 1024 small shapes rain into a wave-mesh basin.
+//! Shared state and helpers live in the parent module. (The former Mesh Drop Unit
+//! Test moved to the Determinism category upstream at c52908c and is ported there.)
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -8,7 +8,7 @@
 use super::{bake_ground_mesh, clear_ground_edges, p, with_extra};
 use crate::rng::XorShift32;
 use crate::sim_demo::{new_sim, stop_recording_if_any, with_sim, SimBody, SIM};
-use box3d_rust::body::{body_get_world_center, create_body, make_body_id};
+use box3d_rust::body::create_body;
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::hull::{create_cylinder, make_box_hull, make_transformed_box_hull};
 use box3d_rust::math_functions::{Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_ONE, VEC3_ZERO};
@@ -24,7 +24,7 @@ use wasm_bindgen::prelude::*;
 #[path = "mesh_drop_tests.rs"]
 mod mesh_drop_tests;
 // ---------------------------------------------------------------------------
-// Mesh Drop (sample_continuous.cpp MeshDrop, :413) and Unit Test (:744)
+// Mesh Drop (sample_continuous.cpp MeshDrop, :413)
 // ---------------------------------------------------------------------------
 
 const MESH_DROP_GRID: i32 = 32;
@@ -271,8 +271,7 @@ pub fn sim_cont_mesh_drop_set_amplitude(amplitude: f32) -> u32 {
 /// (`sample_continuous.cpp`:556) on every press — an inherently time-varying seed.
 /// JS passes a `performance.now()`-derived `u32` here (also on each Auto Generate
 /// cycle), so every regeneration draws a fresh pile exactly as C's tick reseed does.
-/// Any tick value is faithful; the deterministic Unit Test keeps its fixed
-/// `stability.c` seed via [`sim_reset_mesh_drop_unit`].
+/// Any tick value is faithful.
 #[wasm_bindgen]
 pub fn sim_cont_mesh_drop_generate(ticks: u32) -> u32 {
     with_extra(|e| e.md_seed = ticks);
@@ -285,57 +284,4 @@ pub fn sim_cont_mesh_drop_generate(ticks: u32) -> u32 {
 #[wasm_bindgen]
 pub fn sim_cont_mesh_drop_move_count() -> u32 {
     with_sim(|sim| world_get_body_events(&sim.world).len() as u32)
-}
-
-/// Continuous / Mesh Drop Unit Test — the deterministic `CreateMeshDrop`
-/// (`shared/stability.c`): wave-mesh ground (no walls) + a 32×32 box grid seeded
-/// with the fixed `g_randomSeed = 3963634789`.
-#[wasm_bindgen]
-pub fn sim_reset_mesh_drop_unit() -> u32 {
-    clear_ground_edges();
-    SIM.with(|cell| {
-        if let Some(prev) = cell.borrow_mut().as_mut() {
-            stop_recording_if_any(prev);
-        }
-        let mut sim = new_sim();
-        // C MeshDropUnitTest ctor: GetGuiDraw()->forceScale = 0.1
-        // (sample_continuous.cpp:753). Re-applied after new_sim() restores defaults.
-        crate::interact::set_draw_scales(1.0, 0.1);
-
-        // Ground: wave mesh only (no bounding walls), category 1.
-        let body_def = default_body_def();
-        let ground = create_body(&mut sim.world, &body_def);
-        let mesh = create_wave_mesh(40, 40, 1.0, 0.5, 0.1, 0.2).expect("wave mesh");
-        let mut ground_shape = default_shape_def();
-        ground_shape.filter.category_bits = 1;
-        create_mesh_shape(&mut sim.world, ground, &ground_shape, &mesh, VEC3_ONE);
-        bake_ground_mesh(&mesh, VEC3_ZERO);
-
-        // 32×32 box grid, fixed seed 3963634789.
-        build_mesh_drop_bodies(&mut sim, 0, 3963634789);
-
-        let count = sim.bodies.len() as u32;
-        *cell.borrow_mut() = Some(sim);
-        count
-    })
-}
-
-/// Lowest projectile mass-center height, for the Unit Test failure readout
-/// (C `MeshDropUnitTest::Step`: any body escaping is a failure). Returns the
-/// minimum `y` over tracked dynamic bodies (skips the static walls/ground).
-#[wasm_bindgen]
-pub fn sim_cont_min_body_height() -> f32 {
-    with_sim(|sim| {
-        let mut min_y = f32::MAX;
-        for b in &sim.bodies {
-            let id = make_body_id(&sim.world, b.body_index);
-            let center = body_get_world_center(&sim.world, id);
-            min_y = min_y.min(center.y as f32);
-        }
-        if min_y == f32::MAX {
-            0.0
-        } else {
-            min_y
-        }
-    })
 }

@@ -10,12 +10,16 @@
 //               and/or on the page.
 //   `planned` — no route yet.
 //
-// Enumerated from the pinned submodule (v0.1.0+, 540ea38). 150 active entries
-// across 19 categories. Three upstream RegisterSample calls are `#if 0`'d and
-// therefore excluded: Bodies "Gyroscopic Precession", Benchmark "Large World"
-// (the first one at :203; the live one at :1022 is kept), Ragdoll "Pose". The
-// Replay viewer is registered through a non-RegisterSample path (g_replayIndex),
-// represented here as its own single-entry "Replay" category (route "replay").
+// Enumerated from the pinned submodule (pinned at c52908c). 147 active entries
+// across 19 categories. This inventory is mid-migration from the 540ea38 samples
+// to c52908c: the c52908c removals (Stacking "Card House Thick", Issues "Dump
+// Loader", Continuous "Mesh Drop Unit Test" — the last moved to Determinism) are
+// already dropped here; the new c52908c samples land in later demo-parity batches.
+// Three upstream RegisterSample calls are `#if 0`'d and therefore excluded: Bodies
+// "Gyroscopic Precession", Benchmark "Large World" (the first one at :203; the live
+// one at :1022 is kept), Ragdoll "Pose". The Replay viewer is registered through a
+// non-RegisterSample path (g_replayIndex), represented here as its own single-entry
+// "Replay" category (route "replay").
 //
 // ---------------------------------------------------------------------------
 // Single-registration pattern (registry ↔ multi-scene page link)
@@ -204,7 +208,6 @@ export const SAMPLES: SampleEntry[] = [
     // C's `g_randomSeed = b3GetTicks()` (any tick value is faithful); Auto Generate
     // regenerates on settle as in C `MeshDrop::Step`.
     ["Mesh Drop", "live", "continuous", "mesh-drop"],
-    ["Mesh Drop Unit Test", "live", "continuous", "mesh-drop-unit"],
     ["Hump Mesh", "live", "continuous", "hump"],
     ["Is Fast", "live", "continuous", "is-fast"],
     // The CCD stall threshold is set to C's 1.0 ms and shown; the C sample's only
@@ -233,11 +236,6 @@ export const SAMPLES: SampleEntry[] = [
     ["Capsule Mass", "live", "geometry", "capsule-mass"],
   ]),
   ...cat("Issues", "sample_issues.cpp", [
-    // Partial: the C "dump" is emitted C++ source (b3World_Dump output #included into
-    // the constructor), not a runtime-loadable format, and box3d-rust ports no dump
-    // *loader* API — so the recorded body/shape defs (single rotated cube + ground) are
-    // hand-ported inline. Values are bit-exact; only the load mechanism differs.
-    ["Dump Loader", "partial", "issues", "dump-loader"],
     ["Crash", "live", "issues", "crash"],
     // Live: the six prismatic joints, ±6 limit, and constraintHertz 240 are exact,
     // and the scene now applies C's m_mouseForceScale = 1e6 via the shared grab's
@@ -327,8 +325,6 @@ export const SAMPLES: SampleEntry[] = [
     ["Wind Flap", "live", "shapes", "wind-flap"],
   ]),
   ...cat("Stacking", "sample_stacking.cpp", [
-    // Live: exact C card dims/counts/materials; SetView + scene match CardHouseThick.
-    ["Card House Thick", "live", "stacking", "card-house-thick"],
     // Live: exact C thin-card house; SetView matches CardHouse.
     ["Card House", "live", "stacking", "card-house"],
     // Live: exact C sphere count/materials; SetView matches SphereStack.
@@ -507,7 +503,7 @@ export function neighborOf(entry: SampleEntry | undefined, dir: -1 | 1): SampleE
  * `git -C box3d-cpp-reference rev-parse HEAD`. Used to build stable "C source"
  * links into the exact upstream sources this port mirrors.
  */
-export const CPP_REFERENCE_COMMIT = "540ea387b0c02bf714fbfdcc8fb88c039c35fe6f";
+export const CPP_REFERENCE_COMMIT = "c52908c9a907714e4d3a8a30be5272a1761158e1";
 
 /** Upstream GitHub URL for the C sample file an entry was ported from, at the pin. */
 export function cSourceUrl(entry: SampleEntry): string {
