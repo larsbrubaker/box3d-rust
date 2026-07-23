@@ -29,6 +29,7 @@ pub mod shape_flags {
     pub const ENABLE_HIT_EVENTS: u8 = 0x08;
     pub const ENABLE_PRE_SOLVE_EVENTS: u8 = 0x10;
     pub const ENLARGED_AABB: u8 = 0x20;
+    pub const ENABLE_SPECULATIVE: u8 = 0x40;
 }
 
 /// Concrete shape geometry. Maps to C's `type` tag + anonymous union.

@@ -23,6 +23,7 @@ pub(crate) fn collide_hull_face(
     hull: &HullData,
     query: FaceQuery,
     cache: &mut SatCache,
+    enable_speculative: bool,
 ) -> f32 {
     manifold.point_count = 0;
 
@@ -102,6 +103,7 @@ pub(crate) fn collide_hull_face(
 
     point_count = min_int(point_count, point_capacity);
     let mut min_separation = f32::MAX;
+    let mut final_point_count = 0;
 
     let input = if input_is_buffer1 {
         &buffer1[..]
@@ -111,26 +113,36 @@ pub(crate) fn collide_hull_face(
 
     for i in 0..point_count {
         let clip_point = &input[i as usize];
+        min_separation = min_float(min_separation, clip_point.separation);
+
+        if !enable_speculative && clip_point.separation > 0.0 {
+            continue;
+        }
 
         // Move point onto hull face improved culling
         let point = mul_sub(clip_point.position, clip_point.separation, ref_plane.normal);
 
-        let pt = &mut manifold.points[i as usize];
+        let pt = &mut manifold.points[final_point_count as usize];
         pt.point = point;
         pt.separation = clip_point.separation;
         pt.pair = flip_pair(clip_point.pair);
 
-        min_separation = min_float(min_separation, clip_point.separation);
+        final_point_count += 1;
     }
 
-    if min_separation > speculative_distance() {
+    let speculative_distance = if enable_speculative {
+        speculative_distance()
+    } else {
+        0.0
+    };
+    if min_separation > speculative_distance {
         // This can occur with a stale SAT cache
         manifold.point_count = 0;
         *cache = SatCache::default();
         return min_separation;
     }
 
-    manifold.point_count = point_count;
+    manifold.point_count = final_point_count;
     manifold.normal = neg(ref_plane.normal);
     manifold.feature = TriangleFeature::HullFace;
 
@@ -149,6 +161,7 @@ pub(crate) fn collide_triangle_face(
     hull: &HullData,
     query: FaceQuery,
     cache: &mut SatCache,
+    enable_speculative: bool,
 ) -> f32 {
     debug_assert!(manifold.point_count == 0);
 
@@ -246,27 +259,38 @@ pub(crate) fn collide_triangle_face(
         &buffer2[..]
     };
 
+    let mut final_point_count = 0;
     for i in 0..point_count {
         let clip_point = &input[i as usize];
+        min_separation = min_float(min_separation, clip_point.separation);
+
+        if !enable_speculative && clip_point.separation > 0.0 {
+            continue;
+        }
 
         // Move point onto triangle surface for improved culling — C leaves position as-is
         let point = clip_point.position;
 
-        let pt = &mut manifold.points[i as usize];
+        let pt = &mut manifold.points[final_point_count as usize];
         pt.point = point;
         pt.separation = clip_point.separation;
         pt.pair = clip_point.pair;
 
-        min_separation = min_float(min_separation, clip_point.separation);
+        final_point_count += 1;
     }
 
-    if min_separation >= speculative_distance() {
+    let speculative_distance = if enable_speculative {
+        speculative_distance()
+    } else {
+        0.0
+    };
+    if min_separation >= speculative_distance {
         // This can happen if the objects move apart while re-using a cached axis
         *cache = SatCache::default();
         return min_separation;
     }
 
-    manifold.point_count = point_count;
+    manifold.point_count = final_point_count;
     manifold.normal = ref_plane.normal;
     manifold.feature = TriangleFeature::TriangleFace;
 

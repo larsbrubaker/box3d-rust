@@ -17,7 +17,8 @@ use std::collections::HashMap;
 /// Magic 'B3RC' little-endian. (B3_REC_MAGIC)
 pub const REC_MAGIC: u32 = 0x4352_3342;
 /// Major recording version. (B3_REC_VERSION_MAJOR)
-pub const REC_VERSION_MAJOR: u16 = 3;
+/// Major version 4 added b3ShapeDef::enableSpeculativeContact.
+pub const REC_VERSION_MAJOR: u16 = 4;
 /// Minor recording version — v3 added the name cache. (B3_REC_VERSION_MINOR)
 pub const REC_VERSION_MINOR: u16 = 3;
 

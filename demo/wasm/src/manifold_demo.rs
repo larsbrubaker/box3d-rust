@@ -482,6 +482,7 @@ impl ManifoldDemo {
                     local[2],
                     self.triangle_flags,
                     &mut self.sat_cache,
+                    true,
                 );
             }
         }

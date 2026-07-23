@@ -551,6 +551,7 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
         v(0.0, -0.4, 2.0),
         0,
         &mut cache,
+        true,
     );
     assert!(manifold.point_count >= 1);
     // Normal should point roughly +y (triangle face) or from hull toward triangle.
@@ -571,6 +572,7 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
         v(0.0, -10.0, 2.0),
         0,
         &mut far_cache,
+        true,
     );
     assert_eq!(far.point_count, 0);
     assert!(far_cache.separation > 0.0 || far_cache.type_ != 0);
@@ -587,6 +589,7 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
         v(0.0, 2.0, 2.0),
         0,
         &mut back_cache,
+        true,
     );
     assert_eq!(back.point_count, 0);
     assert_eq!(back_cache.type_, SeparatingFeature::BacksideAxis as u8);

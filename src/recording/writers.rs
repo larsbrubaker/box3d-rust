@@ -142,6 +142,7 @@ impl RecBuffer {
         self.append_bool(v.enable_pre_solve_events);
         self.append_bool(v.invoke_contact_creation);
         self.append_bool(v.update_body_mass);
+        self.append_bool(v.enable_speculative_contact);
     }
 
     fn append_joint_base(&mut self, base: &JointDef) {
@@ -421,6 +422,7 @@ impl<'a> SnapReader<'a> {
         d.enable_pre_solve_events = self.bool();
         d.invoke_contact_creation = self.bool();
         d.update_body_mass = self.bool();
+        d.enable_speculative_contact = self.bool();
         d
     }
 

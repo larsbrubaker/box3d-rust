@@ -37,8 +37,10 @@ pub mod contact_flags {
     pub const SIM_ENABLE_PRE_SOLVE_EVENTS: u32 = 0x0020_0000;
     /// This is a mesh contact
     pub const SIM_MESH_CONTACT: u32 = 0x0040_0000;
-    /// Relative transform is valid for recycling
+    /// Relative transform is cached for contact recycling
     pub const RELATIVE_TRANSFORM_VALID: u32 = 0x0080_0000;
+    /// Enable speculative contact points
+    pub const ENABLE_SPECULATIVE_POINTS: u32 = 0x0100_0000;
 }
 
 /// Contact cache: SAT or GJK simplex. (b3ContactCache)

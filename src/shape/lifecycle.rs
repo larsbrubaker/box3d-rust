@@ -101,6 +101,9 @@ pub(crate) fn create_shape_internal(
         if def.enable_pre_solve_events {
             shape.flags |= shape_flags::ENABLE_PRE_SOLVE_EVENTS;
         }
+        if def.enable_speculative_contact {
+            shape.flags |= shape_flags::ENABLE_SPECULATIVE;
+        }
         shape.proxy_key = NULL_INDEX;
         shape.local_centroid = get_shape_centroid(shape);
         shape.aabb_margin = compute_shape_margin(shape);

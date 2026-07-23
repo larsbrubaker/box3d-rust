@@ -97,6 +97,10 @@ pub struct ShapeDef {
     pub invoke_contact_creation: bool,
     /// Should the body update mass properties when this shape is created.
     pub update_body_mass: bool,
+    /// Enable speculative collision. Leave this true unless you care about reducing ghost collision
+    /// more than continuous collision under rotation.
+    /// Experimental: this can only disable speculative contact between hulls and triangles (meshes and height fields).
+    pub enable_speculative_contact: bool,
     /// Used internally to detect a valid definition. DO NOT SET.
     pub internal_value: i32,
 }
@@ -121,6 +125,7 @@ pub fn default_shape_def() -> ShapeDef {
         enable_pre_solve_events: false,
         invoke_contact_creation: true,
         update_body_mass: true,
+        enable_speculative_contact: true,
         internal_value: SECRET_COOKIE,
     }
 }

@@ -176,6 +176,7 @@ pub fn collide_hull_and_triangle(
     v3: Vec3,
     triangle_flags: i32,
     cache: &mut SatCache,
+    enable_speculative: bool,
 ) {
     manifold.point_count = 0;
     manifold.feature = TriangleFeature::None;
@@ -224,7 +225,11 @@ pub fn collide_hull_and_triangle(
     let hull_planes = get_hull_planes(hull_a);
     let hull_points = get_hull_points(hull_a);
 
-    let speculative = speculative_distance();
+    let speculative = if enable_speculative {
+        speculative_distance()
+    } else {
+        0.0
+    };
     cache.hit = 1;
 
     // Attempt to use the cache to speed up collision
@@ -235,7 +240,7 @@ pub fn collide_hull_and_triangle(
             let vertex_index = find_hull_support_vertex(hull_a, neg(triangle_plane.normal));
             let support = hull_points[vertex_index as usize];
             let separation = plane_separation(triangle_plane, support);
-            if separation >= speculative {
+            if separation > speculative {
                 return;
             }
 
@@ -253,6 +258,7 @@ pub fn collide_hull_and_triangle(
                 hull_a,
                 face_query,
                 &mut local_cache,
+                enable_speculative,
             );
 
             if manifold.point_count > 0
@@ -281,7 +287,7 @@ pub fn collide_hull_and_triangle(
 
             let support = triangle_points[vertex_index];
             let separation = plane_separation(plane, support);
-            if separation >= speculative {
+            if separation > speculative {
                 return;
             }
 
@@ -303,6 +309,7 @@ pub fn collide_hull_and_triangle(
                     hull_a,
                     face_query,
                     &mut local_cache,
+                    enable_speculative,
                 );
 
                 if manifold.point_count > 0
@@ -383,12 +390,28 @@ pub fn collide_hull_and_triangle(
         }
         t if t == SeparatingFeature::ManualFaceAxisA as u8 => {
             let face_query_a = query_triangle_face(&triangle, hull_a);
-            collide_triangle_face(manifold, capacity, &triangle, hull_a, face_query_a, cache);
+            collide_triangle_face(
+                manifold,
+                capacity,
+                &triangle,
+                hull_a,
+                face_query_a,
+                cache,
+                enable_speculative,
+            );
             return;
         }
         t if t == SeparatingFeature::ManualFaceAxisB as u8 => {
             let face_query_b = query_hull_face(&triangle, hull_a);
-            collide_hull_face(manifold, capacity, &triangle, hull_a, face_query_b, cache);
+            collide_hull_face(
+                manifold,
+                capacity,
+                &triangle,
+                hull_a,
+                face_query_b,
+                cache,
+                enable_speculative,
+            );
             return;
         }
         t if t == SeparatingFeature::ManualEdgePairAxis as u8 => {
@@ -444,14 +467,32 @@ pub fn collide_hull_and_triangle(
         return;
     }
 
-    // Don't allow a hull face opposed to the triangle face.
+    // Don't admit a hull face significantly opposed to the triangle face.
+    // Need a tolerance to avoid ghost collisions.
+    // todo hull query skips faces that point along the triangle normal
     let hull_normal = hull_planes[face_query_b.face_index as usize].normal;
-    let pushing_up = dot(hull_normal, triangle_plane.normal) < 0.0;
+    let pushing_down = dot(hull_normal, triangle_plane.normal) > 0.25;
     let clipped_face_separation =
-        if face_query_b.separation > face_query_a.separation + linear_slop && pushing_up {
-            collide_hull_face(manifold, capacity, &triangle, hull_a, face_query_b, cache)
+        if face_query_b.separation > face_query_a.separation + linear_slop && !pushing_down {
+            collide_hull_face(
+                manifold,
+                capacity,
+                &triangle,
+                hull_a,
+                face_query_b,
+                cache,
+                enable_speculative,
+            )
         } else {
-            collide_triangle_face(manifold, capacity, &triangle, hull_a, face_query_a, cache)
+            collide_triangle_face(
+                manifold,
+                capacity,
+                &triangle,
+                hull_a,
+                face_query_a,
+                cache,
+                enable_speculative,
+            )
         };
 
     // Does an edge axis exist?

@@ -103,6 +103,9 @@ pub fn compute_mesh_manifolds(
     let relative_matrix = make_matrix_from_quat(transform_a_to_b.q);
     let linear_slop = linear_slop();
     let rest_offset = mesh_rest_offset();
+    let enable_speculative = (world.contacts[contact_id as usize].flags
+        & contact_flags::ENABLE_SPECULATIVE_POINTS)
+        != 0;
 
     let point_buffer_capacity = MAX_POINTS_PER_TRIANGLE * triangle_count;
     let mut point_buffer =
@@ -194,6 +197,7 @@ pub fn compute_mesh_manifolds(
                     vertices[2],
                     triangle.flags,
                     cache,
+                    enable_speculative,
                 );
                 world.task_contexts[worker_index as usize].sat_call_count += 1;
                 world.task_contexts[worker_index as usize].sat_cache_hit_count += cache.hit as i32;
