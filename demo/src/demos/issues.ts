@@ -6,7 +6,12 @@
 // static hull/points render.
 
 import * as THREE from "three";
-import { createButton, createCanvasOverlay, createInfoBox } from "../controls.ts";
+import {
+  createButton,
+  createCanvasOverlay,
+  createInfoBox,
+  createSlider,
+} from "../controls.ts";
 import {
   attachInteraction,
   makeInteractAdapter,
@@ -34,6 +39,8 @@ export const SCENES = [
   "capsule-mesh",
   "restitution-overshoot",
   "slide-twist-off-center-shape",
+  "wheel-stack",
+  "sbox-ghost-collisions",
 ] as const;
 
 type Scene = (typeof SCENES)[number];
@@ -55,6 +62,8 @@ interface SceneConfig {
   staticHull?: boolean;
   /** Restitution Overshoot: yellow marker plane at `markerY` + bounce PASS/FAIL HUD. */
   restitution?: boolean;
+  /** s&box Ghost Collisions: walk-speed sliders, Reset Counters, launch HUD + markers. */
+  ghost?: boolean;
 }
 
 const CONFIG: Record<Scene, SceneConfig> = {
@@ -135,6 +144,28 @@ const CONFIG: Record<Scene, SceneConfig> = {
       "inclined plane.",
     hint: "Off-center box twisting on a tilted plane",
   },
+  "wheel-stack": {
+    name: "GMod Wheel Stack",
+    reset: "issues_reset_wheel_stack",
+    camera: { yaw: 0, pitch: 12, distance: 5, target: [0, 0.85, 0] },
+    desc:
+      "Official Issues sample <strong>GMod Wheel Stack</strong> — 30 stacked metal_wheel1 props. " +
+      "Each wheel is the single convex hull that wraps the C 37-piece decomposition (317 verts); " +
+      "<code>b3World_SetContactTuning(240, 10, 3)</code> lets the stack settle and sleep.",
+    hint: "30 convex-hull wheels stacked and settling",
+  },
+  "sbox-ghost-collisions": {
+    name: "s&box Ghost Collisions",
+    reset: "issues_reset_sbox_ghost",
+    camera: { yaw: 90, pitch: 25, distance: 10, target: [0, 1, 0] },
+    desc:
+      "Official Issues sample <strong>s&box Ghost Collisions</strong> — a fixed-rotation character " +
+      "is driven by pure velocity across a flat procedural floor whose only features (chamfers, " +
+      "pits, T-junction seams, a chunk seam) are at or below the walkable plane. Any upward " +
+      "velocity spike is a ghost collision; launches are counted and marked in red.",
+    hint: "Walking a mesh seam launches the character (ghost collisions)",
+    ghost: true,
+  },
 };
 
 export function init(container: HTMLElement, initialScene?: string) {
@@ -156,9 +187,10 @@ export function init(container: HTMLElement, initialScene?: string) {
   );
   controls.appendChild(createInfoBox(cfg.desc));
 
-  // Restitution Overshoot bounce HUD (C RestitutionOvershoot::Step DrawTextLine).
+  // Restitution Overshoot bounce HUD / s&box Ghost Collisions launch HUD
+  // (C RestitutionOvershoot::Step / SBoxGhostCollisions::Step DrawTextLine).
   const hud = createCanvasOverlay(page);
-  hud.style.display = cfg.restitution ? "" : "none";
+  hud.style.display = cfg.restitution || cfg.ghost ? "" : "none";
 
   const demo = new DemoScene(canvas, { target: cfg.camera.target, distance: cfg.camera.distance });
   demo.camera.far = 800;
@@ -223,6 +255,30 @@ export function init(container: HTMLElement, initialScene?: string) {
     );
     markerPlane.position.y = markerY;
     demo.dynamic.add(markerPlane);
+  }
+
+  // s&box Ghost Collisions red launch markers (C DrawPoint at each ghost launch).
+  let ghostMarkers: THREE.Points | null = null;
+  function clearGhostMarkers() {
+    if (ghostMarkers) {
+      demo.dynamic.remove(ghostMarkers);
+      ghostMarkers.geometry.dispose();
+      (ghostMarkers.material as THREE.Material).dispose();
+      ghostMarkers = null;
+    }
+  }
+  function buildGhostMarkers() {
+    clearGhostMarkers();
+    if (!cfg.ghost) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * 64), 3));
+    g.setDrawRange(0, 0);
+    ghostMarkers = new THREE.Points(
+      g,
+      new THREE.PointsMaterial({ color: 0xef4444, size: 8, sizeAttenuation: false }),
+    );
+    ghostMarkers.frustumCulled = false;
+    demo.dynamic.add(ghostMarkers);
   }
 
   // Hull Crash static render group.
@@ -313,6 +369,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     buildStaticWire();
     buildHulls();
     buildMarkerPlane();
+    buildGhostMarkers();
     if (cfg.staticHull) buildStaticHull();
   }
 
@@ -320,6 +377,26 @@ export function init(container: HTMLElement, initialScene?: string) {
     const row = document.createElement("div");
     row.className = "control-row";
     row.appendChild(createButton("Add Joint", () => wasm.issues_add_joint(), false));
+    controls.appendChild(row);
+  }
+
+  // s&box Ghost Collisions DrawControls: walk-speed sliders + Reset Counters button.
+  if (cfg.ghost) {
+    controls.appendChild(
+      createSlider("Walk Speed X (inch/s)", 100, 400, 350, 1, (v) =>
+        wasm.issues_ghost_set_speed_x(v),
+      ),
+    );
+    controls.appendChild(
+      createSlider("Walk Speed Z (inch/s)", 10, 100, 20, 1, (v) =>
+        wasm.issues_ghost_set_speed_z(v),
+      ),
+    );
+    const row = document.createElement("div");
+    row.className = "control-row";
+    row.appendChild(
+      createButton("Reset Counters", () => wasm.issues_ghost_reset_counters(), false),
+    );
     controls.appendChild(row);
   }
 
@@ -368,6 +445,29 @@ export function init(container: HTMLElement, initialScene?: string) {
       }
     }
 
+    // s&box Ghost Collisions launch HUD + red markers (C SBoxGhostCollisions::Step).
+    if (cfg.ghost) {
+      const d = wasm.issues_ghost_hud();
+      if (d.length >= 3) {
+        const launchCount = d[0]!;
+        const worst = d[1]!;
+        const vy = d[2]!;
+        const SRC = 0.0254;
+        hud.textContent =
+          `ghost launches: ${launchCount.toFixed(0)}, ` +
+          `worst: ${worst.toFixed(2)} m/s (${(worst / SRC).toFixed(0)} inch/s)\n` +
+          `vertical velocity: ${vy.toFixed(2)} m/s`;
+      }
+      if (ghostMarkers) {
+        const m = wasm.issues_ghost_markers();
+        const attr = ghostMarkers.geometry.getAttribute("position") as THREE.BufferAttribute;
+        const n = Math.min(m.length / 3, 64);
+        for (let i = 0; i < m.length && i < 3 * 64; i++) (attr.array as Float32Array)[i] = m[i]!;
+        attr.needsUpdate = true;
+        ghostMarkers.geometry.setDrawRange(0, n);
+      }
+    }
+
     // Update the Convex Jitter hull transforms.
     if (hullMeshes.length) {
       const hp = wasm.issues_hull_poses();
@@ -389,6 +489,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     clearStaticWire();
     clearHulls();
     clearMarkerPlane();
+    clearGhostMarkers();
     clearStaticGroup();
     staticGroup.parent?.remove(staticGroup);
     disposeMeshPool(pool);

@@ -45,17 +45,13 @@ branch is in progress upstream and should be triaged once it lands on main).
 
 ## Demo parity with the c52908c samples (from the 2026-07 sync)
 
-The core library and test sync to `c52908c` is complete. The samples app moved
-too; the demo site still mirrors the `540ea38` samples. Port the user-visible
-sample changes into `demo/`:
+All c52908c sample changes are now mirrored in `demo/` (the new samples —
+Bodies Gyroscopic Precession, Issues GMod Wheel Stack, Issues s&box Ghost
+Collisions — are live and the registry rows are updated). The only remaining
+item is optional visual polish, not a fidelity gap:
 
-- [ ] New samples with no library helper: Issues GMod Wheel Stack (317-vert
-      data), Issues s&box Ghost Collisions (~400 LOC procedural mesh). (Bodies
-      Gyroscopic Precession — now enabled upstream — is ported: demo-parity batch 5a.)
-- [ ] Update `demo/src/registry.ts` rows accordingly; renderer/shader work in
-      `samples/gfx` (e.g. shadow PCF) is optional visual polish. Note:
-      `samples/mover.cpp` is only a refactor extracting the already-ported
-      character mover into shared code — no new demo sample needed.
+- [ ] Optional: port the `samples/gfx` renderer/shader work (e.g. shadow PCF).
+      Purely cosmetic — no sample scene, value, or behavior depends on it.
 
 ## Test-parity gap (pre-existing, found during the 2026-07 sync)
 

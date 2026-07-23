@@ -741,6 +741,10 @@ export interface Box3dWasm {
   issues_reset_convex_jitter(): number;
   issues_reset_sbox_mover(): number;
   issues_reset_capsule_mesh(): number;
+  issues_reset_restitution_overshoot(): number;
+  issues_reset_slide_twist_off_center(): number;
+  issues_reset_wheel_stack(): number;
+  issues_reset_sbox_ghost(): number;
   issues_step(dt: number, sub_steps: number): number;
   issues_poses(): Float32Array;
   issues_styles(): Uint32Array;
@@ -749,7 +753,13 @@ export interface Box3dWasm {
   issues_hull_geometry(): Float32Array;
   issues_hull_poses(): Float32Array;
   issues_hull_crash(): Float32Array;
+  issues_restitution_hud(): Float32Array;
   issues_add_joint(): void;
+  issues_ghost_hud(): Float32Array;
+  issues_ghost_markers(): Float32Array;
+  issues_ghost_set_speed_x(inch_per_s: number): void;
+  issues_ghost_set_speed_z(inch_per_s: number): void;
+  issues_ghost_reset_counters(): void;
   issues_mouse_down(ox: number, oy: number, oz: number, tx: number, ty: number, tz: number): Float32Array;
   issues_mouse_move(px: number, py: number, pz: number): void;
   issues_mouse_up(): void;

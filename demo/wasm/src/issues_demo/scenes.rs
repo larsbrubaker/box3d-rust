@@ -5,23 +5,26 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::{HullBody, IssuesState, RestitutionTrack};
+use super::ghost_mesh::{self, SRC};
+use super::wheel_data::{WHEEL1_HULLS, WHEEL1_VERTS};
+use super::{GhostTrack, HullBody, IssuesState, RestitutionTrack};
 use crate::vis::{
     hf_triangle_edges, hull_edges, hull_triangles, mesh_triangle_edges_offset, VisBody,
 };
 use box3d_rust::body::{body_set_angular_velocity, create_body};
 use box3d_rust::geometry::Capsule;
 use box3d_rust::height_field::create_grid;
-use box3d_rust::hull::{create_hull, make_box_hull, make_offset_box_hull};
+use box3d_rust::hull::{create_hull, get_hull_points, make_box_hull, make_offset_box_hull};
 use box3d_rust::math_functions::{
     make_quat_from_axis_angle, rotate_vector, Pos, Quat, Vec3, DEG_TO_RAD, VEC3_AXIS_X,
     VEC3_AXIS_Y, VEC3_ONE,
 };
-use box3d_rust::mesh::{create_grid_mesh, create_platform_mesh};
+use box3d_rust::mesh::{create_grid_mesh, create_mesh, create_platform_mesh, MeshDef};
 use box3d_rust::shape::{
     create_capsule_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
 };
 use box3d_rust::types::{default_body_def, default_shape_def, BodyType, MotionLocks};
+use box3d_rust::world::world_set_contact_tuning;
 
 /// b3_colorMagenta (draw.h) — the Capsule Mesh player capsule's custom color.
 const COLOR_MAGENTA: u32 = 0x00FF_00FF;
@@ -506,4 +509,149 @@ pub(super) fn build_slide_twist_off_center() -> IssuesState {
     );
 
     state
+}
+
+/// GMod Wheel Stack (:1051) — 30 stacked metal_wheel1 props. Each wheel's 37-piece
+/// convex decomposition is rebuilt into a single wrapping convex hull (the union of
+/// every piece hull's output points, matching C's `buffer` accumulation), which is
+/// what actually improves the simulation. `b3World_SetContactTuning(240, 10, 3)` lets
+/// body-pair contact merging settle and sleep the stack. All values match C.
+pub(super) fn build_wheel_stack() -> IssuesState {
+    let mut state = IssuesState::new();
+    add_ground_box(&mut state, 10.0);
+
+    // Rebuild each decomposition piece hull and accumulate its output points, exactly
+    // like C: `b3CreateHull` per span, then gather `b3GetHullPoints` up to N = 512.
+    const N: usize = 512;
+    let mut buffer: Vec<Vec3> = Vec::with_capacity(N);
+    for &(offset, count) in WHEEL1_HULLS.iter() {
+        let piece = create_hull(&WHEEL1_VERTS[offset..offset + count], count as i32)
+            .expect("wheel piece hull");
+        for &p in get_hull_points(&piece) {
+            if buffer.len() >= N {
+                break;
+            }
+            buffer.push(p);
+        }
+    }
+
+    // A single hull that wraps the input hulls.
+    let wheel_hull = create_hull(&buffer, buffer.len() as i32).expect("wheel wrapping hull");
+    let tris = hull_triangles(&wheel_hull);
+    let edges = hull_edges(&wheel_hull);
+
+    let height = 0.171f32;
+    let spacing = height + 0.006;
+    let start_y = 0.5 * height + 0.004;
+
+    let mut sd = default_shape_def();
+    sd.base_material.friction = 0.6;
+
+    let wheel_count = 30;
+    for i in 0..wheel_count {
+        let mut bd = default_body_def();
+        bd.type_ = BodyType::Dynamic;
+        bd.name = "wheel".to_string();
+        bd.position = pos(0.0, start_y + i as f32 * spacing, 0.0);
+        let body = create_body(&mut state.world, &bd);
+        create_hull_shape(&mut state.world, body, &sd, &wheel_hull);
+        state.hull_bodies.push(HullBody {
+            body_index: body.index1 - 1,
+            tris: tris.clone(),
+            edges: edges.clone(),
+        });
+    }
+
+    world_set_contact_tuning(&mut state.world, 240.0, 10.0, 3.0);
+    state
+}
+
+/// s&box Ghost Collisions (:508) — a procedural two-chunk mesh floor with a
+/// velocity-driven, fixed-rotation character. The two chunks meet at x = 0, each its
+/// own body and mesh shape so seam contacts live in separate contact pairs like s&box
+/// world chunks. The character body and its ghost-launch tracking match C exactly;
+/// the per-step velocity control + launch detection live in [`super`].
+pub(super) fn build_sbox_ghost() -> IssuesState {
+    let mut state = IssuesState::new();
+
+    // Two chunks meeting at x = 0 (C `CreateFloorChunk`), bounds in s&box inches.
+    create_floor_chunk(&mut state, 0, -ghost_mesh::HALF_LENGTH_INCHES, 0.0);
+    create_floor_chunk(&mut state, 1, 0.0, ghost_mesh::HALF_LENGTH_INCHES);
+
+    // Character: s&box player — 16-wide zero-radius box hull, 72 tall, mass 500.
+    let body_half_width = 16.0 * SRC;
+    let body_half_height = 36.0 * SRC;
+    let character_mass = 500.0f32;
+    let walk_range_x = 3.5f32;
+
+    let mut bd = default_body_def();
+    bd.type_ = BodyType::Dynamic;
+    bd.position = pos(-walk_range_x, body_half_height + 0.1, 0.0);
+    bd.motion_locks = MotionLocks {
+        angular_x: true,
+        angular_y: true,
+        angular_z: true,
+        ..MotionLocks::default()
+    };
+    bd.enable_sleep = false;
+    bd.enable_contact_recycling = false;
+    bd.gravity_scale = 2.03; // s&box gravity: 800 inch/s^2
+    bd.name = "character".to_string();
+    let character = create_body(&mut state.world, &bd);
+
+    let mut sd = default_shape_def();
+    sd.base_material.friction = 0.0;
+    sd.base_material.restitution = 0.0;
+    let volume = 8.0 * body_half_width * body_half_height * body_half_width;
+    sd.density = character_mass / volume;
+    sd.enable_speculative_contact = false;
+
+    let box_hull = make_box_hull(body_half_width, body_half_height, body_half_width);
+    create_hull_shape(&mut state.world, character, &sd, &box_hull.base);
+    state.bodies.push(VisBody::box_body(
+        character.index1 - 1,
+        body_half_width,
+        body_half_height,
+        body_half_width,
+    ));
+
+    state.ghost = Some(GhostTrack {
+        character,
+        body_half_height,
+        walk_direction_x: 1.0,
+        walk_direction_z: 1.0,
+        walk_speed_x: 350.0 * SRC, // s&box run speed
+        walk_speed_z: 20.0 * SRC,
+        launch_count: 0,
+        max_launch_speed: 0.0,
+        was_launched: false,
+        launch_markers: Vec::new(),
+        vertical_velocity: 0.0,
+    });
+    state
+}
+
+/// One ghost-collision floor chunk: build the procedural triangle soup, cook it into a
+/// mesh (weld tolerance == `B3_LINEAR_SLOP`, identify edges, same as s&box), attach it
+/// as a static mesh shape, and add its welded triangle edges to the static wireframe.
+fn create_floor_chunk(state: &mut IssuesState, chunk: i32, x0u: f32, x1u: f32) {
+    let (vertices, indices) = ghost_mesh::create_floor_chunk(chunk, x0u, x1u);
+
+    let mesh_def = MeshDef {
+        vertices,
+        indices,
+        weld_vertices: true,
+        weld_tolerance: 0.005, // == B3_LINEAR_SLOP, same as s&box
+        identify_edges: true,
+        ..MeshDef::default()
+    };
+    let mesh = create_mesh(&mesh_def, None).expect("ghost floor chunk mesh");
+
+    let bd = default_body_def();
+    let body = create_body(&mut state.world, &bd);
+    create_mesh_shape(&mut state.world, body, &default_shape_def(), &mesh, VEC3_ONE);
+
+    state
+        .static_wire
+        .extend(mesh_triangle_edges_offset(&mesh, VEC3_ONE, vec3(0.0, 0.0, 0.0)));
 }

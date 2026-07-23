@@ -14,20 +14,32 @@
 //! - **Multiple Prismatic** sets `m_mouseForceScale = 1e6` in C (a stronger picker
 //!   pull); [`issues_reset_multiple_prismatic`] applies the same override via
 //!   [`crate::interact::set_grab_force_scale`], so the mouse grab matches C exactly.
+//! - **GMod Wheel Stack** renders each wheel through the arbitrary-hull channel
+//!   (30 instances of the wrapping hull). The C `Step` HUD prints per-step profiling
+//!   (`b3World_GetProfile` step/collide/solve milliseconds and the effective contact
+//!   hz derived from the app's step hz × sub-steps); those are C-app profiling lines
+//!   and are not reproduced — the scene is otherwise bit-identical.
+//! - **s&box Ghost Collisions** ports the procedural floor mesh, the velocity-driven
+//!   fixed-rotation character, the ghost-launch detection, and the two DrawControls
+//!   walk-speed sliders + Reset Counters button exactly (see [`ghost_mesh`]).
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
 #![allow(clippy::excessive_precision)]
 
+mod ghost_mesh;
 mod scenes;
+mod wheel_data;
 
 use crate::interact::{self, MouseGrab};
 use crate::shell::ZERO_POS;
 use crate::vis::{push_poses, VisBody};
-use box3d_rust::body::get_body_transform;
+use box3d_rust::body::{
+    body_get_linear_velocity, body_get_position, body_set_linear_velocity, get_body_transform,
+};
 use box3d_rust::id::{BodyId, NULL_BODY_ID};
-use box3d_rust::math_functions::Vec3;
+use box3d_rust::math_functions::{Pos, Vec3};
 use box3d_rust::types::{default_weld_joint_def, default_world_def};
 use box3d_rust::world::World;
 use std::cell::RefCell;
@@ -60,7 +72,35 @@ pub(super) struct IssuesState {
     pub hull_crash_points: Vec<f32>,
     /// Restitution Overshoot bounce tracking (only when that scene is live).
     pub resti: Option<RestitutionTrack>,
+    /// s&box Ghost Collisions velocity control + launch tracking (that scene only).
+    pub ghost: Option<GhostTrack>,
 }
+
+/// s&box Ghost Collisions per-step state (`SBoxGhostCollisions`, sample_issues.cpp:508).
+/// The character is driven by pure velocity control each step; any upward velocity
+/// spike while grounded is counted as a ghost launch and its position recorded.
+pub(super) struct GhostTrack {
+    pub character: BodyId,
+    /// Half height of the box hull (C `m_bodyHalfHeight`), for the grounded test.
+    pub body_half_height: f32,
+    pub walk_direction_x: f32,
+    pub walk_direction_z: f32,
+    pub walk_speed_x: f32,
+    pub walk_speed_z: f32,
+    pub launch_count: i32,
+    pub max_launch_speed: f32,
+    pub was_launched: bool,
+    /// Recorded launch positions (C `m_launchMarkers`, capacity 64).
+    pub launch_markers: Vec<Pos>,
+    /// Latest vertical velocity, for the HUD (`DrawTextLine` in C `Step`).
+    pub vertical_velocity: f32,
+}
+
+// C `SBoxGhostCollisions` static constexpr thresholds (sample_issues.cpp:907-910).
+const GHOST_WALK_RANGE_X: f32 = 3.5; // turn around beyond +/- this x (meters)
+const GHOST_WALK_RANGE_Z: f32 = 0.5; // turn around beyond +/- this z (meters)
+const GHOST_LAUNCH_THRESHOLD: f32 = 0.5; // upward m/s counted as a ghost launch
+const GHOST_MARKER_CAPACITY: usize = 64;
 
 /// Restitution Overshoot per-step bounce tracking (`RestitutionOvershoot::Step`,
 /// sample_issues.cpp:1190). Mirrors the C member fields so the HUD and the
@@ -91,6 +131,7 @@ impl IssuesState {
             hull_crash_edges: Vec::new(),
             hull_crash_points: Vec::new(),
             resti: None,
+            ghost: None,
         }
     }
 }
@@ -171,18 +212,168 @@ pub fn issues_reset_slide_twist_off_center() -> u32 {
     install(scenes::build_slide_twist_off_center())
 }
 
+#[wasm_bindgen]
+pub fn issues_reset_wheel_stack() -> u32 {
+    install(scenes::build_wheel_stack())
+}
+
+#[wasm_bindgen]
+pub fn issues_reset_sbox_ghost() -> u32 {
+    install(scenes::build_sbox_ghost())
+}
+
 // --- Stepping + render surface --------------------------------------------
 
 #[wasm_bindgen]
 pub fn issues_step(dt: f32, sub_steps: i32) -> u32 {
     with_state(|state| {
         state.grab.pre_step(&mut state.world, dt);
+        // s&box Ghost Collisions drives the character with pure velocity control set
+        // just before the step (C `SBoxGhostCollisions::Step` before `Sample::Step`).
+        ghost_pre_step(state);
         // Hull Crash is a static render (no simulated bodies); still step the empty
         // world so the shared surface behaves uniformly.
         state.world.step(dt, sub_steps);
         update_restitution(state);
+        // Ghost-launch detection reads the post-step velocity (C, after `Sample::Step`).
+        ghost_post_step(state);
         state.bodies.len() as u32
     })
+}
+
+/// s&box Ghost Collisions velocity control (`SBoxGhostCollisions::Step`, the part
+/// before `Sample::Step`): flip the walk direction at the range limits, then overwrite
+/// the horizontal velocity while keeping the solver's vertical velocity.
+fn ghost_pre_step(state: &mut IssuesState) {
+    let Some(g) = state.ghost.as_ref() else {
+        return;
+    };
+    let character = g.character;
+    let speed_x = g.walk_speed_x;
+    let speed_z = g.walk_speed_z;
+    let mut dir_x = g.walk_direction_x;
+    let mut dir_z = g.walk_direction_z;
+
+    let position = body_get_position(&state.world, character);
+    if position.x as f32 > GHOST_WALK_RANGE_X {
+        dir_x = -1.0;
+    } else if (position.x as f32) < -GHOST_WALK_RANGE_X {
+        dir_x = 1.0;
+    }
+    if position.z as f32 > GHOST_WALK_RANGE_Z {
+        dir_z = -1.0;
+    } else if (position.z as f32) < -GHOST_WALK_RANGE_Z {
+        dir_z = 1.0;
+    }
+
+    let mut velocity = body_get_linear_velocity(&state.world, character);
+    velocity.x = dir_x * speed_x;
+    velocity.z = dir_z * speed_z;
+    body_set_linear_velocity(&mut state.world, character, velocity);
+
+    if let Some(g) = state.ghost.as_mut() {
+        g.walk_direction_x = dir_x;
+        g.walk_direction_z = dir_z;
+    }
+}
+
+/// s&box Ghost Collisions launch detection (`SBoxGhostCollisions::Step`, the part after
+/// `Sample::Step`): the walkable plane is exactly y = 0, so any upward velocity spike
+/// while grounded is a ghost collision. Latch each rising edge, track the worst speed,
+/// and record the launch position (up to the marker capacity).
+fn ghost_post_step(state: &mut IssuesState) {
+    let Some(g) = state.ghost.as_ref() else {
+        return;
+    };
+    let character = g.character;
+    let body_half_height = g.body_half_height;
+    let was_launched = g.was_launched;
+
+    let position = body_get_position(&state.world, character);
+    let velocity = body_get_linear_velocity(&state.world, character);
+
+    let grounded = (position.y as f32) < body_half_height + 0.01 + 4.0 * ghost_mesh::SRC;
+    let launched = velocity.y > GHOST_LAUNCH_THRESHOLD;
+
+    let mut new_count = g.launch_count;
+    let mut new_max = g.max_launch_speed;
+    let mut new_marker: Option<Pos> = None;
+    if grounded && launched && !was_launched {
+        new_count += 1;
+        new_max = new_max.max(velocity.y);
+        if g.launch_markers.len() < GHOST_MARKER_CAPACITY {
+            new_marker = Some(position);
+        }
+    }
+
+    if let Some(g) = state.ghost.as_mut() {
+        g.launch_count = new_count;
+        g.max_launch_speed = new_max;
+        if let Some(m) = new_marker {
+            g.launch_markers.push(m);
+        }
+        g.was_launched = launched;
+        g.vertical_velocity = velocity.y;
+    }
+}
+
+/// s&box Ghost Collisions HUD readout, or empty when that scene is not live:
+/// `[launchCount, maxLaunchSpeed (m/s), verticalVelocity (m/s)]`. JS derives the
+/// inch/s figures (`/ SRC`) for the C `DrawTextLine` text.
+#[wasm_bindgen]
+pub fn issues_ghost_hud() -> Vec<f32> {
+    with_state(|state| match &state.ghost {
+        Some(g) => vec![g.launch_count as f32, g.max_launch_speed, g.vertical_velocity],
+        None => Vec::new(),
+    })
+}
+
+/// s&box Ghost Collisions launch markers (C red `DrawPoint`s): flat `[x,y,z]` × N.
+#[wasm_bindgen]
+pub fn issues_ghost_markers() -> Vec<f32> {
+    with_state(|state| {
+        let mut out = Vec::new();
+        if let Some(g) = &state.ghost {
+            for m in &g.launch_markers {
+                out.extend_from_slice(&[m.x as f32, m.y as f32, m.z as f32]);
+            }
+        }
+        out
+    })
+}
+
+/// Set the s&box walk speed along x, in s&box inch/s (C `DrawControls` slider,
+/// range 100..=400). Converted to m/s via `SRC`.
+#[wasm_bindgen]
+pub fn issues_ghost_set_speed_x(inch_per_s: f32) {
+    with_state(|state| {
+        if let Some(g) = state.ghost.as_mut() {
+            g.walk_speed_x = inch_per_s * ghost_mesh::SRC;
+        }
+    });
+}
+
+/// Set the s&box walk speed along z, in s&box inch/s (C `DrawControls` slider,
+/// range 10..=100). Converted to m/s via `SRC`.
+#[wasm_bindgen]
+pub fn issues_ghost_set_speed_z(inch_per_s: f32) {
+    with_state(|state| {
+        if let Some(g) = state.ghost.as_mut() {
+            g.walk_speed_z = inch_per_s * ghost_mesh::SRC;
+        }
+    });
+}
+
+/// Reset the ghost-launch counters (C `DrawControls` "Reset Counters" button).
+#[wasm_bindgen]
+pub fn issues_ghost_reset_counters() {
+    with_state(|state| {
+        if let Some(g) = state.ghost.as_mut() {
+            g.launch_count = 0;
+            g.max_launch_speed = 0.0;
+            g.launch_markers.clear();
+        }
+    });
 }
 
 /// `RestitutionOvershoot::Step` (sample_issues.cpp:1190) bounce tracking: record the

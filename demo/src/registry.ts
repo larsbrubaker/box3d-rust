@@ -10,11 +10,12 @@
 //               and/or on the page.
 //   `planned` — no route yet.
 //
-// Enumerated from the pinned submodule (pinned at c52908c). 155 active entries
-// across 19 categories. This inventory is mid-migration from the 540ea38 samples
+// Enumerated from the pinned submodule (pinned at c52908c). 157 active entries
+// across 19 categories. This inventory is fully migrated from the 540ea38 samples
 // to c52908c: the c52908c removals (Stacking "Card House Thick", Issues "Dump
 // Loader", Continuous "Mesh Drop Unit Test" — the last moved to Determinism) are
-// already dropped here; the new c52908c samples land in later demo-parity batches.
+// dropped here, and the new c52908c samples (Bodies "Gyroscopic Precession", Issues
+// "GMod Wheel Stack" and "s&box Ghost Collisions") are all landed.
 // Two upstream RegisterSample calls are `#if 0`'d and therefore excluded: Benchmark
 // "Large World" (the first one at :203; the live one at :1022 is kept), Ragdoll
 // "Pose". (Bodies "Gyroscopic Precession" was `#if 0`'d at 540ea38 but upstream
@@ -271,6 +272,15 @@ export const SAMPLES: SampleEntry[] = [
     // Live: off-center box hull (b3MakeOffsetBoxHull) spun 25 rad/s about the tilted Y
     // of a 20° inclined plane; the offset box rides the arbitrary-hull render channel.
     ["Slide Twist Off Center Shape", "live", "issues", "slide-twist-off-center-shape"],
+    // Live: 30 stacked metal_wheel1 props, each the wrapping convex hull of the C
+    // 37-piece decomposition (317-vert data); b3World_SetContactTuning(240, 10, 3).
+    // The C Step's per-step profiling HUD (step/collide/solve ms) is C-app profiling,
+    // not reproduced — disclosed in the wasm module.
+    ["GMod Wheel Stack", "live", "issues", "wheel-stack"],
+    // Live: procedural two-chunk mesh floor with hash-tessellated T-junction seams and
+    // below-plane chamfers/pits; a velocity-driven fixed-rotation character walks it and
+    // ghost launches are counted with red markers. Walk-speed sliders + Reset Counters.
+    ["s&box Ghost Collisions", "live", "issues", "sbox-ghost-collisions"],
   ]),
   ...cat("Joints", "sample_joint.cpp", [
     ["Distance Joint", "live", "joints", "distance"],
