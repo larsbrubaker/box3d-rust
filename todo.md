@@ -36,9 +36,31 @@ gaps.**
 
 ## Upstream tracking (recurring)
 
-Upstream Box3D moves fast (released June 2026; submodule pinned at `540ea38`).
-After release readiness:
+Upstream Box3D moves fast (released June 2026; submodule pinned at `c52908c`,
+synced 2026-07-23 — upstream main has nothing newer; an unmerged `fixes_09`
+branch is in progress upstream and should be triaged once it lands on main).
 
-- [ ] Diff the pinned submodule against the latest upstream tag; triage new
+- [ ] Periodically diff the pinned submodule against upstream main; triage new
       commits into port-worthy fixes vs features; bump the pin and re-run the
       determinism gate (expected values may change with upstream fixes)
+
+## Demo parity with the c52908c samples (from the 2026-07 sync)
+
+The core library and test sync to `c52908c` is complete. The samples app moved
+too; the demo site still mirrors the `540ea38` samples. Port the user-visible
+sample changes into `demo/`:
+
+- [ ] New Mover sample (`samples/mover.cpp`/`mover.h`, ~347 lines) — character
+      mover demo category
+- [ ] `sample_issues.cpp` +858 lines of new Issues samples
+- [ ] `sample_stacking.cpp` (+247), `sample_determinism.cpp` (reworked),
+      `sample_benchmark.cpp`, `sample_bodies.cpp`, `sample_continuous.cpp`
+      updates; `shared/benchmarks.c` changes
+- [ ] Update `demo/src/registry.ts` rows accordingly; renderer/shader work in
+      `samples/gfx` (e.g. shadow PCF) is optional visual polish
+
+## Test-parity gap (pre-existing, found during the 2026-07 sync)
+
+- [ ] `test_recording.c` `RecTestDrawShape` — the C test covering
+      `b3World_Draw`'s lazy `createDebugShape` path through recording was never
+      ported; add its Rust counterpart to the recording tests

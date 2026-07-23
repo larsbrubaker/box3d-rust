@@ -25,7 +25,7 @@ live in the browser.
 ## Status: Determinism gate passed — bit-exact with the C reference
 
 Box3D was released by Erin Catto in June 2026. The pinned reference source lives in the
-`box3d-cpp-reference/` submodule (v0.1.0+, `540ea38`), and this port follows the same
+`box3d-cpp-reference/` submodule (v0.1.0+, `c52908c`), and this port follows the same
 playbook that took [box2d-rust](https://github.com/larsbrubaker/box2d-rust) to completion:
 whole modules in dependency order, each landing with its portion of the upstream C test
 suite.
