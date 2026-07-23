@@ -3,6 +3,41 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## 0.3.0
+
+Upstream sync: the C reference pin advances to `c52908c` and this port follows
+its API and behavior. Simulation results are not bit-compatible with 0.2.x.
+
+### Breaking
+
+- `create_compound_shape` is now `create_baked_compound_shape` (upstream
+  baked-compound rename, box3d #77).
+- `collide_sphere_and_triangle` / `collide_capsule_and_triangle` /
+  `collide_hull_and_triangle` are now `collide_triangle_and_sphere` /
+  `collide_triangle_and_capsule` / `collide_triangle_and_hull`, matching the
+  upstream argument-order flip.
+- `BODY_NAME_LENGTH` / `SHAPE_NAME_LENGTH` (18) are replaced by
+  `MAX_NAME_LENGTH` (256) and `MAX_QUERY_NAME_LENGTH` (64).
+- `edge_edge_separation` was removed by the upstream edge-edge optimization
+  port (box3d #63).
+- Recording/snapshot formats advanced (`REC_VERSION` 4.3, `SNAP_VERSION` 2,
+  new `HULL_VERSION`); recordings from 0.2.x do not replay.
+
+### Changed
+
+- Upstream behavior ports: ghost-collision improvements (#61), edge-edge
+  optimization (#63), friction center weighted average (#71), SIMD hull
+  collision scalar path (#93), contact and manifold fixes (#94), hull
+  stacking (#97) and hull builder (#98) fixes.
+
+### Added
+
+- `DebugShapeCallbacks` test port, with a replay debug-shape release fix.
+- Demo parity batches syncing the sample app to `c52908c` (new samples,
+  Jenga rework, determinism scenes split into modules).
+- 30 new tests; suite green in both precision modes (332 / 333 with
+  `double-precision`).
+
 ## 0.2.1
 
 No public API or behavioral changes; existing code upgrades without modification.
