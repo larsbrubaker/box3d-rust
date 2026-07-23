@@ -342,7 +342,7 @@ pub(super) fn dispatch(
         RecOp::ShapeSetName => {
             let mut s = rdr.snap();
             let shape = s.shape_id();
-            let name = s.shape_str();
+            let name = s.str_owned();
             rdr.sync_from(&s);
             if rdr.ok {
                 crate::shape::shape_set_name(world, rdr.make_shape_id(shape), &name);

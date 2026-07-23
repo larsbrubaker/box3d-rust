@@ -10,7 +10,6 @@ use super::lifecycle::{
 };
 use super::mass::update_body_extents_from_shapes;
 use super::types::BodyPlaneResult;
-use crate::constants::{BODY_NAME_LENGTH, NULL_NAME};
 use crate::core::NULL_INDEX;
 use crate::geometry::{Capsule, MassData, PlaneResult};
 use crate::id::{BodyId, ShapeId};
@@ -570,35 +569,23 @@ pub fn body_is_enabled(world: &World, body_id: BodyId) -> bool {
     world.bodies[body_index as usize].set_index != DISABLED_SET
 }
 
-/// Set the body name (truncated to [`BODY_NAME_LENGTH`]). Uses the world name
-/// cache rather than C's fixed char buffer. (b3Body_SetName)
+/// Set the body name. Uses the world name cache rather than C's fixed char
+/// buffer. (b3Body_SetName)
 pub fn body_set_name(world: &mut World, body_id: BodyId, name: &str) {
     crate::recording::with_recording(world, |rec| {
         rec.write_body_set_name(body_id, name);
     });
-    let truncated = if name.len() > BODY_NAME_LENGTH {
-        // Truncate on UTF-8 char boundary at or before the C byte limit.
-        let mut end = BODY_NAME_LENGTH;
-        while end > 0 && !name.is_char_boundary(end) {
-            end -= 1;
-        }
-        &name[..end]
-    } else {
-        name
-    };
-    let name_id = world.names.add_name(truncated);
+    let name_id = world.names.add_name(name);
     let body_index = get_body_full_id(world, body_id);
     world.bodies[body_index as usize].name_id = name_id;
 }
 
+/// Get the body name. Returns an empty string if the name isn't set.
 /// (b3Body_GetName)
 pub fn body_get_name(world: &World, body_id: BodyId) -> &str {
     let body_index = get_body_full_id(world, body_id);
     let name_id = world.bodies[body_index as usize].name_id;
-    if name_id == NULL_NAME {
-        return "";
-    }
-    world.names.find_name(name_id).unwrap_or("")
+    world.names.find_name_with_default(name_id, "")
 }
 
 /// (b3Body_SetUserData) — Rust stores `u64` instead of `void*`.

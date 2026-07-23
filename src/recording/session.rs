@@ -4,7 +4,6 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::constants::BODY_NAME_LENGTH;
 use crate::core::get_length_units_per_meter;
 use crate::id::WorldId;
 use crate::math_functions::{aabb_union, Aabb};
@@ -19,8 +18,12 @@ use std::collections::HashMap;
 pub const REC_MAGIC: u32 = 0x4352_3342;
 /// Major recording version. (B3_REC_VERSION_MAJOR)
 pub const REC_VERSION_MAJOR: u16 = 3;
-/// Minor recording version. (B3_REC_VERSION_MINOR)
-pub const REC_VERSION_MINOR: u16 = 2;
+/// Minor recording version — v3 added the name cache. (B3_REC_VERSION_MINOR)
+pub const REC_VERSION_MINOR: u16 = 3;
+
+/// Maximum query name length. Query names longer than this probably indicate a
+/// bug in user code. (B3_MAX_QUERY_NAME_LENGTH)
+pub const MAX_QUERY_NAME_LENGTH: usize = 64;
 
 /// Fixed 48-byte recording header. (b3RecHeader)
 #[repr(C)]
@@ -87,9 +90,10 @@ impl RecHeader {
 /// Interned query tag. (b3RecTag)
 #[derive(Debug, Clone)]
 pub struct RecTag {
+    /// hash of (id, query_name)
     pub key: u64,
     pub id: u64,
-    pub name: String,
+    pub query_name: String,
 }
 
 /// User-owned recording buffer. (b3Recording)
@@ -195,7 +199,7 @@ impl Recording {
         let index = self.tags.len() as u32;
         let mut clamped = String::new();
         for (i, ch) in name.chars().enumerate() {
-            if i >= BODY_NAME_LENGTH {
+            if i >= MAX_QUERY_NAME_LENGTH {
                 break;
             }
             clamped.push(ch);
@@ -203,7 +207,7 @@ impl Recording {
         self.tags.push(RecTag {
             key,
             id,
-            name: clamped,
+            query_name: clamped,
         });
         self.tag_map.insert(key, index);
     }
@@ -220,7 +224,7 @@ impl Recording {
         for t in &self.tags {
             self.buffer.append_u64(t.key);
             self.buffer.append_u64(t.id);
-            self.buffer.append_str(&t.name);
+            self.buffer.append_str(&t.query_name);
         }
     }
 

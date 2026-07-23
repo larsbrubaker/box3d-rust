@@ -72,17 +72,7 @@ pub(crate) fn create_shape_internal(
         (body.id, body.set_index, body.type_, body.head_shape_id)
     };
 
-    // Truncate like b3StrCpy into B3_SHAPE_NAME_LENGTH (+ NameCache in Rust).
-    let truncated = if def.name.len() > crate::constants::SHAPE_NAME_LENGTH {
-        let mut end = crate::constants::SHAPE_NAME_LENGTH;
-        while end > 0 && !def.name.is_char_boundary(end) {
-            end -= 1;
-        }
-        &def.name[..end]
-    } else {
-        def.name.as_str()
-    };
-    let name_id = world.names.add_name(truncated);
+    let name_id = world.names.add_name(&def.name);
 
     {
         let shape = &mut world.shapes[shape_id as usize];

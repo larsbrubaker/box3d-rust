@@ -392,34 +392,6 @@ fn test_world_get_bounds() {
     assert!(bounds.upper_bound.y > 2.0);
 }
 
-/// Dump helpers write files without panicking. (b3World_DumpShapeBounds /
-/// b3World_DumpAwake)
-#[test]
-fn test_world_dump_helpers() {
-    let mut world = World::new(&default_world_def());
-    let mut body_def = default_body_def();
-    body_def.type_ = BodyType::Dynamic;
-    let body = create_body(&mut world, &body_def);
-    let mut shape_def = default_shape_def();
-    shape_def.density = 1.0;
-    create_sphere_shape(
-        &mut world,
-        body,
-        &shape_def,
-        &Sphere {
-            center: VEC3_ZERO,
-            radius: 0.5,
-        },
-    );
-    world.step(1.0 / 60.0, 1);
-
-    world_dump_shape_bounds(&world, BodyType::Dynamic);
-    world_dump_awake(&world);
-
-    let _ = std::fs::remove_file("box3d_bounds.txt");
-    let _ = std::fs::remove_file("box3d_dump.inl");
-}
-
 // Custom-filter userData access, mirroring sample_benchmark.cpp
 // `BenchmarkSensor::Filter` (:922), which reads a shape's userData mid-step
 // through `b3Shape_GetUserData(shapeId)`. The Rust callback gets the same reach

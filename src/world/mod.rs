@@ -34,14 +34,12 @@
 
 mod api;
 mod draw;
-mod dump;
 mod query;
 mod step;
 mod validate;
 
 pub use api::*;
 pub use draw::*;
-pub use dump::*;
 pub use query::*;
 
 use crate::bitset::BitSet;

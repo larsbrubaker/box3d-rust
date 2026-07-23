@@ -24,8 +24,8 @@ use pods::*;
 
 /// Snapshot image magic 'BNS3'. (B3_SNAP_MAGIC)
 pub const SNAP_MAGIC: u32 = 0x3353_4E42;
-/// Snapshot format version. (B3_SNAP_VERSION)
-pub const SNAP_VERSION: u32 = 1;
+/// Snapshot format version — v2 added the name cache. (B3_SNAP_VERSION)
+pub const SNAP_VERSION: u32 = 2;
 /// Rust field-layout version — bump when serialized record layouts change.
 pub const SNAP_LAYOUT_VERSION: u32 = 1;
 
@@ -136,7 +136,52 @@ pub fn serialize_world(world: &World, buf: &mut RecBuffer, registry: &mut Geomet
         );
     }
 
+    ser_names(buf, &world.names);
+
     buf.size() - start
+}
+
+/// Serialize the world name cache. (b3SerNames)
+fn ser_names(buf: &mut RecBuffer, cache: &crate::name_cache::NameCache) {
+    buf.append_i32(cache.entries.len() as i32);
+    for entry in &cache.entries {
+        buf.append_u32(entry.hash);
+        buf.append_i32(entry.length);
+        buf.append(entry.name.as_bytes());
+    }
+}
+
+/// Deserialize the world name cache. (b3DesNames)
+fn des_names(r: &mut SnapReader, cache: &mut crate::name_cache::NameCache) {
+    let count = r.i32();
+
+    // sizeof(b3NameEntry) == 16, minimum 8 stream bytes per entry (hash + length).
+    if r.ok && !r.check_count(count, 16, 8) {
+        r.ok = false;
+    }
+
+    if !r.ok {
+        return;
+    }
+
+    cache.entries.reserve(count.max(0) as usize);
+    for _ in 0..count {
+        let hash = r.u32();
+        let length = r.i32();
+        if !r.ok || length < 0 {
+            r.ok = false;
+            return;
+        }
+        let bytes = match r.bytes(length as usize) {
+            Some(b) => b,
+            None => {
+                r.ok = false;
+                return;
+            }
+        };
+        let name = String::from_utf8_lossy(bytes).into_owned();
+        cache.load_name(hash, name, length);
+    }
 }
 
 /// Overwrite a freshly-created (shell) world with the simulation state in the
@@ -290,6 +335,8 @@ pub fn deserialize_into_shell(
     for c in 0..GRAPH_COLOR_COUNT as usize {
         world.constraint_graph.colors[c] = des_graph_color(&mut r, c == OVERFLOW_INDEX as usize);
     }
+
+    des_names(&mut r, &mut world.names);
 
     r.ok
 }

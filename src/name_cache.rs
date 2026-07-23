@@ -1,5 +1,4 @@
 // Port of the name cache from box3d-cpp-reference/src/name_cache.h/.c.
-// Remaining load/replay helpers land with the recording slice.
 //
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
@@ -92,5 +91,32 @@ impl NameCache {
     pub fn find_name(&self, id: u32) -> Option<&str> {
         let index = *self.map.get(&id)?;
         Some(&self.entries[index as usize].name)
+    }
+
+    /// (b3FindNameWithDefault)
+    pub fn find_name_with_default<'a>(&'a self, id: u32, def: &'a str) -> &'a str {
+        self.find_name(id).unwrap_or(def)
+    }
+
+    /// Load a name from a recording. In C the caller transfers ownership of a
+    /// heap buffer; the Rust port takes the owned `String` by value. Empty names
+    /// or the null id are dropped, and a hash that already exists keeps the first
+    /// entry. (b3LoadName)
+    pub fn load_name(&mut self, id: u32, name: String, length: i32) {
+        if name.is_empty() || id == NULL_NAME {
+            return;
+        }
+
+        if self.map.contains_key(&id) {
+            return;
+        }
+
+        let index = self.entries.len() as i32;
+        self.entries.push(NameEntry {
+            hash: id,
+            length,
+            name,
+        });
+        self.map.insert(id, index);
     }
 }

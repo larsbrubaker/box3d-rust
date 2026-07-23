@@ -9,7 +9,6 @@ use super::lifecycle::get_shape;
 use super::query::ray_cast_shape;
 use super::shape_flags;
 use crate::body::{get_body_transform, get_body_transform_quick, make_body_id};
-use crate::constants::{NULL_NAME, SHAPE_NAME_LENGTH};
 use crate::contact::contact_flags;
 use crate::core::NULL_INDEX;
 use crate::distance::{shape_distance, DistanceInput, ShapeProxy, SimplexCache};
@@ -23,18 +22,6 @@ use crate::math_functions::{
 };
 use crate::types::WorldCastOutput;
 use crate::world::World;
-
-fn truncate_shape_name(name: &str) -> &str {
-    if name.len() > SHAPE_NAME_LENGTH {
-        let mut end = SHAPE_NAME_LENGTH;
-        while end > 0 && !name.is_char_boundary(end) {
-            end -= 1;
-        }
-        &name[..end]
-    } else {
-        name
-    }
-}
 
 fn set_shape_flag(world: &mut World, shape_id: ShapeId, bit: u8, flag: bool) {
     debug_assert!(!world.locked);
@@ -119,26 +106,23 @@ pub fn shape_get_user_data(world: &World, shape_id: ShapeId) -> u64 {
     world.shapes[index as usize].user_data
 }
 
-/// Set the shape name (truncated to [`SHAPE_NAME_LENGTH`]). Uses the world name
-/// cache rather than C's fixed char buffer. (b3Shape_SetName)
+/// Set the shape name. Uses the world name cache rather than C's fixed char
+/// buffer. (b3Shape_SetName)
 pub fn shape_set_name(world: &mut World, shape_id: ShapeId, name: &str) {
     crate::recording::with_recording(world, |rec| {
         rec.write_shape_set_name(shape_id, name);
     });
-    let truncated = truncate_shape_name(name);
-    let name_id = world.names.add_name(truncated);
+    let name_id = world.names.add_name(name);
     let index = get_shape(world, shape_id);
     world.shapes[index as usize].name_id = name_id;
 }
 
+/// Get the shape name. Returns an empty string if the name isn't set.
 /// (b3Shape_GetName)
 pub fn shape_get_name(world: &World, shape_id: ShapeId) -> &str {
     let index = get_shape(world, shape_id);
     let name_id = world.shapes[index as usize].name_id;
-    if name_id == NULL_NAME {
-        return "";
-    }
-    world.names.find_name(name_id).unwrap_or("")
+    world.names.find_name_with_default(name_id, "")
 }
 
 /// (b3Shape_IsSensor)

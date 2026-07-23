@@ -102,15 +102,6 @@ pub const TIME_TO_SLEEP: f32 = 0.5;
 /// Null name id in the name cache. (B3_NULL_NAME)
 pub const NULL_NAME: u32 = 0;
 
-/// Max body name length excluding null terminator. (B3_BODY_NAME_LENGTH)
-pub const BODY_NAME_LENGTH: usize = 18;
-
-/// Max shape name length excluding null terminator. (B3_SHAPE_NAME_LENGTH)
-///
-/// C defaults this to 0 (names disabled). The Rust port keeps names in the
-/// shared [`crate::name_cache::NameCache`] like bodies, so use the same cap.
-pub const SHAPE_NAME_LENGTH: usize = 18;
-
 /// Used to determine if two shapes are overlapping. Typically about 4×
 /// [`linear_slop`]. (B3_SPECULATIVE_DISTANCE)
 pub fn speculative_distance() -> f32 {

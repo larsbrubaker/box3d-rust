@@ -20,6 +20,10 @@ use crate::types::{
     RevoluteJointDef, ShapeDef, SphericalJointDef, WeldJointDef, WheelJointDef,
 };
 
+/// Maximum name length restored by the STR reader. Simplifies the scratch buffer
+/// lifetime; names longer than this probably indicate a bug. (B3_MAX_NAME_LENGTH)
+pub const MAX_NAME_LENGTH: usize = 256;
+
 impl RecBuffer {
     /// (b3RecW_STR)
     pub fn append_str(&mut self, s: &str) {
@@ -277,26 +281,26 @@ impl<'a> SnapReader<'a> {
         b0 | (b1 << 8) | (b2 << 16)
     }
 
-    /// (b3RecR_STR) — empty string for the 0xFFFF null sentinel.
+    /// (b3RecR_STR) — empty string for the 0xFFFF null sentinel. Names are
+    /// clamped to [`MAX_NAME_LENGTH`] like C's rotating scratch buffers, but the
+    /// cursor still advances by the full recorded length.
     pub fn str_owned(&mut self) -> String {
         let len = self.u16();
         if len == 0xFFFF {
             return String::new();
         }
-        let n = len as usize;
-        if let Some(bytes) = self.bytes(n) {
+        let full = len as usize;
+        let n = full.min(MAX_NAME_LENGTH);
+        let result = if let Some(bytes) = self.bytes(n) {
             String::from_utf8_lossy(bytes).into_owned()
         } else {
             String::new()
+        };
+        if full > n {
+            // Skip the over-length remainder so the cursor advances by len.
+            let _ = self.bytes(full - n);
         }
-    }
-
-    pub fn body_str(&mut self) -> String {
-        self.str_owned()
-    }
-
-    pub fn shape_str(&mut self) -> String {
-        self.str_owned()
+        result
     }
 
     pub fn world_id(&mut self) -> WorldId {

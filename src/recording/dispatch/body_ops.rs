@@ -96,7 +96,7 @@ pub(super) fn dispatch(
         RecOp::BodySetName => {
             let mut s = rdr.snap();
             let body = s.body_id();
-            let name = s.body_str();
+            let name = s.str_owned();
             rdr.sync_from(&s);
             if rdr.ok {
                 crate::body::body_set_name(world, rdr.make_body_id(body), &name);

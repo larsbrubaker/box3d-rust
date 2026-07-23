@@ -579,18 +579,25 @@ fn load_registry_block(data: &[u8], offset: usize, end: usize) -> (Vec<RegistryS
             }
             let len = u16::from_le_bytes(data[cursor..cursor + 2].try_into().unwrap());
             cursor += 2;
-            let name = if len == 0xFFFF {
+            let query_name = if len == 0xFFFF {
                 String::new()
             } else {
-                let n = len as usize;
-                if cursor + n > end {
+                let full = len as usize;
+                if cursor + full > end {
                     break;
                 }
+                // C clamps the stored name to B3_MAX_QUERY_NAME_LENGTH but always
+                // advances the cursor by the full recorded length.
+                let n = full.min(crate::recording::session::MAX_QUERY_NAME_LENGTH);
                 let s = String::from_utf8_lossy(&data[cursor..cursor + n]).into_owned();
-                cursor += n;
+                cursor += full;
                 s
             };
-            tags.push(RecTag { key, id, name });
+            tags.push(RecTag {
+                key,
+                id,
+                query_name,
+            });
         }
     }
     let _ = cursor;

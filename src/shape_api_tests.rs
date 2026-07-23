@@ -6,7 +6,6 @@
 
 use crate::body::{body_get_mass, create_body};
 use crate::broad_phase::{proxy_id, proxy_type};
-use crate::constants::SHAPE_NAME_LENGTH;
 use crate::contact::create_contact;
 use crate::core::NULL_INDEX;
 use crate::geometry::{default_surface_material, Capsule, ShapeType, Sphere};
@@ -48,12 +47,10 @@ fn make_dynamic_sphere(world: &mut World) -> (crate::id::BodyId, crate::id::Shap
 }
 
 fn check_shape_name(world: &World, shape_id: crate::id::ShapeId, expected: &str) {
+    // Names are interned at full length via the name cache; an unset name reads
+    // back as the empty string. (CheckShapeName)
     let got = shape_get_name(world, shape_id);
-    let expect_len = expected.len().min(SHAPE_NAME_LENGTH);
-    assert_eq!(got.len(), expect_len);
-    if expect_len > 0 {
-        assert_eq!(&got[..expect_len], &expected[..expect_len]);
-    }
+    assert_eq!(got, expected);
 }
 
 #[test]
@@ -268,7 +265,7 @@ fn shape_flags_test() {
     assert!(!shape_are_pre_solve_events_enabled(&world, shape));
 }
 
-/// ShapeNameTest from test_shape.c — def path, setter, truncation, clear.
+/// ShapeNameTest from test_shape.c — def path, setter, long name, clear.
 #[test]
 fn shape_name_test() {
     let mut world = World::new(&default_world_def());

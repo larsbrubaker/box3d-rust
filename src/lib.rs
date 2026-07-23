@@ -209,6 +209,9 @@ mod mesh_tests;
 mod mover_tests;
 
 #[cfg(test)]
+mod name_cache_tests;
+
+#[cfg(test)]
 mod shape_tests;
 
 #[cfg(test)]

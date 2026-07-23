@@ -48,9 +48,9 @@ fn name_and_user_data() {
     body_set_name(&mut world, body_id, "hinge_a");
     assert_eq!(body_get_name(&world, body_id), "hinge_a");
 
-    // Truncates to BODY_NAME_LENGTH (18).
+    // Names are interned at full length via the name cache (no truncation).
     body_set_name(&mut world, body_id, "abcdefghijklmnopqrstuvwxyz");
-    assert_eq!(body_get_name(&world, body_id), "abcdefghijklmnopqr");
+    assert_eq!(body_get_name(&world, body_id), "abcdefghijklmnopqrstuvwxyz");
 
     body_set_user_data(&mut world, body_id, 0xCAFE_BABE);
     assert_eq!(body_get_user_data(&world, body_id), 0xCAFE_BABE);

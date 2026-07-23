@@ -228,13 +228,13 @@ fn tagged_query() {
             saw53 = true;
             let tag = player.resolve_tag(info.key).unwrap();
             assert_eq!(tag.id, 53);
-            assert_eq!(tag.name, "bullet");
+            assert_eq!(tag.query_name, "bullet");
             assert_eq!(info.kind, RecQueryKind::CastRay);
         } else if info.key == key54 {
             saw54 = true;
             let tag = player.resolve_tag(info.key).unwrap();
             assert_eq!(tag.id, 54);
-            assert_eq!(tag.name, "bullet");
+            assert_eq!(tag.query_name, "bullet");
         } else {
             saw_untagged = true;
             assert_eq!(info.key, 0);
@@ -598,7 +598,6 @@ fn geometry_hash_collision() {
 /// Shape names survive create + SetName through replay. (ShapeNameReplay)
 #[test]
 fn shape_name_replay() {
-    use crate::constants::SHAPE_NAME_LENGTH;
     use crate::recording::RecPlayer;
     use crate::shape::{shape_get_name, shape_set_name};
 
@@ -653,7 +652,8 @@ fn shape_name_replay() {
     assert!(!player.has_diverged());
 
     for (i, name) in names.iter().enumerate() {
-        let expected: String = name.chars().take(SHAPE_NAME_LENGTH).collect();
+        // Names now round-trip at full length through the name cache.
+        let expected: String = (*name).to_string();
         let replay_id = crate::id::ShapeId {
             index1: shape_ids[i].index1,
             world0: player.world().world_id,
