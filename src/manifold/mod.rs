@@ -12,6 +12,8 @@ mod clip;
 mod hull_capsule;
 mod hulls;
 mod sat;
+mod separating_axis;
+mod simd_scalar;
 mod spheres;
 mod triangle;
 mod triangle_face;
@@ -30,3 +32,6 @@ pub use types::{
     LocalManifoldPoint, Manifold, ManifoldPoint, SatCache, SeparatingFeature, TriangleFeature,
     FEATURE_PAIR_SINGLE,
 };
+
+#[cfg(test)]
+pub(crate) use separating_axis::compute_separating_axis;

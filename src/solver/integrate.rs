@@ -71,7 +71,7 @@ pub(super) fn integrate_velocities(world: &mut World, context: &StepContext) {
             let i12 = inertia_local.cz.y;
             let i22 = inertia_local.cz.z;
 
-            for _gyro_iteration in 0..1 {
+            for _gyro_iteration in 0..crate::constants::GYROSCOPIC_ITERATIONS {
                 let w1 = omega2.x;
                 let w2 = omega2.y;
                 let w3 = omega2.z;

@@ -5,7 +5,7 @@
 
 use super::create::create_height_field;
 use super::types::{HeightFieldData, HeightFieldDef, HEIGHT_FIELD_HOLE};
-use crate::math_functions::{Vec3, PI};
+use crate::math_functions::{compute_cos_sin, Vec3, PI};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -48,8 +48,8 @@ pub fn create_grid(
 
 /// Create a sinusoidal wave height field. (b3CreateWave)
 ///
-/// Uses `f32::sin` (C `sinf`) to match the reference helpers, not Box3D's
-/// deterministic `sin` approximation.
+/// Uses Box3D's deterministic `b3ComputeCosSin` for heights, matching the C
+/// reference (which switched off `sinf` for cross-platform determinism).
 pub fn create_wave(
     row_count: i32,
     column_count: i32,
@@ -65,10 +65,10 @@ pub fn create_wave(
     let omega_x = 2.0 * PI * column_frequency;
 
     for i in 0..row_count {
-        let row_height = (omega_z * (i as f32)).sin();
+        let row_height = compute_cos_sin(omega_z * (i as f32)).sine;
         for j in 0..column_count {
             let k = (i * column_count + j) as usize;
-            let column_height = (omega_x * (j as f32)).sin();
+            let column_height = compute_cos_sin(omega_x * (j as f32)).sine;
             heights[k] = row_height * column_height;
         }
     }

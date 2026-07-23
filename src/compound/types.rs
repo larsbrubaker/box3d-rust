@@ -15,7 +15,7 @@ use crate::mesh::{Mesh, MeshData, MESH_VERSION};
 /// The baked compound version depends on the tree, mesh, and hull versions.
 /// (B3_COMPOUND_VERSION)
 pub const COMPOUND_VERSION: u64 =
-    0x8307_78DB_0708_6EB4u64 ^ DYNAMIC_TREE_VERSION ^ MESH_VERSION ^ HULL_VERSION;
+    0xB11D_CE70_FAD5_622Bu64 ^ DYNAMIC_TREE_VERSION ^ MESH_VERSION ^ HULL_VERSION;
 
 /// Meshes used in compounds have limited space for materials.
 /// (B3_MAX_COMPOUND_MESH_MATERIALS)

@@ -177,6 +177,29 @@ pub(crate) struct EdgeQuery {
     pub index_b: i32,
 }
 
+/// Separating axis query result from the SIMD hull collision path. (b3AxisQuery)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct AxisQuery {
+    pub normal: Vec3,
+    pub separation: f32,
+    pub index_a: i32,
+    pub index_b: i32,
+    /// [`SeparatingFeature`] describing which axis type won.
+    pub type_: SeparatingFeature,
+}
+
+impl Default for AxisQuery {
+    fn default() -> Self {
+        AxisQuery {
+            normal: VEC3_ZERO,
+            separation: 0.0,
+            index_a: 0,
+            index_b: 0,
+            type_: SeparatingFeature::InvalidAxis,
+        }
+    }
+}
+
 /// Cached separating axis feature. (b3SeparatingFeature)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]

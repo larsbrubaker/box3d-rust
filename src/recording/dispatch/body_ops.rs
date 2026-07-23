@@ -332,6 +332,16 @@ pub(super) fn dispatch(
             }
             let _ = (payload_start, payload_size);
         }
+        RecOp::BodyAllowFastRotation => {
+            let mut s = rdr.snap();
+            let body = s.body_id();
+            let flag = s.bool();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::body::body_allow_fast_rotation(world, rdr.make_body_id(body), flag);
+            }
+            let _ = (payload_start, payload_size);
+        }
         RecOp::BodyEnableContactRecycling => {
             let mut s = rdr.snap();
             let body = s.body_id();

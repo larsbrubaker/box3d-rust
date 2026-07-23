@@ -5,7 +5,7 @@
 
 use super::create::create_mesh;
 use super::types::{MeshData, MeshDef};
-use crate::math_functions::{add, cos, sin, Vec3, PI, TWO_PI};
+use crate::math_functions::{add, compute_cos_sin, cos, sin, Vec3, PI, TWO_PI};
 
 /// Create a grid mesh along the x and z axes. (b3CreateGridMesh)
 pub fn create_grid_mesh(
@@ -92,7 +92,8 @@ pub fn create_grid_mesh(
 
 /// Create a wave mesh along the x and z axes. (b3CreateWaveMesh)
 ///
-/// Uses `f32::sin` (C `sinf`) for heights — not the deterministic `b3Sin`.
+/// Uses Box3D's deterministic `b3ComputeCosSin` for heights, matching the C
+/// reference (which switched off `sinf` for cross-platform determinism).
 pub fn create_wave_mesh(
     x_count: i32,
     z_count: i32,
@@ -113,10 +114,10 @@ pub fn create_wave_mesh(
 
     let mut x = -0.5 * x_width;
     for ix in 0..=x_count {
-        let row_height = (omega_x * (ix as f32)).sin();
+        let row_height = compute_cos_sin(omega_x * (ix as f32)).sine;
         let mut z = -0.5 * z_width;
         for iz in 0..=z_count {
-            let column_height = (omega_z * (iz as f32)).sin();
+            let column_height = compute_cos_sin(omega_z * (iz as f32)).sine;
             let y = amplitude * row_height * column_height;
             vertices[index] = Vec3 { x, y, z };
             z += cell_width;

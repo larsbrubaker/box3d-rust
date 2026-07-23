@@ -2,24 +2,32 @@
 //!
 //! # C trailing-blob layout
 //!
-//! In C, `b3HullData` is a 136-byte header with vertex/point/edge/face/plane arrays
-//! hanging off the end at the recorded byte offsets (`b3AlignUp8` between sections).
-//! `b3BoxHull` embeds the same header plus fixed arrays (total 440 bytes).
+//! In C, `b3HullData` is a 144-byte header with vertex/point/edge/plane/face arrays plus
+//! structure-of-array (SOA) vertices and normals hanging off the end at the recorded byte
+//! offsets (`b3AlignUp8` between sections). `b3BoxHull` embeds the same header plus fixed
+//! arrays (total 648 bytes).
 //!
 //! Rust stores the header fields plus owned `Vec`s for the arrays. Offsets and
 //! `byte_count` are kept identical to C so [`HullData::to_bytes`] / [`BoxHull::to_bytes`]
 //! reproduce the contiguous layout used by `b3Hash` and `memcmp`.
+//!
+//! # SOA arrays
+//!
+//! The SOA vertex array stores all x values, then all y values, then all z values, each
+//! sub-array padded to a multiple of 4 with a repeat of the first value. The SOA normal
+//! array is laid out the same way, but its padded lanes are zero. These arrays back the
+//! SIMD hull collision path (`b3GetHullSoaVertices` / `b3GetHullSoaNormals`).
 
 use crate::math_functions::{Aabb, Matrix3, Plane, Vec3, MAT3_ZERO, VEC3_ZERO};
 
 /// 64-bit hull version. Useful for validating serialized data. (B3_HULL_VERSION)
-pub const HULL_VERSION: u64 = 0x9D4716CE3793900E;
+pub const HULL_VERSION: u64 = 0xDA5150191B994C01;
 
 /// Size of the C `b3HullData` header. (_Static_assert in hull.c)
-pub const HULL_DATA_SIZE: usize = 136;
+pub const HULL_DATA_SIZE: usize = 144;
 
 /// Size of the C `b3BoxHull`. (_Static_assert in hull.c)
-pub const BOX_HULL_SIZE: usize = 440;
+pub const BOX_HULL_SIZE: usize = 648;
 
 /// A hull vertex. Identified by a half-edge with this vertex as its tail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -72,14 +80,22 @@ pub struct HullData {
     pub edge_count: i32,
     pub edge_offset: i32,
     pub face_count: i32,
-    pub face_offset: i32,
     pub plane_offset: i32,
+    pub face_offset: i32,
+    pub soa_vertex_offset: i32,
+    pub soa_normal_offset: i32,
     pub padding: i32,
     pub vertices: Vec<HullVertex>,
     pub points: Vec<Vec3>,
     pub edges: Vec<HullHalfEdge>,
     pub faces: Vec<HullFace>,
     pub planes: Vec<Plane>,
+    /// SOA vertex components: `vx[..]`, then `vy[..]`, then `vz[..]`, each length
+    /// `(vertex_count + 3) & !3`. See module docs.
+    pub soa_vertices: Vec<f32>,
+    /// SOA normal components: `nx[..]`, then `ny[..]`, then `nz[..]`, each length
+    /// `(face_count + 3) & !3`. See module docs.
+    pub soa_normals: Vec<f32>,
 }
 
 impl Default for HullData {
@@ -100,14 +116,18 @@ impl Default for HullData {
             edge_count: 0,
             edge_offset: 0,
             face_count: 0,
-            face_offset: 0,
             plane_offset: 0,
+            face_offset: 0,
+            soa_vertex_offset: 0,
+            soa_normal_offset: 0,
             padding: 0,
             vertices: Vec::new(),
             points: Vec::new(),
             edges: Vec::new(),
             faces: Vec::new(),
             planes: Vec::new(),
+            soa_vertices: Vec::new(),
+            soa_normals: Vec::new(),
         }
     }
 }
@@ -119,9 +139,15 @@ pub struct BoxHull {
     pub box_vertices: [HullVertex; 8],
     pub box_points: [Vec3; 8],
     pub box_edges: [HullHalfEdge; 24],
-    pub box_faces: [HullFace; 6],
-    pub padding: [u8; 2],
     pub box_planes: [Plane; 6],
+    pub box_faces: [HullFace; 6],
+    pub padding: [u8; 10],
+    pub vx: [f32; 8],
+    pub vy: [f32; 8],
+    pub vz: [f32; 8],
+    pub nx: [f32; 8],
+    pub ny: [f32; 8],
+    pub nz: [f32; 8],
 }
 
 impl BoxHull {
@@ -147,6 +173,19 @@ impl BoxHull {
         self.base.edges = self.box_edges.to_vec();
         self.base.faces = self.box_faces.to_vec();
         self.base.planes = self.box_planes.to_vec();
+
+        // SOA arrays: vx ++ vy ++ vz (soaVertexCount = 8), nx ++ ny ++ nz (soaNormalCount = 8).
+        let mut soa_vertices = Vec::with_capacity(24);
+        soa_vertices.extend_from_slice(&self.vx);
+        soa_vertices.extend_from_slice(&self.vy);
+        soa_vertices.extend_from_slice(&self.vz);
+        self.base.soa_vertices = soa_vertices;
+
+        let mut soa_normals = Vec::with_capacity(24);
+        soa_normals.extend_from_slice(&self.nx);
+        soa_normals.extend_from_slice(&self.ny);
+        soa_normals.extend_from_slice(&self.nz);
+        self.base.soa_normals = soa_normals;
     }
 }
 
@@ -183,6 +222,32 @@ pub fn get_hull_faces(hull: &HullData) -> &[HullFace] {
 /// Get hull face planes. (collision.h: b3GetHullPlanes)
 pub fn get_hull_planes(hull: &HullData) -> &[Plane] {
     &hull.planes[..hull.face_count as usize]
+}
+
+/// SOA vertex sub-array length: `vertex_count` padded up to a multiple of 4.
+pub fn hull_soa_vertex_count(hull: &HullData) -> usize {
+    ((hull.vertex_count + 3) & !3) as usize
+}
+
+/// SOA normal sub-array length: `face_count` padded up to a multiple of 4.
+pub fn hull_soa_normal_count(hull: &HullData) -> usize {
+    ((hull.face_count + 3) & !3) as usize
+}
+
+/// Get read only SOA vertices. This is an array of vertices with all x values,
+/// y values, and z values as separate sub-arrays. The sub-array lengths are padded
+/// to a multiple of 4. The padded values are repeats of the first value.
+/// (collision.h: b3GetHullSoaVertices)
+pub fn get_hull_soa_vertices(hull: &HullData) -> &[f32] {
+    &hull.soa_vertices
+}
+
+/// Get read only SOA unit normal vectors. This is an array of normals with all x values,
+/// y values, and z values as separate sub-arrays. The sub-array lengths are padded to
+/// a multiple of 4. The padded values are zero.
+/// (collision.h: b3GetHullSoaNormals)
+pub fn get_hull_soa_normals(hull: &HullData) -> &[f32] {
+    &hull.soa_normals
 }
 
 fn write_u32_le(buf: &mut Vec<u8>, v: u32) {
@@ -239,8 +304,10 @@ fn write_header(buf: &mut Vec<u8>, h: &HullData, hash_override: Option<u32>) {
     write_i32_le(buf, h.edge_count);
     write_i32_le(buf, h.edge_offset);
     write_i32_le(buf, h.face_count);
-    write_i32_le(buf, h.face_offset);
     write_i32_le(buf, h.plane_offset);
+    write_i32_le(buf, h.face_offset);
+    write_i32_le(buf, h.soa_vertex_offset);
+    write_i32_le(buf, h.soa_normal_offset);
     write_i32_le(buf, h.padding);
     debug_assert_eq!(buf.len(), HULL_DATA_SIZE);
 }
@@ -323,9 +390,11 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
     let edge_count = read_i32_le(bytes, 112);
     let edge_offset = read_i32_le(bytes, 116);
     let face_count = read_i32_le(bytes, 120);
-    let face_offset = read_i32_le(bytes, 124);
-    let plane_offset = read_i32_le(bytes, 128);
-    let padding = read_i32_le(bytes, 132);
+    let plane_offset = read_i32_le(bytes, 124);
+    let face_offset = read_i32_le(bytes, 128);
+    let soa_vertex_offset = read_i32_le(bytes, 132);
+    let soa_normal_offset = read_i32_le(bytes, 136);
+    let padding = read_i32_le(bytes, 140);
 
     if vertex_count < 0 || edge_count < 0 || face_count < 0 {
         return None;
@@ -389,6 +458,26 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         planes.push(read_plane(bytes, ploff + i * 16));
     }
 
+    let soa_vertex_count = (vertex_count as usize + 3) & !3;
+    let mut soa_vertices = Vec::with_capacity(3 * soa_vertex_count);
+    let svoff = soa_vertex_offset as usize;
+    if svoff + 3 * soa_vertex_count * 4 > bytes.len() {
+        return None;
+    }
+    for i in 0..3 * soa_vertex_count {
+        soa_vertices.push(read_f32_le(bytes, svoff + i * 4));
+    }
+
+    let soa_normal_count = (face_count as usize + 3) & !3;
+    let mut soa_normals = Vec::with_capacity(3 * soa_normal_count);
+    let snoff = soa_normal_offset as usize;
+    if snoff + 3 * soa_normal_count * 4 > bytes.len() {
+        return None;
+    }
+    for i in 0..3 * soa_normal_count {
+        soa_normals.push(read_f32_le(bytes, snoff + i * 4));
+    }
+
     Some(HullData {
         version,
         byte_count,
@@ -405,14 +494,18 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         edge_count,
         edge_offset,
         face_count,
-        face_offset,
         plane_offset,
+        face_offset,
+        soa_vertex_offset,
+        soa_normal_offset,
         padding,
         vertices,
         points,
         edges,
         faces,
         planes,
+        soa_vertices,
+        soa_normals,
     })
 }
 
@@ -441,13 +534,21 @@ impl HullData {
             buf.push(e.origin);
             buf.push(e.face);
         }
+        pad_to(&mut buf, self.plane_offset as usize);
+        for p in &self.planes {
+            write_plane(&mut buf, *p);
+        }
         pad_to(&mut buf, self.face_offset as usize);
         for f in &self.faces {
             buf.push(f.edge);
         }
-        pad_to(&mut buf, self.plane_offset as usize);
-        for p in &self.planes {
-            write_plane(&mut buf, *p);
+        pad_to(&mut buf, self.soa_vertex_offset as usize);
+        for v in &self.soa_vertices {
+            write_f32_le(&mut buf, *v);
+        }
+        pad_to(&mut buf, self.soa_normal_offset as usize);
+        for n in &self.soa_normals {
+            write_f32_le(&mut buf, *n);
         }
         pad_to(&mut buf, self.byte_count as usize);
         debug_assert_eq!(buf.len(), self.byte_count as usize);
@@ -476,12 +577,30 @@ impl BoxHull {
             buf.push(e.origin);
             buf.push(e.face);
         }
+        for p in &self.box_planes {
+            write_plane(&mut buf, *p);
+        }
         for f in &self.box_faces {
             buf.push(f.edge);
         }
         buf.extend_from_slice(&self.padding);
-        for p in &self.box_planes {
-            write_plane(&mut buf, *p);
+        for v in &self.vx {
+            write_f32_le(&mut buf, *v);
+        }
+        for v in &self.vy {
+            write_f32_le(&mut buf, *v);
+        }
+        for v in &self.vz {
+            write_f32_le(&mut buf, *v);
+        }
+        for n in &self.nx {
+            write_f32_le(&mut buf, *n);
+        }
+        for n in &self.ny {
+            write_f32_le(&mut buf, *n);
+        }
+        for n in &self.nz {
+            write_f32_le(&mut buf, *n);
         }
         debug_assert_eq!(buf.len(), BOX_HULL_SIZE);
         buf

@@ -4,7 +4,8 @@
 //! SPDX-License-Identifier: MIT
 
 use super::clip::{build_polygon, clip_polygon, find_incident_face, flip_pair};
-use super::sat::{query_edge_directions, query_face_directions, reduce_manifold_points};
+use super::sat::reduce_manifold_points;
+use super::separating_axis::compute_separating_axis;
 use super::types::{
     make_feature_pair, ClipVertex, EdgeQuery, FaceQuery, FeatureOwner, LocalManifold,
     LocalManifoldPoint, SatCache, SeparatingFeature, MAX_CLIP_POINTS,
@@ -258,6 +259,7 @@ pub fn collide_hulls(
         return;
     }
 
+    // Work in shapeA coordinates
     let speculative = speculative_distance();
     let slop = linear_slop();
     let edges_a = get_hull_edges(hull_a);
@@ -267,10 +269,11 @@ pub fn collide_hulls(
     let planes_b = get_hull_planes(hull_b);
     let points_b = get_hull_points(hull_b);
 
+    cache.hit = 0;
+
+    // Attempt to use the cache to speed up collision
     match cache.type_ {
-        t if t == SeparatingFeature::InvalidAxis as u8 => {
-            *cache = SatCache::default();
-        }
+        t if t == SeparatingFeature::InvalidAxis as u8 => {}
         t if t == SeparatingFeature::FaceAxisA as u8 => {
             debug_assert!((cache.index_a as i32) < hull_a.face_count);
 
@@ -281,6 +284,8 @@ pub fn collide_hulls(
             let separation = plane_separation(plane, support);
 
             if separation >= speculative {
+                // Cache hit, shapes are separated
+                cache.hit = 1;
                 return;
             }
 
@@ -301,6 +306,8 @@ pub fn collide_hulls(
                 &mut local_cache,
             );
             if touching && abs_float(cache.separation - local_cache.separation) < slop {
+                // Cache hit, contact points generated
+                cache.hit = 1;
                 return;
             }
         }
@@ -314,6 +321,8 @@ pub fn collide_hulls(
             let separation = plane_separation(plane, support);
 
             if separation >= speculative {
+                // Cache hit, shapes are separated
+                cache.hit = 1;
                 return;
             }
 
@@ -334,6 +343,8 @@ pub fn collide_hulls(
                 &mut local_cache,
             );
             if touching && abs_float(cache.separation - local_cache.separation) < slop {
+                // Cache hit, contact points generated
+                cache.hit = 1;
                 return;
             }
         }
@@ -384,6 +395,7 @@ pub fn collide_hulls(
 
                     if separation > speculative {
                         // Cache hit, shapes are separated
+                        cache.hit = 1;
                         return;
                     }
 
@@ -404,42 +416,78 @@ pub fn collide_hulls(
                         edge_query,
                         &mut local_cache,
                     );
+                    // This separation tolerance may have a big impact on performance in some benchmarks.
                     if touching && abs_float(cache.separation - local_cache.separation) < slop {
                         // Cache hit, contact point generated
+                        cache.hit = 1;
                         return;
                     }
                 }
             }
         }
+        // This case is for testing
         t if t == SeparatingFeature::ManualFaceAxisA as u8 => {
-            let face_query_a = query_face_directions(hull_a, hull_b, transform_b_to_a);
+            let axis_query = compute_separating_axis(
+                hull_a,
+                hull_b,
+                transform_b_to_a,
+                SeparatingFeature::ManualFaceAxisA,
+            );
+            let face_query = FaceQuery {
+                separation: axis_query.separation,
+                face_index: axis_query.index_a,
+                vertex_index: axis_query.index_b,
+            };
             build_face_a_contact(
                 manifold,
                 capacity,
                 hull_a,
                 hull_b,
                 transform_b_to_a,
-                face_query_a,
+                face_query,
                 cache,
             );
             return;
         }
+        // This case is for testing
         t if t == SeparatingFeature::ManualFaceAxisB as u8 => {
-            let face_query_b =
-                query_face_directions(hull_b, hull_a, invert_transform(transform_b_to_a));
+            let axis_query = compute_separating_axis(
+                hull_a,
+                hull_b,
+                transform_b_to_a,
+                SeparatingFeature::ManualFaceAxisB,
+            );
+            let face_query = FaceQuery {
+                separation: axis_query.separation,
+                face_index: axis_query.index_b,
+                vertex_index: axis_query.index_a,
+            };
             build_face_b_contact(
                 manifold,
                 capacity,
                 hull_a,
                 hull_b,
                 transform_b_to_a,
-                face_query_b,
+                face_query,
                 cache,
             );
             return;
         }
+        // This case is for testing
         t if t == SeparatingFeature::ManualEdgePairAxis as u8 => {
-            let edge_query = query_edge_directions(hull_a, hull_b, transform_b_to_a);
+            let axis_query = compute_separating_axis(
+                hull_a,
+                hull_b,
+                transform_b_to_a,
+                SeparatingFeature::ManualEdgePairAxis,
+            );
+            let edge_query = EdgeQuery {
+                normal: axis_query.normal,
+                separation: axis_query.separation,
+                index_a: axis_query.index_a,
+                index_b: axis_query.index_b,
+            };
+
             if edge_query.index_a != NULL_INDEX {
                 build_edge_contact(
                     manifold,
@@ -460,79 +508,88 @@ pub fn collide_hulls(
     manifold.point_count = 0;
     *cache = SatCache::default();
 
-    let face_query_a = query_face_directions(hull_a, hull_b, transform_b_to_a);
-    if face_query_a.separation > speculative {
-        debug_assert!(face_query_a.face_index < hull_a.face_count);
-        debug_assert!(face_query_a.vertex_index < hull_b.vertex_count);
+    let axis_query = compute_separating_axis(
+        hull_a,
+        hull_b,
+        transform_b_to_a,
+        SeparatingFeature::InvalidAxis,
+    );
 
-        cache.separation = face_query_a.separation;
-        cache.type_ = SeparatingFeature::FaceAxisA as u8;
-        cache.index_a = face_query_a.face_index as u8;
-        cache.index_b = face_query_a.vertex_index as u8;
+    debug_assert!(0 <= axis_query.index_a && axis_query.index_a <= u8::MAX as i32);
+    debug_assert!(0 <= axis_query.index_b && axis_query.index_b <= u8::MAX as i32);
+    debug_assert!(axis_query.type_ != SeparatingFeature::InvalidAxis);
+
+    cache.separation = axis_query.separation;
+    cache.type_ = axis_query.type_ as u8;
+    cache.index_a = axis_query.index_a as u8;
+    cache.index_b = axis_query.index_b as u8;
+
+    if axis_query.separation > speculative {
+        // We found a separating axis
         return;
     }
 
-    let face_query_b = query_face_directions(hull_b, hull_a, invert_transform(transform_b_to_a));
-    if face_query_b.separation > speculative {
-        debug_assert!(face_query_b.face_index < hull_b.face_count);
-        debug_assert!(face_query_b.vertex_index < hull_a.vertex_count);
+    if axis_query.type_ == SeparatingFeature::FaceAxisA {
+        debug_assert!(axis_query.index_a < hull_a.face_count);
+        debug_assert!(axis_query.index_b < hull_b.vertex_count);
 
-        cache.separation = face_query_b.separation;
-        cache.type_ = SeparatingFeature::FaceAxisB as u8;
-        cache.index_a = face_query_b.vertex_index as u8;
-        cache.index_b = face_query_b.face_index as u8;
-        return;
-    }
+        let face_query = FaceQuery {
+            separation: axis_query.separation,
+            face_index: axis_query.index_a,
+            vertex_index: axis_query.index_b,
+        };
 
-    let edge_query = query_edge_directions(hull_a, hull_b, transform_b_to_a);
-    if edge_query.separation > speculative {
-        cache.separation = edge_query.separation;
-        cache.type_ = SeparatingFeature::EdgePairAxis as u8;
-        cache.index_a = edge_query.index_a as u8;
-        cache.index_b = edge_query.index_b as u8;
-        return;
-    }
-
-    let face_separation_a = face_query_a.separation;
-    let face_separation_b = face_query_b.separation;
-    debug_assert!(face_separation_a <= speculative && face_separation_b <= speculative);
-
-    if face_separation_b > face_separation_a + 0.5 * slop {
-        build_face_b_contact(
-            manifold,
-            capacity,
-            hull_a,
-            hull_b,
-            transform_b_to_a,
-            face_query_b,
-            cache,
-        );
-    } else {
+        // Face contact A
         build_face_a_contact(
             manifold,
             capacity,
             hull_a,
             hull_b,
             transform_b_to_a,
-            face_query_a,
+            face_query,
             cache,
         );
-    }
 
-    if edge_query.index_a == NULL_INDEX {
         return;
     }
 
-    let clipped_face_separation = cache.separation;
-    debug_assert!(edge_query.separation <= speculative);
+    if axis_query.type_ == SeparatingFeature::FaceAxisB {
+        debug_assert!(axis_query.index_a < hull_a.vertex_count);
+        debug_assert!(axis_query.index_b < hull_b.face_count);
 
-    const K_REL_EDGE_TOLERANCE: f32 = 0.90;
-    let k_abs_tolerance = 0.5 * slop;
+        let face_query = FaceQuery {
+            separation: axis_query.separation,
+            face_index: axis_query.index_b,
+            vertex_index: axis_query.index_a,
+        };
 
-    if manifold.point_count == 0
-        || edge_query.separation > K_REL_EDGE_TOLERANCE * clipped_face_separation + k_abs_tolerance
+        // Face contact B
+        build_face_b_contact(
+            manifold,
+            capacity,
+            hull_a,
+            hull_b,
+            transform_b_to_a,
+            face_query,
+            cache,
+        );
+
+        return;
+    }
+
+    debug_assert!(axis_query.type_ == SeparatingFeature::EdgePairAxis);
+
     {
+        // Edge contact
         let mut edge_manifold = LocalManifold::default();
+
+        let edge_query = EdgeQuery {
+            normal: axis_query.normal,
+            separation: axis_query.separation,
+            index_a: axis_query.index_a,
+            index_b: axis_query.index_b,
+        };
+
         build_edge_contact(
             &mut edge_manifold,
             hull_a,
@@ -543,6 +600,7 @@ pub fn collide_hulls(
         );
 
         if edge_manifold.point_count == 1 {
+            // Copy edge manifold out, being careful to preserve manifold point buffer.
             let edge_point = edge_manifold.points[0];
             *manifold = edge_manifold;
             manifold.points[0] = edge_point;

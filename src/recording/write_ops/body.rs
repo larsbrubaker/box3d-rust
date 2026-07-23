@@ -246,6 +246,14 @@ impl Recording {
         self.end_record();
     }
 
+    /// Write framed `BodyAllowFastRotation` op.
+    pub fn write_body_allow_fast_rotation(&mut self, body: BodyId, flag: bool) {
+        self.begin_record(RecOp::BodyAllowFastRotation as u8);
+        self.buffer.append_body_id(body);
+        self.buffer.append_bool(flag);
+        self.end_record();
+    }
+
     /// Write framed `BodyEnableContactRecycling` op.
     pub fn write_body_enable_contact_recycling(&mut self, body: BodyId, flag: bool) {
         self.begin_record(RecOp::BodyEnableContactRecycling as u8);

@@ -335,9 +335,11 @@ fn read_hull_data(buf: &[u8]) -> Option<HullData> {
     let edge_count = read_i32(buf, 112);
     let edge_offset = read_i32(buf, 116);
     let face_count = read_i32(buf, 120);
-    let face_offset = read_i32(buf, 124);
-    let plane_offset = read_i32(buf, 128);
-    let padding = read_i32(buf, 132);
+    let plane_offset = read_i32(buf, 124);
+    let face_offset = read_i32(buf, 128);
+    let soa_vertex_offset = read_i32(buf, 132);
+    let soa_normal_offset = read_i32(buf, 136);
+    let padding = read_i32(buf, 140);
 
     let mut vertices = Vec::with_capacity(vertex_count as usize);
     for i in 0..vertex_count as usize {
@@ -377,6 +379,26 @@ fn read_hull_data(buf: &[u8]) -> Option<HullData> {
         planes.push(read_plane(buf, o));
     }
 
+    let soa_vertex_count = (vertex_count as usize + 3) & !3;
+    let mut soa_vertices = Vec::with_capacity(3 * soa_vertex_count);
+    for i in 0..3 * soa_vertex_count {
+        let o = soa_vertex_offset as usize + i * 4;
+        if o + 4 > buf.len() {
+            return None;
+        }
+        soa_vertices.push(read_f32(buf, o));
+    }
+
+    let soa_normal_count = (face_count as usize + 3) & !3;
+    let mut soa_normals = Vec::with_capacity(3 * soa_normal_count);
+    for i in 0..3 * soa_normal_count {
+        let o = soa_normal_offset as usize + i * 4;
+        if o + 4 > buf.len() {
+            return None;
+        }
+        soa_normals.push(read_f32(buf, o));
+    }
+
     Some(HullData {
         version,
         byte_count,
@@ -393,14 +415,18 @@ fn read_hull_data(buf: &[u8]) -> Option<HullData> {
         edge_count,
         edge_offset,
         face_count,
-        face_offset,
         plane_offset,
+        face_offset,
+        soa_vertex_offset,
+        soa_normal_offset,
         padding,
         vertices,
         points,
         edges,
         faces,
         planes,
+        soa_vertices,
+        soa_normals,
     })
 }
 

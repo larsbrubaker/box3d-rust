@@ -13,6 +13,10 @@ mod types;
 
 pub use api::*;
 pub use create::create_human;
+pub use random::{
+    random_float, random_float_range, random_int, random_pos, random_quat, random_unit_vector,
+    random_vec3, random_vec3_uniform, set_random_seed,
+};
 pub use types::*;
 
 #[cfg(test)]

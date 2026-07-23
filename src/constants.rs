@@ -76,6 +76,22 @@ pub fn overlap_slop() -> f32 {
 /// (B3_MAX_SHAPE_CAST_POINTS)
 pub const MAX_SHAPE_CAST_POINTS: usize = 64;
 
+/// The number of iterations for gyroscopic torques. (B3_GYROSCOPIC_ITERATIONS)
+pub const GYROSCOPIC_ITERATIONS: i32 = 1;
+
+/// The maximum number of convex hull vertices. This is fixed for performance reasons.
+/// (B3_MAX_HULL_VERTICES)
+pub const MAX_HULL_VERTICES: i32 = 128;
+
+/// The maximum number of convex hull faces. (B3_MAX_HULL_FACES)
+pub const MAX_HULL_FACES: i32 = 128;
+
+/// The maximum number of convex hull edges. Full edges, not half-edges. (B3_MAX_HULL_EDGES)
+pub const MAX_HULL_EDGES: i32 = 128;
+
+/// Relative tolerance used to determine if two edges are parallel. (B3_PARALLEL_EDGE_TOL)
+pub const PARALLEL_EDGE_TOL: f32 = 0.005;
+
 /// The maximum number of contact points between two touching shapes.
 /// (B3_MAX_MANIFOLD_POINTS)
 pub const MAX_MANIFOLD_POINTS: usize = 4;

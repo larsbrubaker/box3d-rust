@@ -398,6 +398,40 @@ pub fn body_is_bullet(world: &World, body_id: BodyId) -> bool {
     (world.bodies[body_index as usize].flags & body_flags::IS_BULLET) != 0
 }
 
+/// Allow this body to rotate fast. Useful for axially symmetric bodies, such as vehicle
+/// wheels. Normally rotation speed is clamped to improve CCD. However, this clamping is
+/// unnecessary for bodies that only rotate fast around an axis of symmetry.
+/// (b3Body_AllowFastRotation)
+pub fn body_allow_fast_rotation(world: &mut World, body_id: BodyId, flag: bool) {
+    crate::recording::with_recording(world, |rec| {
+        rec.write_body_allow_fast_rotation(body_id, flag);
+    });
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    let new_flag = if flag {
+        body_flags::ALLOW_FAST_ROTATION
+    } else {
+        0
+    };
+    let body_index = get_body_full_id(world, body_id);
+    if (world.bodies[body_index as usize].flags & body_flags::ALLOW_FAST_ROTATION) == new_flag {
+        return;
+    }
+
+    world.bodies[body_index as usize].flags &= !body_flags::ALLOW_FAST_ROTATION;
+    world.bodies[body_index as usize].flags |= new_flag;
+    sync_body_flags(world, body_index);
+}
+
+/// (b3Body_IsFastRotationAllowed)
+pub fn body_is_fast_rotation_allowed(world: &World, body_id: BodyId) -> bool {
+    let body_index = get_body_full_id(world, body_id);
+    (world.bodies[body_index as usize].flags & body_flags::ALLOW_FAST_ROTATION) != 0
+}
+
 /// (b3Body_EnableContactRecycling)
 pub fn body_enable_contact_recycling(world: &mut World, body_id: BodyId, flag: bool) {
     crate::recording::with_recording(world, |rec| {

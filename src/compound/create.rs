@@ -17,7 +17,7 @@ use crate::geometry::{
     compute_capsule_aabb, compute_sphere_aabb, SurfaceMaterial, SURFACE_MATERIAL_SIZE,
 };
 use crate::hull::{compare_hull_data, compute_hull_aabb, HullData};
-use crate::math_functions::TRANSFORM_IDENTITY;
+use crate::math_functions::{align_up8, TRANSFORM_IDENTITY};
 use crate::mesh::{compute_mesh_aabb, MeshData};
 
 struct SharedHull {
@@ -195,35 +195,35 @@ pub fn create_compound(def: &CompoundDef<'_>) -> Option<CompoundData> {
     let shared_hull_count = shared_hulls.len() as i32;
     let shared_mesh_count = shared_meshes.len() as i32;
 
-    let mut byte_count = COMPOUND_DATA_SIZE;
+    let mut byte_count = align_up8(COMPOUND_DATA_SIZE);
 
     let node_offset = byte_count as i32;
-    byte_count += tree.node_capacity() as usize * TREE_NODE_SIZE;
+    byte_count += align_up8(tree.node_capacity() as usize * TREE_NODE_SIZE);
 
     let material_offset = byte_count as i32;
-    byte_count += material_count as usize * SURFACE_MATERIAL_SIZE;
+    byte_count += align_up8(material_count as usize * SURFACE_MATERIAL_SIZE);
 
     let capsule_offset = byte_count as i32;
-    byte_count += capsule_count as usize * COMPOUND_CONVEX_SIZE;
+    byte_count += align_up8(capsule_count as usize * COMPOUND_CONVEX_SIZE);
 
     let hull_array_offset = byte_count as i32;
-    byte_count += hull_count as usize * HULL_INSTANCE_SIZE;
+    byte_count += align_up8(hull_count as usize * HULL_INSTANCE_SIZE);
 
     for shared in &mut shared_hulls {
         shared.hull_offset = byte_count as i32;
-        byte_count += shared.hull.byte_count as usize;
+        byte_count += align_up8(shared.hull.byte_count as usize);
     }
 
     let mesh_array_offset = byte_count as i32;
-    byte_count += mesh_count as usize * MESH_INSTANCE_SIZE;
+    byte_count += align_up8(mesh_count as usize * MESH_INSTANCE_SIZE);
 
     for shared in &mut shared_meshes {
         shared.mesh_offset = byte_count as i32;
-        byte_count += shared.mesh_data.byte_count as usize;
+        byte_count += align_up8(shared.mesh_data.byte_count as usize);
     }
 
     let sphere_offset = byte_count as i32;
-    byte_count += sphere_count as usize * COMPOUND_CONVEX_SIZE;
+    byte_count += align_up8(sphere_count as usize * COMPOUND_CONVEX_SIZE);
 
     // Fix up hull/mesh instance offsets to absolute blob offsets (C does this
     // before memcpy into the compound).

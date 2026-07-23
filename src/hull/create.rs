@@ -3,6 +3,7 @@
 use super::builder_pool::{compute_hull_work_sizes, HullBuilder, HULL_LIMIT, SENTINEL};
 use super::types::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION};
 use super::validate::is_valid_hull;
+use crate::constants::{MAX_HULL_EDGES, MAX_HULL_FACES, MAX_HULL_VERTICES};
 use crate::core::{hash, non_zero_hash, HASH_INIT};
 use crate::math_functions::{
     add, align_up8, clamp_int, compute_cos_sin, cos, cross, length, make_matrix_from_quat,
@@ -145,7 +146,7 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
     }
 
     let origin = points[0];
-    let clamped_max_count = clamp_int(max_vertex_count, 4, HULL_LIMIT);
+    let clamped_max_count = clamp_int(max_vertex_count, 4, MAX_HULL_VERTICES);
     let sizes = compute_hull_work_sizes(point_count, clamped_max_count);
     let mut builder = HullBuilder::new(&sizes);
     let mut shifted_points = vec![VEC3_ZERO; point_count as usize];
@@ -154,9 +155,10 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         return None;
     }
 
-    if builder.final_vertex_count >= HULL_LIMIT
-        || builder.final_face_count >= HULL_LIMIT
-        || builder.final_half_edge_count >= HULL_LIMIT
+    let max_half_edge_count = 2 * MAX_HULL_EDGES;
+    if builder.final_vertex_count >= MAX_HULL_VERTICES
+        || builder.final_face_count >= MAX_HULL_FACES
+        || builder.final_half_edge_count >= max_half_edge_count
     {
         return None;
     }
@@ -207,6 +209,9 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         face_node = builder.faces[face as usize].link.next;
     }
 
+    let soa_vertex_count = ((vertex_count + 3) & !3) as usize;
+    let soa_normal_count = ((face_count + 3) & !3) as usize;
+
     let mut byte_count = align_up8(HULL_DATA_SIZE);
     let vertex_offset = byte_count as i32;
     byte_count += align_up8(vertex_count as usize * core::mem::size_of::<HullVertex>());
@@ -214,11 +219,15 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
     byte_count += align_up8(vertex_count as usize * core::mem::size_of::<Vec3>());
     let edge_offset = byte_count as i32;
     byte_count += align_up8(edge_count as usize * core::mem::size_of::<HullHalfEdge>());
-    let face_offset = byte_count as i32;
-    byte_count += align_up8(face_count as usize * core::mem::size_of::<HullFace>());
     let plane_offset = byte_count as i32;
     byte_count +=
         align_up8(face_count as usize * core::mem::size_of::<crate::math_functions::Plane>());
+    let face_offset = byte_count as i32;
+    byte_count += align_up8(face_count as usize * core::mem::size_of::<HullFace>());
+    let soa_vertex_offset = byte_count as i32;
+    byte_count += align_up8(3 * soa_vertex_count * core::mem::size_of::<f32>());
+    let soa_normal_offset = byte_count as i32;
+    byte_count += align_up8(3 * soa_normal_count * core::mem::size_of::<f32>());
 
     let mut hull = HullData {
         version: HULL_VERSION,
@@ -236,8 +245,10 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         edge_count,
         edge_offset,
         face_count,
-        face_offset,
         plane_offset,
+        face_offset,
+        soa_vertex_offset,
+        soa_normal_offset,
         padding: 0,
         vertices: vec![HullVertex { edge: 0 }; vertex_count as usize],
         points: vec![VEC3_ZERO; vertex_count as usize],
@@ -250,11 +261,24 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
             };
             face_count as usize
         ],
+        soa_vertices: vec![0.0f32; 3 * soa_vertex_count],
+        soa_normals: vec![0.0f32; 3 * soa_normal_count],
     };
 
     for index in 0..vertex_count as usize {
         hull.vertices[index].edge = 0;
-        hull.points[index] = builder.vertices[temp_vertices[index] as usize].position;
+        let p = builder.vertices[temp_vertices[index] as usize].position;
+        hull.points[index] = p;
+        hull.soa_vertices[index] = p.x;
+        hull.soa_vertices[soa_vertex_count + index] = p.y;
+        hull.soa_vertices[2 * soa_vertex_count + index] = p.z;
+    }
+
+    // Pad SOA vertices with repeats of the first value.
+    for index in vertex_count as usize..soa_vertex_count {
+        hull.soa_vertices[index] = hull.soa_vertices[0];
+        hull.soa_vertices[soa_vertex_count + index] = hull.soa_vertices[soa_vertex_count];
+        hull.soa_vertices[2 * soa_vertex_count + index] = hull.soa_vertices[2 * soa_vertex_count];
     }
 
     for index in 0..edge_count as usize {
@@ -273,8 +297,14 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         let face = temp_faces[index];
         hull.faces[index].edge =
             builder.edges[builder.faces[face as usize].edge as usize].final_index as u8;
-        hull.planes[index] = builder.faces[face as usize].plane;
+        let plane = builder.faces[face as usize].plane;
+        hull.planes[index] = plane;
+        let n = plane.normal;
+        hull.soa_normals[index] = n.x;
+        hull.soa_normals[soa_normal_count + index] = n.y;
+        hull.soa_normals[2 * soa_normal_count + index] = n.z;
     }
+    // Padded SOA normal lanes stay zero (initialized above), matching C.
 
     update_hull_bounds(&mut hull);
     if !update_hull_bulk_properties(&mut hull) {
@@ -368,9 +398,21 @@ pub fn clone_and_transform_hull(
         }
     }
 
+    let soa_vertex_count = (vertex_count + 3) & !3;
+    let soa_normal_count = (face_count + 3) & !3;
+
     let matrix = make_matrix_from_quat(transform.q);
     for i in 0..vertex_count {
-        hull.points[i] = add(mul_mv(matrix, mul(safe_scale, hull.points[i])), transform.p);
+        let p = add(mul_mv(matrix, mul(safe_scale, hull.points[i])), transform.p);
+        hull.points[i] = p;
+        hull.soa_vertices[i] = p.x;
+        hull.soa_vertices[soa_vertex_count + i] = p.y;
+        hull.soa_vertices[2 * soa_vertex_count + i] = p.z;
+    }
+    for i in vertex_count..soa_vertex_count {
+        hull.soa_vertices[i] = hull.soa_vertices[0];
+        hull.soa_vertices[soa_vertex_count + i] = hull.soa_vertices[soa_vertex_count];
+        hull.soa_vertices[2 * soa_vertex_count + i] = hull.soa_vertices[2 * soa_vertex_count];
     }
 
     for i in 0..face_count {
@@ -415,6 +457,15 @@ pub fn clone_and_transform_hull(
         normal = mul_sv(1.0 / area, normal);
 
         hull.planes[i] = make_plane_from_normal_and_point(normal, centroid);
+
+        hull.soa_normals[i] = normal.x;
+        hull.soa_normals[soa_normal_count + i] = normal.y;
+        hull.soa_normals[2 * soa_normal_count + i] = normal.z;
+    }
+    for i in face_count..soa_normal_count {
+        hull.soa_normals[i] = 0.0;
+        hull.soa_normals[soa_normal_count + i] = 0.0;
+        hull.soa_normals[2 * soa_normal_count + i] = 0.0;
     }
 
     update_hull_bounds(&mut hull);

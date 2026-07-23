@@ -9,7 +9,7 @@ use crate::core::{NULL_INDEX, SECRET_COOKIE};
 use crate::id::{BodyId, NULL_BODY_ID};
 use crate::island::{create_island, destroy_island, validate_island};
 use crate::math_functions::{
-    is_valid_float, is_valid_position, is_valid_quat, is_valid_vec3, length, WorldTransform,
+    is_valid_float, is_valid_position, is_valid_quat, is_valid_vec3, WorldTransform,
 };
 use crate::solver_set::{
     destroy_solver_set, wake_solver_set, SolverSet, AWAKE_SET, DISABLED_SET, FIRST_SLEEPING_SET,
@@ -333,9 +333,6 @@ pub fn create_body(world: &mut World, def: &crate::types::BodyDef) -> BodyId {
             body_state.angular_velocity = def.angular_velocity;
             body_state.flags = sim_flags;
             set.body_states.push(body_state);
-
-            set.body_sims[local_index as usize].max_angular_velocity =
-                length(def.angular_velocity) + 5.0;
         }
         local_index
     };

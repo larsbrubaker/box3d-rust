@@ -92,7 +92,6 @@ pub fn ser_body_sim(buf: &mut RecBuffer, s: &BodySim) {
     buf.append_matrix3(s.inv_inertia_world);
     buf.append_f32(s.min_extent);
     buf.append_vec3(s.max_extent);
-    buf.append_f32(s.max_angular_velocity);
     buf.append_f32(s.linear_damping);
     buf.append_f32(s.angular_damping);
     buf.append_f32(s.gravity_scale);
@@ -114,7 +113,6 @@ pub fn des_body_sim(r: &mut SnapReader<'_>) -> BodySim {
         inv_inertia_world: r.matrix3(),
         min_extent: r.f32(),
         max_extent: r.vec3(),
-        max_angular_velocity: r.f32(),
         linear_damping: r.f32(),
         angular_damping: r.f32(),
         gravity_scale: r.f32(),

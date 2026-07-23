@@ -161,11 +161,13 @@ fn box_hull_template() -> BoxHull {
     ];
 
     // Offsets match offsetof in C b3BoxHull.
-    let vertex_offset = 136;
-    let point_offset = 144;
-    let edge_offset = 240;
-    let face_offset = 336;
+    let vertex_offset = 144;
+    let point_offset = 152;
+    let edge_offset = 248;
     let plane_offset = 344;
+    let face_offset = 440;
+    let soa_vertex_offset = 456;
+    let soa_normal_offset = 552;
 
     BoxHull {
         base: HullData {
@@ -184,14 +186,18 @@ fn box_hull_template() -> BoxHull {
             edge_count: 24,
             edge_offset,
             face_count: 6,
-            face_offset,
             plane_offset,
+            face_offset,
+            soa_vertex_offset,
+            soa_normal_offset,
             padding: 0,
             vertices: Vec::new(),
             points: Vec::new(),
             edges: Vec::new(),
             faces: Vec::new(),
             planes: Vec::new(),
+            soa_vertices: Vec::new(),
+            soa_normals: Vec::new(),
         },
         box_vertices: [
             HullVertex { edge: 8 },
@@ -205,6 +211,10 @@ fn box_hull_template() -> BoxHull {
         ],
         box_points: [VEC3_ZERO; 8],
         box_edges: edges,
+        box_planes: [crate::math_functions::Plane {
+            normal: VEC3_ZERO,
+            offset: 0.0,
+        }; 6],
         box_faces: [
             HullFace { edge: 0 },
             HullFace { edge: 8 },
@@ -213,11 +223,13 @@ fn box_hull_template() -> BoxHull {
             HullFace { edge: 19 },
             HullFace { edge: 21 },
         ],
-        padding: [0, 0],
-        box_planes: [crate::math_functions::Plane {
-            normal: VEC3_ZERO,
-            offset: 0.0,
-        }; 6],
+        padding: [0; 10],
+        vx: [0.0; 8],
+        vy: [0.0; 8],
+        vz: [0.0; 8],
+        nx: [0.0; 8],
+        ny: [0.0; 8],
+        nz: [0.0; 8],
     }
 }
 
@@ -346,6 +358,25 @@ pub fn make_transformed_box_hull(hx: f32, hy: f32, hz: f32, transform: Transform
             z: -h.z,
         },
     );
+
+    // SOA vertex/normal arrays for the SIMD hull collision path.
+    for i in 0..8 {
+        box_hull.vx[i] = box_hull.box_points[i].x;
+        box_hull.vy[i] = box_hull.box_points[i].y;
+        box_hull.vz[i] = box_hull.box_points[i].z;
+    }
+    for i in 0..6 {
+        box_hull.nx[i] = box_hull.box_planes[i].normal.x;
+        box_hull.ny[i] = box_hull.box_planes[i].normal.y;
+        box_hull.nz[i] = box_hull.box_planes[i].normal.z;
+    }
+    // Normal lanes 6 and 7 are padding (6 faces), kept zero.
+    box_hull.nx[6] = 0.0;
+    box_hull.nx[7] = 0.0;
+    box_hull.ny[6] = 0.0;
+    box_hull.ny[7] = 0.0;
+    box_hull.nz[6] = 0.0;
+    box_hull.nz[7] = 0.0;
 
     // Keep base Vec accessors in sync with the embedded arrays (C offsets into
     // the same allocation). Hash still uses the contiguous byte layout.

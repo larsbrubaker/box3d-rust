@@ -11,6 +11,7 @@
 mod edge_hull;
 mod edge_triangle;
 mod primitives;
+mod sat;
 
 use crate::hull::{get_hull_edges, get_hull_points, HullData};
 use crate::manifold::LocalManifold;

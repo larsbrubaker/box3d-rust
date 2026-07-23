@@ -205,7 +205,6 @@ pub struct BodySim {
 
     pub min_extent: f32,
     pub max_extent: Vec3,
-    pub max_angular_velocity: f32,
     pub linear_damping: f32,
     pub angular_damping: f32,
     pub gravity_scale: f32,
@@ -232,7 +231,6 @@ impl Default for BodySim {
             inv_inertia_world: MAT3_ZERO,
             min_extent: 0.0,
             max_extent: VEC3_ZERO,
-            max_angular_velocity: 0.0,
             linear_damping: 0.0,
             angular_damping: 0.0,
             gravity_scale: 1.0,

@@ -1,7 +1,10 @@
 //! Mesh / height-field contact world tests (task-6).
 //!
-//! Ports `TestMeshDrop` from `test_world.c` / `shared/stability.c`, plus
-//! height-field settle and edge-weld roll coverage.
+//! Height-field settle, edge-weld roll, and hull-on-mesh coverage. Upstream
+//! commit c37cfe4 moved `TestMeshDrop` out of `test_world.c` into
+//! `test_determinism.c` as the CCD-based `MeshDropTest`; that determinism scene
+//! (shared/stability.c) is ported separately, so the old sleep-gate test is
+//! dropped here to match the C reorganization.
 
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under double-precision
 
@@ -10,123 +13,12 @@ use crate::geometry::Sphere;
 use crate::height_field::create_grid;
 use crate::hull::make_box_hull;
 use crate::math_functions::{Pos, Vec3, VEC3_ONE, VEC3_ZERO};
-use crate::mesh::{create_grid_mesh, create_wave_mesh};
+use crate::mesh::create_grid_mesh;
 use crate::shape::{
     create_height_field_shape, create_hull_shape, create_mesh_shape, create_sphere_shape,
 };
-use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType, Filter};
+use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::{world_get_body_events, World};
-
-const RAND_LIMIT: u32 = 32767;
-
-/// XorShift32 matching `shared/utils.h` RandomInt / RandomFloatRange.
-struct XorShift32 {
-    state: u32,
-}
-
-impl XorShift32 {
-    fn new(seed: u32) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_int(&mut self) -> i32 {
-        let mut x = self.state;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.state = x;
-        (x % (RAND_LIMIT + 1)) as i32
-    }
-
-    fn float_range(&mut self, lo: f32, hi: f32) -> f32 {
-        let r = (self.next_int() as f32) / (RAND_LIMIT as f32);
-        (hi - lo) * r + lo
-    }
-
-    fn vec3_uniform(&mut self, lo: f32, hi: f32) -> Vec3 {
-        Vec3 {
-            x: self.float_range(lo, hi),
-            y: self.float_range(lo, hi),
-            z: self.float_range(lo, hi),
-        }
-    }
-}
-
-/// (CreateMeshDrop from shared/stability.c)
-fn create_mesh_drop(world: &mut World, origin: Pos) {
-    {
-        let mut body_def = default_body_def();
-        body_def.position = origin;
-        let ground_id = create_body(world, &body_def);
-
-        let mesh = create_wave_mesh(40, 40, 1.0, 0.5, 0.1, 0.2).expect("wave mesh");
-        let mut shape_def = default_shape_def();
-        shape_def.filter.category_bits = 1;
-        create_mesh_shape(world, ground_id, &shape_def, &mesh, VEC3_ONE);
-    }
-
-    {
-        // C uses 0.02×0.2×0.04 with ±5 rad/s spin. Those thin boxes can tunnel
-        // through one-sided mesh triangles when the first manifold frame misses;
-        // use slightly larger cubes with milder spin so TestMeshDrop's sleep gate
-        // stays a reliable mesh-contact acceptance test.
-        let box_hull = make_box_hull(0.1, 0.1, 0.1);
-        let mut body_def = default_body_def();
-        body_def.type_ = BodyType::Dynamic;
-
-        let mut shape_def = default_shape_def();
-        shape_def.base_material.rolling_resistance = 0.1;
-        shape_def.filter = Filter {
-            category_bits: 2,
-            mask_bits: 1,
-            group_index: 0,
-        };
-
-        let mut rng = XorShift32::new(3963634789);
-        let grid_count = 8;
-
-        for i in 0..grid_count {
-            for j in 0..grid_count {
-                let linear_velocity = rng.vec3_uniform(-1.0, 1.0);
-                let angular_velocity = rng.vec3_uniform(-1.0, 1.0);
-
-                body_def.position = Pos {
-                    x: (origin.x as f32 + 0.5 * (i as f32 - 0.5 * grid_count as f32)) as _,
-                    y: (origin.y as f32 + 5.0) as _,
-                    z: (origin.z as f32 + 0.5 * (j as f32 - 0.5 * grid_count as f32)) as _,
-                };
-                body_def.linear_velocity = linear_velocity;
-                body_def.angular_velocity = angular_velocity;
-                let body_id = create_body(world, &body_def);
-                create_hull_shape(world, body_id, &shape_def, &box_hull.base);
-            }
-        }
-    }
-}
-
-/// Bodies settle and sleep on a wave mesh. (TestMeshDrop)
-#[test]
-fn test_mesh_drop() {
-    let mut world = World::new(&default_world_def());
-    create_mesh_drop(&mut world, crate::math_functions::POS_ZERO);
-
-    let time_step = 1.0 / 60.0;
-    let step_limit = 400;
-    let mut step_index = 0;
-
-    while step_index < step_limit {
-        world.step(time_step, 4);
-        if world_get_body_events(&world).is_empty() {
-            break;
-        }
-        step_index += 1;
-    }
-
-    assert!(
-        step_index < step_limit,
-        "mesh drop never slept (step_index={step_index})"
-    );
-}
 
 /// Sphere dropped on a height field settles and sleeps.
 #[test]

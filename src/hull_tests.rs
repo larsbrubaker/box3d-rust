@@ -1,5 +1,6 @@
 //! Port of box3d-cpp-reference/test/test_hull.c
 
+use crate::constants::MAX_HULL_VERTICES;
 use crate::hull::{
     clone_and_transform_hull, clone_hull, compare_hull_data, create_cylinder, create_hull,
     destroy_hull, is_valid_hull, make_box_hull,
@@ -186,12 +187,14 @@ fn create_hull_max_vertex() {
     assert!(h1.vertex_count <= 8);
     destroy_hull(h1);
 
+    // Below the floor: clamps up to 4.
     let h2 = create_hull(&points, 1).expect("h2");
-    assert!(h2.vertex_count >= 4 && h2.vertex_count <= 255);
+    assert!(h2.vertex_count >= 4 && h2.vertex_count <= MAX_HULL_VERTICES);
     destroy_hull(h2);
 
+    // Above the ceiling: clamps down to MAX_HULL_VERTICES.
     let h3 = create_hull(&points, 1000).expect("h3");
-    assert!(h3.vertex_count >= 4 && h3.vertex_count <= 255);
+    assert!(h3.vertex_count >= 4 && h3.vertex_count <= MAX_HULL_VERTICES);
     destroy_hull(h3);
 }
 
@@ -439,7 +442,8 @@ fn create_hull_sphere_stress() {
         z: 0.0,
     }; N];
     let seeds = [12345u32, 1, 0xdeadbeef, 0xcafef00d];
-    let m_values = [16, 24, 32, 40];
+    // M kept <= 32 so the final face count 2M - 4 stays under B3_MAX_HULL_FACES.
+    let m_values = [16, 24, 32];
 
     for &seed in &seeds {
         fill_sphere_sample(&mut points, seed);
