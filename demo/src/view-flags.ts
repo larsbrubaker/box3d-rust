@@ -38,7 +38,6 @@ export const VIEW_FLAGS: ViewFlagDef[] = [
   { key: "contactNormals", label: "Contact Normals", bit: 1 << 11, default: false, section: "contact" },
   { key: "contactFeatures", label: "Contact Features", bit: 1 << 12, default: false, section: "contact" },
   { key: "contactForces", label: "Contact Forces", bit: 1 << 13, default: false, section: "contact" },
-  { key: "frictionForces", label: "Friction Forces", bit: 1 << 14, default: false, section: "contact" },
   // drawAnchorA: 1 = A, 0 = B (default B). Rendered as an Anchor A / B radio pair.
   { key: "anchorA", label: "Anchor A", bit: 1 << 15, default: false, section: "anchor" },
 ];

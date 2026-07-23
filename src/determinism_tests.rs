@@ -18,14 +18,14 @@ use crate::world::World;
 // step and the state hash differ from the float build. Both modes are
 // internally deterministic. Values from test_determinism.c.
 #[cfg(feature = "double-precision")]
-const EXPECTED_SLEEP_STEP: i32 = 301;
+const EXPECTED_SLEEP_STEP: i32 = 297;
 #[cfg(feature = "double-precision")]
-const EXPECTED_HASH: u32 = 0xE484_4A97;
+const EXPECTED_HASH: u32 = 0x27FF_38C1;
 
 #[cfg(not(feature = "double-precision"))]
-const EXPECTED_SLEEP_STEP: i32 = 269;
+const EXPECTED_SLEEP_STEP: i32 = 308;
 #[cfg(not(feature = "double-precision"))]
-const EXPECTED_HASH: u32 = 0x5031_3037;
+const EXPECTED_HASH: u32 = 0x1E5E_DD79;
 
 fn assert_expected(data: &FallingRagdollData, label: &str) {
     if data.sleep_step != EXPECTED_SLEEP_STEP || data.hash != EXPECTED_HASH {

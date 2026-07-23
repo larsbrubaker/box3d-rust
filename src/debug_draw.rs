@@ -314,9 +314,6 @@ pub trait DebugDraw {
     fn draw_contact_forces(&self) -> bool {
         false
     }
-    fn draw_friction_forces(&self) -> bool {
-        false
-    }
     fn draw_islands(&self) -> bool {
         false
     }

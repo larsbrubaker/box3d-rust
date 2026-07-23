@@ -5,15 +5,15 @@
 
 use crate::body::body_flags;
 use crate::body::{get_body_sim, get_body_state_index};
-use crate::constants::{speculative_distance, GRAPH_COLOR_COUNT};
+use crate::constants::{speculative_distance, GRAPH_COLOR_COUNT, MIN_FRICTION_WEIGHT};
 use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::core::{get_length_units_per_meter, NULL_INDEX};
 use crate::debug_draw::{make_debug_color, DebugDraw, DebugMaterial, DebugShape, HexColor};
 use crate::id::ShapeId;
 use crate::joint::draw_joint;
 use crate::math_functions::{
-    aabb_union, add, clamp_int, is_valid_aabb, length, mul_sv, offset_pos, transform_world_point,
-    Aabb, Vec3, WorldTransform,
+    aabb_union, clamp_float, clamp_int, is_valid_aabb, length, mul_add, mul_sv, offset_pos,
+    transform_world_point, Aabb, Vec3, WorldTransform,
 };
 use crate::name_cache::NameCache;
 use crate::solver_set::{AWAKE_SET, DISABLED_SET};
@@ -208,16 +208,19 @@ fn draw_body_contacts(
             debug_assert!(manifold.point_count > 0);
 
             let normal = manifold.normal;
+            // Average the anchors not the world points so the friction center stays exact far from the origin
             let contact_center = if draw.draw_anchor_a() {
                 center_a
             } else {
                 center_b
             };
-            let mut anchor_sum = Vec3 {
+            let mut friction_anchor = Vec3 {
                 x: 0.0,
                 y: 0.0,
                 z: 0.0,
             };
+            let mut total_weight = 0.0;
+            let inv_tau = 1.0 / speculative_distance;
 
             for point_index in 0..manifold.point_count as usize {
                 let mp = &manifold.points[point_index];
@@ -227,7 +230,11 @@ fn draw_body_contacts(
                     mp.anchor_b
                 };
                 let p = offset_pos(contact_center, anchor);
-                anchor_sum = add(anchor_sum, anchor);
+
+                // See similar friction anchor weights in b3PrepareContacts_Mesh.
+                let weight = clamp_float(2.0 - mp.separation * inv_tau, MIN_FRICTION_WEIGHT, 1.0);
+                friction_anchor = mul_add(friction_anchor, weight, anchor);
+                total_weight += weight;
 
                 if draw.draw_contact_normals() {
                     let p1 = p;
@@ -276,8 +283,8 @@ fn draw_body_contacts(
                 } else {
                     60.0
                 };
-                let avg_anchor = mul_sv(1.0 / manifold.point_count as f32, anchor_sum);
-                let mut p1 = offset_pos(contact_center, avg_anchor);
+                friction_anchor = mul_sv(1.0 / total_weight, friction_anchor);
+                let mut p1 = offset_pos(contact_center, friction_anchor);
                 let friction_force = mul_sv(0.5 * inv_dt, manifold.friction_impulse);
                 let p2 = offset_pos(p1, mul_sv(draw.force_scale(), friction_force));
                 draw.draw_segment(p1, p2, friction_color);

@@ -951,7 +951,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     { label: "Contact normals", viewKey: "contactNormals" },
     { label: "Contact features", viewKey: "contactFeatures" },
     { label: "Contact forces", viewKey: "contactForces" },
-    { label: "Friction forces", viewKey: "frictionForces" },
   ];
   const panelCheckboxes = new Map<string, HTMLInputElement>();
   for (const f of panelFlagDefs) {

@@ -30,7 +30,6 @@ pub const MENU_CONTACTS: u32 = 1 << 10;
 pub const MENU_CONTACT_NORMALS: u32 = 1 << 11;
 pub const MENU_CONTACT_FEATURES: u32 = 1 << 12;
 pub const MENU_CONTACT_FORCES: u32 = 1 << 13;
-pub const MENU_FRICTION_FORCES: u32 = 1 << 14;
 pub const MENU_ANCHOR_A: u32 = 1 << 15;
 
 thread_local! {
@@ -397,9 +396,6 @@ impl DebugDraw for CollectDraw {
     }
     fn draw_contact_forces(&self) -> bool {
         self.flags & MENU_CONTACT_FORCES != 0
-    }
-    fn draw_friction_forces(&self) -> bool {
-        self.flags & MENU_FRICTION_FORCES != 0
     }
     fn draw_anchor_a(&self) -> bool {
         self.flags & MENU_ANCHOR_A != 0

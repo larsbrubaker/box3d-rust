@@ -520,7 +520,7 @@ pub fn split_island(world: &mut World, base_id: i32) {
         }
     }
 
-    // Early return — island is still fully connected, no split needed.
+    // Island is still fully connected, no split needed.
     if component_count == 1 {
         let base_island = &mut world.islands[base_id as usize];
         base_island.constraint_remove_count = 0;

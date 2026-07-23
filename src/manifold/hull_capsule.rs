@@ -13,6 +13,7 @@ use super::types::{
     FEATURE_PAIR_SINGLE,
 };
 use crate::constants::{linear_slop, speculative_distance};
+use crate::core::NULL_INDEX;
 use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
 use crate::geometry::Capsule;
 use crate::hull::{
@@ -274,6 +275,11 @@ pub fn collide_hull_and_capsule(
         face_separation = deepest_point_separation(manifold);
     }
     debug_assert!(face_separation <= 0.0);
+
+    // Is there a valid edge-edge axis?
+    if edge_query.index_a == NULL_INDEX {
+        return;
+    }
 
     const K_REL_EDGE_TOLERANCE: f32 = 0.90;
     let k_abs_tolerance = 0.5 * linear_slop();

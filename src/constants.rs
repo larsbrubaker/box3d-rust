@@ -123,10 +123,15 @@ pub fn contact_recycle_distance() -> f32 {
     10.0 * linear_slop()
 }
 
-/// Minimum capsule segment length. (B3_MIN_CAPSULE_LENGTH)
+/// The minimum length of a capsules. Very short capsules should be created as spheres
+/// to avoid numerical problems. (B3_MIN_CAPSULE_LENGTH)
 pub fn min_capsule_length() -> f32 {
     linear_slop()
 }
+
+/// Minimum contact point friction weight, lower bound for speculative points. Made small
+/// enough to be washed away by weights that hit 1. (B3_MIN_FRICTION_WEIGHT)
+pub const MIN_FRICTION_WEIGHT: f32 = 1e-10;
 
 /// Maximum AABB margin used when expanding bounds for casts.
 /// (B3_MAX_AABB_MARGIN)

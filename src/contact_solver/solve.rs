@@ -152,8 +152,8 @@ pub fn solve_contacts(
                 let tangent1 = constraint.tangent1;
                 let tangent2 = constraint.tangent2;
 
-                let r_a = constraint.origin_a;
-                let r_b = constraint.origin_b;
+                let r_a = constraint.center_a;
+                let r_b = constraint.center_b;
 
                 let vr_a = add(v_a, cross(w_a, r_a));
                 let vr_b = add(v_b, cross(w_b, r_b));

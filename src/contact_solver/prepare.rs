@@ -7,9 +7,10 @@ use super::{ContactConstraint, ManifoldConstraint, ManifoldConstraintPoint};
 use crate::body::{BodySim, BodyState};
 use crate::contact::{contact_flags, Contact};
 use crate::core::NULL_INDEX;
+use crate::constants::{speculative_distance, MIN_FRICTION_WEIGHT};
 use crate::math_functions::{
-    add, add_mm, cross, distance, dot, invert2, invert_matrix, mul_mv, mul_sv, perp, sub, Vec2,
-    MAT2_ZERO, MAT3_ZERO, VEC3_ZERO,
+    add, add_mm, clamp_float, cross, distance, dot, invert2, invert_matrix, mul_add, mul_mv, mul_sv,
+    perp, sub, Vec2, MAT2_ZERO, MAT3_ZERO, VEC3_ZERO,
 };
 use crate::solver::StepContext;
 
@@ -50,6 +51,9 @@ pub fn prepare_one_contact(
             state_b.angular_velocity,
         )
     };
+
+    // Used for friction center weighting.
+    let inv_tau = 1.0 / speculative_distance();
 
     let manifold_count = contact.manifold_count();
     let softness = if (contact.flags & contact_flags::STATIC_FLAG) != 0 {
@@ -94,13 +98,15 @@ pub fn prepare_one_contact(
 
         let mut center_a = VEC3_ZERO;
         let mut center_b = VEC3_ZERO;
+        let mut total_friction_weight = 0.0;
 
         for point_index in 0..point_count as usize {
             let mp = &manifold.points[point_index];
+            let s = mp.separation;
             let mut cp = ManifoldConstraintPoint {
                 r_a: mp.anchor_a,
                 r_b: mp.anchor_b,
-                base_separation: mp.separation - dot(sub(mp.anchor_b, mp.anchor_a), normal),
+                base_separation: s - dot(sub(mp.anchor_b, mp.anchor_a), normal),
                 normal_impulse: warm_start_scale * mp.normal_impulse,
                 total_normal_impulse: 0.0,
                 ..ManifoldConstraintPoint::default()
@@ -118,17 +124,24 @@ pub fn prepare_one_contact(
             let vr_b = add(v_b, cross(w_b, r_b));
             cp.relative_velocity = dot(normal, sub(vr_b, vr_a));
 
-            center_a = add(center_a, r_a);
-            center_b = add(center_b, r_b);
+            // C0 friction center decay. Needed to prevent spinning top drift (GyroscopicPrecession sample).
+            // Contacts with separation greater than twice the speculative distance only matter for CCD and
+            // should not contribute to the friction center. They are not important for jitter reduction. Closer
+            // points may begin to touch on and off, so the friction center needs to move smoothly.
+            // Epsilon to avoid a branch below (or divide by zero). Small enough to get washed out normally.
+            let weight = clamp_float(2.0 - s * inv_tau, MIN_FRICTION_WEIGHT, 1.0);
+            center_a = mul_add(center_a, weight, r_a);
+            center_b = mul_add(center_b, weight, r_b);
+            total_friction_weight += weight;
 
             mc.points[point_index] = cp;
         }
 
-        let inv_count = 1.0 / point_count as f32;
-        center_a = mul_sv(inv_count, center_a);
-        center_b = mul_sv(inv_count, center_b);
-        mc.origin_a = center_a;
-        mc.origin_b = center_b;
+        let inv_weight = 1.0 / total_friction_weight;
+        center_a = mul_sv(inv_weight, center_a);
+        center_b = mul_sv(inv_weight, center_b);
+        mc.center_a = center_a;
+        mc.center_b = center_b;
 
         for point_index in 0..point_count as usize {
             mc.points[point_index].lever_arm = distance(mc.points[point_index].r_a, center_a);

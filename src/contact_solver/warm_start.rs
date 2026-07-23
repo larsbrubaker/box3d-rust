@@ -56,8 +56,8 @@ fn warm_start_one(contact_constraint: &ContactConstraint, states: &mut [BodyStat
 
         // Central friction
         {
-            let r_a = constraint.origin_a;
-            let r_b = constraint.origin_b;
+            let r_a = constraint.center_a;
+            let r_b = constraint.center_b;
             let mut impulse = mul_sv(constraint.friction_impulse.x, constraint.tangent1);
             impulse = add(
                 impulse,
