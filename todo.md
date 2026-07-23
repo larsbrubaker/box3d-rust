@@ -49,9 +49,9 @@ The core library and test sync to `c52908c` is complete. The samples app moved
 too; the demo site still mirrors the `540ea38` samples. Port the user-visible
 sample changes into `demo/`:
 
-- [ ] New samples with no library helper: Bodies Gyroscopic Precession (now
-      enabled upstream), Issues GMod Wheel Stack (317-vert data), Issues s&box
-      Ghost Collisions (~400 LOC procedural mesh)
+- [ ] New samples with no library helper: Issues GMod Wheel Stack (317-vert
+      data), Issues s&box Ghost Collisions (~400 LOC procedural mesh). (Bodies
+      Gyroscopic Precession — now enabled upstream — is ported: demo-parity batch 5a.)
 - [ ] Update `demo/src/registry.ts` rows accordingly; renderer/shader work in
       `samples/gfx` (e.g. shadow PCF) is optional visual polish. Note:
       `samples/mover.cpp` is only a refactor extracting the already-ported

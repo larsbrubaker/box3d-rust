@@ -1,12 +1,14 @@
 //! Faithful C `Bodies` category demos (`box3d-cpp-reference/samples/sample_bodies.cpp`):
-//! Body Type, Spinning Book, Gyroscopic Torque, Weeble, Disable, Cast, Kinematic,
-//! Lock Mixing, Fixed Rotation. (Gyroscopic Precession is `#if 0` in C and skipped.)
+//! Body Type, Spinning Book, Gyroscopic Torque, Gyroscopic Precession, Weeble,
+//! Disable, Cast, Kinematic, Lock Mixing, Fixed Rotation. (Gyroscopic Precession was
+//! `#if 0` at 540ea38 but upstream enabled and expanded it at c52908c; its heavy-top
+//! diagnostic lives in `precession.rs`.)
 //!
 //! Own-state pattern (mirrors `sensor_demo` / `world_demo`): each scene owns a
 //! `World` + `VisBody` list; the TS page renders bodies through the shared pose /
 //! style stream and reads a per-scene overlay channel for the extra debug geometry
 //! the C `Step()` / `Render()` draws (rays, casts, explosion sphere, velocity
-//! lines, target markers). The 9 scene constructors live in `bodies_scenes.rs`.
+//! lines, target markers). The 10 scene constructors live in `scenes.rs`.
 
 use crate::interact::{self, MouseGrab};
 use crate::vis::{push_poses, VisBody};
@@ -54,6 +56,7 @@ pub enum SceneKind {
     Kinematic,
     LockMixing,
     FixedRotation,
+    GyroscopicPrecession,
 }
 
 /// Per-step Cast query results (recomputed against `cast_transform` each step),
@@ -125,6 +128,9 @@ pub struct BodiesState {
     pub kin_amplitude: f32,
     pub kin_time: f32,
     pub kin_target: Option<KinematicTarget>,
+
+    // Gyroscopic Precession
+    pub prec: precession::PrecessionState,
 }
 
 impl BodiesState {
@@ -183,11 +189,13 @@ impl BodiesState {
             kin_amplitude: 0.0,
             kin_time: 0.0,
             kin_target: None,
+            prec: precession::PrecessionState::default(),
         }
     }
 }
 
 mod controls;
+mod precession;
 mod scenes;
 
 thread_local! {
@@ -503,6 +511,11 @@ pub fn bodies_step(dt: f32, sub_steps: i32) -> u32 {
         state.grab.pre_step(&mut state.world, dt);
         state.world.step(dt, sub_steps);
         state.step_count = state.step_count.wrapping_add(1);
+        // Heavy-top diagnostic runs after the world step (C `Sample::Step()` then
+        // `GyroscopicPrecession::Step` reads the post-step state).
+        if state.kind == SceneKind::GyroscopicPrecession {
+            precession::step(state, dt);
+        }
         state.vis.len() as u32
     })
 }
@@ -546,6 +559,7 @@ pub fn bodies_overlay() -> Vec<f32> {
             SceneKind::Weeble => weeble_overlay(state, &mut ov),
             SceneKind::Kinematic => kinematic_overlay(state, &mut ov),
             SceneKind::Cast => cast_overlay(state, &mut ov),
+            SceneKind::GyroscopicPrecession => precession::overlay(state, &mut ov),
             _ => {}
         }
         ov.into_vec()

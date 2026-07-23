@@ -1,6 +1,6 @@
-// Bodies — the nine Bodies-category samples from sample_bodies.cpp:
-// Body Type, Spinning Book, Gyroscopic Torque, Weeble, Disable, Cast, Kinematic,
-// Lock Mixing, Fixed Rotation. (Gyroscopic Precession is #if 0 in C and omitted.)
+// Bodies — the ten Bodies-category samples from sample_bodies.cpp:
+// Body Type, Spinning Book, Gyroscopic Torque, Gyroscopic Precession, Weeble,
+// Disable, Cast, Kinematic, Lock Mixing, Fixed Rotation.
 
 import * as THREE from "three";
 import { createButton, createInfoBox, createReadout, updateReadout } from "../controls.ts";
@@ -14,8 +14,20 @@ import {
 import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
 import { demoPage, makeStyleGate, runLoop } from "./common.ts";
-import { DemoScene, makeCapsule, makeSphere, setView } from "../three-scene.ts";
+import {
+  DemoScene,
+  makeCapsule,
+  makeSphere,
+  makeWireEdges,
+  setView,
+  solidMat,
+} from "../three-scene.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
+
+// Fixed hull colors for the Gyroscopic Precession tops (they render through a
+// dedicated hull channel, not the styled pose stream): steel solid + slate wire.
+const TOP_HULL_COLOR = 0x64748b;
+const TOP_WIRE_COLOR = 0x1e293b;
 
 type Scene =
   | "body-type"
@@ -26,9 +38,11 @@ type Scene =
   | "cast"
   | "kinematic"
   | "lock-mixing"
-  | "fixed-rotation";
+  | "fixed-rotation"
+  | "gyroscopic-precession";
 
-// Index in this array is the numeric scene id consumed by `bodies_reset`.
+// Index in this array is the numeric scene id consumed by `bodies_reset`. Precession
+// is appended last so the existing scene ids stay stable (matches `scenes::build`).
 export const SCENES: Scene[] = [
   "body-type",
   "spinning-book",
@@ -39,11 +53,17 @@ export const SCENES: Scene[] = [
   "kinematic",
   "lock-mixing",
   "fixed-rotation",
+  "gyroscopic-precession",
 ];
 
 // Only Weeble / Kinematic / Cast emit the always-on overlay channel; the other
 // six return `[0, 0]`, so skip the `bodies_overlay()` wasm call for them.
-const OVERLAY_SCENES = new Set<Scene>(["weeble", "kinematic", "cast"]);
+const OVERLAY_SCENES = new Set<Scene>([
+  "weeble",
+  "kinematic",
+  "cast",
+  "gyroscopic-precession",
+]);
 
 /** Reinterpret a packed-color f32 (from the Rust cast-shapes buffer) as 0xRRGGBB. */
 const _cbuf = new Float32Array(1);
@@ -63,6 +83,8 @@ const CAMERAS: Record<Scene, [number, number, number, [number, number, number]]>
   kinematic: [0, 30, 10, [0, 1.5, 0]],
   "lock-mixing": [45, 30, 40, [0, 0, 0]],
   "fixed-rotation": [0, 15, 10, [0, 0, 0]],
+  // C GyroscopicPrecession::SetView( 40, 30, 75, {0, 2, 0} ).
+  "gyroscopic-precession": [40, 30, 75, [0, 2, 0]],
 };
 
 function typeId(v: string): number {
@@ -75,8 +97,8 @@ export function init(container: HTMLElement, initialScene?: string) {
   const { canvas, controls } = demoPage(
     container,
     "Bodies",
-    "The nine Bodies-category samples from <code>sample_bodies.cpp</code> — body types, " +
-      "gyroscopic effects, explosions, kinematic targets, casts, motion locks.",
+    "The ten Bodies-category samples from <code>sample_bodies.cpp</code> — body types, " +
+      "gyroscopic effects, spinning-top precession, explosions, kinematic targets, casts, motion locks.",
     "Ctrl+click grab · Shift+click spawn · Shift+drag moves the Cast target · P/O/R",
     wasm.version(),
     { category: "Bodies", samplesShell: true },
@@ -86,6 +108,8 @@ export function init(container: HTMLElement, initialScene?: string) {
     createInfoBox(
       "<strong>Body Type</strong> — switch platform/attachments between static / kinematic / dynamic.<br>" +
         "<strong>Spinning Book / Gyroscopic Torque</strong> — the Dzhanibekov (tennis-racket) effect.<br>" +
+        "<strong>Gyroscopic Precession</strong> — a field of tilted spinning tops; the measured top's " +
+        "precession rate is compared to the classical heavy-top solution (Goldstein 5.7).<br>" +
         "<strong>Weeble</strong> — self-righting capsule; Teleport / Explode.<br>" +
         "<strong>Disable</strong> — enable/disable a welded link or the ball.<br>" +
         "<strong>Cast</strong> — ray / sphere / capsule / mover queries against a Shift-drag target " +
@@ -165,6 +189,76 @@ export function init(container: HTMLElement, initialScene?: string) {
     castSlots.length = count;
   }
 
+  // --- Gyroscopic Precession tops: all tops share one hull geometry (built once
+  // from bodies_precession_hull) and render as N meshes + wire outlines driven by
+  // the dedicated bodies_precession_poses channel. The measured top's axis line
+  // comes through the shared overlay; the heavy-top HUD through bodies_precession_hud. ---
+  const topGroup = new THREE.Group();
+  demo.dynamic.add(topGroup);
+  let topSolidGeo: THREE.BufferGeometry | null = null;
+  const topMeshes: THREE.Mesh[] = [];
+  const topWires: THREE.LineSegments[] = [];
+
+  function clearTops() {
+    for (const m of topMeshes) {
+      topGroup.remove(m);
+      (m.material as THREE.Material).dispose();
+    }
+    for (const w of topWires) {
+      topGroup.remove(w);
+      w.geometry.dispose();
+      (w.material as THREE.Material).dispose();
+    }
+    topMeshes.length = 0;
+    topWires.length = 0;
+    if (topSolidGeo) {
+      topSolidGeo.dispose();
+      topSolidGeo = null;
+    }
+  }
+
+  function buildTops() {
+    clearTops();
+    const geo = wasm.bodies_precession_hull();
+    if (geo.length < 2) return;
+    let p = 0;
+    const triCount = geo[p++]! | 0;
+    const tris = geo.slice(p, p + triCount);
+    p += triCount;
+    const edgeCount = geo[p++]! | 0;
+    const edges = geo.slice(p, p + edgeCount);
+
+    topSolidGeo = new THREE.BufferGeometry();
+    topSolidGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tris), 3));
+    topSolidGeo.computeVertexNormals();
+
+    const count = wasm.bodies_precession_poses().length / 7;
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(topSolidGeo, solidMat(TOP_HULL_COLOR, 1));
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      topGroup.add(mesh);
+      topMeshes.push(mesh);
+
+      const wire = makeWireEdges(edges, TOP_WIRE_COLOR);
+      topGroup.add(wire);
+      topWires.push(wire);
+    }
+  }
+
+  function updateTops() {
+    const hp = wasm.bodies_precession_poses();
+    for (let i = 0; i < topMeshes.length; i++) {
+      const o = i * 7;
+      const mesh = topMeshes[i]!;
+      const wire = topWires[i]!;
+      mesh.position.set(hp[o]!, hp[o + 1]!, hp[o + 2]!);
+      mesh.quaternion.set(hp[o + 3]!, hp[o + 4]!, hp[o + 5]!, hp[o + 6]!);
+      wire.position.copy(mesh.position);
+      wire.quaternion.copy(mesh.quaternion);
+    }
+  }
+
   // --- Weeble action buttons (Teleport / Explode), toggled by scene ---
   const weebleRow = document.createElement("div");
   weebleRow.className = "control-row";
@@ -193,8 +287,10 @@ export function init(container: HTMLElement, initialScene?: string) {
     const [yaw, pitch, dist, target] = CAMERAS[scene];
     setView(demo, yaw, pitch, dist, target);
     weebleRow.style.display = scene === "weeble" ? "" : "none";
-    if (scene !== "gyroscopic-torque") readout.innerHTML = "";
+    if (scene !== "gyroscopic-torque" && scene !== "gyroscopic-precession") readout.innerHTML = "";
     if (scene !== "cast") clearCast();
+    if (scene === "gyroscopic-precession") buildTops();
+    else clearTops();
     if (!OVERLAY_SCENES.has(scene)) bodiesOverlay.clear();
   }
 
@@ -299,11 +395,20 @@ export function init(container: HTMLElement, initialScene?: string) {
     else bodiesOverlay.clear();
     if (scene === "cast") updateCastShapes(wasm.bodies_cast_shapes());
     else clearCast();
+    if (scene === "gyroscopic-precession") updateTops();
 
     frame += 1;
     if (scene === "gyroscopic-torque" && frame % 10 === 0) {
       const hud = wasm.bodies_hud();
       if (hud) updateReadout(readout, [{ label: "center", value: hud.replace("center ", "") }]);
+    }
+    if (scene === "gyroscopic-precession" && frame % 10 === 0) {
+      // Heavy-top diagnostic (C GyroscopicPrecession::Step DrawTextLine); one line each.
+      const hud = wasm.bodies_precession_hud();
+      readout.innerHTML = hud
+        .split("\n")
+        .map((line) => `<span class="value">${line}</span>`)
+        .join("<br>");
     }
     demo.render();
   }, readout);
@@ -315,6 +420,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     window.removeEventListener("pointerup", onCastUp);
     bodiesOverlay.dispose();
     clearCast();
+    clearTops();
     ctrl.dispose();
     disposeMeshPool(pool);
     demo.dispose();

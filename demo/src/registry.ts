@@ -10,14 +10,16 @@
 //               and/or on the page.
 //   `planned` — no route yet.
 //
-// Enumerated from the pinned submodule (pinned at c52908c). 154 active entries
+// Enumerated from the pinned submodule (pinned at c52908c). 155 active entries
 // across 19 categories. This inventory is mid-migration from the 540ea38 samples
 // to c52908c: the c52908c removals (Stacking "Card House Thick", Issues "Dump
 // Loader", Continuous "Mesh Drop Unit Test" — the last moved to Determinism) are
 // already dropped here; the new c52908c samples land in later demo-parity batches.
-// Three upstream RegisterSample calls are `#if 0`'d and therefore excluded: Bodies
-// "Gyroscopic Precession", Benchmark "Large World" (the first one at :203; the live
-// one at :1022 is kept), Ragdoll "Pose". The Replay viewer is registered through a
+// Two upstream RegisterSample calls are `#if 0`'d and therefore excluded: Benchmark
+// "Large World" (the first one at :203; the live one at :1022 is kept), Ragdoll
+// "Pose". (Bodies "Gyroscopic Precession" was `#if 0`'d at 540ea38 but upstream
+// enabled and expanded it at c52908c, so it is a live entry now.) The Replay viewer
+// is registered through a
 // non-RegisterSample path (g_replayIndex), represented here as its own single-entry
 // "Replay" category (route "replay").
 //
@@ -95,6 +97,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Body Type", "live", "bodies", "body-type"],
     ["Spinning Book", "live", "bodies", "spinning-book"],
     ["Gyroscopic Torque", "live", "bodies", "gyroscopic-torque"],
+    // Live: 8×8 field of fast-spinning tilted tops (C allowFastRotation) that precess
+    // under gravity torque; the measured top carries the heavy-top diagnostic HUD
+    // (Goldstein 5.7) and a yellow symmetry-axis line. Enabled upstream at c52908c.
+    ["Gyroscopic Precession", "live", "bodies", "gyroscopic-precession"],
     ["Weeble", "live", "bodies", "weeble"],
     ["Disable", "live", "bodies", "disable"],
     // Live: ray / sphere-cast / overlap / CollideMover queries against a Shift-drag

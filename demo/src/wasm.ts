@@ -589,6 +589,12 @@ export interface Box3dWasm {
   bodies_debug_text(): string;
   /** HUD readout line for Gyroscopic Torque (world center of mass); "" otherwise. */
   bodies_hud(): string;
+  /** Heavy-top HUD text for Gyroscopic Precession (newline-separated lines); "" otherwise. */
+  bodies_precession_hud(): string;
+  /** Shared top hull geometry `[triFloatCount, tris…, edgeFloatCount, edges…]` (hull-local). */
+  bodies_precession_hull(): Float32Array;
+  /** Live top transforms `[px,py,pz, qx,qy,qz,qw] × N`, aligned to the shared hull. */
+  bodies_precession_poses(): Float32Array;
   /** Per-scene always-on overlay geometry `[segCount, ptCount, ...segs(7), ...pts(5)]`. */
   bodies_overlay(): Float32Array;
   /** Cast solid proxy shapes `[count, then per shape: kind, c1(3), c2(3), radius, colorBits]`. */

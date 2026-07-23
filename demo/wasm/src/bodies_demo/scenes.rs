@@ -4,24 +4,25 @@
 //! `bodies_demo`, split off to keep each file under the 800-line module gate.
 
 use super::{new_world, BodiesState, SceneKind};
-use crate::vis::VisBody;
+use crate::vis::{hull_edges, hull_triangles, VisBody};
 use box3d_rust::body::{
     body_apply_mass_from_shapes, body_get_local_point, body_get_local_rotational_inertia,
-    body_get_mass, body_set_angular_velocity, body_set_mass_data, create_body,
+    body_get_mass, body_get_mass_data, body_set_angular_velocity, body_set_mass_data, create_body,
 };
 use box3d_rust::geometry::{Capsule, MassData, Sphere};
-use box3d_rust::hull::{create_cylinder, make_box_hull, make_transformed_box_hull};
+use box3d_rust::hull::{create_cylinder, create_hull, make_box_hull, make_transformed_box_hull};
 use box3d_rust::id::BodyId;
 use box3d_rust::joint::{create_prismatic_joint, create_revolute_joint, create_weld_joint};
 use box3d_rust::math_functions::{
-    add_mm, make_quat_from_axis_angle, normalize, steiner, Pos, Transform, Vec3, WorldTransform,
-    PI, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Z,
+    add_mm, length, make_quat_from_axis_angle, normalize, rotate_vector, steiner, Pos, Transform,
+    Vec3, WorldTransform, PI, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Z, VEC3_ZERO,
 };
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
     default_body_def, default_prismatic_joint_def, default_revolute_joint_def, default_shape_def,
     default_weld_joint_def, BodyType,
 };
+use box3d_rust::world::world_get_gravity;
 
 fn pos(x: f32, y: f32, z: f32) -> Pos {
     Pos {
@@ -60,6 +61,7 @@ pub fn build(scene: u32) -> BodiesState {
         6 => kinematic(),
         7 => lock_mixing(),
         8 => fixed_rotation(),
+        9 => gyroscopic_precession(),
         _ => body_type(),
     }
 }
@@ -521,5 +523,81 @@ fn fixed_rotation() -> BodiesState {
     let b = create_body(&mut st.world, &bd);
     create_capsule_shape(&mut st.world, b, &sd, &capsule);
     st.vis.push(VisBody::capsule_body(b.index1 - 1, &capsule));
+    st
+}
+
+/// Gyroscopic Precession (sample_bodies.cpp:376-578): spinning tops (ported from
+/// PEEL). Each top is tilted and spun about its symmetry axis; the gravity torque
+/// about the tip makes it precess instead of toppling. The first top carries the
+/// heavy-top precession diagnostic (see `precession.rs`). All tops share one hull
+/// geometry and render through the dedicated precession pose channel; only the
+/// ground box is a `VisBody`.
+fn gyroscopic_precession() -> BodiesState {
+    let mut st = BodiesState::base(new_world(), SceneKind::GyroscopicPrecession);
+    add_ground_box(&mut st, 40.0);
+
+    // Top shape: a wide n-gon rim up top and a point at the origin, so it balances on its tip.
+    const NUM_SEGS: usize = 7;
+    const R: f32 = 2.0;
+    const H: f32 = 2.0;
+    let mut hull_points = [VEC3_ZERO; NUM_SEGS + 1];
+    let dphi = 2.0 * PI / NUM_SEGS as f32;
+    for (i, point) in hull_points.iter_mut().take(NUM_SEGS).enumerate() {
+        *point = v3(R * (i as f32 * dphi).cos(), H, R * (i as f32 * dphi).sin());
+    }
+    hull_points[NUM_SEGS] = VEC3_ZERO;
+    let hull = create_hull(&hull_points, (NUM_SEGS + 1) as i32).expect("precession top hull");
+
+    // Shared, hull-local render geometry for every top.
+    st.prec.hull_tris = hull_triangles(&hull);
+    st.prec.hull_edges = hull_edges(&hull);
+
+    let sd = default_shape_def();
+
+    // Tilt the top, then spin it about its own symmetry axis. Gravity does the rest.
+    let rotation = make_quat_from_axis_angle(VEC3_AXIS_Z, 15.0 * PI / 180.0);
+    let angular_velocity = rotate_vector(rotation, v3(0.0, 75.0, 0.0));
+
+    const COUNT: i32 = 8;
+    const SEPARATION: f32 = 6.0;
+    for x in 0..COUNT {
+        for z in 0..COUNT {
+            let mut bd = default_body_def();
+            bd.type_ = BodyType::Dynamic;
+            bd.position = pos(
+                (x - COUNT / 2) as f32 * SEPARATION,
+                H,
+                (z - COUNT / 2) as f32 * SEPARATION,
+            );
+            bd.rotation = rotation;
+
+            // The spin rate exceeds the default cap, so bypass it as the test intends.
+            bd.allow_fast_rotation = true;
+
+            let body_id = create_body(&mut st.world, &bd);
+            create_hull_shape(&mut st.world, body_id, &sd, &hull);
+            body_set_angular_velocity(&mut st.world, body_id, angular_velocity);
+            st.prec.top_indices.push(body_id.index1 - 1);
+
+            if x == 0 && z == 0 {
+                st.prec.top_id = body_id;
+            }
+        }
+    }
+
+    // Mass properties of the measured top. The tip sits at the body origin, so the pivot
+    // distance is just the height of the center of mass, and the symmetry axis is the local
+    // up axis.
+    let mass_data = body_get_mass_data(&st.world, st.prec.top_id);
+    st.prec.mass = mass_data.mass;
+    st.prec.pivot_distance = mass_data.center.y;
+    st.prec.spin_inertia = mass_data.inertia.cy.y;
+
+    // Transverse inertia belongs about the pivot, not the center of mass.
+    let transverse = 0.5 * (mass_data.inertia.cx.x + mass_data.inertia.cz.z);
+    st.prec.transverse_inertia =
+        transverse + st.prec.mass * st.prec.pivot_distance * st.prec.pivot_distance;
+
+    st.prec.gravity = length(world_get_gravity(&st.world));
     st
 }
