@@ -480,6 +480,22 @@ fn update_compound_contact(
     let child_transform = child.transform;
     let material_indices = child.material_indices;
 
+    // Handle child material for non-meshes. The convex kernels below read the
+    // struck child's material, not entry 0 of the compound material table, so
+    // build a temporary child shape (clone of the compound) with the child's
+    // single material. Matches childShapeA setup in b3UpdateContact. The mesh
+    // branch keeps the compound materials and builds its own child shape.
+    let child_shape_a = if child.shape_type != ShapeType::Mesh {
+        debug_assert!(0 <= material_indices[0] && material_indices[0] < shape_a.material_count());
+        let mut child_shape_a = shape_a.clone();
+        child_shape_a.material = shape_a.shape_materials()[material_indices[0] as usize];
+        child_shape_a.materials.clear();
+        Some(child_shape_a)
+    } else {
+        None
+    };
+    let child_shape_a = child_shape_a.as_ref().unwrap_or(&shape_a);
+
     let touching = match child.geometry {
         ChildGeometry::Capsule(c) => {
             let child_geom = ShapeGeometry::Capsule(c);
@@ -492,7 +508,7 @@ fn update_compound_contact(
                     &shape_b,
                     &geom_b,
                     xf_b,
-                    &shape_a,
+                    child_shape_a,
                     &child_geom,
                     xf_a,
                     true,
@@ -502,7 +518,7 @@ fn update_compound_contact(
                     world,
                     worker_index,
                     contact_id,
-                    &shape_a,
+                    child_shape_a,
                     &child_geom,
                     xf_a,
                     &shape_b,
@@ -519,7 +535,7 @@ fn update_compound_contact(
                 world,
                 worker_index,
                 contact_id,
-                &shape_a,
+                child_shape_a,
                 &child_geom,
                 xf_child,
                 &shape_b,
@@ -539,7 +555,7 @@ fn update_compound_contact(
                     &shape_b,
                     &geom_b,
                     xf_b,
-                    &shape_a,
+                    child_shape_a,
                     &child_geom,
                     xf_a,
                     true,
@@ -549,7 +565,7 @@ fn update_compound_contact(
                     world,
                     worker_index,
                     contact_id,
-                    &shape_a,
+                    child_shape_a,
                     &child_geom,
                     xf_a,
                     &shape_b,

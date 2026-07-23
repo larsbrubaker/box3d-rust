@@ -131,12 +131,11 @@ impl DebugDraw for StyleCapture<'_> {
         true
     }
 
-    fn draw_shape(&mut self, user_shape: u64, _transform: WorldTransform, color: HexColor) -> bool {
+    fn draw_shape(&mut self, user_shape: u64, _transform: WorldTransform, color: HexColor) {
         // `color` is the packed 32-bit engine color: 0xRRGGBB with the
         // b3DebugMaterial preset in the high byte (physics_world.c :1298
         // b3MakeDebugColor, or a shape custom color passed through :1229).
         self.colors.insert(user_shape, color.0);
-        true
     }
 
     fn drawing_bounds(&self) -> Aabb {

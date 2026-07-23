@@ -22,13 +22,13 @@ use crate::world::World;
 // step and the state hash differ from the float build. Both modes are
 // internally deterministic. Values from test_determinism.c.
 #[cfg(feature = "double-precision")]
-const EXPECTED_SLEEP_STEP: i32 = 297;
+const RAGDOLL_SLEEP_STEP: i32 = 297;
 #[cfg(feature = "double-precision")]
-const EXPECTED_HASH: u32 = 0x27FF_38C1;
+const RAGDOLL_HASH: u32 = 0x27FF_38C1;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_SLEEP_STEP: i32 = 287;
+const WAVE_PILE_SLEEP_STEP: i32 = 258;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_HASH: u32 = 0xFFC8_DA49;
+const WAVE_PILE_HASH: u32 = 0xA3CD_C61B;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(feature = "double-precision")]
@@ -38,18 +38,18 @@ const QUERY_SPAWN_HIT_COUNT: i32 = 59;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_QUERY_HASH: u32 = 0x31F0_90DC;
 #[cfg(feature = "double-precision")]
-const MESH_DROP_SLEEP_STEP: i32 = 206;
+const MESH_DROP_SLEEP_STEP: i32 = 251;
 #[cfg(feature = "double-precision")]
-const MESH_DROP_HASH: u32 = 0xB6A9_E1DE;
+const MESH_DROP_HASH: u32 = 0x4653_81C5;
 
 #[cfg(not(feature = "double-precision"))]
-const EXPECTED_SLEEP_STEP: i32 = 308;
+const RAGDOLL_SLEEP_STEP: i32 = 308;
 #[cfg(not(feature = "double-precision"))]
-const EXPECTED_HASH: u32 = 0x1E5E_DD79;
+const RAGDOLL_HASH: u32 = 0x1E5E_DD79;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_SLEEP_STEP: i32 = 285;
+const WAVE_PILE_SLEEP_STEP: i32 = 239;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_HASH: u32 = 0x4057_173C;
+const WAVE_PILE_HASH: u32 = 0xA2F4_D472;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(not(feature = "double-precision"))]
@@ -59,22 +59,22 @@ const QUERY_SPAWN_HIT_COUNT: i32 = 59;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_QUERY_HASH: u32 = 0xB9D3_863D;
 #[cfg(not(feature = "double-precision"))]
-const MESH_DROP_SLEEP_STEP: i32 = 205;
+const MESH_DROP_SLEEP_STEP: i32 = 251;
 #[cfg(not(feature = "double-precision"))]
-const MESH_DROP_HASH: u32 = 0x8F55_FB2D;
+const MESH_DROP_HASH: u32 = 0xE58C_7240;
 
 fn assert_expected(data: &FallingRagdollData, label: &str) {
-    if data.sleep_step != EXPECTED_SLEEP_STEP || data.hash != EXPECTED_HASH {
+    if data.sleep_step != RAGDOLL_SLEEP_STEP || data.hash != RAGDOLL_HASH {
         eprintln!(
             "  {label} sleepStep={} hash=0x{:08X} (expected sleepStep={} hash=0x{:08X})",
-            data.sleep_step, data.hash, EXPECTED_SLEEP_STEP, EXPECTED_HASH
+            data.sleep_step, data.hash, RAGDOLL_SLEEP_STEP, RAGDOLL_HASH
         );
     }
     assert_eq!(
-        data.sleep_step, EXPECTED_SLEEP_STEP,
+        data.sleep_step, RAGDOLL_SLEEP_STEP,
         "{label}: sleep_step mismatch"
     );
-    assert_eq!(data.hash, EXPECTED_HASH, "{label}: hash mismatch");
+    assert_eq!(data.hash, RAGDOLL_HASH, "{label}: hash mismatch");
 }
 
 /// Serial equivalent of C `SingleMultithreadingTest` / `MultithreadingTest`

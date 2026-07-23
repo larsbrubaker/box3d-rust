@@ -483,11 +483,10 @@ pub fn collide_hull_and_triangle(
 
     // Don't admit a hull face significantly opposed to the triangle face.
     // Need a tolerance to avoid ghost collisions.
-    // todo hull query skips faces that point along the triangle normal
     let hull_normal = hull_planes[face_query_b.face_index as usize].normal;
     let pushing_down = dot(hull_normal, triangle_plane.normal) > 0.25;
     let clipped_face_separation =
-        if face_query_b.separation > face_query_a.separation + linear_slop && !pushing_down {
+        if face_query_b.separation >= face_query_a.separation && !pushing_down {
             collide_hull_face(
                 manifold,
                 capacity,

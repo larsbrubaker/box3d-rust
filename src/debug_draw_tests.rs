@@ -47,18 +47,12 @@ struct CountingDraw {
 }
 
 impl DebugDraw for CountingDraw {
-    fn draw_shape(
-        &mut self,
-        user_shape: u64,
-        _transform: WorldTransform,
-        _color: HexColor,
-    ) -> bool {
+    fn draw_shape(&mut self, user_shape: u64, _transform: WorldTransform, _color: HexColor) {
         self.shapes += 1;
         let type_tag = (user_shape >> 32) as i32;
         if (0..6).contains(&type_tag) {
             self.shape_types[type_tag as usize] += 1;
         }
-        true
     }
 
     fn draw_segment(&mut self, _p1: Pos, _p2: Pos, _color: HexColor) {

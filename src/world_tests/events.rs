@@ -1,9 +1,11 @@
 //! Contact hit, begin/end, and sensor event world tests from test_world.c.
 
 use crate::body::{body_get_position, create_body};
-use crate::compound::{create_compound, CompoundDef, CompoundHullDef};
+use crate::compound::{
+    create_compound, CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundSphereDef,
+};
 use crate::contact::contact_is_valid;
-use crate::geometry::{default_surface_material, Sphere};
+use crate::geometry::{default_surface_material, Capsule, Sphere};
 use crate::hull::{make_box_hull, make_cube_hull};
 use crate::math_functions::{Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_ZERO};
 use crate::shape::{create_baked_compound_shape, create_hull_shape, create_sphere_shape};
@@ -352,6 +354,209 @@ fn compound_hit_events() {
             captured_material_a == expected_hull_material
                 || captured_material_b == expected_hull_material,
             "side {side}: expected child material {expected_hull_material}, got {captured_material_a}/{captured_material_b}"
+        );
+    }
+}
+
+const CHILD0_MATERIAL_ID: u64 = 101;
+const CHILD1_MATERIAL_ID: u64 = 202;
+const PROBE_MATERIAL_ID: u64 = 999;
+
+#[derive(Default, Clone, Copy)]
+struct MaterialCapture {
+    call_count: i32,
+    saw_child0: bool,
+    saw_child1: bool,
+    mixed_friction: f32,
+}
+
+// No context pointer on mixing callbacks, so capture through thread-local state
+// (the C test uses file scope). The friction callback runs on the test thread
+// during world.step, so the thread-local is isolated per test.
+thread_local! {
+    static MATERIAL_CAPTURE: std::cell::RefCell<MaterialCapture> =
+        const { std::cell::RefCell::new(MaterialCapture {
+            call_count: 0,
+            saw_child0: false,
+            saw_child1: false,
+            mixed_friction: 0.0,
+        }) };
+}
+
+fn capture_friction_mix(
+    friction_a: f32,
+    user_material_id_a: u64,
+    friction_b: f32,
+    user_material_id_b: u64,
+) -> f32 {
+    MATERIAL_CAPTURE.with(|capture| {
+        let mut capture = capture.borrow_mut();
+        capture.call_count += 1;
+
+        if user_material_id_a == CHILD0_MATERIAL_ID || user_material_id_b == CHILD0_MATERIAL_ID {
+            capture.saw_child0 = true;
+        }
+
+        if user_material_id_a == CHILD1_MATERIAL_ID || user_material_id_b == CHILD1_MATERIAL_ID {
+            capture.saw_child1 = true;
+            capture.mixed_friction = (friction_a * friction_b).sqrt();
+        }
+    });
+
+    (friction_a * friction_b).sqrt()
+}
+
+/// Contact material selection must use the struck compound child's material, not
+/// entry 0 of the compound material table. Child 0 gets low friction, child 1
+/// high friction, and a unit friction sphere strikes only child 1, so the mixing
+/// callback must see child 1's values. Covers sphere, capsule, and hull children.
+/// Issue #69. (TestCompoundContactMaterials)
+#[test]
+fn compound_contact_materials() {
+    let mut mat0 = default_surface_material();
+    mat0.friction = 0.04;
+    mat0.user_material_id = CHILD0_MATERIAL_ID;
+
+    let mut mat1 = default_surface_material();
+    mat1.friction = 0.81;
+    mat1.user_material_id = CHILD1_MATERIAL_ID;
+
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+
+    // Children at x = -3 and x = +3, all with their top face or surface at y = 0.5
+    let spheres = [
+        CompoundSphereDef {
+            sphere: Sphere {
+                center: Vec3::new(-3.0, 0.0, 0.0),
+                radius: 0.5,
+            },
+            material: mat0,
+        },
+        CompoundSphereDef {
+            sphere: Sphere {
+                center: Vec3::new(3.0, 0.0, 0.0),
+                radius: 0.5,
+            },
+            material: mat1,
+        },
+    ];
+
+    let capsules = [
+        CompoundCapsuleDef {
+            capsule: Capsule {
+                center1: Vec3::new(-3.0, 0.0, -0.5),
+                center2: Vec3::new(-3.0, 0.0, 0.5),
+                radius: 0.5,
+            },
+            material: mat0,
+        },
+        CompoundCapsuleDef {
+            capsule: Capsule {
+                center1: Vec3::new(3.0, 0.0, -0.5),
+                center2: Vec3::new(3.0, 0.0, 0.5),
+                radius: 0.5,
+            },
+            material: mat1,
+        },
+    ];
+
+    let hulls = [
+        CompoundHullDef {
+            hull: &box_hull.base,
+            transform: Transform {
+                p: Vec3::new(-3.0, 0.0, 0.0),
+                q: QUAT_IDENTITY,
+            },
+            material: mat0,
+        },
+        CompoundHullDef {
+            hull: &box_hull.base,
+            transform: Transform {
+                p: Vec3::new(3.0, 0.0, 0.0),
+                q: QUAT_IDENTITY,
+            },
+            material: mat1,
+        },
+    ];
+
+    for child_type in 0..3 {
+        let compound_def = match child_type {
+            0 => CompoundDef {
+                spheres: &spheres,
+                ..Default::default()
+            },
+            1 => CompoundDef {
+                capsules: &capsules,
+                ..Default::default()
+            },
+            _ => CompoundDef {
+                hulls: &hulls,
+                ..Default::default()
+            },
+        };
+
+        let compound = create_compound(&compound_def).expect("compound");
+
+        MATERIAL_CAPTURE.with(|capture| *capture.borrow_mut() = MaterialCapture::default());
+
+        let mut world_def = default_world_def();
+        world_def.friction_callback = Some(capture_friction_mix);
+        let mut world = World::new(&world_def);
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Static;
+        let compound_body = create_body(&mut world, &body_def);
+        create_baked_compound_shape(&mut world, compound_body, &default_shape_def(), &compound);
+
+        // Sphere driven straight down onto child 1
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.gravity_scale = 0.0;
+        body_def.position = Pos {
+            x: 3.0 as _,
+            y: 3.0 as _,
+            z: 0.0 as _,
+        };
+        body_def.linear_velocity = Vec3 {
+            x: 0.0,
+            y: -30.0,
+            z: 0.0,
+        };
+        let sphere_body = create_body(&mut world, &body_def);
+        let mut sphere_shape_def = default_shape_def();
+        sphere_shape_def.density = 1.0;
+        sphere_shape_def.base_material.friction = 1.0;
+        sphere_shape_def.base_material.user_material_id = PROBE_MATERIAL_ID;
+        let sphere = Sphere {
+            center: VEC3_ZERO,
+            radius: 0.5,
+        };
+        create_sphere_shape(&mut world, sphere_body, &sphere_shape_def, &sphere);
+
+        for _ in 0..30 {
+            world.step(1.0 / 60.0, 4);
+        }
+
+        let capture = MATERIAL_CAPTURE.with(|capture| *capture.borrow());
+
+        assert!(
+            capture.call_count > 0,
+            "child_type {child_type}: expected friction mixing calls"
+        );
+        // The pre-fix code fed material table entry 0 to the mixing callback for every child
+        assert!(
+            !capture.saw_child0,
+            "child_type {child_type}: mixing saw child 0 material"
+        );
+        assert!(
+            capture.saw_child1,
+            "child_type {child_type}: mixing did not see child 1 material"
+        );
+        // sqrt(0.81 * 1.0)
+        assert!(
+            (capture.mixed_friction - 0.9).abs() < 1e-5,
+            "child_type {child_type}: mixed friction {} != 0.9",
+            capture.mixed_friction
         );
     }
 }

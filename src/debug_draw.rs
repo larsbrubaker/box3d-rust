@@ -205,10 +205,11 @@ pub type DestroyDebugShapeCallback = fn(u64, u64);
 /// force/joint scales are 1.
 pub trait DebugDraw {
     /// Draws a previously created user shape. (`DrawShapeFcn`)
-    /// Returns whether drawing should continue (unused by `world_draw` today).
-    fn draw_shape(&mut self, user_shape: u64, transform: WorldTransform, color: HexColor) -> bool {
+    ///
+    /// When this is called the shape has passed a culling test against
+    /// [`Self::drawing_bounds`].
+    fn draw_shape(&mut self, user_shape: u64, transform: WorldTransform, color: HexColor) {
         let _ = (user_shape, transform, color);
-        true
     }
 
     /// Draw a line segment. (`DrawSegmentFcn`)
