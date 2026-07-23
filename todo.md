@@ -52,9 +52,3 @@ item is optional visual polish, not a fidelity gap:
 
 - [ ] Optional: port the `samples/gfx` renderer/shader work (e.g. shadow PCF).
       Purely cosmetic — no sample scene, value, or behavior depends on it.
-
-## Test-parity gap (pre-existing, found during the 2026-07 sync)
-
-- [ ] `test_recording.c` `RecTestDrawShape` — the C test covering
-      `b3World_Draw`'s lazy `createDebugShape` path through recording was never
-      ported; add its Rust counterpart to the recording tests

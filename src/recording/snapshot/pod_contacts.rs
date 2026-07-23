@@ -213,6 +213,24 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
     if !r.ok {
         return;
     }
+    // Save renderer handles before the array is wiped. A keyframe/seed restore is a deterministic
+    // replay state, so a live shape that still occupies the same slot with the same generation is
+    // the same shape with the same geometry: carry its handle over to avoid tearing down and
+    // rebuilding the host's GPU mesh on every seek. Handles that are not reclaimed below belong to
+    // shapes that vanished or were replaced and get released through destroyDebugShape so the host
+    // pool does not leak across seeks. Mirrors b3DesShapes in world_snapshot.c. `user_shape` is a
+    // host-owned side channel (always scrubbed to 0 on serialize), so this never affects the
+    // simulation state, the state hash, or determinism.
+    let old_shape_count = world.shapes.len();
+    let mut saved_user_shape: Vec<u64> = Vec::with_capacity(old_shape_count);
+    let mut saved_generation: Vec<u16> = Vec::with_capacity(old_shape_count);
+    for i in 0..old_shape_count {
+        let old = &world.shapes[i];
+        let old_live = old.id == i as i32;
+        saved_user_shape.push(if old_live { old.user_shape } else { 0 });
+        saved_generation.push(old.generation);
+    }
+
     // Release hulls before overwrite
     free_live_shapes(world);
 
@@ -222,6 +240,18 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
     for i in 0..count.max(0) {
         let mut shape = des_shape_scalars(r);
         let is_live = shape.id == i;
+
+        // Carry the renderer handle over when the same shape still occupies this slot. Consumed
+        // handles are nulled so the teardown sweep below only releases the ones that vanished.
+        if is_live
+            && (i as usize) < old_shape_count
+            && saved_user_shape[i as usize] != 0
+            && saved_generation[i as usize] == shape.generation
+        {
+            shape.user_shape = saved_user_shape[i as usize];
+            saved_user_shape[i as usize] = 0;
+        }
+
         let mat_count = r.i32();
         if !r.ok {
             break;
@@ -297,6 +327,18 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
             }
         };
         world.shapes.push(shape);
+    }
+
+    // Release handles for shapes that are gone or were replaced this restore, so the host pool and
+    // any GPU resources they pinned do not leak across seeks. Runs even on a read failure, matching
+    // b3DesShapes' unconditional cleanup sweep.
+    if let Some(destroy) = world.destroy_debug_shape {
+        let ctx = world.user_debug_shape_context;
+        for &handle in saved_user_shape.iter() {
+            if handle != 0 {
+                destroy(handle, ctx);
+            }
+        }
     }
 }
 
