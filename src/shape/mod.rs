@@ -5,6 +5,9 @@
 //! [`crate::types::ShapeDef`] from [`crate::types::default_shape_def`]. Geometry
 //! primitives live in [`crate::geometry`] and [`crate::hull`].
 //!
+//! You may add multiple shapes to a single body. There are no hard limits on
+//! shape count per body.
+//!
 //! Port of `shape.h` / `shape.c`. This file holds the data model and filter
 //! predicates; create/destroy and mutators are re-exported from submodules.
 //!

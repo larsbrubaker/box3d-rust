@@ -369,11 +369,14 @@ pub fn create_height_field_shape(
     shape_id
 }
 
-/// (b3CreateCompoundShape)
+/// Baked compound shapes are only allowed on static bodies.
+/// Note: runtime compounds are achieved by adding multiple shapes to a body.
+/// Runtime compounds can be dynamic and/or kinematic.
+/// (b3CreateBakedCompoundShape)
 ///
 /// Compounds must be on static non-sensor bodies. Materials are copied from the
 /// compound geometry into the shape (see [`create_shape_internal`]).
-pub fn create_compound_shape(
+pub fn create_baked_compound_shape(
     world: &mut World,
     body_id: crate::id::BodyId,
     def: &ShapeDef,

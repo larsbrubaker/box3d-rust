@@ -20,8 +20,8 @@ use crate::math_functions::{
 };
 use crate::mesh::create_box_mesh;
 use crate::shape::{
-    create_capsule_shape, create_compound_shape, create_height_field_shape, create_hull_shape,
-    create_mesh_shape, create_sphere_shape,
+    create_baked_compound_shape, create_capsule_shape, create_height_field_shape,
+    create_hull_shape, create_mesh_shape, create_sphere_shape,
 };
 use crate::types::{
     default_body_def, default_distance_joint_def, default_filter_joint_def,
@@ -297,7 +297,7 @@ fn build_shape_scene() -> World {
             ..Default::default()
         })
         .expect("compound");
-        create_compound_shape(&mut world, body, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut world, body, &default_shape_def(), &compound);
     }
 
     world

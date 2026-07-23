@@ -11,8 +11,8 @@ use crate::mesh::convert_bytes_to_mesh;
 use crate::recording::dispatch::RecReader;
 use crate::recording::ops::RecOp;
 use crate::shape::{
-    create_capsule_shape, create_compound_shape, create_height_field_shape, create_hull_shape,
-    create_mesh_shape, create_sphere_shape,
+    create_baked_compound_shape, create_capsule_shape, create_height_field_shape,
+    create_hull_shape, create_mesh_shape, create_sphere_shape,
 };
 
 #[allow(unused_imports)]
@@ -172,7 +172,7 @@ pub(super) fn dispatch(
                         .ensure_compound()
                         .cloned()
                         .expect("compound");
-                    create_compound_shape(world, body_id, &def, &compound)
+                    create_baked_compound_shape(world, body_id, &def, &compound)
                 };
                 RecReader::check_id(
                     &mut rdr.ok,

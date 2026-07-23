@@ -19,7 +19,7 @@ use box3d_rust::math_functions::{
     VEC3_AXIS_Y, VEC3_ZERO,
 };
 use box3d_rust::mesh::create_box_mesh;
-use box3d_rust::shape::create_compound_shape;
+use box3d_rust::shape::create_baked_compound_shape;
 use box3d_rust::types::{default_body_def, default_shape_def, BodyType};
 use box3d_rust::world::world_set_contact_recycle_distance;
 use std::cell::RefCell;
@@ -101,7 +101,7 @@ pub fn sim_reset_compound_simple() -> u32 {
         };
         body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, 0.25 * std::f32::consts::PI);
         let ground = create_body(&mut sim.world, &body_def);
-        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
 
         let parent_index = ground.index1 - 1;
         sim.bodies.push(SimBody {
@@ -165,7 +165,7 @@ pub fn sim_reset_compound_spheres() -> u32 {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Static;
         let ground = create_body(&mut sim.world, &body_def);
-        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
 
         let parent_index = ground.index1 - 1;
         for s in &spheres {
@@ -249,7 +249,7 @@ pub fn sim_reset_compound_hulls() -> u32 {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Static;
         let ground = create_body(&mut sim.world, &body_def);
-        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
 
         let parent_index = ground.index1 - 1;
         for (i, xf) in transforms.iter().enumerate() {
@@ -339,7 +339,7 @@ pub fn sim_reset_tile_floor() -> u32 {
         // C rotates the ground about normalize({1,-1,0.5}) by angle 0 â€” identity.
         body_def.rotation = QUAT_IDENTITY;
         let ground = create_body(&mut sim.world, &body_def);
-        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
 
         // Bake tile world transforms (parent Ã— local); the ground is static.
         let parent = get_body_transform(&sim.world, ground.index1 - 1);
@@ -445,7 +445,7 @@ pub fn sim_reset_mesh_tile() -> u32 {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Static;
         let ground = create_body(&mut sim.world, &body_def);
-        create_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut sim.world, ground, &default_shape_def(), &compound);
 
         let parent_index = ground.index1 - 1;
         for xf in &local_transforms {

@@ -12,7 +12,7 @@ use crate::hull::{HullData, HULL_VERSION};
 use crate::math_functions::{Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ONE};
 use crate::mesh::{Mesh, MeshData, MESH_VERSION};
 
-/// The compound version depends on the tree, mesh, and hull versions.
+/// The baked compound version depends on the tree, mesh, and hull versions.
 /// (B3_COMPOUND_VERSION)
 pub const COMPOUND_VERSION: u64 =
     0x8307_78DB_0708_6EB4u64 ^ DYNAMIC_TREE_VERSION ^ MESH_VERSION ^ HULL_VERSION;
@@ -151,7 +151,7 @@ pub struct ChildShape<'a> {
     pub shape_type: ShapeType,
 }
 
-/// The runtime data for a baked compound shape. (b3CompoundData)
+/// The data for a baked compound shape. (b3CompoundData)
 ///
 /// Owned arrays replace C's trailing-blob offsets. Offsets are retained so
 /// [`CompoundData::to_bytes`] / [`from_bytes`](crate::compound::convert_bytes_to_compound)

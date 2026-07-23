@@ -6,7 +6,7 @@ use crate::contact::contact_is_valid;
 use crate::geometry::{default_surface_material, Sphere};
 use crate::hull::{make_box_hull, make_cube_hull};
 use crate::math_functions::{Pos, Transform, Vec3, QUAT_IDENTITY, VEC3_ZERO};
-use crate::shape::{create_compound_shape, create_hull_shape, create_sphere_shape};
+use crate::shape::{create_baked_compound_shape, create_hull_shape, create_sphere_shape};
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::{world_get_contact_events, World};
 /// (TestHitEvents)
@@ -302,7 +302,7 @@ fn compound_hit_events() {
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Static;
         let compound_body = create_body(&mut world, &body_def);
-        create_compound_shape(&mut world, compound_body, &default_shape_def(), &compound);
+        create_baked_compound_shape(&mut world, compound_body, &default_shape_def(), &compound);
 
         let mut body_def = default_body_def();
         body_def.type_ = BodyType::Dynamic;

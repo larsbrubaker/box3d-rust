@@ -10,7 +10,7 @@ use crate::hull::make_box_hull;
 use crate::math_functions::{Transform, Vec3, QUAT_IDENTITY, VEC3_ONE, VEC3_ZERO};
 use crate::mesh::create_box_mesh;
 use crate::shape::{
-    create_compound_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
+    create_baked_compound_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
     destroy_shape, shape_get_hull, shape_is_valid, shape_set_hull, ShapeGeometry,
 };
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
@@ -197,7 +197,7 @@ fn compound_shape_copies_materials() {
     let mut body_def = default_body_def();
     body_def.type_ = BodyType::Static;
     let body = create_body(&mut world, &body_def);
-    let shape = create_compound_shape(&mut world, body, &default_shape_def(), &compound);
+    let shape = create_baked_compound_shape(&mut world, body, &default_shape_def(), &compound);
     assert!(shape_is_valid(&world, shape));
 
     let raw = (shape.index1 - 1) as usize;

@@ -274,7 +274,7 @@ fn set_type_rejects_compound_on_non_static() {
     use crate::geometry::default_surface_material;
     use crate::hull::make_box_hull;
     use crate::math_functions::Transform;
-    use crate::shape::create_compound_shape;
+    use crate::shape::create_baked_compound_shape;
     use crate::solver_set::STATIC_SET;
 
     let mut world = World::new(&default_world_def());
@@ -296,7 +296,7 @@ fn set_type_rejects_compound_on_non_static() {
     let mut def = default_body_def();
     def.type_ = BodyType::Static;
     let body_id = create_body(&mut world, &def);
-    create_compound_shape(&mut world, body_id, &default_shape_def(), &compound);
+    create_baked_compound_shape(&mut world, body_id, &default_shape_def(), &compound);
 
     body_set_type(&mut world, body_id, BodyType::Dynamic);
     assert!(!world.locked);

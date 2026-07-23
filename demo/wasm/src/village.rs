@@ -25,7 +25,7 @@ use box3d_rust::math_functions::{
     get_length_and_normalize, make_quat_from_axis_angle, mul_sv, offset_pos, sub_pos, Pos,
     Transform, Vec3, QUAT_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
 };
-use box3d_rust::shape::create_compound_shape;
+use box3d_rust::shape::create_baked_compound_shape;
 use box3d_rust::types::{default_body_def, default_query_filter, default_shape_def, BodyType};
 use box3d_rust::world::{world_cast_ray_closest, world_cast_shape, world_overlap_shape, World};
 
@@ -223,7 +223,7 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
     };
     body_def.rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, -1.15 * std::f32::consts::PI);
     let ground = create_body(world, &body_def);
-    create_compound_shape(world, ground, &default_shape_def(), &compound);
+    create_baked_compound_shape(world, ground, &default_shape_def(), &compound);
 
     VillageScene {
         ground_body_index: ground.index1 - 1,
