@@ -336,9 +336,9 @@ pub fn sim_reset_sphere_stack() -> u32 {
     })
 }
 
-/// Jenga Stack sample (`JengaStack`, C `m_size` = 40 rows, two bodies per row).
-/// `shape_type` selects the C `DrawControls` radio: 0 = Hull (box 2.5Ã—0.25Ã—0.25,
-/// rollingResistance 0.01), 1 = Capsule (capsule Â±2.5 on X, radius 0.25,
+/// Jenga Stack sample (`JengaStack`, C `count` = 30 rows, two bodies per row).
+/// `shape_type` selects the C `DrawControls` radio: 0 = Hull (box h=1, r=0.1,
+/// rollingResistance 0.05), 1 = Capsule (capsule Â±1 on X, radius 0.1,
 /// rollingResistance 0.1). Alternating X/Z placement â€” the 3D showcase (no locks).
 #[wasm_bindgen]
 pub fn sim_reset_jenga(shape_type: u32) -> u32 {
@@ -348,36 +348,38 @@ pub fn sim_reset_jenga(shape_type: u32) -> u32 {
             stop_recording_if_any(prev);
         }
         let mut sim = new_sim();
-        add_ground(&mut sim, 60.0);
+        add_ground(&mut sim, 20.0);
 
-        // C JengaStack builds m_size = 40 rows.
-        let n = 40i32;
+        // C JengaStack builds count = 30 rows.
+        let count = 30i32;
+        let h = 1.0f32;
+        let r = 0.1f32;
         let mut shape_def = default_shape_def();
-        shape_def.base_material.rolling_resistance = if capsule_mode { 0.1 } else { 0.01 };
-        let hull = make_box_hull(2.5, 0.25, 0.25);
+        shape_def.base_material.rolling_resistance = if capsule_mode { 0.1 } else { 0.05 };
+        let hull = make_box_hull(h, r, r);
         let capsule = Capsule {
             center1: Vec3 {
-                x: -2.5,
+                x: -h,
                 y: 0.0,
                 z: 0.0,
             },
             center2: Vec3 {
-                x: 2.5,
+                x: h,
                 y: 0.0,
                 z: 0.0,
             },
-            radius: 0.25,
+            radius: r,
         };
         // Render orientation for the capsule child (maps geometry-Y to local X).
         let (capsule_local, capsule_half) =
             capsule_local_from_centers(capsule.center1, capsule.center2, capsule.radius);
         let half_pi = 0.5 * std::f32::consts::PI;
 
-        for i in 0..n {
+        for i in 0..count {
             let alpha = if (i & 1) == 1 { 0.0 } else { half_pi };
-            let x = if (i & 1) == 0 { 1.75 } else { 0.0 };
-            let z = if (i & 1) == 0 { 0.0 } else { 1.75 };
-            let y = 0.5 * i as f32 + 0.25;
+            let x = if (i & 1) == 0 { h - 2.0 * r } else { 0.0 };
+            let z = if (i & 1) == 0 { 0.0 } else { h - 2.0 * r };
+            let y = (2.1 * i as f32 + 0.5) * r;
             let rotation = make_quat_from_axis_angle(VEC3_AXIS_Y, alpha);
 
             for &(px, pz) in &[(x, z), (-x, -z)] {
@@ -402,7 +404,7 @@ pub fn sim_reset_jenga(shape_type: u32) -> u32 {
                     create_hull_shape(&mut sim.world, body_id, &shape_def, &hull.base);
                     sim.bodies.push(SimBody {
                         body_index: body_id.index1 - 1,
-                        half_extents: [2.5, 0.25, 0.25],
+                        half_extents: [h, r, r],
                         kind: 0,
                         local: None,
                     });

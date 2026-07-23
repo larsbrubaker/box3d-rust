@@ -31,9 +31,12 @@ const MESH_DROP_GRID: i32 = 32;
 
 /// Push one Mesh Drop projectile of the requested shape type at `pos` with the
 /// given velocities. Matches C `MeshDrop::Generate` shape selection (:581).
+/// `collide` mirrors the C `m_collide` flag: when false the shape gets filter
+/// category 2 / mask 1 so projectiles cannot collide with each other (:551).
 fn push_mesh_drop_body(
     sim: &mut crate::sim_demo::SimState,
     shape: u32,
+    collide: bool,
     position: Pos,
     linear_velocity: Vec3,
     angular_velocity: Vec3,
@@ -48,9 +51,13 @@ fn push_mesh_drop_body(
     let mut shape_def = default_shape_def();
     // C: rollingResistance = shapeType == capsule ? 0.4 : 0.1.
     shape_def.base_material.rolling_resistance = if shape == 1 { 0.4 } else { 0.1 };
-    // Don't allow shapes to collide with each other (category 2, mask 1).
-    shape_def.filter.category_bits = 2;
-    shape_def.filter.mask_bits = 1;
+    // C `MeshDrop::Generate` (:551): only when m_collide == false do the projectiles
+    // get category 2 / mask 1, preventing them from colliding with each other. When
+    // m_collide is true the default filter is left untouched, so shapes pile together.
+    if !collide {
+        shape_def.filter.category_bits = 2;
+        shape_def.filter.mask_bits = 1;
+    }
 
     let index = body.index1 - 1;
     match shape {
@@ -199,7 +206,7 @@ fn build_mesh_drop_ground(sim: &mut crate::sim_demo::SimState, amplitude: f32) {
 
 /// Spawn the 32×32 Mesh Drop projectile grid with velocities from `seed`.
 /// Matches `MeshDrop::Generate` (:522) with `simulateAll = true`.
-fn build_mesh_drop_bodies(sim: &mut crate::sim_demo::SimState, shape: u32, seed: u32) {
+fn build_mesh_drop_bodies(sim: &mut crate::sim_demo::SimState, shape: u32, collide: bool, seed: u32) {
     let mut rng = XorShift32::with_seed(seed);
     let grid = MESH_DROP_GRID;
     for i in 0..grid {
@@ -219,14 +226,22 @@ fn build_mesh_drop_bodies(sim: &mut crate::sim_demo::SimState, shape: u32, seed:
                 5.0,
                 0.5 * (j as f32 - 0.5 * grid as f32),
             );
-            push_mesh_drop_body(sim, shape, position, linear_velocity, angular_velocity);
+            push_mesh_drop_body(
+                sim,
+                shape,
+                collide,
+                position,
+                linear_velocity,
+                angular_velocity,
+            );
         }
     }
 }
 
 fn build_mesh_drop_scene() -> u32 {
     clear_ground_edges();
-    let (amplitude, shape, seed) = with_extra(|e| (e.md_amplitude, e.md_shape, e.md_seed));
+    let (amplitude, shape, collide, seed) =
+        with_extra(|e| (e.md_amplitude, e.md_shape, e.md_collide, e.md_seed));
     SIM.with(|cell| {
         if let Some(prev) = cell.borrow_mut().as_mut() {
             stop_recording_if_any(prev);
@@ -237,7 +252,7 @@ fn build_mesh_drop_scene() -> u32 {
         // needn't know about it.
         crate::interact::set_draw_scales(1.0, 0.1);
         build_mesh_drop_ground(&mut sim, amplitude);
-        build_mesh_drop_bodies(&mut sim, shape, seed);
+        build_mesh_drop_bodies(&mut sim, shape, collide, seed);
         let count = sim.bodies.len() as u32;
         *cell.borrow_mut() = Some(sim);
         count
@@ -247,6 +262,15 @@ fn build_mesh_drop_scene() -> u32 {
 /// Continuous / Mesh Drop — 1024 small shapes rain into a wave-mesh basin.
 #[wasm_bindgen]
 pub fn sim_reset_mesh_drop() -> u32 {
+    build_mesh_drop_scene()
+}
+
+/// Mesh Drop / "Collide" checkbox (C `DrawControls`, :629). When enabled (default)
+/// the projectiles collide with each other; when disabled they only collide with
+/// the ground (filter category 2 / mask 1). Rebuilds the projectile grid.
+#[wasm_bindgen]
+pub fn sim_cont_mesh_drop_set_collide(collide: bool) -> u32 {
+    with_extra(|e| e.md_collide = collide);
     build_mesh_drop_scene()
 }
 

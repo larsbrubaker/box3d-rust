@@ -255,7 +255,7 @@ export function init(container: HTMLElement, initialScene?: string) {
         setView(demo, 0, 15, 15, [0, 0.5, 1]); // DoubleDomino :849
         break;
       default:
-        setView(demo, 35, 15, 30, [0, 10, 0]); // JengaStack :493
+        setView(demo, 35, 15, 12, [0, 2, 0]); // JengaStack :412
         break;
     }
   }

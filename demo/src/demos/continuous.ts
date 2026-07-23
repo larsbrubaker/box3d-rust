@@ -12,6 +12,7 @@ import * as THREE from "three";
 import {
   createButton,
   createButtonGroup,
+  createCheckbox,
   createInfoBox,
   createSlider,
 } from "../controls.ts";
@@ -129,6 +130,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   // Mesh Drop state.
   let meshDropShape = 0; // 0 box, 1 capsule, 2 cylinder, 3 sphere
   let meshDropAmplitude = 0.5;
+  let meshDropCollide = true; // C m_collide default; false isolates shapes from each other
   let autoGenerate = false;
   let sawMovement = false;
 
@@ -290,6 +292,15 @@ export function init(container: HTMLElement, initialScene?: string) {
         buildGround();
       }),
     );
+    // C `DrawControls` Checkbox "Collide" (m_collide) — rebuilds the grid; when
+    // off, projectiles only collide with the ground (filter category 2 / mask 1).
+    els.push(
+      createCheckbox("Collide", meshDropCollide, (v) => {
+        meshDropCollide = v;
+        sawMovement = false;
+        wasm.sim_cont_mesh_drop_set_collide(v);
+      }),
+    );
     const row = document.createElement("div");
     row.className = "control-row";
     // C `DrawControls` Button "Generate".
@@ -359,8 +370,10 @@ export function init(container: HTMLElement, initialScene?: string) {
       case "mesh-drop":
         meshDropShape = 0;
         meshDropAmplitude = 0.5;
+        meshDropCollide = true;
         wasm.sim_cont_mesh_drop_set_type(0);
         wasm.sim_cont_mesh_drop_set_amplitude(0.5);
+        wasm.sim_cont_mesh_drop_set_collide(true);
         wasm.sim_reset_mesh_drop();
         break;
       case "hump":

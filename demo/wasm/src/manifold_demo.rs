@@ -282,7 +282,7 @@ impl ManifoldDemo {
                 self.capsule_b = Capsule {
                     center1: vec3(-1.0, 0.0, 0.0),
                     center2: vec3(1.0, 0.0, 0.0),
-                    radius: 0.5,
+                    radius: 0.15,
                 };
                 self.hull_a = make_box_hull(1.0, 0.5, 0.5);
                 self.transform_a = Transform {
@@ -307,8 +307,8 @@ impl ManifoldDemo {
                     target: VEC3_ZERO,
                 };
                 self.capsule_b = Capsule {
-                    center1: vec3(0.0, -0.2, 0.0),
-                    center2: vec3(0.0, 0.2, 0.0),
+                    center1: vec3(-0.5, 0.0, 0.0),
+                    center2: vec3(0.5, 0.0, 0.0),
                     radius: 0.05,
                 };
                 self.triangle = [
@@ -320,13 +320,9 @@ impl ManifoldDemo {
                     p: VEC3_ZERO,
                     q: QUAT_IDENTITY,
                 };
-                // The exact debug pose the C ctor pins (:648-649).
                 self.transform_b = Transform {
-                    p: vec3(-0.5, 0.123_778_24, -0.5),
-                    q: Quat {
-                        v: vec3(-0.157_559_35, 0.294_042_3, 0.821_513_65),
-                        s: -0.462_417_0,
-                    },
+                    p: vec3(-1.0, 0.0, -1.0),
+                    q: QUAT_IDENTITY,
                 };
             }
             // HullAndHull (:696-716).
@@ -361,18 +357,20 @@ impl ManifoldDemo {
                     target: VEC3_ZERO,
                 };
                 self.triangle = [
-                    vec3(1.0, 0.0, 1.0),
-                    vec3(1.0, 0.0, 0.0),
-                    vec3(0.0, 0.0, 0.0),
+                    vec3(0.299_769_998, -1.015_495_78, -0.744_717_002),
+                    vec3(0.299_769_998, -1.015_495_78, 1.287_283_06),
+                    vec3(0.299_769_998, -0.913_895_786, 0.271_283_031),
                 ];
-                self.hull_b = make_box_hull(0.5, 0.5, 0.5);
+                // bodyHalfWidth = 0.304800004, bodyHalfHeight = 0.914399981.
+                self.hull_b = make_box_hull(0.304_800_004, 0.914_399_981, 0.304_800_004);
                 self.triangle_flags = 0;
                 self.transform_a = Transform {
                     p: VEC3_ZERO,
                     q: QUAT_IDENTITY,
                 };
+                // C now leaves transform_b at identity (m_transformB.p line commented out).
                 self.transform_b = Transform {
-                    p: vec3(0.0, 0.45, 0.1),
+                    p: VEC3_ZERO,
                     q: QUAT_IDENTITY,
                 };
             }

@@ -290,6 +290,8 @@ export interface Box3dWasm {
   sim_cont_mesh_drop_set_type(shape: number): number;
   /** Mesh Drop "Amplitude" slider (0..1); rebuilds ground + grid. */
   sim_cont_mesh_drop_set_amplitude(amplitude: number): number;
+  /** Mesh Drop "Collide" checkbox (C `m_collide`); when false shapes only hit the ground. */
+  sim_cont_mesh_drop_set_collide(collide: boolean): number;
   /** Mesh Drop "Generate" button; reseeds from `ticks` (C `b3GetTicks()`) and rebuilds. */
   sim_cont_mesh_drop_generate(ticks: number): number;
   /** Bodies that moved on the last step (`b3BodyEvents.moveCount`) — drives Auto Generate. */

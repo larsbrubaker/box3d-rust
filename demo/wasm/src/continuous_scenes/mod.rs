@@ -39,6 +39,10 @@ struct ContExtra {
     md_shape: u32,
     /// Mesh Drop / RNG seed; advanced on each Generate press (C uses `b3GetTicks`).
     md_seed: u32,
+    /// Mesh Drop / "Collide" checkbox (`m_collide`, default true). When false, the
+    /// projectile shapes get filter category 2 / mask 1 so they cannot collide with
+    /// each other (only the ground), matching C `MeshDrop::Generate` (:551).
+    md_collide: bool,
 }
 
 impl Default for ContExtra {
@@ -48,6 +52,7 @@ impl Default for ContExtra {
             md_amplitude: 0.5,
             md_shape: 0,
             md_seed: 12345,
+            md_collide: true,
         }
     }
 }

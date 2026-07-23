@@ -49,10 +49,6 @@ The core library and test sync to `c52908c` is complete. The samples app moved
 too; the demo site still mirrors the `540ea38` samples. Port the user-visible
 sample changes into `demo/`:
 
-- [ ] Changed scenes: Jenga Stack rework (`sample_stacking.cpp` — camera,
-      ground 20, count 30, 1×0.1×0.1 boxes, rollingResistance 0.05), manifold
-      fixture updates (`sample_manifold.cpp` — capsule 0.15 radius, triangle
-      verts), Continuous Mesh Drop "Collide" checkbox + grid 20 probe index
 - [ ] New samples with no library helper: Benchmark Convex Pile (PEEL LCG seed
       42), Stacking Edge Crossing, Bodies Gyroscopic Precession (now enabled
       upstream), Issues: Restitution Overshoot, Slide Twist Off Center, GMod
