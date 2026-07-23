@@ -19,8 +19,8 @@ use crate::hull::{
     find_hull_support_face, get_hull_edges, get_hull_planes, get_hull_points, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, cross, dot, is_within_segments, line_distance, mul_sub, mul_sv, neg, normalize,
-    plane_separation, sub, transform_point, Transform,
+    abs_float, add, dot, is_within_segments, line_distance, mul_sub, mul_sv, plane_separation, sub,
+    transform_point, Transform,
 };
 
 /// Build face contact between a hull face and a capsule. (static b3BuildHullFaceAndCapsuleContact)
@@ -111,16 +111,11 @@ fn build_hull_and_capsule_edge_contact(
 
     let edge2 = &edges[query.index_b as usize];
     let twin2 = &edges[edge2.twin as usize];
-    let ch = hull_a.center;
     let ph = points[edge2.origin as usize];
     let qh = points[twin2.origin as usize];
     let eh = sub(qh, ph);
 
-    let mut normal = normalize(cross(ec, eh));
-
-    if dot(normal, sub(ph, ch)) < 0.0 {
-        normal = neg(normal);
-    }
+    let normal = query.normal;
 
     let result = line_distance(ph, eh, pc, ec);
 

@@ -3,7 +3,6 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::clip::{edge_edge_separation, is_minkowski_face_isolated};
 use super::types::{EdgeQuery, FaceQuery, LocalManifold, LocalManifoldPoint};
 use crate::constants::speculative_distance;
 use crate::core::NULL_INDEX;
@@ -13,9 +12,9 @@ use crate::hull::{
     find_hull_support_vertex, get_hull_edges, get_hull_planes, get_hull_points, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, arbitrary_perp, cross, dot, invert_transform, length_squared,
-    make_matrix_from_quat, max_float, min_float, mul_mv, mul_sub, mul_sv, neg, plane_separation,
-    transform_plane, transform_point, Transform,
+    abs_float, add, arbitrary_perp, cross, dot, invert_transform, length_squared, lerp,
+    make_matrix_from_quat, max_float, min_float, mul_mv, mul_sub, neg, normalize, plane_separation,
+    sub, transform_plane, transform_point, Transform, VEC3_ZERO,
 };
 
 /// Face directions for hull vs capsule. (static b3QueryFaceDirectionHullAndCapsule)
@@ -93,17 +92,21 @@ pub(crate) fn query_edge_direction_hull_and_capsule(
     capsule: &Capsule,
     capsule_transform: Transform,
 ) -> EdgeQuery {
+    // Find axis of minimum penetration
+    let mut max_normal = VEC3_ZERO;
     let mut max_separation = -f32::MAX;
-    let mut max_index1 = -1;
-    let mut max_index2 = -1;
+    let mut max_index_a = NULL_INDEX;
+    let mut max_index_b = NULL_INDEX;
 
-    let p1 = transform_point(capsule_transform, capsule.center1);
-    let q1 = transform_point(capsule_transform, capsule.center2);
-    let e1 = crate::math_functions::sub(q1, p1);
+    // We perform all computations in local space of the hull
+    let p_a = transform_point(capsule_transform, capsule.center1);
+    let q_a = transform_point(capsule_transform, capsule.center2);
+    let e_a = sub(q_a, p_a);
 
     let edges = get_hull_edges(hull);
     let points = get_hull_points(hull);
     let planes = get_hull_planes(hull);
+    let squared_tolerance = 0.005 * 0.005;
 
     let mut index = 0;
     while index < hull.edge_count {
@@ -111,31 +114,62 @@ pub(crate) fn query_edge_direction_hull_and_capsule(
         let twin = &edges[(index + 1) as usize];
         debug_assert!(edge.twin as i32 == index + 1 && twin.twin as i32 == index);
 
-        let p2 = points[edge.origin as usize];
-        let q2 = points[twin.origin as usize];
-        let e2 = crate::math_functions::sub(q2, p2);
+        let q_b = points[twin.origin as usize];
+        let u_b = planes[edge.face as usize].normal;
+        let v_b = planes[twin.face as usize].normal;
 
-        let u2 = planes[edge.face as usize].normal;
-        let v2 = planes[twin.face as usize].normal;
+        // An isolated edge (e.g. like in a capsule) defines a circle through the
+        // origin on the Gauss map. So testing for overlap between this circle and
+        // the arc AB simplifies to a plane test.
+        let cba = dot(u_b, e_a);
+        let dba = dot(v_b, e_a);
 
-        if is_minkowski_face_isolated(u2, v2, e1) {
-            let c1 = mul_sv(0.5, add(q1, p1));
-            let c2 = hull.center;
-            let separation = edge_edge_separation(q1, e1, c1, q2, e2, c2);
+        if cba * dba < 0.0 {
+            // Avoid nearly parallel edges that may lead to invalid separation values at the noise floor.
+            if max_float(cba * cba, dba * dba) < squared_tolerance * length_squared(e_a) {
+                index += 2;
+                continue;
+            }
+
+            // The intersection of the arcs on the Gauss map is the edge pair axis. Cast the
+            // arc of hull B (from uB to vB) against the plane containing the arc of hull A:
+            // dot(uB + t * (vB - uB), eA) == 0
+            // then
+            // t = cba / (cba - dba)
+            //
+            // The signs of cba and dba differ (Minkowski test), so the division is safe.
+            //
+            // The axis generated points from B to A by construction since it lands between
+            // two face normals on B. This removes the need to orient the separation axis
+            // using the hull centers.
+            //
+            // The axis is perpendicular to both edges so I can use qA and qB as arbitrary
+            // points on edgeA and edgeB to measure the separation.
+            let t = cba / (cba - dba);
+            let mut axis = lerp(u_b, v_b, t);
+            debug_assert!(length_squared(axis) > 1000.0 * f32::MIN_POSITIVE);
+            axis = normalize(axis);
+            let separation = dot(axis, sub(q_a, q_b));
+
             if separation > max_separation {
+                // Note: We don't exit early if we find a separating axis here since we want to
+                // find the best one for caching and account for the convex radius later.
+                max_normal = axis;
                 max_separation = separation;
-                max_index1 = 0;
-                max_index2 = index;
+                max_index_a = 0;
+                max_index_b = index;
             }
         }
 
         index += 2;
     }
 
+    // Save result
     EdgeQuery {
+        normal: max_normal,
         separation: max_separation,
-        index_a: max_index1 as u8 as i32,
-        index_b: max_index2 as u8 as i32,
+        index_a: max_index_a,
+        index_b: max_index_b,
     }
 }
 
@@ -145,6 +179,8 @@ pub(crate) fn query_edge_directions(
     hull_b: &HullData,
     transform_b_to_a: Transform,
 ) -> EdgeQuery {
+    // Find axis of minimum penetration
+    let mut max_normal = VEC3_ZERO;
     let mut max_separation = -f32::MAX;
     let mut max_index_a = NULL_INDEX;
     let mut max_index_b = NULL_INDEX;
@@ -156,8 +192,12 @@ pub(crate) fn query_edge_directions(
     let points_b = get_hull_points(hull_b);
     let planes_b = get_hull_planes(hull_b);
 
+    // Work in frame A
     let matrix = make_matrix_from_quat(transform_b_to_a.q);
 
+    let squared_tolerance = 0.005 * 0.005;
+
+    // Arranged to minimize transform operations
     let mut index_b = 0;
     while index_b < hull_b.edge_count {
         let edge_b = &edges_b[index_b as usize];
@@ -165,10 +205,7 @@ pub(crate) fn query_edge_directions(
         debug_assert!(edge_b.twin as i32 == index_b + 1 && twin_b.twin as i32 == index_b);
 
         let mut q_b = points_b[twin_b.origin as usize];
-        let e_b = mul_mv(
-            matrix,
-            crate::math_functions::sub(q_b, points_b[edge_b.origin as usize]),
-        );
+        let e_b = mul_mv(matrix, sub(q_b, points_b[edge_b.origin as usize]));
         q_b = add(mul_mv(matrix, q_b), transform_b_to_a.p);
 
         let u_b = mul_mv(matrix, planes_b[edge_b.face as usize].normal);
@@ -181,23 +218,55 @@ pub(crate) fn query_edge_directions(
             debug_assert!(edge_a.twin as i32 == index_a + 1 && twin_a.twin as i32 == index_a);
 
             let q_a = points_a[twin_a.origin as usize];
-            let e_a = crate::math_functions::sub(q_a, points_a[edge_a.origin as usize]);
+            let e_a = sub(q_a, points_a[edge_a.origin as usize]);
             let u_a = planes_a[edge_a.face as usize].normal;
             let v_a = planes_a[twin_a.face as usize].normal;
 
-            // Inlined Minkowski test with the sign flip on eB used by C.
+            // See "Collision Detection of Convex Polyhedra Based on Duality Transformation"
+            // Two edges build a face on the Minkowski sum if the associated arcs AB and CD intersect on the Gauss map.
+            // The associated arcs are defined by the adjacent face normals of each edge.
+
+            // These are signed volumes with an edge optimization to avoid cross products
+            // eA parallel to cross(vA, uA)
+            // eB parallel to cross(vB, uB)
+            // Since only signs are tested, length doesn't matter.
+
             let cba = dot(u_b, e_a);
             let dba = dot(v_b, e_a);
             let adc = -dot(u_a, e_b);
             let bdc = -dot(v_a, e_b);
-            let is_minkowski = cba * dba < 0.0 && adc * bdc < 0.0 && cba * bdc > 0.0;
 
-            if is_minkowski {
-                let center_a = hull_a.center;
-                let center_b = transform_point(transform_b_to_a, hull_b.center);
-                let separation = edge_edge_separation(q_a, e_a, center_a, q_b, e_b, center_b);
+            if cba * dba < 0.0 && adc * bdc < 0.0 && cba * bdc > 0.0 {
+                // Avoid nearly parallel edges that may lead to invalid separation values at the noise floor.
+                if max_float(cba * cba, dba * dba) < squared_tolerance * length_squared(e_a) {
+                    index_a += 2;
+                    continue;
+                }
+
+                // The intersection of the arcs on the Gauss map is the edge pair axis. Cast the
+                // arc of hull B (from uB to vB) against the plane containing the arc of hull A:
+                // dot(uB + t * (vB - uB), eA) == 0
+                // then
+                // t = cba / (cba - dba)
+                //
+                // The signs of cba and dba differ (Minkowski test), so the division is safe.
+                //
+                // The axis generated points from B to A by construction since it lands between
+                // two face normals on B. This removes the need to orient the separation axis
+                // using the hull centers.
+                //
+                // The axis is perpendicular to both edges so I can use qA and qB as arbitrary
+                // points on edgeA and edgeB to measure the separation.
+                let t = cba / (cba - dba);
+                let mut axis = lerp(u_b, v_b, t);
+                debug_assert!(length_squared(axis) > 1000.0 * f32::MIN_POSITIVE);
+                axis = normalize(axis);
+                let separation = dot(axis, sub(q_a, q_b));
 
                 if separation > max_separation {
+                    // Continues to find the maximum separating axis
+                    // Flip normal so it points from A to B
+                    max_normal = neg(axis);
                     max_separation = separation;
                     max_index_a = index_a;
                     max_index_b = index_b;
@@ -211,6 +280,7 @@ pub(crate) fn query_edge_directions(
     }
 
     EdgeQuery {
+        normal: max_normal,
         separation: max_separation,
         index_a: max_index_a,
         index_b: max_index_b,

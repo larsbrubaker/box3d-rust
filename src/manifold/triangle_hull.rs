@@ -3,11 +3,9 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::clip::edge_edge_separation;
 use super::triangle::get_triangle_feature;
 use super::triangle_face::{
     collide_hull_and_triangle_edges, collide_hull_face, collide_triangle_face,
-    is_triangle_minkowski_face,
 };
 use super::types::{
     EdgeQuery, FaceQuery, LocalManifold, SatCache, SeparatingFeature, TriangleFeature,
@@ -20,8 +18,8 @@ use crate::hull::{
     find_hull_support_vertex, get_hull_edges, get_hull_planes, get_hull_points, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, dot, make_plane_from_points, max_float, mul_sv, neg, plane_separation, sub,
-    Plane, Vec3, TRANSFORM_IDENTITY,
+    abs_float, dot, length_squared, lerp, make_plane_from_points, max_float, neg, normalize,
+    plane_separation, sub, Plane, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
 pub(crate) struct TriangleData {
     pub(crate) v1: Vec3,
@@ -30,7 +28,6 @@ pub(crate) struct TriangleData {
     pub(crate) e1: Vec3,
     pub(crate) e2: Vec3,
     pub(crate) e3: Vec3,
-    pub(crate) center: Vec3,
     pub(crate) plane: Plane,
     #[allow(dead_code)]
     pub(crate) flags: i32,
@@ -100,9 +97,10 @@ fn query_hull_face(triangle: &TriangleData, hull: &HullData) -> FaceQuery {
     }
 }
 
-/// Test all Minkowski edge pairs. (static b3TestEdgePairs)
-fn test_edge_pairs(triangle: &TriangleData, hull: &HullData) -> EdgeQuery {
+/// Test all Minkowski edge pairs. (static b3QueryTriangleAndHullEdges)
+fn query_triangle_and_hull_edges(triangle: &TriangleData, hull: &HullData) -> EdgeQuery {
     let mut result = EdgeQuery {
+        normal: VEC3_ZERO,
         separation: -f32::MAX,
         index_a: NULL_INDEX,
         index_b: NULL_INDEX,
@@ -117,6 +115,7 @@ fn test_edge_pairs(triangle: &TriangleData, hull: &HullData) -> EdgeQuery {
     let hull_points = get_hull_points(hull);
     let hull_planes = get_hull_planes(hull);
     let edge_count = hull.edge_count;
+    let squared_tolerance = 0.005 * 0.005;
 
     let mut i = 0;
     while i < edge_count {
@@ -140,19 +139,26 @@ fn test_edge_pairs(triangle: &TriangleData, hull: &HullData) -> EdgeQuery {
                 continue;
             }
 
-            let tri_point = triangle_points[j];
-            let separation = edge_edge_separation(
-                tri_point,
-                tri_edge,
-                triangle.center,
-                hull_point,
-                hull_edge,
-                hull.center,
-            );
+            // Avoid nearly parallel edges that may lead to invalid separation values at the noise floor.
+            if max_float(cab * cab, dab * dab) < squared_tolerance * length_squared(tri_edge) {
+                continue;
+            }
 
+            // Similar to hull vs hull (b3QueryEdgeDirections)
+            // dot(hullNormal1 + t * (hullNormal2 - hullNormal1), triEdge) = 0
+            // Normal points out of hull by construction.
+            let t = cab / (cab - dab);
+            let mut axis = lerp(hull_normal1, hull_normal2, t);
+            debug_assert!(length_squared(axis) > 1000.0 * f32::MIN_POSITIVE);
+            axis = normalize(axis);
+            let separation = dot(axis, sub(triangle_points[j], hull_point));
+
+            // if ( separation > result.separation && ( edgeFlags[j] & triangleFlags ) == 0 )
             if separation > result.separation {
                 // Note: We don't exit early if we find a separating axis here since we want to
                 // find the best one for caching.
+                // Flip normal to point from triangle to hull.
+                result.normal = neg(axis);
                 result.separation = separation;
                 result.index_a = j as i32;
                 result.index_b = i;
@@ -205,7 +211,6 @@ pub fn collide_hull_and_triangle(
         return;
     }
 
-    let triangle_center = mul_sv(1.0 / 3.0, add(v1, add(v2, v3)));
     let triangle_points = [v1, v2, v3];
     let triangle_edges = [sub(v2, v1), sub(v3, v2), sub(v1, v3)];
 
@@ -216,7 +221,6 @@ pub fn collide_hull_and_triangle(
         e1: triangle_edges[0],
         e2: triangle_edges[1],
         e3: triangle_edges[2],
-        center: triangle_center,
         plane: triangle_plane,
         flags: triangle_flags,
     };
@@ -341,51 +345,62 @@ pub fn collide_hull_and_triangle(
             let hull_normal1 = hull_planes[edge2.face as usize].normal;
             let hull_normal2 = hull_planes[twin2.face as usize].normal;
 
-            let is_minkowski = is_triangle_minkowski_face(
-                triangle_plane.normal,
-                tri_edge,
-                hull_normal1,
-                hull_normal2,
-                hull_edge,
-            );
-            if is_minkowski {
-                let separation = edge_edge_separation(
-                    tri_point,
-                    tri_edge,
-                    triangle_center,
-                    hull_point,
-                    hull_edge,
-                    hull_a.center,
-                );
-                if separation > speculative {
-                    return;
-                }
+            // Confirm the edge pair is still a Minkowski face.
+            // See "Collision Detection of Convex Polyhedra Based on Duality Transformation"
+            // Simplified for triangle versus hull.
+            let cab = dot(hull_normal1, tri_edge);
+            let dab = dot(hull_normal2, tri_edge);
+            let bcd = dot(triangle_plane.normal, hull_edge);
 
-                if abs_float(cache.separation - separation) < linear_slop {
-                    let edge_query = EdgeQuery {
-                        index_a,
-                        index_b,
-                        separation,
-                    };
+            if cab * dab < 0.0 && cab * bcd > 0.0 {
+                let squared_tolerance = 0.005 * 0.005;
 
-                    let mut local_cache = *cache;
-                    collide_hull_and_triangle_edges(
-                        manifold,
-                        capacity,
-                        tri_point,
-                        tri_edge,
-                        triangle_center,
-                        hull_a,
-                        edge_query,
-                        &mut local_cache,
-                    );
-
-                    if manifold.point_count > 0 {
+                // Avoid nearly parallel edges that may lead to invalid separation values at the noise floor.
+                if max_float(cab * cab, dab * dab) >= squared_tolerance * length_squared(tri_edge) {
+                    // Similar to hull vs hull (b3QueryEdgeDirections)
+                    // dot(hullNormal1 + t * (hullNormal2 - hullNormal1), triEdge) = 0
+                    // Normal points out of hull by construction.
+                    let t = cab / (cab - dab);
+                    let mut axis = lerp(hull_normal1, hull_normal2, t);
+                    debug_assert!(length_squared(axis) > 1000.0 * f32::MIN_POSITIVE);
+                    axis = normalize(axis);
+                    let separation = dot(axis, sub(tri_point, hull_point));
+                    if separation > speculative {
+                        // Cache hit, shapes are separated
                         return;
+                    }
+
+                    if abs_float(cache.separation - separation) < linear_slop {
+                        // Try to rebuild contact from last features
+                        // Flip normal to point from triangle to hull
+                        let edge_query = EdgeQuery {
+                            normal: neg(axis),
+                            separation,
+                            index_a,
+                            index_b,
+                        };
+
+                        // Read cache but don't modify it
+                        let mut local_cache = *cache;
+                        collide_hull_and_triangle_edges(
+                            manifold,
+                            capacity,
+                            tri_point,
+                            tri_edge,
+                            hull_a,
+                            edge_query,
+                            &mut local_cache,
+                        );
+
+                        if manifold.point_count > 0 {
+                            // Cache hit, contact point generated
+                            return;
+                        }
                     }
                 }
             }
 
+            // Invalidate cache and fall through
             *cache = SatCache::default();
         }
         t if t == SeparatingFeature::ManualFaceAxisA as u8 => {
@@ -415,7 +430,7 @@ pub fn collide_hull_and_triangle(
             return;
         }
         t if t == SeparatingFeature::ManualEdgePairAxis as u8 => {
-            let edge_query = test_edge_pairs(&triangle, hull_a);
+            let edge_query = query_triangle_and_hull_edges(&triangle, hull_a);
             if edge_query.index_a != NULL_INDEX {
                 let triangle_point = triangle_points[edge_query.index_a as usize];
                 let triangle_edge = triangle_edges[edge_query.index_a as usize];
@@ -424,7 +439,6 @@ pub fn collide_hull_and_triangle(
                     capacity,
                     triangle_point,
                     triangle_edge,
-                    triangle_center,
                     hull_a,
                     edge_query,
                     cache,
@@ -458,7 +472,7 @@ pub fn collide_hull_and_triangle(
         return;
     }
 
-    let edge_query = test_edge_pairs(&triangle, hull_a);
+    let edge_query = query_triangle_and_hull_edges(&triangle, hull_a);
     if edge_query.separation > speculative {
         cache.separation = edge_query.separation;
         cache.type_ = SeparatingFeature::EdgePairAxis as u8;
@@ -514,7 +528,6 @@ pub fn collide_hull_and_triangle(
                 capacity,
                 triangle_point,
                 triangle_edge,
-                triangle_center,
                 hull_a,
                 edge_query,
                 cache,

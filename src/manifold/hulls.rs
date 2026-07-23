@@ -3,10 +3,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::clip::{
-    build_polygon, clip_polygon, edge_edge_separation, find_incident_face, flip_pair,
-    is_minkowski_face,
-};
+use super::clip::{build_polygon, clip_polygon, find_incident_face, flip_pair};
 use super::sat::{query_edge_directions, query_face_directions, reduce_manifold_points};
 use super::types::{
     make_feature_pair, ClipVertex, EdgeQuery, FaceQuery, FeatureOwner, LocalManifold,
@@ -20,9 +17,9 @@ use crate::hull::{
 };
 use crate::math_functions::{
     abs_float, add, cross, dot, inv_rotate_vector, inv_transform_point, invert_transform,
-    is_within_segments, line_distance, make_matrix_from_quat, make_plane_from_normal_and_point,
-    min_float, min_int, mul_mv, mul_sub, mul_sv, neg, normalize, plane_separation, rotate_vector,
-    sub, transform_point, Transform,
+    is_within_segments, length_squared, lerp, line_distance, make_matrix_from_quat,
+    make_plane_from_normal_and_point, max_float, min_float, min_int, mul_mv, mul_sub, mul_sv, neg,
+    normalize, plane_separation, rotate_vector, sub, transform_point, Transform,
 };
 
 /// Build face-A contact by clipping the incident face of B. (static b3BuildFaceAContact)
@@ -204,7 +201,6 @@ fn build_edge_contact(
 
     let edge_a = &edges_a[query.index_a as usize];
     let twin_a = &edges_a[edge_a.twin as usize];
-    let center_a = hull_a.center;
     let p_a = points_a[edge_a.origin as usize];
     let q_a = points_a[twin_a.origin as usize];
     let e_a = sub(q_a, p_a);
@@ -215,12 +211,7 @@ fn build_edge_contact(
     let q_b = transform_point(transform_b_to_a, points_b[twin_b.origin as usize]);
     let e_b = sub(q_b, p_b);
 
-    let mut normal = normalize(cross(e_a, e_b));
-
-    if dot(normal, sub(p_a, center_a)) < 0.0 {
-        normal = neg(normal);
-    }
-
+    let normal = query.normal;
     let result = line_distance(p_a, e_a, p_b, e_b);
 
     if !is_within_segments(&result) {
@@ -347,54 +338,76 @@ pub fn collide_hulls(
             }
         }
         t if t == SeparatingFeature::EdgePairAxis as u8 => {
-            let index1 = cache.index_a as i32;
-            let edge1 = &edges_a[index1 as usize];
-            let twin1 = &edges_a[(index1 + 1) as usize];
-            debug_assert!(edge1.twin as i32 == index1 + 1 && twin1.twin as i32 == index1);
+            let index_a = cache.index_a as i32;
+            let edge1 = &edges_a[index_a as usize];
+            let twin1 = &edges_a[(index_a + 1) as usize];
+            debug_assert!(edge1.twin as i32 == index_a + 1 && twin1.twin as i32 == index_a);
 
-            let p1 = points_a[edge1.origin as usize];
-            let q1 = points_a[twin1.origin as usize];
-            let e1 = sub(q1, p1);
-            let u1 = planes_a[edge1.face as usize].normal;
-            let v1 = planes_a[twin1.face as usize].normal;
+            let p_a = points_a[edge1.origin as usize];
+            let q_a = points_a[twin1.origin as usize];
+            let e_a = sub(q_a, p_a);
 
-            let index2 = cache.index_b as i32;
-            let edge2 = &edges_b[index2 as usize];
-            let twin2 = &edges_b[(index2 + 1) as usize];
-            debug_assert!(edge2.twin as i32 == index2 + 1 && twin2.twin as i32 == index2);
+            let u_a = planes_a[edge1.face as usize].normal;
+            let v_a = planes_a[twin1.face as usize].normal;
 
-            let p2 = transform_point(transform_b_to_a, points_b[edge2.origin as usize]);
-            let q2 = transform_point(transform_b_to_a, points_b[twin2.origin as usize]);
-            let e2 = sub(q2, p2);
-            let u2 = rotate_vector(transform_b_to_a.q, planes_b[edge2.face as usize].normal);
-            let v2 = rotate_vector(transform_b_to_a.q, planes_b[twin2.face as usize].normal);
+            let index_b = cache.index_b as i32;
+            let edge2 = &edges_b[index_b as usize];
+            let twin2 = &edges_b[(index_b + 1) as usize];
+            debug_assert!(edge2.twin as i32 == index_b + 1 && twin2.twin as i32 == index_b);
 
-            let is_minkowski = is_minkowski_face(u1, v1, e1, neg(u2), neg(v2), e2);
-            if is_minkowski {
-                let c1 = hull_a.center;
-                let c2 = transform_point(transform_b_to_a, hull_b.center);
-                let separation = edge_edge_separation(p1, e1, c1, p2, e2, c2);
-                if separation > speculative {
-                    return;
-                }
+            let p_b = transform_point(transform_b_to_a, points_b[edge2.origin as usize]);
+            let q_b = transform_point(transform_b_to_a, points_b[twin2.origin as usize]);
+            let e_b = sub(q_b, p_b);
 
-                let edge_query = EdgeQuery {
-                    index_a: cache.index_a as i32,
-                    index_b: cache.index_b as i32,
-                    separation: 0.0,
-                };
+            let u_b = rotate_vector(transform_b_to_a.q, planes_b[edge2.face as usize].normal);
+            let v_b = rotate_vector(transform_b_to_a.q, planes_b[twin2.face as usize].normal);
 
-                let mut local_cache = SatCache::default();
-                let touching = build_edge_contact(
-                    manifold,
-                    hull_a,
-                    hull_b,
-                    transform_b_to_a,
-                    edge_query,
-                    &mut local_cache,
-                );
-                if touching && abs_float(cache.separation - local_cache.separation) < slop {
-                    return;
+            // flipping the signs of u2 and v2
+            // cross(v2, u2) == cross(-v2, -u2)
+            // so we still use -e2
+            // but we can also use e1 = cross(u1, v1) and e2 = cross(u2, v2)
+            let cba = dot(u_b, e_a);
+            let dba = dot(v_b, e_a);
+            let adc = -dot(u_a, e_b);
+            let bdc = -dot(v_a, e_b);
+
+            if cba * dba < 0.0 && adc * bdc < 0.0 && cba * bdc > 0.0 {
+                // Avoid nearly parallel edges that may lead to invalid separation values at the noise floor.
+                let squared_tolerance = 0.005 * 0.005;
+                if max_float(cba * cba, dba * dba) >= squared_tolerance * length_squared(e_a) {
+                    // Transform reference center of the first hull into local space of the second hull
+                    let t = cba / (cba - dba);
+                    let mut axis = lerp(u_b, v_b, t);
+                    debug_assert!(length_squared(axis) > 1000.0 * f32::MIN_POSITIVE);
+                    axis = normalize(axis);
+                    let separation = dot(axis, sub(q_a, q_b));
+
+                    if separation > speculative {
+                        // Cache hit, shapes are separated
+                        return;
+                    }
+
+                    // Try to rebuild contact from last features
+                    let edge_query = EdgeQuery {
+                        normal: neg(axis),
+                        separation: 0.0,
+                        index_a: cache.index_a as i32,
+                        index_b: cache.index_b as i32,
+                    };
+
+                    let mut local_cache = SatCache::default();
+                    let touching = build_edge_contact(
+                        manifold,
+                        hull_a,
+                        hull_b,
+                        transform_b_to_a,
+                        edge_query,
+                        &mut local_cache,
+                    );
+                    if touching && abs_float(cache.separation - local_cache.separation) < slop {
+                        // Cache hit, contact point generated
+                        return;
+                    }
                 }
             }
         }

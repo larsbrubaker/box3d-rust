@@ -22,18 +22,7 @@ use crate::math_functions::{
     TRANSFORM_IDENTITY, VEC3_ZERO, WORLD_TRANSFORM_IDENTITY,
 };
 
-fn ensure_small(value: f32, tolerance: f32) {
-    // Matches the C ENSURE_SMALL macro, which is inclusive: pass when
-    // -tol <= value <= tol.
-    assert!(
-        !(value < -tolerance || tolerance < value),
-        "|{value}| > tolerance {tolerance}"
-    );
-}
-
-fn v(x: f32, y: f32, z: f32) -> Vec3 {
-    Vec3 { x, y, z }
-}
+use super::{ensure_small, v};
 
 fn xf_at(p: Vec3) -> Transform {
     Transform {

@@ -307,14 +307,13 @@ pub(crate) fn collide_hull_and_triangle_edges(
     capacity: i32,
     triangle_point: Vec3,
     triangle_edge: Vec3,
-    triangle_center: Vec3,
     hull: &HullData,
     query: EdgeQuery,
     cache: &mut SatCache,
 ) {
+    debug_assert!(query.separation <= 2.0 * speculative_distance());
     debug_assert!(query.index_a < 3);
 
-    let c_a = triangle_center;
     let p_a = triangle_point;
     let e_a = triangle_edge;
 
@@ -326,25 +325,10 @@ pub(crate) fn collide_hull_and_triangle_edges(
     let q_b = points_b[twin_b.origin as usize];
     let e_b = sub(q_b, p_b);
 
-    let mut normal = cross(e_a, e_b);
-    normal = normalize(normal);
-
-    // Ensure normal points outward from triangle center
-    let outward_a = dot(normal, sub(p_a, c_a));
-    // Ensure normal points towards hull center
-    let outward_b = dot(normal, sub(hull.center, p_b));
-
-    // Use the largest magnitude. The triangle outward value may be unreliable at some angles.
-    if abs_float(outward_a) > abs_float(outward_b) {
-        if outward_a < 0.0 {
-            normal = neg(normal);
-        }
-    } else if outward_b < 0.0 {
-        normal = neg(normal);
-    }
-
+    // Get the closest points between the infinite edge lines
     let result = line_distance(p_a, e_a, p_b, e_b);
 
+    // Is one of the closest points outside of the associated edge segment?
     if capacity == 0
         || result.fraction1 < 0.0
         || 1.0 < result.fraction1
@@ -358,7 +342,8 @@ pub(crate) fn collide_hull_and_triangle_edges(
     }
 
     // This can slide off the end from caching
-    let separation = dot(normal, sub(result.point2, result.point1));
+    let separation = dot(query.normal, sub(p_b, p_a));
+    debug_assert!(abs_float(separation - query.separation) < crate::constants::linear_slop());
 
     let point = mul_sv(0.5, add(result.point1, result.point2));
 
@@ -377,7 +362,7 @@ pub(crate) fn collide_hull_and_triangle_edges(
     cache.index_a = query.index_a as u8;
     cache.index_b = query.index_b as u8;
 
-    manifold.normal = normal;
+    manifold.normal = query.normal;
     manifold.point_count = 1;
 
     let edges_features = [
@@ -386,20 +371,4 @@ pub(crate) fn collide_hull_and_triangle_edges(
         TriangleFeature::Edge3,
     ];
     manifold.feature = edges_features[query.index_a as usize];
-}
-
-/// Minkowski-face test for triangle edge vs hull edge.
-/// (static b3IsTriangleMinkowskiFace)
-#[inline]
-pub(crate) fn is_triangle_minkowski_face(
-    tri_normal: Vec3,
-    tri_edge: Vec3,
-    hull_normal1: Vec3,
-    hull_normal2: Vec3,
-    hull_edge: Vec3,
-) -> bool {
-    let cab = dot(hull_normal1, tri_edge);
-    let dab = dot(hull_normal2, tri_edge);
-    let bcd = dot(tri_normal, hull_edge);
-    cab * dab < 0.0 && cab * bcd > 0.0
 }

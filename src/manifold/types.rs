@@ -171,6 +171,7 @@ pub(crate) struct FaceQuery {
 /// Edge-pair SAT query result. (b3EdgeQuery)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) struct EdgeQuery {
+    pub normal: Vec3,
     pub separation: f32,
     pub index_a: i32,
     pub index_b: i32,

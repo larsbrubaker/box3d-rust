@@ -8,61 +8,9 @@ use crate::hull::{
     get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, get_hull_vertices, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, cross, dot, length, length_squared, make_plane_from_normal_and_point, mul_add,
-    mul_sv, neg, normalize, plane_separation, sub, Plane, Vec3,
+    abs_float, add, cross, dot, make_plane_from_normal_and_point, mul_add, mul_sv, normalize,
+    plane_separation, sub, Plane, Vec3,
 };
-
-/// An isolated edge (e.g. capsule) defines a circle on the Gauss map.
-/// (static b3IsMinkowskiFaceIsolated)
-#[inline]
-pub(crate) fn is_minkowski_face_isolated(a: Vec3, b: Vec3, n: Vec3) -> bool {
-    let an = dot(a, n);
-    let bn = dot(b, n);
-    an * bn <= 0.0
-}
-
-/// Two edges build a Minkowski face if arcs AB and CD intersect on the Gauss map.
-/// `bxa` / `dxc` are edge vectors used for robustness (not necessarily cross products).
-/// (static b3IsMinkowskiFace)
-#[inline]
-pub(crate) fn is_minkowski_face(a: Vec3, b: Vec3, bxa: Vec3, c: Vec3, d: Vec3, dxc: Vec3) -> bool {
-    let cba = dot(c, bxa);
-    let dba = dot(d, bxa);
-    let adc = dot(a, dxc);
-    let bdc = dot(b, dxc);
-    cba * dba < 0.0 && adc * bdc < 0.0 && cba * bdc > 0.0
-}
-
-/// Edge-edge separation along the common normal. (b3EdgeEdgeSeparation)
-pub fn edge_edge_separation(p1: Vec3, e1: Vec3, c1: Vec3, p2: Vec3, e2: Vec3, c2: Vec3) -> f32 {
-    let u = cross(e1, e2);
-    let length = length(u);
-
-    // Skip near parallel edges: |e1 x e2| = sin(alpha) * |e1| * |e2|
-    const K_TOLERANCE: f32 = 0.005;
-    if length < K_TOLERANCE * (length_squared(e1) * length_squared(e2)).sqrt() {
-        return -f32::MAX;
-    }
-
-    if length * length < 1000.0 * f32::MIN_POSITIVE {
-        return -f32::MAX;
-    }
-
-    let mut n = mul_sv(1.0 / length, u);
-
-    // Orient N away from the first shape; pick the more significant sign for triangles.
-    let sign1 = dot(n, sub(p1, c1));
-    let sign2 = dot(n, sub(p2, c2));
-    if abs_float(sign1) > abs_float(sign2) {
-        if sign1 < 0.0 {
-            n = neg(n);
-        }
-    } else if sign2 > 0.0 {
-        n = neg(n);
-    }
-
-    dot(n, sub(p2, p1))
-}
 
 /// Find the incident face given a reference normal and closest vertex.
 /// (b3FindIncidentFace)

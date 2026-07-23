@@ -3,18 +3,18 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::clip::edge_edge_separation;
 use super::types::{
     make_feature_pair, ClipVertex, EdgeQuery, FaceQuery, FeatureOwner, LocalManifold,
     TriangleFeature, FEATURE_PAIR_SINGLE,
 };
 use crate::constants::speculative_distance;
+use crate::core::NULL_INDEX;
 use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
 use crate::geometry::{Capsule, Sphere};
 use crate::math_functions::{
-    abs_float, add, closest_point_on_triangle, cross, distance_squared, dot, lerp,
+    abs_float, add, closest_point_on_triangle, cross, distance_squared, dot, length_squared, lerp,
     make_plane_from_normal_and_point, make_plane_from_points, min_float, mul_sub, mul_sv, neg,
-    normalize, plane_separation, sub, Plane, Vec3, TRANSFORM_IDENTITY,
+    normalize, plane_separation, sub, Plane, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
 
 /// Indexed by the 3-bit vertex mask from a GJK simplex on the triangle.
@@ -114,34 +114,60 @@ fn query_triangle_face_and_capsule(plane: Plane, capsule: &Capsule) -> FaceQuery
 }
 
 /// Edge-pair query of triangle edges vs capsule axis. (static b3QueryTriangleAndCapsuleEdges)
-fn query_triangle_and_capsule_edges(vertices: &[Vec3; 3], capsule: &Capsule) -> EdgeQuery {
+fn query_triangle_and_capsule_edges(
+    vertices: &[Vec3; 3],
+    plane: Plane,
+    capsule: &Capsule,
+) -> EdgeQuery {
+    // Work in the local space of the capsule
     let p1 = capsule.center1;
     let p2 = capsule.center2;
     let capsule_edge = sub(p2, p1);
-    let capsule_center = lerp(p1, p2, 0.5);
-    let triangle_center = mul_sv(1.0 / 3.0, add(vertices[0], add(vertices[1], vertices[2])));
 
+    // Find axis of minimum penetration
+    let mut max_normal = VEC3_ZERO;
     let mut max_separation = -f32::MAX;
-    let mut max_index1 = u8::MAX as i32;
-    let mut max_index2 = u8::MAX as i32;
+    let mut max_index1 = NULL_INDEX;
+    let mut max_index2 = NULL_INDEX;
+    let squared_tolerance = 0.005 * 0.005;
 
     let mut edge_index = 2;
     let mut v1 = vertices[2];
     for index in 0..3 {
         let v2 = vertices[index];
         let triangle_edge = sub(v2, v1);
+        let side_normal = normalize(cross(triangle_edge, plane.normal));
 
-        let separation = edge_edge_separation(
-            p1,
-            capsule_edge,
-            capsule_center,
-            v1,
-            triangle_edge,
-            triangle_center,
-        );
+        // Pretend the triangle edge embeds a zero area face with a side normal. This
+        // provides a way to find an edge-edge normal that points outward from
+        // the triangle.
+        let a = dot(capsule_edge, plane.normal);
+        let b = dot(capsule_edge, side_normal);
+
+        // Is the capsule edge parallel to the triangle edge? If so, face contact can handle it.
+        // Note: C skips the v1/edgeIndex tail updates on this `continue`, intentionally
+        // carrying the stale v1/edgeIndex into the next iteration. Mirror that exactly.
+        if a * a + b * b < squared_tolerance * length_squared(capsule_edge) {
+            continue;
+        }
+
+        // Similar to hull vs hull (b3QueryEdgeDirections)
+        let axis = if a * b <= 0.0 {
+            let t = b / (b - a);
+            lerp(side_normal, plane.normal, t)
+        } else {
+            let t = b / (a + b);
+            lerp(side_normal, neg(plane.normal), t)
+        };
+
+        debug_assert!(length_squared(axis) > 1000.0 * f32::MIN_POSITIVE);
+        let axis = normalize(axis);
+        let separation = dot(axis, sub(p1, v1));
+
         if separation > max_separation {
             // Note: We don't exit early if we find a separating axis here since we want to
             // find the best one for caching and account for the convex radius later.
+            max_normal = axis;
             max_separation = separation;
             max_index1 = edge_index;
             max_index2 = 0;
@@ -152,6 +178,7 @@ fn query_triangle_and_capsule_edges(vertices: &[Vec3; 3], capsule: &Capsule) -> 
     }
 
     EdgeQuery {
+        normal: max_normal,
         separation: max_separation,
         index_a: max_index1,
         index_b: max_index2,
@@ -224,6 +251,7 @@ fn build_triangle_and_capsule_face_contact(
 fn build_triangle_and_capsule_edge_contact(
     manifold: &mut LocalManifold,
     triangle: &[Vec3; 3],
+    plane: Plane,
     capsule: &Capsule,
     query: EdgeQuery,
 ) {
@@ -233,19 +261,28 @@ fn build_triangle_and_capsule_edge_contact(
     let p2 = capsule.center2;
     let capsule_edge = sub(p2, p1);
 
-    let triangle_center = mul_sv(1.0 / 3.0, add(triangle[0], add(triangle[1], triangle[2])));
-    let v1 = triangle[query.index_a as usize];
-    let v2 = triangle[((query.index_a + 1) % 3) as usize];
+    let vs = triangle;
+
+    let v1 = vs[query.index_a as usize];
+    let v2 = vs[((query.index_a + 1) % 3) as usize];
     let triangle_edge = sub(v2, v1);
 
-    let mut normal = cross(capsule_edge, triangle_edge);
-    normal = normalize(normal);
+    let side_normal = normalize(cross(triangle_edge, plane.normal));
 
-    // Normal should point away from triangle center
-    if dot(normal, sub(v1, triangle_center)) < 0.0 {
-        normal = neg(normal);
+    // Pretend the triangle edge embeds a zero area face with a side normal. This
+    // provides a way to find an edge-edge normal that points outward from
+    // the triangle.
+    let a = dot(capsule_edge, plane.normal);
+    let b = dot(capsule_edge, side_normal);
+
+    // Is the capsule edge parallel to the triangle edge? If so, face contact can handle it.
+    let squared_tolerance = 0.005 * 0.005;
+    if a * a + b * b < squared_tolerance * length_squared(capsule_edge) {
+        return;
     }
 
+    // Similar to hull vs hull (b3QueryEdgeDirections)
+    let normal = query.normal;
     let result = crate::math_functions::line_distance(v1, triangle_edge, p1, capsule_edge);
 
     if result.fraction1 < 0.0
@@ -263,7 +300,8 @@ fn build_triangle_and_capsule_edge_contact(
         0.5,
     );
 
-    let separation = dot(normal, sub(result.point2, result.point1));
+    let separation = dot(normal, sub(p1, v1));
+    debug_assert!(abs_float(separation - query.separation) < crate::constants::linear_slop());
 
     manifold.normal = normal;
     manifold.point_count = 1;
@@ -459,7 +497,7 @@ pub fn collide_capsule_and_triangle(
         return;
     }
 
-    let edge_query = query_triangle_and_capsule_edges(triangle_b, capsule_a);
+    let edge_query = query_triangle_and_capsule_edges(triangle_b, plane, capsule_a);
     if edge_query.separation > radius {
         return;
     }
@@ -479,6 +517,6 @@ pub fn collide_capsule_and_triangle(
     if manifold.point_count == 0
         || edge_separation > K_REL_EDGE_TOLERANCE * face_separation + k_abs_tolerance
     {
-        build_triangle_and_capsule_edge_contact(manifold, triangle_b, capsule_a, edge_query);
+        build_triangle_and_capsule_edge_contact(manifold, triangle_b, plane, capsule_a, edge_query);
     }
 }

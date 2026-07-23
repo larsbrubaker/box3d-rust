@@ -19,7 +19,7 @@ mod triangle_hull;
 mod types;
 
 pub use capsules::collide_capsules;
-pub use clip::{edge_edge_separation, find_incident_face, flip_pair};
+pub use clip::{find_incident_face, flip_pair};
 pub use hull_capsule::collide_hull_and_capsule;
 pub use hulls::collide_hulls;
 pub use spheres::{collide_capsule_and_sphere, collide_hull_and_sphere, collide_spheres};
