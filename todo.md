@@ -49,11 +49,9 @@ The core library and test sync to `c52908c` is complete. The samples app moved
 too; the demo site still mirrors the `540ea38` samples. Port the user-visible
 sample changes into `demo/`:
 
-- [ ] New samples with no library helper: Benchmark Convex Pile (PEEL LCG seed
-      42), Stacking Edge Crossing, Bodies Gyroscopic Precession (now enabled
-      upstream), Issues: Restitution Overshoot, Slide Twist Off Center, GMod
-      Wheel Stack (317-vert data), s&box Ghost Collisions (~400 LOC procedural
-      mesh)
+- [ ] New samples with no library helper: Bodies Gyroscopic Precession (now
+      enabled upstream), Issues GMod Wheel Stack (317-vert data), Issues s&box
+      Ghost Collisions (~400 LOC procedural mesh)
 - [ ] Update `demo/src/registry.ts` rows accordingly; renderer/shader work in
       `samples/gfx` (e.g. shadow PCF) is optional visual polish. Note:
       `samples/mover.cpp` is only a refactor extracting the already-ported

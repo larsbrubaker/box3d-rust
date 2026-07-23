@@ -58,6 +58,22 @@ pub(super) struct IssuesState {
     pub hull_crash_tris: Vec<f32>,
     pub hull_crash_edges: Vec<f32>,
     pub hull_crash_points: Vec<f32>,
+    /// Restitution Overshoot bounce tracking (only when that scene is live).
+    pub resti: Option<RestitutionTrack>,
+}
+
+/// Restitution Overshoot per-step bounce tracking (`RestitutionOvershoot::Step`,
+/// sample_issues.cpp:1190). Mirrors the C member fields so the HUD and the
+/// PASS/FAIL verdict match exactly.
+pub(super) struct RestitutionTrack {
+    pub box_body: BodyId,
+    pub drop_height: f32,
+    pub box_half: f32,
+    pub tolerance: f32,
+    pub current_y: f32,
+    pub max_bounce_y: f32,
+    pub bounced: bool,
+    pub failed: bool,
 }
 
 impl IssuesState {
@@ -74,6 +90,7 @@ impl IssuesState {
             hull_crash_tris: Vec::new(),
             hull_crash_edges: Vec::new(),
             hull_crash_points: Vec::new(),
+            resti: None,
         }
     }
 }
@@ -144,6 +161,16 @@ pub fn issues_reset_capsule_mesh() -> u32 {
     install(scenes::build_capsule_mesh())
 }
 
+#[wasm_bindgen]
+pub fn issues_reset_restitution_overshoot() -> u32 {
+    install(scenes::build_restitution_overshoot())
+}
+
+#[wasm_bindgen]
+pub fn issues_reset_slide_twist_off_center() -> u32 {
+    install(scenes::build_slide_twist_off_center())
+}
+
 // --- Stepping + render surface --------------------------------------------
 
 #[wasm_bindgen]
@@ -153,7 +180,55 @@ pub fn issues_step(dt: f32, sub_steps: i32) -> u32 {
         // Hull Crash is a static render (no simulated bodies); still step the empty
         // world so the shared surface behaves uniformly.
         state.world.step(dt, sub_steps);
+        update_restitution(state);
         state.bodies.len() as u32
+    })
+}
+
+/// `RestitutionOvershoot::Step` (sample_issues.cpp:1190) bounce tracking: record the
+/// current height, latch the first upward velocity as the bounce start, track the max
+/// bounce height, and fail the moment the box exceeds the drop height + tolerance.
+fn update_restitution(state: &mut IssuesState) {
+    let Some(track) = state.resti.as_mut() else {
+        return;
+    };
+    if !track.box_body.is_non_null() {
+        return;
+    }
+    let position = box3d_rust::body::body_get_position(&state.world, track.box_body);
+    track.current_y = position.y as f32;
+
+    let velocity = box3d_rust::body::body_get_linear_velocity(&state.world, track.box_body);
+    if !track.bounced && velocity.y > 0.0 {
+        track.bounced = true;
+    }
+
+    if track.bounced {
+        let py = position.y as f32;
+        if py > track.max_bounce_y {
+            track.max_bounce_y = py;
+        }
+        if py > track.drop_height + track.tolerance {
+            track.failed = true;
+        }
+    }
+}
+
+/// Restitution Overshoot HUD readout, or empty when that scene is not live:
+/// `[dropHeight, currentY, maxBounceY, markerY, bounced, failed]` (the last two are
+/// 0/1 flags). `markerY = dropHeight + boxHalf` is the yellow marker-plane height.
+#[wasm_bindgen]
+pub fn issues_restitution_hud() -> Vec<f32> {
+    with_state(|state| match &state.resti {
+        Some(t) => vec![
+            t.drop_height,
+            t.current_y,
+            t.max_bounce_y,
+            t.drop_height + t.box_half,
+            if t.bounced { 1.0 } else { 0.0 },
+            if t.failed { 1.0 } else { 0.0 },
+        ],
+        None => Vec::new(),
     })
 }
 

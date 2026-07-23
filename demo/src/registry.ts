@@ -10,7 +10,7 @@
 //               and/or on the page.
 //   `planned` — no route yet.
 //
-// Enumerated from the pinned submodule (pinned at c52908c). 150 active entries
+// Enumerated from the pinned submodule (pinned at c52908c). 154 active entries
 // across 19 categories. This inventory is mid-migration from the 540ea38 samples
 // to c52908c: the c52908c removals (Stacking "Card House Thick", Issues "Dump
 // Loader", Continuous "Mesh Drop Unit Test" — the last moved to Determinism) are
@@ -149,6 +149,10 @@ export const SAMPLES: SampleEntry[] = [
     // Live: 2×21×21 = 882 rocks (C DEBUG; release 24 layers disclosed in SCENE_INFO /
     // too heavy for serial wasm).
     ["Junkyard", "live", "benchmark", "junkyard"],
+    // Live: 8×8×10 = 640 shared 32-point convex hulls from PEEL's fixed-seed (42) LCG
+    // (C DEBUG layers 10; release 80 = 5120 disclosed in SCENE_INFO / too heavy for
+    // serial wasm).
+    ["Convex Pile", "live", "benchmark", "convex-pile"],
   ]),
   ...cat("Character", "sample_character.cpp", [
     ["CapsulePlane", "live", "character", "capsule-plane"],
@@ -255,6 +259,12 @@ export const SAMPLES: SampleEntry[] = [
     ["Convex Jitter", "live", "issues", "convex-jitter"],
     ["s&box mover", "live", "issues", "s-box-mover"],
     ["Capsule Mesh", "live", "issues", "capsule-mesh"],
+    // Live: restitution-1.0 box dropped 10 m onto a small floor; yellow marker plane
+    // at the drop height + bounce PASS/FAIL HUD, matching RestitutionOvershoot.
+    ["Restitution Overshoot", "live", "issues", "restitution-overshoot"],
+    // Live: off-center box hull (b3MakeOffsetBoxHull) spun 25 rad/s about the tilted Y
+    // of a 20° inclined plane; the offset box rides the arbitrary-hull render channel.
+    ["Slide Twist Off Center Shape", "live", "issues", "slide-twist-off-center-shape"],
   ]),
   ...cat("Joints", "sample_joint.cpp", [
     ["Distance Joint", "live", "joints", "distance"],
@@ -363,6 +373,9 @@ export const SAMPLES: SampleEntry[] = [
     ["Double Domino", "live", "stacking", "double-domino"],
     // Live: exact C planar pyramid; Z locks keep collapse in-plane (as in C).
     ["Pyramid2D", "live", "stacking", "pyramid"],
+    // Live: 3 rows of thin boxes dropped at crossing angles onto base boxes; SetView
+    // matches EdgeCrossing (sample_stacking.cpp).
+    ["Edge Crossing", "live", "stacking", "edge-crossing"],
   ]),
   ...cat("World", "sample_world.cpp", [
     ["Far Stack", "live", "world", "far-stack"],

@@ -5,15 +5,18 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::{HullBody, IssuesState};
+use super::{HullBody, IssuesState, RestitutionTrack};
 use crate::vis::{
     hf_triangle_edges, hull_edges, hull_triangles, mesh_triangle_edges_offset, VisBody,
 };
-use box3d_rust::body::create_body;
+use box3d_rust::body::{body_set_angular_velocity, create_body};
 use box3d_rust::geometry::Capsule;
 use box3d_rust::height_field::create_grid;
-use box3d_rust::hull::{create_hull, make_box_hull};
-use box3d_rust::math_functions::{Pos, Quat, Vec3, VEC3_ONE};
+use box3d_rust::hull::{create_hull, make_box_hull, make_offset_box_hull};
+use box3d_rust::math_functions::{
+    make_quat_from_axis_angle, rotate_vector, Pos, Quat, Vec3, DEG_TO_RAD, VEC3_AXIS_X,
+    VEC3_AXIS_Y, VEC3_ONE,
+};
 use box3d_rust::mesh::{create_grid_mesh, create_platform_mesh};
 use box3d_rust::shape::{
     create_capsule_shape, create_height_field_shape, create_hull_shape, create_mesh_shape,
@@ -385,6 +388,122 @@ pub(super) fn build_capsule_mesh() -> IssuesState {
         &capsule,
         COLOR_MAGENTA,
     ));
+
+    state
+}
+
+/// Restitution Overshoot (:1149) — a restitution-1.0 box dropped 10 m onto a small
+/// static floor. The HUD tracks the bounce height and flags PASS/FAIL against the
+/// drop height (a perfectly elastic bounce must not exceed it). All values match C.
+pub(super) fn build_restitution_overshoot() -> IssuesState {
+    let mut state = IssuesState::new();
+
+    // RestitutionOvershoot constants (sample_issues.cpp:1152-1156).
+    let box_half = 0.5f32;
+    let floor_half_xz = 0.375f32;
+    let floor_half_y = 0.25f32;
+    let drop_height = 10.0f32;
+    let tolerance = 0.05f32;
+
+    // Static floor box at (0, -floorHalfY, 0).
+    let mut floor_def = default_body_def();
+    floor_def.position = pos(0.0, -floor_half_y, 0.0);
+    let floor_body = create_body(&mut state.world, &floor_def);
+    let floor = make_box_hull(floor_half_xz, floor_half_y, floor_half_xz);
+    create_hull_shape(
+        &mut state.world,
+        floor_body,
+        &default_shape_def(),
+        &floor.base,
+    );
+    state.bodies.push(VisBody::box_body(
+        floor_body.index1 - 1,
+        floor_half_xz,
+        floor_half_y,
+        floor_half_xz,
+    ));
+
+    // Dynamic box with restitution 1.0, dropped from y = dropHeight.
+    let mut box_def = default_body_def();
+    box_def.type_ = BodyType::Dynamic;
+    box_def.position = pos(0.0, drop_height, 0.0);
+    let box_body = create_body(&mut state.world, &box_def);
+    let box_hull = make_box_hull(box_half, box_half, box_half);
+    let mut box_shape = default_shape_def();
+    box_shape.base_material.restitution = 1.0;
+    create_hull_shape(&mut state.world, box_body, &box_shape, &box_hull.base);
+    state.bodies.push(VisBody::box_body(
+        box_body.index1 - 1,
+        box_half,
+        box_half,
+        box_half,
+    ));
+
+    state.resti = Some(RestitutionTrack {
+        box_body,
+        drop_height,
+        box_half,
+        tolerance,
+        current_y: drop_height,
+        max_bounce_y: 0.0,
+        bounced: false,
+        failed: false,
+    });
+    state
+}
+
+/// Slide Twist Off Center Shape (:1256) — an off-center box hull spun about the
+/// tilted Y of a 20° inclined plane. The box is created from `b3MakeOffsetBoxHull`
+/// (local center `{1, 0.5, 1}`) and given 25 rad/s about the tilted Y at spawn; it
+/// rides the Issues arbitrary-hull render channel so the offset geometry draws
+/// correctly. All values match C.
+pub(super) fn build_slide_twist_off_center() -> IssuesState {
+    let mut state = IssuesState::new();
+    add_ground_box(&mut state, 50.0);
+
+    // orientation = quat about +X by 20 degrees (sample_issues.cpp:1268).
+    let orientation = make_quat_from_axis_angle(VEC3_AXIS_X, 20.0 * DEG_TO_RAD);
+
+    // Static inclined plane at (0, 4, 0), 10 × 0.5 × 10 box hull, friction 0.6.
+    let mut plane_def = default_body_def();
+    plane_def.position = pos(0.0, 4.0, 0.0);
+    plane_def.rotation = orientation;
+    let plane_body = create_body(&mut state.world, &plane_def);
+    let plane = make_box_hull(10.0, 0.5, 10.0);
+    let mut plane_shape = default_shape_def();
+    plane_shape.base_material.friction = 0.6;
+    create_hull_shape(&mut state.world, plane_body, &plane_shape, &plane.base);
+    // The plane is a centered box, so a box render body draws it correctly.
+    state
+        .bodies
+        .push(VisBody::box_body(plane_body.index1 - 1, 10.0, 0.5, 10.0));
+
+    // Dynamic off-center box: local center {1, 0.5, 1}, placed so its center sits
+    // above the plane, spun at 25 rad/s about the tilted Y.
+    let box_local_center = vec3(1.0, 0.5, 1.0);
+    let box_offset = rotate_vector(orientation, box_local_center);
+
+    let mut box_def = default_body_def();
+    box_def.type_ = BodyType::Dynamic;
+    box_def.position = pos(-box_offset.x, 5.0 - box_offset.y, -box_offset.z);
+    box_def.rotation = orientation;
+    let box_body = create_body(&mut state.world, &box_def);
+    let m_box = make_offset_box_hull(1.0, 0.5, 1.0, box_local_center);
+    let mut box_shape = default_shape_def();
+    box_shape.base_material.friction = 0.3;
+    create_hull_shape(&mut state.world, box_body, &box_shape, &m_box.base);
+    state.hull_bodies.push(HullBody {
+        body_index: box_body.index1 - 1,
+        tris: hull_triangles(&m_box.base),
+        edges: hull_edges(&m_box.base),
+    });
+
+    let spin_axis = rotate_vector(orientation, VEC3_AXIS_Y);
+    body_set_angular_velocity(
+        &mut state.world,
+        box_body,
+        vec3(25.0 * spin_axis.x, 25.0 * spin_axis.y, 25.0 * spin_axis.z),
+    );
 
     state
 }

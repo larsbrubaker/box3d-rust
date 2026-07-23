@@ -6,7 +6,7 @@
 // static hull/points render.
 
 import * as THREE from "three";
-import { createButton, createInfoBox } from "../controls.ts";
+import { createButton, createCanvasOverlay, createInfoBox } from "../controls.ts";
 import {
   attachInteraction,
   makeInteractAdapter,
@@ -32,6 +32,8 @@ export const SCENES = [
   "convex-jitter",
   "s-box-mover",
   "capsule-mesh",
+  "restitution-overshoot",
+  "slide-twist-off-center-shape",
 ] as const;
 
 type Scene = (typeof SCENES)[number];
@@ -51,6 +53,8 @@ interface SceneConfig {
   addJoint?: boolean;
   /** Hull Crash is a static hull/points render with no simulated bodies. */
   staticHull?: boolean;
+  /** Restitution Overshoot: yellow marker plane at `markerY` + bounce PASS/FAIL HUD. */
+  restitution?: boolean;
 }
 
 const CONFIG: Record<Scene, SceneConfig> = {
@@ -110,6 +114,27 @@ const CONFIG: Record<Scene, SceneConfig> = {
       "locked magenta capsule drops onto <code>building.obj</code>.",
     hint: "Locked capsule vs building mesh",
   },
+  "restitution-overshoot": {
+    name: "Restitution Overshoot",
+    reset: "issues_reset_restitution_overshoot",
+    camera: { yaw: 20, pitch: 0, distance: 28, target: [0, 10.5, 0] },
+    desc:
+      "Official Issues sample <strong>Restitution Overshoot</strong> — a restitution-1.0 box " +
+      "dropped 10 m onto a small floor. The yellow marker plane is the drop height; a perfectly " +
+      "elastic bounce must stay at or below it (PASS/FAIL in the HUD).",
+    hint: "Elastic bounce must not exceed the drop height",
+    restitution: true,
+  },
+  "slide-twist-off-center-shape": {
+    name: "Slide Twist Off Center Shape",
+    reset: "issues_reset_slide_twist_off_center",
+    camera: { yaw: -30, pitch: 17, distance: 30, target: [0, 5, 0] },
+    desc:
+      "Official Issues sample <strong>Slide Twist Off Center Shape</strong> — an off-center box " +
+      "hull (<code>b3MakeOffsetBoxHull</code>) spun at 25 rad/s about the tilted Y of a 20° " +
+      "inclined plane.",
+    hint: "Off-center box twisting on a tilted plane",
+  },
 };
 
 export function init(container: HTMLElement, initialScene?: string) {
@@ -121,7 +146,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   const cfg = CONFIG[scene];
   const wasm = getWasm();
 
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, page } = demoPage(
     container,
     "Issues",
     cfg.desc,
@@ -130,6 +155,10 @@ export function init(container: HTMLElement, initialScene?: string) {
     { category: "Issues", samplesShell: true },
   );
   controls.appendChild(createInfoBox(cfg.desc));
+
+  // Restitution Overshoot bounce HUD (C RestitutionOvershoot::Step DrawTextLine).
+  const hud = createCanvasOverlay(page);
+  hud.style.display = cfg.restitution ? "" : "none";
 
   const demo = new DemoScene(canvas, { target: cfg.camera.target, distance: cfg.camera.distance });
   demo.camera.far = 800;
@@ -164,6 +193,36 @@ export function init(container: HTMLElement, initialScene?: string) {
     }
     hullMeshes.length = 0;
     hullWires.length = 0;
+  }
+
+  // Restitution Overshoot yellow marker plane (C DrawPlane at the drop height).
+  let markerPlane: THREE.Mesh | null = null;
+  function clearMarkerPlane() {
+    if (markerPlane) {
+      demo.dynamic.remove(markerPlane);
+      markerPlane.geometry.dispose();
+      (markerPlane.material as THREE.Material).dispose();
+      markerPlane = null;
+    }
+  }
+  function buildMarkerPlane() {
+    clearMarkerPlane();
+    if (!cfg.restitution) return;
+    const hudData = wasm.issues_restitution_hud();
+    const markerY = hudData[3] ?? 10.5;
+    const g = new THREE.PlaneGeometry(20, 20);
+    g.rotateX(-Math.PI / 2);
+    markerPlane = new THREE.Mesh(
+      g,
+      new THREE.MeshBasicMaterial({
+        color: YELLOW,
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+      }),
+    );
+    markerPlane.position.y = markerY;
+    demo.dynamic.add(markerPlane);
   }
 
   // Hull Crash static render group.
@@ -253,6 +312,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     setView(demo, cfg.camera.yaw, cfg.camera.pitch, cfg.camera.distance, cfg.camera.target);
     buildStaticWire();
     buildHulls();
+    buildMarkerPlane();
     if (cfg.staticHull) buildStaticHull();
   }
 
@@ -286,6 +346,28 @@ export function init(container: HTMLElement, initialScene?: string) {
       styles: styleGate(awake, () => wasm.issues_styles()),
     });
 
+    // Restitution Overshoot bounce readout + PASS/FAIL verdict.
+    if (cfg.restitution) {
+      const d = wasm.issues_restitution_hud();
+      if (d.length >= 6) {
+        const dropH = d[0]!;
+        const currentY = d[1]!;
+        const maxBounce = d[2]!;
+        const bounced = d[4]! > 0.5;
+        const failed = d[5]! > 0.5;
+        const verdict = !bounced
+          ? "waiting for first bounce..."
+          : failed
+            ? "FAIL: box exceeded drop height"
+            : "PASS: bounce stays at or below drop height";
+        hud.textContent =
+          `drop height = ${dropH.toFixed(2)} m\n` +
+          `current y   = ${currentY.toFixed(2)} m\n` +
+          `max bounce  = ${maxBounce.toFixed(2)} m\n` +
+          verdict;
+      }
+    }
+
     // Update the Convex Jitter hull transforms.
     if (hullMeshes.length) {
       const hp = wasm.issues_hull_poses();
@@ -306,6 +388,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     stop();
     clearStaticWire();
     clearHulls();
+    clearMarkerPlane();
     clearStaticGroup();
     staticGroup.parent?.remove(staticGroup);
     disposeMeshPool(pool);

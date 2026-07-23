@@ -18,6 +18,7 @@
 mod card;
 mod cylinder;
 mod dominoes;
+mod edge;
 
 use crate::sim_demo::{new_sim, stop_recording_if_any, with_sim, SimBody, SimState, SIM};
 use box3d_rust::body::create_body;

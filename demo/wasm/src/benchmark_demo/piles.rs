@@ -8,8 +8,8 @@ use box3d_rust::body::{create_body, destroy_body};
 use box3d_rust::hull::{create_hull, destroy_hull, make_box_hull, make_cube_hull};
 use box3d_rust::id::BodyId;
 use box3d_rust::math_functions::{
-    compute_cos_sin, inv_rotate_vector, make_quat_from_axis_angle, mul_add, rotate_vector, Pos,
-    Transform, Vec3, PI, QUAT_IDENTITY, VEC3_AXIS_Z, VEC3_ONE,
+    compute_cos_sin, dot, inv_rotate_vector, make_quat_from_axis_angle, mul_add, normalize,
+    rotate_vector, Pos, Transform, Vec3, PI, QUAT_IDENTITY, VEC3_AXIS_Z, VEC3_ONE,
 };
 use box3d_rust::mesh::{create_grid_mesh, MeshData};
 use box3d_rust::shape::{create_hull_shape, create_mesh_shape};
@@ -438,4 +438,135 @@ pub(crate) fn step_destruction(scene: &mut BenchScene) {
         spawn_destruction(scene, &mut d);
     }
     scene.destruction = Some(d);
+}
+
+// ---------------------------------------------------------------------------
+// Convex Pile
+// ---------------------------------------------------------------------------
+
+/// PEEL's `BasicRandom` LCG, ported verbatim from `benchmarks.c` so the 32-point
+/// hull is bit-identical to the original (`ConvexPileRandom`). This is NOT the
+/// shared `g_randomSeed` XorShift stream — it is its own fixed-seed generator.
+struct ConvexPileRandom {
+    state: u32,
+}
+
+impl ConvexPileRandom {
+    /// `NextConvexPileRandom` (`benchmarks.c` :921).
+    fn next(&mut self) -> u32 {
+        self.state = self
+            .state
+            .wrapping_mul(2147001325)
+            .wrapping_add(715136305);
+        self.state
+    }
+
+    /// `ConvexPileRandomFloat` — a float in `[-0.5, 0.5]` (`benchmarks.c` :928).
+    fn next_float(&mut self) -> f32 {
+        (self.next() & 0xffff) as f32 / 65535.0 - 0.5
+    }
+
+    /// `UnitRandomPoint` — a uniform direction, rejection sampled inside the unit
+    /// sphere then pushed to the surface (`benchmarks.c` :934).
+    fn unit_random_point(&mut self) -> Vec3 {
+        loop {
+            let point = Vec3 {
+                x: self.next_float(),
+                y: self.next_float(),
+                z: self.next_float(),
+            };
+            if dot(point, point) <= 0.25 {
+                return normalize(point);
+            }
+        }
+    }
+}
+
+/// `CreateConvexPile` (`benchmarks.c` :949) — a huge pile of large convexes ported
+/// from PEEL. Each convex is the hull of 32 random points on a sphere of radius
+/// `amplitude`, seeded so the shape is identical across runs. `layers = DEBUG 10 :
+/// 80`; the browser uses **10** (release 80 = 5120 hulls does not hold interactively
+/// in the serial wasm build). Every hull is the same shared convex, rendered from
+/// its baked triangles ([`super::bench_convex_pile_hull`]) at each body's pose via a
+/// unit kind-3 render slot (the same swap path as Candy Cups).
+pub(crate) fn build_convex_pile() -> BenchScene {
+    let world = new_world();
+    let mut scene = empty_scene(world, Vec::new(), BenchKind::ConvexPile);
+
+    // Ground box(250,1,250) at y=-1.
+    {
+        let mut body_def = default_body_def();
+        body_def.position = Pos {
+            x: 0.0,
+            y: -1.0,
+            z: 0.0,
+        };
+        let ground = create_body(&mut scene.world, &body_def);
+        let box_hull = make_box_hull(250.0, 1.0, 250.0);
+        create_hull_shape(&mut scene.world, ground, &default_shape_def(), &box_hull.base);
+        scene
+            .bodies
+            .push(VisBody::box_body(ground.index1 - 1, 250.0, 1.0, 250.0));
+    }
+
+    let count_x = 8i32;
+    let count_z = 8i32;
+    let layers = 10i32; // BENCHMARK_DEBUG (C release 80)
+    let amplitude = 2.0f32;
+    let point_count = 32usize;
+    let scatter = 2.0 * amplitude;
+
+    // Hull around 32 random points on a sphere of radius amplitude.
+    let mut rng = ConvexPileRandom { state: 42 };
+    let mut points = Vec::with_capacity(point_count);
+    for _ in 0..point_count {
+        let p = rng.unit_random_point();
+        points.push(Vec3 {
+            x: amplitude * p.x,
+            y: amplitude * p.y,
+            z: amplitude * p.z,
+        });
+    }
+    let convex = create_hull(&points, point_count as i32).expect("convex pile hull");
+    // Bake the shared hull solid faces once (hull-local space); every body draws it
+    // at its raw body pose (no local offset), matching the collision geometry.
+    scene.convex_pile_hull = hull_triangles(&convex);
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let shape_def = default_shape_def();
+
+    // Grid tall enough to collapse into a pile.
+    for layer in 0..layers {
+        for z in 0..count_z {
+            for x in 0..count_x {
+                let pos_x = (x as f32 - 0.5 * count_x as f32) * scatter;
+                let pos_z = (z as f32 - 0.5 * count_z as f32) * scatter;
+                let pos_y = amplitude + 2.0 * amplitude * layer as f32;
+                body_def.position = Pos {
+                    x: pos_x,
+                    y: pos_y,
+                    z: pos_z,
+                };
+                let body = create_body(&mut scene.world, &body_def);
+                create_hull_shape(&mut scene.world, body, &shape_def, &convex);
+                scene.bodies.push(VisBody::cylinder_local(
+                    body.index1 - 1,
+                    1.0,
+                    1.0,
+                    Transform {
+                        p: Vec3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        q: QUAT_IDENTITY,
+                    },
+                    0,
+                ));
+            }
+        }
+    }
+    destroy_hull(convex);
+    scene
 }

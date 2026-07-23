@@ -63,6 +63,7 @@ pub(crate) enum BenchKind {
     Chains,
     Destruction,
     Junkyard,
+    ConvexPile,
 }
 
 /// Junkyard kinematic pusher animation (`StepJunkyard`, `benchmarks.c` :872).
@@ -109,6 +110,11 @@ pub(crate) struct BenchScene {
     /// Candy Cups frustum-hull solid faces in cup-local space (`[x,y,z]` triples, 9
     /// per triangle), shared by every cup. Empty unless the live scene is Candy Cups.
     pub candy_hull: Vec<f32>,
+
+    /// Convex Pile shared 32-point hull solid faces in hull-local space (`[x,y,z]`
+    /// triples, 9 per triangle), shared by every body. Empty unless the live scene is
+    /// Convex Pile.
+    pub convex_pile_hull: Vec<f32>,
 
     /// Explosion impulse-per-area (`m_impulse`, live Magnitude slider).
     pub explosion_impulse: f32,
@@ -170,6 +176,7 @@ pub(crate) fn empty_scene(world: World, bodies: Vec<VisBody>, kind: BenchKind) -
         washer: None,
         large_world: None,
         candy_hull: Vec::new(),
+        convex_pile_hull: Vec::new(),
         explosion_impulse: 1000.0,
         hf_radius: 0.1,
         hf_columns: 50,
@@ -270,6 +277,11 @@ pub fn bench_reset_destruction() -> u32 {
 #[wasm_bindgen]
 pub fn bench_reset_junkyard() -> u32 {
     install(legacy::build_junkyard())
+}
+
+#[wasm_bindgen]
+pub fn bench_reset_convex_pile() -> u32 {
+    install(piles::build_convex_pile())
 }
 
 // ---------------------------------------------------------------------------
@@ -430,6 +442,14 @@ pub fn bench_washer_drum_geometry() -> Vec<f32> {
 #[wasm_bindgen]
 pub fn bench_candy_hull() -> Vec<f32> {
     with_state(|state| state.candy_hull.clone())
+}
+
+/// Convex Pile shared 32-point hull solid faces in hull-local space (flat `[x,y,z]`
+/// vertex triples, 9 per triangle), shared by every body. Empty unless the live
+/// scene is Convex Pile. The browser uses this as the per-instance geometry.
+#[wasm_bindgen]
+pub fn bench_convex_pile_hull() -> Vec<f32> {
+    with_state(|state| state.convex_pile_hull.clone())
 }
 
 // ---------------------------------------------------------------------------

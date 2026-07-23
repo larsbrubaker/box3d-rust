@@ -42,7 +42,8 @@ type Mode =
   | "dominoes"
   | "wedge"
   | "arch"
-  | "double-domino";
+  | "double-domino"
+  | "edge-crossing";
 
 export const SCENES: Mode[] = [
   "jenga",
@@ -58,6 +59,7 @@ export const SCENES: Mode[] = [
   "wedge",
   "arch",
   "double-domino",
+  "edge-crossing",
 ];
 
 /** Scenes whose bodies are arbitrary convex hulls (render kind 4). Their per-body
@@ -254,6 +256,9 @@ export function init(container: HTMLElement, initialScene?: string) {
       case "double-domino":
         setView(demo, 0, 15, 15, [0, 0.5, 1]); // DoubleDomino :849
         break;
+      case "edge-crossing":
+        setView(demo, 0, 25, 10, [0, 0, 0]); // EdgeCrossing :859
+        break;
       default:
         setView(demo, 35, 15, 12, [0, 2, 0]); // JengaStack :412
         break;
@@ -338,6 +343,9 @@ export function init(container: HTMLElement, initialScene?: string) {
         break;
       case "double-domino":
         wasm.sim_reset_double_domino();
+        break;
+      case "edge-crossing":
+        wasm.sim_reset_edge_crossing();
         break;
     }
     // C GetGuiDraw()->forceScale: Cylinder = 0.01, Cylinder Stack = 0.001, else 1.

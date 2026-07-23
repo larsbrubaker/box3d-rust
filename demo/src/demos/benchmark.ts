@@ -47,7 +47,8 @@ type Scene =
   | "hull"
   | "chains"
   | "destruction"
-  | "junkyard";
+  | "junkyard"
+  | "convex-pile";
 
 export const SCENES: Scene[] = [
   "pyramid",
@@ -66,6 +67,7 @@ export const SCENES: Scene[] = [
   "chains",
   "destruction",
   "junkyard",
+  "convex-pile",
 ];
 
 const SCENE_LABEL: Record<Scene, string> = {
@@ -85,6 +87,7 @@ const SCENE_LABEL: Record<Scene, string> = {
   chains: "Chains",
   destruction: "Destruction",
   junkyard: "Junkyard",
+  "convex-pile": "Convex Pile",
 };
 
 // C SetView(yaw, pitch, distance, target) per sample_benchmark.cpp.
@@ -105,6 +108,7 @@ const SCENE_VIEW: Record<Scene, [number, number, number, [number, number, number
   chains: [0, 15, 50, [0, 5, 0]],
   destruction: [0, 40, 20, [0, 0, 0]], // DEBUG (small) camera
   junkyard: [45, 30, 125, [0, 0, 0]],
+  "convex-pile": [45, 20, 150, [0, 15, 0]],
 };
 
 // Scenes whose bodies include capsules (rendered by the shared mesh pool).
@@ -150,6 +154,8 @@ const SCENE_INFO: Record<Scene, string> = {
     "Destruction: gridCount 6, extent 0.75 (C DEBUG; C release 20 / 2.5). The block grid is re-spawned and re-exploded every 80 steps.",
   junkyard:
     "Junkyard: 2×21×21 = 882 rocks (C DEBUG; C release 24 layers). A kinematic cylinder pusher orbits the arena.",
+  "convex-pile":
+    "Convex Pile: 8×8×10 = 640 convex hulls (C DEBUG layers 10; C release 80 = 5120). Each hull is 32 random points on a sphere from PEEL's fixed-seed (42) LCG, so the shape is identical across runs.",
 };
 
 export function init(container: HTMLElement, initialScene?: string) {
@@ -205,8 +211,10 @@ export function init(container: HTMLElement, initialScene?: string) {
   let hullWireB: THREE.LineSegments | null = null;
   let drumMesh: THREE.Mesh | null = null;
   let drumWire: THREE.LineSegments | null = null;
-  // Candy Cups: the real frustum hull, swapped in for the kind-3 (cylinder) slot.
+  // Candy Cups / Convex Pile: a real shared hull, swapped in for the kind-3
+  // (cylinder) slot in place of the unit cylinder geometry.
   let candyGeo: THREE.BufferGeometry | null = null;
+  let pileGeo: THREE.BufferGeometry | null = null;
 
   const _m = new THREE.Matrix4();
   const _p = new THREE.Vector3();
@@ -307,13 +315,15 @@ export function init(container: HTMLElement, initialScene?: string) {
       case "chains": wasm.bench_reset_chains(); break;
       case "destruction": wasm.bench_reset_destruction(); break;
       case "junkyard": wasm.bench_reset_junkyard(); break;
+      case "convex-pile": wasm.bench_reset_convex_pile(); break;
     }
   }
 
   function reset() {
     clearVisuals();
     resetScene();
-    // Candy Cups render the real frustum hull; swap it into the kind-3 render slot.
+    // Candy Cups / Convex Pile render a real shared hull; swap it into the kind-3
+    // render slot in place of the unit cylinder.
     if (scene === "candy-cups") {
       if (!candyGeo) {
         const h = wasm.bench_candy_hull();
@@ -322,6 +332,14 @@ export function init(container: HTMLElement, initialScene?: string) {
         candyGeo.computeVertexNormals();
       }
       kindGeo[3] = candyGeo;
+    } else if (scene === "convex-pile") {
+      if (!pileGeo) {
+        const h = wasm.bench_convex_pile_hull();
+        pileGeo = new THREE.BufferGeometry();
+        pileGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(h), 3));
+        pileGeo.computeVertexNormals();
+      }
+      kindGeo[3] = pileGeo;
     } else {
       kindGeo[3] = cylGeo;
     }
@@ -549,6 +567,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     cylGeo.dispose();
     icoGeo.dispose();
     candyGeo?.dispose();
+    pileGeo?.dispose();
     for (const mat of matByKind.values()) mat.dispose();
   };
 }
