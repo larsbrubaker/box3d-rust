@@ -32,18 +32,6 @@ When a bug is reported, always follow this workflow:
 
 **Running tests:**
 ```bash
-# Run all tests
-cargo test
-
-# Run tests for a specific module
-cargo test --lib math_functions_tests
-
-# Run a specific test
-cargo test test_name -- --exact
-
-# Run with output
-cargo test -- --nocapture
-
 # Run with the double-precision (large world) feature, mirroring BOX3D_DOUBLE_PRECISION
 cargo test --features double-precision
 ```
@@ -52,9 +40,9 @@ cargo test --features double-precision
 
 **Names** - Follow Rust conventions (`snake_case` for functions/variables, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants). Keep names mappable to the C original: `b3ClampFloat` → `clamp_float`, `b3Vec3` → `Vec3`, `b3InvMulTransforms` → `inv_mul_transforms`. A reader diffing Rust against C should never have to guess which function corresponds to which.
 
-**Comments** - Explain *why*, not *what*. Preserve the C source's explanatory comments (they encode Erin Catto's reasoning). Comments explaining *why* the Rust approach differs from C are especially valuable.
+**Comments** - Preserve the C source's explanatory comments (they encode Erin Catto's reasoning). Comments explaining *why* the Rust approach differs from C are especially valuable.
 
-**Refactoring** - Improve code when it serves a purpose, not for aesthetics. A tripped file-length test means split the file into real modules — never compact lines or bump the limit.
+**Refactoring** - A tripped file-length test means split the file into real modules — never compact lines or bump the limit.
 
 ## C to Rust Porting Rules
 
