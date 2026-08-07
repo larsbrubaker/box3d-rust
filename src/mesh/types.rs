@@ -271,6 +271,24 @@ fn read_aabb_at(buf: &[u8], off: usize) -> Aabb {
     }
 }
 
+/// Validate one trailing-section offset against the blob and return it as an index.
+///
+/// Divergence from C: `b3ConvertBytesToMesh` casts the stored offsets straight to
+/// pointers and trusts the blob. The Rust port validates instead, so a corrupt
+/// recording fails the conversion rather than wrapping the index arithmetic, which
+/// panics on the overflow in debug builds and on the resulting slice bounds check in
+/// release builds. Well-formed blobs always pass, so the happy path is unchanged.
+fn section_offset(offset: i32, count: usize, stride: usize, len: usize) -> Option<usize> {
+    if offset < 0 {
+        return None;
+    }
+    let start = offset as usize;
+    if start.checked_add(count.checked_mul(stride)?)? > len {
+        return None;
+    }
+    Some(start)
+}
+
 /// Restore a mesh from a contiguous blob. (inverse of [`MeshData::to_bytes`])
 pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
     if bytes.len() < MESH_DATA_SIZE {
@@ -306,10 +324,7 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
     let vc = vertex_count as usize;
     let tc = triangle_count as usize;
 
-    let noff = node_offset as usize;
-    if noff + nc * MESH_NODE_SIZE > bytes.len() {
-        return None;
-    }
+    let noff = section_offset(node_offset, nc, MESH_NODE_SIZE, bytes.len())?;
     let mut nodes = Vec::with_capacity(nc);
     for i in 0..nc {
         let o = noff + i * MESH_NODE_SIZE;
@@ -321,19 +336,13 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
         });
     }
 
-    let voff = vertex_offset as usize;
-    if voff + vc * 12 > bytes.len() {
-        return None;
-    }
+    let voff = section_offset(vertex_offset, vc, 12, bytes.len())?;
     let mut vertices = Vec::with_capacity(vc);
     for i in 0..vc {
         vertices.push(read_vec3_at(bytes, voff + i * 12));
     }
 
-    let toff = triangle_offset as usize;
-    if toff + tc * MESH_TRIANGLE_SIZE > bytes.len() {
-        return None;
-    }
+    let toff = section_offset(triangle_offset, tc, MESH_TRIANGLE_SIZE, bytes.len())?;
     let mut triangles = Vec::with_capacity(tc);
     for i in 0..tc {
         let o = toff + i * MESH_TRIANGLE_SIZE;
@@ -346,16 +355,10 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
 
     // The material section holds one index per triangle (materialCount is the
     // number of distinct materials, not the array length).
-    let moff = material_offset as usize;
-    if moff + tc > bytes.len() {
-        return None;
-    }
+    let moff = section_offset(material_offset, tc, 1, bytes.len())?;
     let material_indices = bytes[moff..moff + tc].to_vec();
 
-    let foff = flags_offset as usize;
-    if foff + tc > bytes.len() {
-        return None;
-    }
+    let foff = section_offset(flags_offset, tc, 1, bytes.len())?;
     let flags = bytes[foff..foff + tc].to_vec();
 
     Some(MeshData {

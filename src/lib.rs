@@ -215,6 +215,9 @@ mod mover_tests;
 mod name_cache_tests;
 
 #[cfg(test)]
+mod serialize_corruption_tests;
+
+#[cfg(test)]
 mod shape_tests;
 
 #[cfg(test)]

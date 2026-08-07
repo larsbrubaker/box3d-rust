@@ -364,6 +364,24 @@ fn read_plane(buf: &[u8], off: usize) -> Plane {
     }
 }
 
+/// Validate one trailing-section offset against the blob and return it as an index.
+///
+/// Divergence from C: `b3ConvertBytesToHull` casts the stored offsets straight to
+/// pointers and trusts the blob. The Rust port validates instead, so a corrupt
+/// recording fails the conversion rather than wrapping the index arithmetic, which
+/// panics on the overflow in debug builds and on the resulting slice bounds check in
+/// release builds. Well-formed blobs always pass, so the happy path is unchanged.
+fn section_offset(offset: i32, count: usize, stride: usize, len: usize) -> Option<usize> {
+    if offset < 0 {
+        return None;
+    }
+    let start = offset as usize;
+    if start.checked_add(count.checked_mul(stride)?)? > len {
+        return None;
+    }
+    Some(start)
+}
+
 /// Restore a hull from a contiguous blob. (inverse of [`HullData::to_bytes`])
 pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
     if bytes.len() < HULL_DATA_SIZE {
@@ -403,31 +421,22 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
     let ec = edge_count as usize;
     let fc = face_count as usize;
 
+    let voff = section_offset(vertex_offset, vc, 1, bytes.len())?;
     let mut vertices = Vec::with_capacity(vc);
-    let voff = vertex_offset as usize;
-    if voff + vc > bytes.len() {
-        return None;
-    }
     for i in 0..vc {
         vertices.push(HullVertex {
             edge: bytes[voff + i],
         });
     }
 
+    let poff = section_offset(point_offset, vc, 12, bytes.len())?;
     let mut points = Vec::with_capacity(vc);
-    let poff = point_offset as usize;
-    if poff + vc * 12 > bytes.len() {
-        return None;
-    }
     for i in 0..vc {
         points.push(read_vec3(bytes, poff + i * 12));
     }
 
+    let eoff = section_offset(edge_offset, ec, 4, bytes.len())?;
     let mut edges = Vec::with_capacity(ec);
-    let eoff = edge_offset as usize;
-    if eoff + ec * 4 > bytes.len() {
-        return None;
-    }
     for i in 0..ec {
         let o = eoff + i * 4;
         edges.push(HullHalfEdge {
@@ -438,42 +447,30 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         });
     }
 
+    let foff = section_offset(face_offset, fc, 1, bytes.len())?;
     let mut faces = Vec::with_capacity(fc);
-    let foff = face_offset as usize;
-    if foff + fc > bytes.len() {
-        return None;
-    }
     for i in 0..fc {
         faces.push(HullFace {
             edge: bytes[foff + i],
         });
     }
 
+    let ploff = section_offset(plane_offset, fc, 16, bytes.len())?;
     let mut planes = Vec::with_capacity(fc);
-    let ploff = plane_offset as usize;
-    if ploff + fc * 16 > bytes.len() {
-        return None;
-    }
     for i in 0..fc {
         planes.push(read_plane(bytes, ploff + i * 16));
     }
 
     let soa_vertex_count = (vertex_count as usize + 3) & !3;
+    let svoff = section_offset(soa_vertex_offset, 3 * soa_vertex_count, 4, bytes.len())?;
     let mut soa_vertices = Vec::with_capacity(3 * soa_vertex_count);
-    let svoff = soa_vertex_offset as usize;
-    if svoff + 3 * soa_vertex_count * 4 > bytes.len() {
-        return None;
-    }
     for i in 0..3 * soa_vertex_count {
         soa_vertices.push(read_f32_le(bytes, svoff + i * 4));
     }
 
     let soa_normal_count = (face_count as usize + 3) & !3;
+    let snoff = section_offset(soa_normal_offset, 3 * soa_normal_count, 4, bytes.len())?;
     let mut soa_normals = Vec::with_capacity(3 * soa_normal_count);
-    let snoff = soa_normal_offset as usize;
-    if snoff + 3 * soa_normal_count * 4 > bytes.len() {
-        return None;
-    }
     for i in 0..3 * soa_normal_count {
         soa_normals.push(read_f32_le(bytes, snoff + i * 4));
     }

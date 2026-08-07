@@ -5,11 +5,13 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use crate::compound::CompoundData;
 use crate::height_field::convert_bytes_to_height_field;
 use crate::hull::convert_bytes_to_hull;
 use crate::mesh::convert_bytes_to_mesh;
 use crate::recording::dispatch::RecReader;
 use crate::recording::ops::RecOp;
+use crate::recording::registry::GeometryKind;
 use crate::shape::{
     create_baked_compound_shape, create_capsule_shape, create_height_field_shape,
     create_hull_shape, create_mesh_shape, create_sphere_shape,
@@ -17,6 +19,77 @@ use crate::shape::{
 
 #[allow(unused_imports)]
 use crate::recording::query_replay;
+
+fn kind_name(kind: GeometryKind) -> &'static str {
+    match kind {
+        GeometryKind::Hull => "hull",
+        GeometryKind::Mesh => "mesh",
+        GeometryKind::HeightField => "height field",
+        GeometryKind::Compound => "compound",
+    }
+}
+
+/// Range- and kind-check a geometry registry slot, or fail the replay.
+///
+/// Divergence from C: `b3ReplayFile` casts the slot bytes straight to a `b3HullData*` /
+/// `b3MeshData*` / `b3HeightFieldData*` and trusts the recording, so a corrupt or
+/// kind-mismatched geometryId makes it read garbage. The Rust port validates instead and
+/// fails the replay with a "b3ReplayFile: ..." message, matching the graceful path the
+/// out-of-range check already used. Well-formed recordings always resolve, so the happy
+/// path is unchanged.
+fn check_slot(rdr: &mut RecReader<'_>, kind: GeometryKind, geometry_id: u32) -> bool {
+    let name = kind_name(kind);
+    if geometry_id as usize >= rdr.slots.len() {
+        eprintln!("b3ReplayFile: {name} geometryId {geometry_id} out of range");
+        rdr.ok = false;
+        return false;
+    }
+    let actual = rdr.slots[geometry_id as usize].kind;
+    if actual != kind {
+        let actual = kind_name(actual);
+        eprintln!("b3ReplayFile: {name} geometryId {geometry_id} is a {actual} slot");
+        rdr.ok = false;
+        return false;
+    }
+    true
+}
+
+/// Resolve a geometry registry slot for a shape op, or fail the replay. See
+/// [`check_slot`] for the divergence from C.
+fn slot_geometry<T>(
+    rdr: &mut RecReader<'_>,
+    kind: GeometryKind,
+    geometry_id: u32,
+    convert: fn(&[u8]) -> Option<T>,
+) -> Option<T> {
+    if !check_slot(rdr, kind, geometry_id) {
+        return None;
+    }
+    match convert(&rdr.slots[geometry_id as usize].bytes) {
+        Some(value) => Some(value),
+        None => {
+            let name = kind_name(kind);
+            eprintln!("b3ReplayFile: {name} geometryId {geometry_id} has a corrupt blob");
+            rdr.ok = false;
+            None
+        }
+    }
+}
+
+/// [`slot_geometry`] for compounds, which convert lazily through the slot's cache.
+fn slot_compound(rdr: &mut RecReader<'_>, geometry_id: u32) -> Option<CompoundData> {
+    if !check_slot(rdr, GeometryKind::Compound, geometry_id) {
+        return None;
+    }
+    match rdr.slots[geometry_id as usize].ensure_compound().cloned() {
+        Some(compound) => Some(compound),
+        None => {
+            eprintln!("b3ReplayFile: compound geometryId {geometry_id} has a corrupt blob");
+            rdr.ok = false;
+            None
+        }
+    }
+}
 
 /// Handle one shape op. Returns false if `op` is not in this family.
 pub(super) fn dispatch(
@@ -85,11 +158,12 @@ pub(super) fn dispatch(
                 let rec_id = s2.shape_id();
                 rdr.sync_from(&s2);
                 let body_id = rdr.make_body_id(body);
-                let got = {
-                    let hull = convert_bytes_to_hull(&rdr.slots[geometry_id as usize].bytes)
-                        .expect("hull");
-                    create_hull_shape(world, body_id, &def, &hull)
+                let Some(hull) =
+                    slot_geometry(rdr, GeometryKind::Hull, geometry_id, convert_bytes_to_hull)
+                else {
+                    return true;
                 };
+                let got = create_hull_shape(world, body_id, &def, &hull);
                 RecReader::check_id(
                     &mut rdr.ok,
                     "shape",
@@ -113,11 +187,12 @@ pub(super) fn dispatch(
                 let rec_id = s2.shape_id();
                 rdr.sync_from(&s2);
                 let body_id = rdr.make_body_id(body);
-                let got = {
-                    let mesh = convert_bytes_to_mesh(&rdr.slots[geometry_id as usize].bytes)
-                        .expect("mesh");
-                    create_mesh_shape(world, body_id, &def, &mesh, scale)
+                let Some(mesh) =
+                    slot_geometry(rdr, GeometryKind::Mesh, geometry_id, convert_bytes_to_mesh)
+                else {
+                    return true;
                 };
+                let got = create_mesh_shape(world, body_id, &def, &mesh, scale);
                 RecReader::check_id(
                     &mut rdr.ok,
                     "shape",
@@ -140,11 +215,15 @@ pub(super) fn dispatch(
                 let rec_id = s2.shape_id();
                 rdr.sync_from(&s2);
                 let body_id = rdr.make_body_id(body);
-                let got = {
-                    let hf = convert_bytes_to_height_field(&rdr.slots[geometry_id as usize].bytes)
-                        .expect("hf");
-                    create_height_field_shape(world, body_id, &def, &hf)
+                let Some(hf) = slot_geometry(
+                    rdr,
+                    GeometryKind::HeightField,
+                    geometry_id,
+                    convert_bytes_to_height_field,
+                ) else {
+                    return true;
                 };
+                let got = create_height_field_shape(world, body_id, &def, &hf);
                 RecReader::check_id(
                     &mut rdr.ok,
                     "shape",
@@ -167,13 +246,10 @@ pub(super) fn dispatch(
                 let rec_id = s2.shape_id();
                 rdr.sync_from(&s2);
                 let body_id = rdr.make_body_id(body);
-                let got = {
-                    let compound = rdr.slots[geometry_id as usize]
-                        .ensure_compound()
-                        .cloned()
-                        .expect("compound");
-                    create_baked_compound_shape(world, body_id, &def, &compound)
+                let Some(compound) = slot_compound(rdr, geometry_id) else {
+                    return true;
                 };
+                let got = create_baked_compound_shape(world, body_id, &def, &compound);
                 RecReader::check_id(
                     &mut rdr.ok,
                     "shape",
@@ -371,15 +447,13 @@ pub(super) fn dispatch(
             let geometry_id = s.u32();
             rdr.sync_from(&s);
             if rdr.ok {
-                if geometry_id as usize >= rdr.slots.len() {
-                    eprintln!("b3ReplayFile: hull geometryId {geometry_id} out of range");
-                    rdr.ok = false;
-                } else {
-                    let shape_id = rdr.make_shape_id(shape);
-                    let hull = convert_bytes_to_hull(&rdr.slots[geometry_id as usize].bytes)
-                        .expect("hull");
-                    crate::shape::shape_set_hull(world, shape_id, &hull);
-                }
+                let shape_id = rdr.make_shape_id(shape);
+                let Some(hull) =
+                    slot_geometry(rdr, GeometryKind::Hull, geometry_id, convert_bytes_to_hull)
+                else {
+                    return true;
+                };
+                crate::shape::shape_set_hull(world, shape_id, &hull);
             }
             let _ = (payload_start, payload_size);
         }
@@ -390,15 +464,13 @@ pub(super) fn dispatch(
             let scale = s.vec3();
             rdr.sync_from(&s);
             if rdr.ok {
-                if geometry_id as usize >= rdr.slots.len() {
-                    eprintln!("b3ReplayFile: mesh geometryId {geometry_id} out of range");
-                    rdr.ok = false;
-                } else {
-                    let shape_id = rdr.make_shape_id(shape);
-                    let mesh = convert_bytes_to_mesh(&rdr.slots[geometry_id as usize].bytes)
-                        .expect("mesh");
-                    crate::shape::shape_set_mesh(world, shape_id, &mesh, scale);
-                }
+                let shape_id = rdr.make_shape_id(shape);
+                let Some(mesh) =
+                    slot_geometry(rdr, GeometryKind::Mesh, geometry_id, convert_bytes_to_mesh)
+                else {
+                    return true;
+                };
+                crate::shape::shape_set_mesh(world, shape_id, &mesh, scale);
             }
             let _ = (payload_start, payload_size);
         }

@@ -6,7 +6,8 @@
 //! Layout:
 //! - `types`     — CompoundDef/Data, child accessors, SurfaceMaterial consumers
 //! - `create`    — create/destroy with material/hull/mesh sharing
-//! - `serialize` — convert to/from contiguous bytes
+//! - `serialize`   — convert to contiguous bytes
+//! - `deserialize` — convert from contiguous bytes
 //! - `cast`      — AABB, overlap, ray cast, shape cast
 //! - `query`     — AABB query, collide mover
 //!
@@ -18,6 +19,7 @@
 
 mod cast;
 mod create;
+mod deserialize;
 mod query;
 mod serialize;
 mod types;
@@ -27,8 +29,9 @@ pub use cast::{
     shape_cast_compound,
 };
 pub use create::{create_compound, destroy_compound};
+pub use deserialize::convert_bytes_to_compound;
 pub use query::{collide_mover_and_compound, query_compound};
-pub use serialize::{convert_bytes_to_compound, convert_compound_to_bytes};
+pub use serialize::convert_compound_to_bytes;
 pub use types::{
     get_compound_capsule, get_compound_child, get_compound_hull, get_compound_materials,
     get_compound_mesh, get_compound_sphere, ChildGeometry, ChildShape, CompoundCapsule,

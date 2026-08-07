@@ -172,6 +172,24 @@ fn read_aabb_at(buf: &[u8], off: usize) -> Aabb {
     }
 }
 
+/// Validate one trailing-section offset against the blob and return it as an index.
+///
+/// Divergence from C: `b3ConvertBytesToHeightField` casts the stored offsets straight
+/// to pointers and trusts the blob. The Rust port validates instead, so a corrupt
+/// recording fails the conversion rather than wrapping the index arithmetic, which
+/// panics on the overflow in debug builds and on the resulting slice bounds check in
+/// release builds. Well-formed blobs always pass, so the happy path is unchanged.
+fn section_offset(offset: i32, count: usize, stride: usize, len: usize) -> Option<usize> {
+    if offset < 0 {
+        return None;
+    }
+    let start = offset as usize;
+    if start.checked_add(count.checked_mul(stride)?)? > len {
+        return None;
+    }
+    Some(start)
+}
+
 /// Restore a height field from a contiguous blob. (inverse of [`HeightFieldData::to_bytes`])
 pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
     if bytes.len() < HEIGHT_FIELD_DATA_SIZE {
@@ -206,26 +224,17 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
     let cell_count =
         ((column_count - 1).max(0) as usize).checked_mul((row_count - 1).max(0) as usize)?;
 
-    let hoff = heights_offset as usize;
-    if hoff + height_count * 2 > bytes.len() {
-        return None;
-    }
+    let hoff = section_offset(heights_offset, height_count, 2, bytes.len())?;
     let mut compressed_heights = Vec::with_capacity(height_count);
     for i in 0..height_count {
         compressed_heights.push(read_u16_le(bytes, hoff + i * 2));
     }
 
-    let moff = material_offset as usize;
-    if moff + cell_count > bytes.len() {
-        return None;
-    }
+    let moff = section_offset(material_offset, cell_count, 1, bytes.len())?;
     let material_indices = bytes[moff..moff + cell_count].to_vec();
 
-    let foff = flags_offset as usize;
-    let flag_count = cell_count * 2; // two triangles per cell
-    if foff + flag_count > bytes.len() {
-        return None;
-    }
+    let flag_count = cell_count.checked_mul(2)?; // two triangles per cell
+    let foff = section_offset(flags_offset, flag_count, 1, bytes.len())?;
     let flags = bytes[foff..foff + flag_count].to_vec();
 
     Some(HeightFieldData {
