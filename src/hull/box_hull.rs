@@ -6,7 +6,7 @@ use super::types::{
 use crate::constants::linear_slop;
 use crate::core::{hash, non_zero_hash, HASH_INIT};
 use crate::math_functions::{
-    aabb_transform, abs, box_inertia, inv_rotate_vector, make_matrix_from_quat,
+    aabb_transform, abs, box_inertia, inv_rotate_vector, is_valid_transform, make_matrix_from_quat,
     make_plane_from_normal_and_point, make_quat_from_matrix, max, min, min_float, mul, mul_sv, neg,
     normalize, rotate_inertia, rotate_vector, transform_plane, transform_point, Aabb, Transform,
     Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z, VEC3_ZERO,
@@ -235,6 +235,8 @@ fn box_hull_template() -> BoxHull {
 
 /// Make a transformed box as a hull. (b3MakeTransformedBoxHull)
 pub fn make_transformed_box_hull(hx: f32, hy: f32, hz: f32, transform: Transform) -> BoxHull {
+    debug_assert!(is_valid_transform(transform));
+
     let mut box_hull = box_hull_template();
 
     let min_h = 0.2 * linear_slop();
@@ -463,6 +465,8 @@ pub fn scale_box(
 
 /// Make a scaled box hull. (b3MakeScaledBoxHull)
 pub fn make_scaled_box_hull(half_widths: Vec3, transform: Transform, post_scale: Vec3) -> BoxHull {
+    debug_assert!(is_valid_transform(transform));
+
     let mut h = half_widths;
     let mut xf = transform;
     scale_box(&mut h, &mut xf, post_scale, 4.0 * linear_slop());

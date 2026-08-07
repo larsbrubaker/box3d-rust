@@ -118,6 +118,11 @@ pub fn shape_set_mesh(world: &mut World, shape_id: ShapeId, mesh: &MeshData, sca
 
     world.locked = true;
 
+    crate::recording::with_recording(world, |rec| {
+        let geometry_id = rec.registry.intern_mesh(mesh);
+        rec.write_shape_set_mesh(shape_id, geometry_id, scale);
+    });
+
     let index = get_shape(world, shape_id);
     destroy_shape_allocation_for_shape_change(world, index);
 
@@ -168,6 +173,12 @@ pub fn shape_set_hull(world: &mut World, shape_id: ShapeId, hull: &HullData) {
             return;
         }
     }
+
+    crate::recording::with_recording(world, |rec| {
+        // Intern the shared hull.
+        let geometry_id = rec.registry.intern_hull(&data);
+        rec.write_shape_set_hull(shape_id, geometry_id);
+    });
 
     destroy_shape_allocation_for_shape_change(world, index);
 

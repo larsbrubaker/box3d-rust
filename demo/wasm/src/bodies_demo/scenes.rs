@@ -14,8 +14,8 @@ use box3d_rust::hull::{create_cylinder, create_hull, make_box_hull, make_transfo
 use box3d_rust::id::BodyId;
 use box3d_rust::joint::{create_prismatic_joint, create_revolute_joint, create_weld_joint};
 use box3d_rust::math_functions::{
-    add_mm, length, make_quat_from_axis_angle, normalize, rotate_vector, steiner, Pos, Transform,
-    Vec3, WorldTransform, PI, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Z, VEC3_ZERO,
+    add_mm, compute_cos_sin, length, make_quat_from_axis_angle, normalize, rotate_vector, steiner,
+    Pos, Transform, Vec3, WorldTransform, PI, QUAT_IDENTITY, VEC3_AXIS_X, VEC3_AXIS_Z, VEC3_ZERO,
 };
 use box3d_rust::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
 use box3d_rust::types::{
@@ -62,6 +62,7 @@ pub fn build(scene: u32) -> BodiesState {
         7 => lock_mixing(),
         8 => fixed_rotation(),
         9 => gyroscopic_precession(),
+        10 => class_ring(),
         _ => body_type(),
     }
 }
@@ -600,4 +601,111 @@ fn gyroscopic_precession() -> BodiesState {
 
     st.prec.gravity = length(world_get_gravity(&st.world));
     st
+}
+
+/// Class Ring (sample_bodies.cpp:1184-1278): a spinning class ring flips its heavy
+/// gem from bottom to top (https://www.youtube.com/watch?v=_up0BiLCliA). A band of
+/// 24 capsules plus an off-center gem sphere on one dynamic body, tilted 13° and
+/// spun at 100 rad/s about its own up axis. "This is a fiddley test and requires
+/// careful tuning" — it also needs the 960 Hz stepping done in `bodies_step`.
+fn class_ring() -> BodiesState {
+    let mut st = BodiesState::base(new_world(), SceneKind::ClassRing);
+    add_ground_box(&mut st, 100.0);
+
+    const N: usize = 24;
+    const R: f32 = 1.0;
+    const TUBE_RADIUS: f32 = 0.1 * R;
+    const AXIS_RADIUS: f32 = R - TUBE_RADIUS;
+
+    let mut bd = default_body_def();
+    bd.type_ = BodyType::Dynamic;
+    bd.position = pos(0.0, R, 0.0);
+    bd.rotation = make_quat_from_axis_angle(VEC3_AXIS_X, 13.0 * PI / 180.0);
+    bd.allow_fast_rotation = true;
+    bd.enable_contact_recycling = false;
+    let body_id = create_body(&mut st.world, &bd);
+    let idx = body_id.index1 - 1;
+
+    let mut sd = default_shape_def();
+    sd.density = 1.0;
+
+    // Band built from a loop of capsules. The ring vertices come from repeatedly
+    // rotating (x, y) by the segment angle, using the deterministic cos/sin.
+    let mut vertices = [VEC3_ZERO; N];
+    let delta_angle = 2.0 * PI / N as f32;
+    let cs = compute_cos_sin(delta_angle);
+    let (mut x, mut y) = (AXIS_RADIUS, 0.0f32);
+    for vertex in vertices.iter_mut() {
+        *vertex = v3(x, y, 0.0);
+        let x2 = cs.cosine * x - cs.sine * y;
+        let y2 = cs.sine * x + cs.cosine * y;
+        x = x2;
+        y = y2;
+    }
+
+    for i in 0..N {
+        let capsule = Capsule {
+            center1: vertices[i],
+            center2: vertices[(i + 1) % N],
+            radius: TUBE_RADIUS,
+        };
+        create_capsule_shape(&mut st.world, body_id, &sd, &capsule);
+        st.vis.push(VisBody::capsule_body(idx, &capsule));
+    }
+
+    // Heavy gem provides the mass asymmetry that drives the inversion
+    sd.density = 2.0;
+    let sphere = Sphere {
+        center: v3(0.0, -0.65 * R, 0.0),
+        radius: 0.3,
+    };
+    create_sphere_shape(&mut st.world, body_id, &sd, &sphere);
+    st.vis.push(VisBody::sphere_local(
+        idx,
+        sphere.radius,
+        Transform {
+            p: sphere.center,
+            q: QUAT_IDENTITY,
+        },
+    ));
+
+    let angular_velocity = rotate_vector(bd.rotation, v3(0.0, 100.0, 0.0));
+    body_set_angular_velocity(&mut st.world, body_id, angular_velocity);
+
+    // (C keeps `m_ringId` but never reads it, so no handle is stored here.)
+    st
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{bodies_poses, bodies_reset, bodies_step};
+    use crate::vis::{KIND_CAPSULE, KIND_SPHERE, POSE_STRIDE};
+
+    /// Class Ring builds the ground + 24 band capsules + the gem sphere on one
+    /// body, and its 960 Hz step override keeps the ring on the ground box.
+    #[test]
+    fn class_ring_builds_and_steps() {
+        let count = bodies_reset(10);
+        assert_eq!(count, 1 + 24 + 1);
+
+        let poses = bodies_poses();
+        assert_eq!(poses.len(), 26 * POSE_STRIDE);
+        // Entries 1..25 are the band capsules, entry 25 the gem sphere.
+        let kind = |i: usize| poses[i * POSE_STRIDE + 14] as u8;
+        for i in 1..25 {
+            assert_eq!(kind(i), KIND_CAPSULE, "band entry {i}");
+        }
+        assert_eq!(kind(25), KIND_SPHERE);
+
+        // Ten rendered frames = 160 world steps at 1/960 s.
+        for _ in 0..10 {
+            bodies_step(1.0 / 60.0, 4);
+        }
+        let poses = bodies_poses();
+        let gem_y = poses[25 * POSE_STRIDE + 1];
+        assert!(gem_y.is_finite());
+        // The ring rolls on the ground box (top face at y = 0); the gem hangs below
+        // the ring center but must stay above the ground.
+        assert!(gem_y > 0.0 && gem_y < 2.0, "gem y = {gem_y}");
+    }
 }

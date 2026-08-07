@@ -19,8 +19,9 @@ pub const REC_MAGIC: u32 = 0x4352_3342;
 /// Major recording version. (B3_REC_VERSION_MAJOR)
 /// Major version 4 added b3ShapeDef::enableSpeculativeContact.
 pub const REC_VERSION_MAJOR: u16 = 4;
-/// Minor recording version — v3 added the name cache. (B3_REC_VERSION_MINOR)
-pub const REC_VERSION_MINOR: u16 = 3;
+/// Minor recording version. (B3_REC_VERSION_MINOR)
+/// Minor version 4 added b3Shape_SetMeshMaterial, b3Shape_SetHull, b3Shape_SetMesh
+pub const REC_VERSION_MINOR: u16 = 4;
 
 /// Maximum query name length. Query names longer than this probably indicate a
 /// bug in user code. (B3_MAX_QUERY_NAME_LENGTH)

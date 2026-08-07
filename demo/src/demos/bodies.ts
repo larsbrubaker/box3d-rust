@@ -1,6 +1,6 @@
-// Bodies — the ten Bodies-category samples from sample_bodies.cpp:
+// Bodies — the eleven Bodies-category samples from sample_bodies.cpp:
 // Body Type, Spinning Book, Gyroscopic Torque, Gyroscopic Precession, Weeble,
-// Disable, Cast, Kinematic, Lock Mixing, Fixed Rotation.
+// Disable, Cast, Kinematic, Lock Mixing, Fixed Rotation, Class Ring.
 
 import * as THREE from "three";
 import { createButton, createInfoBox, createReadout, updateReadout } from "../controls.ts";
@@ -39,10 +39,12 @@ type Scene =
   | "kinematic"
   | "lock-mixing"
   | "fixed-rotation"
-  | "gyroscopic-precession";
+  | "gyroscopic-precession"
+  | "class-ring";
 
 // Index in this array is the numeric scene id consumed by `bodies_reset`. Precession
-// is appended last so the existing scene ids stay stable (matches `scenes::build`).
+// and Class Ring are appended last so the existing scene ids stay stable (matches
+// `scenes::build`).
 export const SCENES: Scene[] = [
   "body-type",
   "spinning-book",
@@ -54,6 +56,7 @@ export const SCENES: Scene[] = [
   "lock-mixing",
   "fixed-rotation",
   "gyroscopic-precession",
+  "class-ring",
 ];
 
 // Only Weeble / Kinematic / Cast emit the always-on overlay channel; the other
@@ -85,6 +88,8 @@ const CAMERAS: Record<Scene, [number, number, number, [number, number, number]]>
   "fixed-rotation": [0, 15, 10, [0, 0, 0]],
   // C GyroscopicPrecession::SetView( 40, 30, 75, {0, 2, 0} ).
   "gyroscopic-precession": [40, 30, 75, [0, 2, 0]],
+  // C ClassRing::SetView( 40, 30, 15, {0, 2, 0} ).
+  "class-ring": [40, 30, 15, [0, 2, 0]],
 };
 
 function typeId(v: string): number {
@@ -97,7 +102,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   const { canvas, controls } = demoPage(
     container,
     "Bodies",
-    "The ten Bodies-category samples from <code>sample_bodies.cpp</code> — body types, " +
+    "The eleven Bodies-category samples from <code>sample_bodies.cpp</code> — body types, " +
       "gyroscopic effects, spinning-top precession, explosions, kinematic targets, casts, motion locks.",
     "Ctrl+click grab · Shift+click spawn · Shift+drag moves the Cast target · P/O/R",
     wasm.version(),
@@ -114,7 +119,10 @@ export function init(container: HTMLElement, initialScene?: string) {
         "<strong>Disable</strong> — enable/disable a welded link or the ball.<br>" +
         "<strong>Cast</strong> — ray / sphere / capsule / mover queries against a Shift-drag target " +
         "(cast proxy shapes drawn as translucent solids; the blue target as a wireframe).<br>" +
-        "<strong>Kinematic</strong> — a driven Lissajous target. <strong>Lock Mixing / Fixed Rotation</strong> — motion locks.",
+        "<strong>Kinematic</strong> — a driven Lissajous target. <strong>Lock Mixing / Fixed Rotation</strong> — motion locks.<br>" +
+        "<strong>Class Ring</strong> — a ring of 24 capsules with a heavy gem, spun at 100 rad/s; " +
+        "the gem flips from bottom to top. Runs at 960 Hz / 8 sub-steps (16 steps per rendered " +
+        "frame, as in C), so the Hertz and Sub-steps sliders do not apply to this scene.",
     ),
   );
 

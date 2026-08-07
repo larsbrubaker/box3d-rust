@@ -246,4 +246,35 @@ impl Recording {
         self.buffer.append_str(name);
         self.end_record();
     }
+
+    /// Write framed `ShapeSetMeshMaterial` op.
+    pub fn write_shape_set_mesh_material(
+        &mut self,
+        shape: ShapeId,
+        material: SurfaceMaterial,
+        index: i32,
+    ) {
+        self.begin_record(RecOp::ShapeSetMeshMaterial as u8);
+        self.buffer.append_shape_id(shape);
+        self.buffer.append_material(material);
+        self.buffer.append_i32(index);
+        self.end_record();
+    }
+
+    /// Write framed `ShapeSetHull` op.
+    pub fn write_shape_set_hull(&mut self, shape: ShapeId, geometry_id: u32) {
+        self.begin_record(RecOp::ShapeSetHull as u8);
+        self.buffer.append_shape_id(shape);
+        self.buffer.append_u32(geometry_id);
+        self.end_record();
+    }
+
+    /// Write framed `ShapeSetMesh` op.
+    pub fn write_shape_set_mesh(&mut self, shape: ShapeId, geometry_id: u32, scale: Vec3) {
+        self.begin_record(RecOp::ShapeSetMesh as u8);
+        self.buffer.append_shape_id(shape);
+        self.buffer.append_u32(geometry_id);
+        self.buffer.append_vec3(scale);
+        self.end_record();
+    }
 }

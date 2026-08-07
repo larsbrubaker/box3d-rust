@@ -10,6 +10,7 @@
 
 mod edge_hull;
 mod edge_triangle;
+mod face_deep;
 mod primitives;
 mod sat;
 

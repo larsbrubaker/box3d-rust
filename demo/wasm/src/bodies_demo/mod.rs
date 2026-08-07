@@ -57,7 +57,16 @@ pub enum SceneKind {
     LockMixing,
     FixedRotation,
     GyroscopicPrecession,
+    ClassRing,
 }
+
+/// C `ClassRing::Step` (sample_bodies.cpp:1249-1270): the sample forces a 960 Hz
+/// simulation rate (`multiplier * 60`) with 8 sub-steps and runs `multiplier - 1`
+/// hidden steps before the rendered one, so the render stays real-time. Like the
+/// C override, this ignores the UI Hertz / Sub-steps sliders for this scene.
+const CLASS_RING_MULTIPLIER: i32 = 16;
+const CLASS_RING_HERTZ: f32 = CLASS_RING_MULTIPLIER as f32 * 60.0;
+const CLASS_RING_SUB_STEPS: i32 = 8;
 
 /// Per-step Cast query results (recomputed against `cast_transform` each step),
 /// mirroring `BodyCast::Step` (sample_bodies.cpp:733-818).
@@ -492,6 +501,21 @@ pub fn bodies_step(dt: f32, sub_steps: i32) -> u32 {
         // `world.step`, no step-count bump; just recompute the cast results.
         if state.kind == SceneKind::Cast {
             recompute_cast(state);
+            return state.vis.len() as u32;
+        }
+        // C `ClassRing::Step` overrides the rate: 960 Hz / 8 sub-steps, with
+        // `multiplier - 1` hidden steps ahead of the rendered one (the incoming
+        // `dt` / `sub_steps` are discarded, exactly as the C sample discards the
+        // context values it saves and restores).
+        if state.kind == SceneKind::ClassRing {
+            let ring_dt = 1.0 / CLASS_RING_HERTZ;
+            for _ in 0..CLASS_RING_MULTIPLIER - 1 {
+                state.world.step(ring_dt, CLASS_RING_SUB_STEPS);
+            }
+            // The rendered step is the one the mouse grab drives (C `Sample::Step`).
+            state.grab.pre_step(&mut state.world, ring_dt);
+            state.world.step(ring_dt, CLASS_RING_SUB_STEPS);
+            state.step_count = state.step_count.wrapping_add(1);
             return state.vis.len() as u32;
         }
         match state.kind {

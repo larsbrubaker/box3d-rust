@@ -72,10 +72,6 @@ pub fn overlap_slop() -> f32 {
     0.1 * linear_slop()
 }
 
-/// The maximum number of points to use for shape cast proxies (swept point cloud).
-/// (B3_MAX_SHAPE_CAST_POINTS)
-pub const MAX_SHAPE_CAST_POINTS: usize = 64;
-
 /// The number of iterations for gyroscopic torques. (B3_GYROSCOPIC_ITERATIONS)
 pub const GYROSCOPIC_ITERATIONS: i32 = 1;
 
@@ -91,6 +87,10 @@ pub const MAX_HULL_EDGES: i32 = 128;
 
 /// Relative tolerance used to determine if two edges are parallel. (B3_PARALLEL_EDGE_TOL)
 pub const PARALLEL_EDGE_TOL: f32 = 0.005;
+
+/// The maximum number points to use for shape cast proxies (swept point cloud).
+/// (B3_MAX_SHAPE_CAST_POINTS)
+pub const MAX_SHAPE_CAST_POINTS: usize = MAX_HULL_VERTICES as usize;
 
 /// The maximum number of contact points between two touching shapes.
 /// (B3_MAX_MANIFOLD_POINTS)

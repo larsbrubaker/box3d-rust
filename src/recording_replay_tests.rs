@@ -269,3 +269,4 @@ fn mid_stream_contacts() {
 
 include!("recording_replay_tests_extra.rs");
 include!("recording_replay_tests_draw.rs");
+include!("recording_replay_tests_geometry.rs");

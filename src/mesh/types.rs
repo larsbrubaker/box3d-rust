@@ -305,7 +305,6 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
     let nc = node_count as usize;
     let vc = vertex_count as usize;
     let tc = triangle_count as usize;
-    let mc = material_count as usize;
 
     let noff = node_offset as usize;
     if noff + nc * MESH_NODE_SIZE > bytes.len() {
@@ -345,11 +344,13 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
         });
     }
 
+    // The material section holds one index per triangle (materialCount is the
+    // number of distinct materials, not the array length).
     let moff = material_offset as usize;
-    if moff + mc > bytes.len() {
+    if moff + tc > bytes.len() {
         return None;
     }
-    let material_indices = bytes[moff..moff + mc].to_vec();
+    let material_indices = bytes[moff..moff + tc].to_vec();
 
     let foff = flags_offset as usize;
     if foff + tc > bytes.len() {

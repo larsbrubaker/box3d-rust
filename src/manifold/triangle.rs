@@ -428,8 +428,9 @@ pub fn collide_triangle_and_capsule(
 
     let distance_output = shape_distance(&distance_input, cache, None);
 
+    let speculative_distance = speculative_distance();
     let radius = capsule_b.radius;
-    if distance_output.distance > radius + speculative_distance() {
+    if distance_output.distance > radius + speculative_distance {
         // Shapes are separated, persist the cache
         return;
     }
@@ -505,29 +506,30 @@ pub fn collide_triangle_and_capsule(
     // Deep penetration
     let face_query = query_triangle_face_and_capsule(plane, capsule_b);
     if face_query.separation > radius {
+        // Shapes are separated. Should be impossible for a reasonable capsule radius.
         return;
     }
 
     let edge_query = query_triangle_and_capsule_edges(triangle_a, plane, capsule_b);
     if edge_query.separation > radius {
+        // Shapes are separated. Should be impossible for a reasonable capsule radius.
         return;
     }
 
     // Create face contact
     let mut face_separation = face_query.separation - radius;
     build_triangle_and_capsule_face_contact(manifold, triangle_a, plane, capsule_b);
+    debug_assert!(manifold.point_count == 0 || manifold.point_count == 2);
     if manifold.point_count == 2 {
+        // This becomes the clipped separation.
         face_separation = min_float(manifold.points[0].separation, manifold.points[1].separation);
     }
 
     // Face contact can be empty if it does not realize the axis of minimum penetration.
     // Create edge contact if face contact fails or edge contact is significantly better!
-    const K_REL_EDGE_TOLERANCE: f32 = 0.50;
-    let k_abs_tolerance = 1.0 * crate::constants::linear_slop();
+    let linear_slop = crate::constants::linear_slop();
     let edge_separation = edge_query.separation - radius;
-    if manifold.point_count == 0
-        || edge_separation > K_REL_EDGE_TOLERANCE * face_separation + k_abs_tolerance
-    {
+    if manifold.point_count == 0 || edge_separation > face_separation + linear_slop {
         build_triangle_and_capsule_edge_contact(manifold, triangle_a, plane, capsule_b, edge_query);
     }
 }

@@ -9,15 +9,17 @@ use crate::body::{
 };
 use crate::distance::make_proxy;
 use crate::geometry::{Capsule, Sphere};
-use crate::hull::make_box_hull;
+use crate::hull::{make_box_hull, make_transformed_box_hull};
 use crate::id::BodyId;
 use crate::math_functions::{
-    is_normalized, make_quat_from_axis_angle, offset_pos, to_vec3, Pos, Vec3, WorldTransform, PI,
-    POS_ZERO, QUAT_IDENTITY, VEC3_ZERO,
+    is_normalized, make_quat_from_axis_angle, offset_pos, to_vec3, Pos, Transform, Vec3,
+    WorldTransform, PI, POS_ZERO, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
 use crate::shape::{create_hull_shape, create_sphere_shape, shape_is_valid};
-use crate::types::{default_body_def, default_query_filter, default_shape_def, default_world_def};
-use crate::world::World;
+use crate::types::{
+    default_body_def, default_query_filter, default_shape_def, default_world_def, BodyType,
+};
+use crate::world::{world_overlap_shape, World};
 
 fn create_query_world() -> (World, BodyId) {
     let mut world = World::new(&default_world_def());
@@ -432,6 +434,142 @@ fn overlap_filter() {
     let overlaps = body_overlap_shape(&world, body_id, POS_ZERO, &proxy, &filter, body_transform);
 
     assert!(!overlaps);
+}
+
+// A box hull proxy built around a world target with a zero origin must hit the same shapes as the
+// same box built at the local origin and queried with the target as origin. This is the origin
+// relative equivalence the world query promises, and the pattern users reach for when they bake a
+// query box with b3MakeTransformedBoxHull.
+#[test]
+fn overlap_hull_proxy_equivalence() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Static;
+    body_def.position = Pos {
+        x: 10.0 as _,
+        y: 0.0 as _,
+        z: 0.0 as _,
+    };
+    let body_id = create_body(&mut world, &body_def);
+    let box_hull = make_box_hull(1.0, 1.0, 1.0);
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
+
+    world.step(1.0 / 60.0, 1);
+
+    let filter = default_query_filter();
+
+    // Overlapping target: a 10 wide query box centered on the body.
+    {
+        let offset = Vec3::new(10.0, 0.0, 0.0);
+
+        let baked = make_transformed_box_hull(
+            5.0,
+            5.0,
+            5.0,
+            Transform {
+                p: offset,
+                q: QUAT_IDENTITY,
+            },
+        );
+        let baked_proxy = make_proxy(&baked.box_points[..baked.base.vertex_count as usize], 0.0);
+        let mut baked_hits = 0;
+        world_overlap_shape(&world, POS_ZERO, &baked_proxy, &filter, |_| {
+            baked_hits += 1;
+            true
+        });
+
+        let origin = offset_pos(POS_ZERO, offset);
+        let local = make_box_hull(5.0, 5.0, 5.0);
+        let local_proxy = make_proxy(&local.box_points[..local.base.vertex_count as usize], 0.0);
+        let mut local_hits = 0;
+        world_overlap_shape(&world, origin, &local_proxy, &filter, |_| {
+            local_hits += 1;
+            true
+        });
+
+        assert_eq!(baked_hits, 1);
+        assert_eq!(local_hits, baked_hits);
+    }
+
+    // Clearing target: same box far from the body, both formulations agree on the miss.
+    {
+        let offset = Vec3::new(100.0, 0.0, 0.0);
+
+        let baked = make_transformed_box_hull(
+            5.0,
+            5.0,
+            5.0,
+            Transform {
+                p: offset,
+                q: QUAT_IDENTITY,
+            },
+        );
+        let baked_proxy = make_proxy(&baked.box_points[..baked.base.vertex_count as usize], 0.0);
+        let mut baked_hits = 0;
+        world_overlap_shape(&world, POS_ZERO, &baked_proxy, &filter, |_| {
+            baked_hits += 1;
+            true
+        });
+
+        let origin = offset_pos(POS_ZERO, offset);
+        let local = make_box_hull(5.0, 5.0, 5.0);
+        let local_proxy = make_proxy(&local.box_points[..local.base.vertex_count as usize], 0.0);
+        let mut local_hits = 0;
+        world_overlap_shape(&world, origin, &local_proxy, &filter, |_| {
+            local_hits += 1;
+            true
+        });
+
+        assert_eq!(baked_hits, 0);
+        assert_eq!(local_hits, baked_hits);
+    }
+}
+
+// A quarter turn baked into the query hull must reach the overlap test. A long thin bar hits a body
+// off the origin when aligned along X and clears it once rotated to lie along Z.
+#[test]
+fn overlap_hull_proxy_rotation() {
+    let mut world = World::new(&default_world_def());
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Static;
+    body_def.position = Pos {
+        x: 3.0 as _,
+        y: 0.0 as _,
+        z: 0.0 as _,
+    };
+    let body_id = create_body(&mut world, &body_def);
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    create_hull_shape(&mut world, body_id, &default_shape_def(), &box_hull.base);
+
+    world.step(1.0 / 60.0, 1);
+
+    let filter = default_query_filter();
+
+    // Bar long in local X, centered at the origin, reaches the body at x = 3.
+    let aligned = make_transformed_box_hull(4.0, 0.3, 0.3, TRANSFORM_IDENTITY);
+    let aligned_proxy = make_proxy(
+        &aligned.box_points[..aligned.base.vertex_count as usize],
+        0.0,
+    );
+    let mut aligned_hits = 0;
+    world_overlap_shape(&world, POS_ZERO, &aligned_proxy, &filter, |_| {
+        aligned_hits += 1;
+        true
+    });
+    assert_eq!(aligned_hits, 1);
+
+    // Rotated a quarter turn about Y the long axis points along Z, so the bar no longer reaches x = 3.
+    let q = make_quat_from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 0.5 * PI);
+    let turned = make_transformed_box_hull(4.0, 0.3, 0.3, Transform { p: VEC3_ZERO, q });
+    let turned_proxy = make_proxy(&turned.box_points[..turned.base.vertex_count as usize], 0.0);
+    let mut turned_hits = 0;
+    world_overlap_shape(&world, POS_ZERO, &turned_proxy, &filter, |_| {
+        turned_hits += 1;
+        true
+    });
+    assert_eq!(turned_hits, 0);
 }
 
 // CollideMover -----------------------------------------------------------------------------

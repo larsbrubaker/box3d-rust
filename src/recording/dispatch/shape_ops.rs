@@ -349,6 +349,59 @@ pub(super) fn dispatch(
             }
             let _ = (payload_start, payload_size);
         }
+        RecOp::ShapeSetMeshMaterial => {
+            let mut s = rdr.snap();
+            let shape = s.shape_id();
+            let material = s.material();
+            let index = s.i32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::shape::shape_set_mesh_material(
+                    world,
+                    rdr.make_shape_id(shape),
+                    material,
+                    index,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::ShapeSetHull => {
+            let mut s = rdr.snap();
+            let shape = s.shape_id();
+            let geometry_id = s.u32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                if geometry_id as usize >= rdr.slots.len() {
+                    eprintln!("b3ReplayFile: hull geometryId {geometry_id} out of range");
+                    rdr.ok = false;
+                } else {
+                    let shape_id = rdr.make_shape_id(shape);
+                    let hull = convert_bytes_to_hull(&rdr.slots[geometry_id as usize].bytes)
+                        .expect("hull");
+                    crate::shape::shape_set_hull(world, shape_id, &hull);
+                }
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::ShapeSetMesh => {
+            let mut s = rdr.snap();
+            let shape = s.shape_id();
+            let geometry_id = s.u32();
+            let scale = s.vec3();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                if geometry_id as usize >= rdr.slots.len() {
+                    eprintln!("b3ReplayFile: mesh geometryId {geometry_id} out of range");
+                    rdr.ok = false;
+                } else {
+                    let shape_id = rdr.make_shape_id(shape);
+                    let mesh = convert_bytes_to_mesh(&rdr.slots[geometry_id as usize].bytes)
+                        .expect("mesh");
+                    crate::shape::shape_set_mesh(world, shape_id, &mesh, scale);
+                }
+            }
+            let _ = (payload_start, payload_size);
+        }
         _ => return false,
     }
     true

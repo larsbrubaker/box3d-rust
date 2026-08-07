@@ -171,9 +171,17 @@ pub fn shape_set_mesh_material(
     debug_assert!(is_valid_vec3(surface_material.tangent_velocity));
 
     let index = get_shape(world, shape_id);
+    {
+        let shape = &world.shapes[index as usize];
+        debug_assert!(0 <= material_index && material_index < shape.material_count());
+        debug_assert!(shape.shape_type() != ShapeType::Compound);
+    }
+
+    crate::recording::with_recording(world, |rec| {
+        rec.write_shape_set_mesh_material(shape_id, surface_material, material_index);
+    });
+
     let shape = &mut world.shapes[index as usize];
-    debug_assert!(0 <= material_index && material_index < shape.material_count());
-    debug_assert!(shape.shape_type() != ShapeType::Compound);
     shape.shape_materials_mut()[material_index as usize] = surface_material;
 }
 

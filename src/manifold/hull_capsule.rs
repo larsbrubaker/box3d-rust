@@ -4,10 +4,7 @@
 //! SPDX-License-Identifier: MIT
 
 use super::clip::clip_segment_to_hull_face;
-use super::sat::{
-    deepest_point_separation, query_edge_direction_hull_and_capsule,
-    query_face_direction_hull_and_capsule,
-};
+use super::sat::{query_edge_direction_hull_and_capsule, query_face_direction_hull_and_capsule};
 use super::types::{
     make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, SeparatingAxis, FEATURE_PAIR_SINGLE,
 };
@@ -19,8 +16,8 @@ use crate::hull::{
     find_hull_support_face, get_hull_edges, get_hull_planes, get_hull_points, HullData,
 };
 use crate::math_functions::{
-    abs_float, add, dot, is_within_segments, line_distance, mul_sub, mul_sv, plane_separation, sub,
-    transform_point, Transform,
+    abs_float, add, dot, is_within_segments, line_distance, min_float, mul_sub, mul_sv,
+    plane_separation, sub, transform_point, Transform,
 };
 
 /// Build face contact between a hull face and a capsule. (static b3BuildHullFaceAndCapsuleContact)
@@ -270,22 +267,22 @@ pub fn collide_hull_and_capsule(
 
     let mut face_separation = face_query.separation - capsule_b.radius;
     build_hull_face_and_capsule_contact(manifold, hull_a, capsule_b, transform_b_to_a, face_query);
-    if manifold.point_count > 1 {
-        face_separation = deepest_point_separation(manifold);
+    debug_assert!(manifold.point_count == 0 || manifold.point_count == 2);
+    if manifold.point_count == 2 {
+        // This becomes the clipped separation.
+        face_separation = min_float(manifold.points[0].separation, manifold.points[1].separation);
     }
-    debug_assert!(face_separation <= 0.0);
 
     // Is there a valid edge-edge axis?
     if edge_query.index_a == NULL_INDEX {
         return;
     }
 
-    const K_REL_EDGE_TOLERANCE: f32 = 0.90;
-    let k_abs_tolerance = 0.5 * linear_slop();
+    // Face contact can be empty if it does not realize the axis of minimum penetration.
+    // Create edge contact if face contact fails or edge contact is significantly better!
+    let linear_slop = linear_slop();
     let edge_separation = edge_query.separation - capsule_b.radius;
-    if manifold.point_count == 0
-        || edge_separation > K_REL_EDGE_TOLERANCE * face_separation + k_abs_tolerance
-    {
+    if manifold.point_count == 0 || edge_separation > face_separation + linear_slop {
         build_hull_and_capsule_edge_contact(
             manifold,
             capacity,

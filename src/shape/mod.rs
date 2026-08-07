@@ -254,6 +254,13 @@ pub fn should_query_collide(shape_filter: &Filter, query_filter: &QueryFilter) -
         && (shape_filter.mask_bits & query_filter.category_bits) != 0
 }
 
+/// (static inline b3IsConvex)
+pub fn is_convex(shape_type: ShapeType) -> bool {
+    shape_type == ShapeType::Sphere
+        || shape_type == ShapeType::Capsule
+        || shape_type == ShapeType::Hull
+}
+
 /// Convenience: unit-scale mesh geometry. (b3Mesh with identity scale)
 pub fn mesh_geometry(data: MeshData) -> ShapeGeometry {
     ShapeGeometry::Mesh {

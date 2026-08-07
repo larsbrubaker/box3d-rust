@@ -10,7 +10,7 @@ use crate::constants::MAX_SHAPE_CAST_POINTS;
 use crate::core::NULL_INDEX;
 use crate::distance::{make_proxy, ShapeProxy};
 use crate::events::{SensorBeginTouchEvent, SensorEndTouchEvent};
-use crate::geometry::{overlap_capsule, overlap_sphere, ShapeType};
+use crate::geometry::{overlap_capsule, overlap_sphere};
 use crate::height_field::overlap_height_field;
 use crate::hull::{get_hull_points, overlap_hull};
 use crate::id::ShapeId;
@@ -19,7 +19,7 @@ use crate::math_functions::{
     TRANSFORM_IDENTITY,
 };
 use crate::mesh::{overlap_mesh, Mesh};
-use crate::shape::{shape_flags, should_shapes_collide, Shape, ShapeGeometry};
+use crate::shape::{is_convex, shape_flags, should_shapes_collide, Shape, ShapeGeometry};
 use crate::solver_set::DISABLED_SET;
 use crate::types::BodyType;
 use crate::world::World;
@@ -153,11 +153,9 @@ fn sensor_accepts_visitor(
     }
 
     let other_shape = &world.shapes[visitor_shape_id as usize];
-    let other_type = other_shape.shape_type();
-    let sensor_type = sensor_shape.shape_type();
-    if (other_type == ShapeType::Mesh || other_type == ShapeType::Height)
-        && (sensor_type == ShapeType::Mesh || sensor_type == ShapeType::Height)
-    {
+
+    // Visitors must be convex.
+    if !is_convex(other_shape.shape_type()) {
         return false;
     }
 

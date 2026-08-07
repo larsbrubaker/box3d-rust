@@ -35,20 +35,20 @@ gaps.**
 
 ## Upstream tracking (recurring)
 
-Upstream Box3D moves fast (released June 2026; submodule pinned at `c52908c`,
-synced 2026-07-23 — upstream main has nothing newer; an unmerged `fixes_09`
-branch is in progress upstream and should be triaged once it lands on main).
+Upstream Box3D moves fast (released June 2026; submodule pinned at `3fc20f5`,
+synced 2026-08-07 — upstream main has nothing newer; the `fixes_09` work has
+landed and is ported).
 
 - [ ] Periodically diff the pinned submodule against upstream main; triage new
       commits into port-worthy fixes vs features; bump the pin and re-run the
       determinism gate (expected values may change with upstream fixes)
 
-## Demo parity with the c52908c samples (from the 2026-07 sync)
+## Demo parity with the 3fc20f5 samples (from the 2026-08 sync)
 
-All c52908c sample changes are now mirrored in `demo/` (the new samples —
-Bodies Gyroscopic Precession, Issues GMod Wheel Stack, Issues s&box Ghost
-Collisions — are live and the registry rows are updated). The only remaining
-item is optional visual polish, not a fidelity gap:
+All `3fc20f5` sample changes are now mirrored in `demo/` (the new samples —
+Bodies Gyroscopic Precession, Bodies Class Ring, Issues GMod Wheel Stack,
+Issues s&box Ghost Collisions — are live and the registry rows are updated).
+The only remaining item is optional visual polish, not a fidelity gap:
 
 - [ ] Optional: port the `samples/gfx` renderer/shader work (e.g. shadow PCF).
       Purely cosmetic — no sample scene, value, or behavior depends on it.

@@ -111,6 +111,10 @@ export const SAMPLES: SampleEntry[] = [
     ["Kinematic", "live", "bodies", "kinematic"],
     ["Lock Mixing", "live", "bodies", "lock-mixing"],
     ["Fixed Rotation", "live", "bodies", "fixed-rotation"],
+    // Live: a class ring (24-capsule band + heavy gem) spun at 100 rad/s flips its
+    // gem from bottom to top. The C sample's Step override is ported in the wasm
+    // scene: 960 Hz / 8 sub-steps with 15 hidden steps per rendered frame.
+    ["Class Ring", "live", "bodies", "class-ring"],
   ]),
   ...cat("Benchmark", "sample_benchmark.cpp", [
     // Live: baseCount 20 (C DEBUG; release 90 disclosed in SCENE_INFO / too heavy for

@@ -3,6 +3,40 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## Unreleased
+
+Upstream sync: the C reference pin advances to `3fc20f5` (upstream "Fixes 09"
+and "Follow cam"), and this port follows its API and behavior.
+
+### Breaking
+
+- Sensor visitors must now be convex (upstream `b3IsConvex` check); mesh,
+  height-field, and compound shapes no longer generate sensor overlaps as
+  visitors.
+- `MAX_SHAPE_CAST_POINTS` now equals `MAX_HULL_VERTICES` (128, previously 64).
+- Recording format minor version advances to 4. Older recordings still
+  replay (the loader gates on major version only), but recordings that use
+  the new shape-mutator ops are not readable by 0.3.0.
+
+### Changed
+
+- Simplified face-vs-edge contact selection in the hull-capsule and
+  triangle-capsule manifolds, matching upstream.
+
+### Fixed
+
+- Replayed-mesh material-index deserialization read the wrong element count
+  (one index per triangle is correct); replayed mesh contacts previously
+  panicked.
+
+### Added
+
+- `ShapeSetMeshMaterial`, `ShapeSetHull`, and `ShapeSetMesh` are now recorded
+  and replayed.
+- New tests: overlap hull proxy, transformed box hull, capsule face-deep
+  manifolds, and geometry mutator replay.
+- New "Class Ring" demo scene in the Bodies category.
+
 ## 0.3.0
 
 Upstream sync: the C reference pin advances to `c52908c` and this port follows

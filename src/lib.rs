@@ -188,6 +188,9 @@ mod geometry_tests;
 mod height_field_tests;
 
 #[cfg(test)]
+mod hull_box_tests;
+
+#[cfg(test)]
 mod hull_tests;
 
 #[cfg(test)]

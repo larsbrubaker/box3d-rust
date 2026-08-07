@@ -10,8 +10,8 @@ use crate::distance::get_point_support;
 use crate::geometry::Capsule;
 use crate::hull::{get_hull_edges, get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
-    abs_float, arbitrary_perp, cross, dot, length_squared, lerp, max_float, min_float, mul_sub,
-    neg, normalize, plane_separation, sub, transform_point, Transform, VEC3_ZERO,
+    abs_float, arbitrary_perp, cross, dot, length_squared, lerp, max_float, mul_sub, neg,
+    normalize, plane_separation, sub, transform_point, Transform, VEC3_ZERO,
 };
 
 /// Face directions for hull vs capsule. (static b3QueryFaceDirectionHullAndCapsule)
@@ -138,15 +138,6 @@ pub(crate) fn query_edge_direction_hull_and_capsule(
         index_b: max_index_b,
         type_: SeparatingFeature::InvalidAxis,
     }
-}
-
-/// Deepest (most negative) separation among manifold points.
-pub(crate) fn deepest_point_separation(manifold: &LocalManifold) -> f32 {
-    let mut min_separation = f32::MAX;
-    for i in 0..manifold.point_count {
-        min_separation = min_float(min_separation, manifold.points[i as usize].separation);
-    }
-    min_separation
 }
 
 /// Reduce manifold points to a maximum of 4. Modifies `points` in place.
