@@ -28,6 +28,13 @@ and "Follow cam"), and this port follows its API and behavior.
 - Replayed-mesh material-index deserialization read the wrong element count
   (one index per triangle is correct); replayed mesh contacts previously
   panicked.
+- The same bug in the compound deserializer's duplicated nested-mesh reader:
+  multi-material mesh children restored from bytes panicked on first contact.
+  The duplicated readers are gone; nested blobs now go through the standalone
+  converters.
+- Corrupt or kind-mismatched geometry in a recording file now fails the
+  replay gracefully instead of panicking (a deliberate, documented divergence
+  from C, which trusts the blob).
 
 ### Added
 
