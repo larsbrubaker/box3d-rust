@@ -1,8 +1,13 @@
 //! Compound blob deserialization (convert from bytes).
 //!
 //! Port of `b3ConvertBytesToCompound`, split from `serialize.rs` to satisfy the
-//! file-length limit. Also holds the readers for the hull and mesh blobs nested inside a
-//! compound buffer, which C reaches by casting a pointer into the blob.
+//! file-length limit.
+//!
+//! The hull and mesh blobs nested inside a compound buffer are byte-for-byte copies of the
+//! standalone blobs: `b3CreateCompound` memcpy's `hullData->byteCount` / `meshData->byteCount`
+//! bytes into the compound buffer (compound.c lines 587 and 606). C then reaches them by
+//! casting a pointer into the blob; the Rust port slices them out with [`sub_blob`] and
+//! parses them with the standalone converters, so the two readers cannot drift apart.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -15,12 +20,9 @@ use super::types::{
 use crate::core::NULL_INDEX;
 use crate::dynamic_tree::{DynamicTree, TreeNode, ALLOCATED_NODE, DYNAMIC_TREE_VERSION, LEAF_NODE};
 use crate::geometry::{SurfaceMaterial, SURFACE_MATERIAL_SIZE};
-use crate::hull::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION};
-use crate::math_functions::{Aabb, Matrix3, Plane, Quat, Transform, Vec3};
-use crate::mesh::{
-    MeshData, MeshNode, MeshTriangle, MESH_DATA_SIZE, MESH_NODE_SIZE, MESH_TRIANGLE_SIZE,
-    MESH_VERSION,
-};
+use crate::hull::convert_bytes_to_hull;
+use crate::math_functions::{Aabb, Quat, Transform, Vec3};
+use crate::mesh::convert_bytes_to_mesh;
 
 fn read_u64(buf: &[u8], o: usize) -> u64 {
     u64::from_le_bytes(buf[o..o + 8].try_into().unwrap())
@@ -95,251 +97,6 @@ fn read_tree_node(buf: &[u8], o: usize) -> TreeNode {
     }
 }
 
-fn read_plane(buf: &[u8], o: usize) -> Plane {
-    Plane {
-        normal: read_vec3(buf, o),
-        offset: read_f32(buf, o + 12),
-    }
-}
-
-fn read_matrix3(buf: &[u8], o: usize) -> Matrix3 {
-    Matrix3 {
-        cx: read_vec3(buf, o),
-        cy: read_vec3(buf, o + 12),
-        cz: read_vec3(buf, o + 24),
-    }
-}
-
-fn read_hull_data(buf: &[u8]) -> Option<HullData> {
-    if buf.len() < HULL_DATA_SIZE {
-        return None;
-    }
-    let version = read_u64(buf, 0);
-    if version != HULL_VERSION {
-        return None;
-    }
-    let byte_count = read_i32(buf, 8);
-    if byte_count as usize > buf.len() || byte_count < HULL_DATA_SIZE as i32 {
-        return None;
-    }
-    let hash = read_u32(buf, 12);
-    let aabb = read_aabb(buf, 16);
-    let surface_area = read_f32(buf, 40);
-    let volume = read_f32(buf, 44);
-    let inner_radius = read_f32(buf, 48);
-    let center = read_vec3(buf, 52);
-    let central_inertia = read_matrix3(buf, 64);
-    let vertex_count = read_i32(buf, 100);
-    let vertex_offset = read_i32(buf, 104);
-    let point_offset = read_i32(buf, 108);
-    let edge_count = read_i32(buf, 112);
-    let edge_offset = read_i32(buf, 116);
-    let face_count = read_i32(buf, 120);
-    let plane_offset = read_i32(buf, 124);
-    let face_offset = read_i32(buf, 128);
-    let soa_vertex_offset = read_i32(buf, 132);
-    let soa_normal_offset = read_i32(buf, 136);
-    let padding = read_i32(buf, 140);
-
-    // Section validation, as in `convert_bytes_to_compound` itself: the nested blob is
-    // just as untrusted as the outer one, and `sub_blob` only bounds its outer extent.
-    let voff = section_offset(vertex_offset, vertex_count, 1, buf.len())?;
-    let mut vertices = Vec::with_capacity(vertex_count as usize);
-    for i in 0..vertex_count as usize {
-        vertices.push(HullVertex {
-            edge: buf[voff + i],
-        });
-    }
-
-    let poff = section_offset(point_offset, vertex_count, 12, buf.len())?;
-    let mut points = Vec::with_capacity(vertex_count as usize);
-    for i in 0..vertex_count as usize {
-        points.push(read_vec3(buf, poff + i * 12));
-    }
-
-    let eoff = section_offset(edge_offset, edge_count, 4, buf.len())?;
-    let mut edges = Vec::with_capacity(edge_count as usize);
-    for i in 0..edge_count as usize {
-        let o = eoff + i * 4;
-        edges.push(HullHalfEdge {
-            next: buf[o],
-            twin: buf[o + 1],
-            origin: buf[o + 2],
-            face: buf[o + 3],
-        });
-    }
-
-    let foff = section_offset(face_offset, face_count, 1, buf.len())?;
-    let mut faces = Vec::with_capacity(face_count as usize);
-    for i in 0..face_count as usize {
-        faces.push(HullFace {
-            edge: buf[foff + i],
-        });
-    }
-
-    let ploff = section_offset(plane_offset, face_count, 16, buf.len())?;
-    let mut planes = Vec::with_capacity(face_count as usize);
-    for i in 0..face_count as usize {
-        planes.push(read_plane(buf, ploff + i * 16));
-    }
-
-    // The counts are already bounded by their sections above, so these cannot overflow.
-    let soa_vertex_count = (vertex_count as usize + 3) & !3;
-    let svoff = section_offset(
-        soa_vertex_offset,
-        i32::try_from(3 * soa_vertex_count).ok()?,
-        4,
-        buf.len(),
-    )?;
-    let mut soa_vertices = Vec::with_capacity(3 * soa_vertex_count);
-    for i in 0..3 * soa_vertex_count {
-        soa_vertices.push(read_f32(buf, svoff + i * 4));
-    }
-
-    let soa_normal_count = (face_count as usize + 3) & !3;
-    let snoff = section_offset(
-        soa_normal_offset,
-        i32::try_from(3 * soa_normal_count).ok()?,
-        4,
-        buf.len(),
-    )?;
-    let mut soa_normals = Vec::with_capacity(3 * soa_normal_count);
-    for i in 0..3 * soa_normal_count {
-        soa_normals.push(read_f32(buf, snoff + i * 4));
-    }
-
-    Some(HullData {
-        version,
-        byte_count,
-        hash,
-        aabb,
-        surface_area,
-        volume,
-        inner_radius,
-        center,
-        central_inertia,
-        vertex_count,
-        vertex_offset,
-        point_offset,
-        edge_count,
-        edge_offset,
-        face_count,
-        plane_offset,
-        face_offset,
-        soa_vertex_offset,
-        soa_normal_offset,
-        padding,
-        vertices,
-        points,
-        edges,
-        faces,
-        planes,
-        soa_vertices,
-        soa_normals,
-    })
-}
-
-fn read_mesh_data(buf: &[u8]) -> Option<MeshData> {
-    if buf.len() < MESH_DATA_SIZE {
-        return None;
-    }
-    let version = read_u64(buf, 0);
-    if version != MESH_VERSION {
-        return None;
-    }
-    let byte_count = read_i32(buf, 8);
-    if byte_count as usize > buf.len() || byte_count < MESH_DATA_SIZE as i32 {
-        return None;
-    }
-    let hash = read_u32(buf, 12);
-    let bounds = read_aabb(buf, 16);
-    let surface_area = read_f32(buf, 40);
-    let tree_height = read_i32(buf, 44);
-    let degenerate_count = read_i32(buf, 48);
-    let node_offset = read_i32(buf, 52);
-    let node_count = read_i32(buf, 56);
-    let vertex_offset = read_i32(buf, 60);
-    let vertex_count = read_i32(buf, 64);
-    let triangle_offset = read_i32(buf, 68);
-    let triangle_count = read_i32(buf, 72);
-    let material_offset = read_i32(buf, 76);
-    let material_count = read_i32(buf, 80);
-    let flags_offset = read_i32(buf, 84);
-
-    // Section validation, as in `convert_bytes_to_compound` itself: the nested blob is
-    // just as untrusted as the outer one, and `sub_blob` only bounds its outer extent.
-    let noff = section_offset(node_offset, node_count, MESH_NODE_SIZE, buf.len())?;
-    let mut nodes = Vec::with_capacity(node_count as usize);
-    for i in 0..node_count as usize {
-        let o = noff + i * MESH_NODE_SIZE;
-        nodes.push(MeshNode {
-            lower_bound: read_vec3(buf, o),
-            data: read_u32(buf, o + 12),
-            upper_bound: read_vec3(buf, o + 16),
-            triangle_offset: read_u32(buf, o + 28),
-        });
-    }
-
-    let voff = section_offset(vertex_offset, vertex_count, 12, buf.len())?;
-    let mut vertices = Vec::with_capacity(vertex_count as usize);
-    for i in 0..vertex_count as usize {
-        vertices.push(read_vec3(buf, voff + i * 12));
-    }
-
-    let toff = section_offset(
-        triangle_offset,
-        triangle_count,
-        MESH_TRIANGLE_SIZE,
-        buf.len(),
-    )?;
-    let mut triangles = Vec::with_capacity(triangle_count as usize);
-    for i in 0..triangle_count as usize {
-        let o = toff + i * MESH_TRIANGLE_SIZE;
-        triangles.push(MeshTriangle {
-            index1: read_i32(buf, o),
-            index2: read_i32(buf, o + 4),
-            index3: read_i32(buf, o + 8),
-        });
-    }
-
-    let mat_start = section_offset(material_offset, material_count, 1, buf.len())?;
-    let material_indices = buf[mat_start..mat_start + material_count as usize].to_vec();
-    // flagsOffset == 0 means "no flag section"; only a negative value is corrupt.
-    if flags_offset < 0 {
-        return None;
-    }
-    let flags = if flags_offset > 0 {
-        let flags_start = section_offset(flags_offset, triangle_count, 1, buf.len())?;
-        buf[flags_start..flags_start + triangle_count as usize].to_vec()
-    } else {
-        Vec::new()
-    };
-
-    Some(MeshData {
-        version,
-        byte_count,
-        hash,
-        bounds,
-        surface_area,
-        tree_height,
-        degenerate_count,
-        node_offset,
-        node_count,
-        vertex_offset,
-        vertex_count,
-        triangle_offset,
-        triangle_count,
-        material_offset,
-        material_count,
-        flags_offset,
-        nodes,
-        vertices,
-        triangles,
-        material_indices,
-        flags,
-    })
-}
-
 /// Validate one trailing-section offset against the blob and return it as an index.
 ///
 /// Divergence from C: `b3ConvertBytesToCompound` casts the stored offsets straight to
@@ -362,7 +119,8 @@ fn section_offset(offset: i32, count: i32, stride: usize, len: usize) -> Option<
 ///
 /// Divergence from C: the C reader offsets a pointer and trusts the nested `byteCount`.
 /// The Rust port bounds-checks both, so a corrupt blob fails the conversion instead of
-/// panicking on the slice.
+/// panicking on the slice. The returned slice is exactly `byteCount` long, which is what
+/// `convert_bytes_to_hull` / `convert_bytes_to_mesh` require of a standalone blob.
 fn sub_blob(bytes: &[u8], offset: u32) -> Option<&[u8]> {
     let start = offset as usize;
     // byteCount is at offset 8 of both the hull and the mesh header.
@@ -500,7 +258,7 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
             inst.shared_index = *idx as u32;
         } else {
             let idx = shared_hulls.len();
-            let hull = read_hull_data(sub_blob(bytes, off)?)?;
+            let hull = convert_bytes_to_hull(sub_blob(bytes, off)?)?;
             shared_hulls.push(hull);
             offset_to_shared.push((off, idx));
             inst.shared_index = idx as u32;
@@ -537,7 +295,7 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
             inst.shared_index = *idx as u32;
         } else {
             let idx = shared_meshes.len();
-            let mesh = read_mesh_data(sub_blob(bytes, off)?)?;
+            let mesh = convert_bytes_to_mesh(sub_blob(bytes, off)?)?;
             shared_meshes.push(mesh);
             mesh_offset_to_shared.push((off, idx));
             inst.shared_index = idx as u32;

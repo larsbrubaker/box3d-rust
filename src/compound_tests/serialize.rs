@@ -9,7 +9,7 @@ use crate::compound::{
 use crate::geometry::{default_surface_material, Capsule, RayCastInput, Sphere};
 use crate::hull::make_box_hull;
 use crate::math_functions::{Transform, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO};
-use crate::mesh::{create_box_mesh, destroy_mesh, MeshData};
+use crate::mesh::{create_box_mesh, create_grid_mesh, destroy_mesh, MeshData};
 
 fn build_serializable_compound(md: &MeshData) -> CompoundData {
     let mat = default_surface_material();
@@ -84,6 +84,116 @@ fn compound_serialize_roundtrip() {
     assert_eq!(ray_b.hit, ray_a.hit);
     assert!((ray_b.fraction - ray_a.fraction).abs() < 1e-5);
     assert_eq!(ray_b.child_index, ray_a.child_index);
+    destroy_mesh(md);
+}
+
+/// The mesh blob nested inside a compound is a byte-for-byte copy of the standalone mesh
+/// blob (compound.c line 606 memcpy's `meshData->byteCount` bytes), so its material index
+/// section holds one `uint8_t` per triangle (mesh.c line 1690), not one per distinct
+/// material. A multi-material mesh child must survive the round trip intact.
+#[test]
+fn compound_serialize_multi_material_mesh_child() {
+    let md = create_grid_mesh(4, 4, 1.0, 2, false).expect("grid mesh");
+    assert_eq!(md.material_count, 2);
+    assert!(md.triangle_count > md.material_count);
+    assert_eq!(md.material_indices.len(), md.triangle_count as usize);
+
+    let mat = default_surface_material();
+    let mut mat2 = default_surface_material();
+    mat2.friction = 0.25;
+    let mesh = CompoundMeshDef {
+        mesh_data: &md,
+        transform: TRANSFORM_IDENTITY,
+        scale: v(1.0, 1.0, 1.0),
+        materials: &[mat, mat2],
+    };
+    let a = create_compound(&CompoundDef {
+        capsules: &[],
+        hulls: &[],
+        meshes: &[mesh],
+        spheres: &[],
+    })
+    .expect("compound");
+    let buffer = convert_compound_to_bytes(&a);
+    destroy_compound(a);
+    let b = convert_bytes_to_compound(&buffer).expect("deserialize");
+    assert_eq!(b.shared_meshes.len(), 1);
+    let restored = &b.shared_meshes[0];
+    assert_eq!(
+        restored.material_indices.len(),
+        md.material_indices.len(),
+        "nested mesh material indices must be one per triangle"
+    );
+    assert_eq!(restored.material_indices, md.material_indices);
+    assert_eq!(restored.flags.len(), md.flags.len());
+    assert_eq!(restored.flags, md.flags);
+    destroy_mesh(md);
+}
+
+/// End-to-end version of the above: a sphere resting on a deserialized compound whose mesh
+/// child has more triangles than materials. `b3ComputeMeshManifolds` looks the child's
+/// material up by triangle index (mesh_contact.rs, mirroring mesh_contact.c line 1131), so a
+/// material index array sized by the distinct material count panics on the first contact.
+#[test]
+fn compound_deserialized_mesh_child_material_lookup() {
+    use crate::body::{body_get_position, create_body};
+    use crate::shape::{create_baked_compound_shape, create_sphere_shape};
+    use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
+    use crate::world::World;
+
+    let md = create_grid_mesh(8, 8, 1.0, 2, false).expect("grid mesh");
+    let mat = default_surface_material();
+    let mut mat2 = default_surface_material();
+    mat2.friction = 0.9;
+    let a = create_compound(&CompoundDef {
+        meshes: &[CompoundMeshDef {
+            mesh_data: &md,
+            transform: TRANSFORM_IDENTITY,
+            scale: v(1.0, 1.0, 1.0),
+            materials: &[mat, mat2],
+        }],
+        ..Default::default()
+    })
+    .expect("compound");
+    let buffer = convert_compound_to_bytes(&a);
+    destroy_compound(a);
+    let restored = convert_bytes_to_compound(&buffer).expect("deserialize");
+
+    let mut world = World::new(&default_world_def());
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    create_baked_compound_shape(&mut world, ground, &default_shape_def(), &restored);
+
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    body_def.position = crate::math_functions::Pos {
+        x: 0.5 as _,
+        y: 1.0 as _,
+        z: 0.5 as _,
+    };
+    let body = create_body(&mut world, &body_def);
+    create_sphere_shape(
+        &mut world,
+        body,
+        &default_shape_def(),
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.25,
+        },
+    );
+
+    for _ in 0..60 {
+        world.step(1.0 / 60.0, 4);
+    }
+    // The sphere lands on the mesh instead of falling through, and the per-triangle
+    // material lookup ran for every contact along the way.
+    let p = body_get_position(&world, body);
+    assert!(
+        p.y > 0.2,
+        "sphere fell through the compound mesh: y={}",
+        p.y
+    );
     destroy_mesh(md);
 }
 

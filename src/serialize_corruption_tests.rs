@@ -185,9 +185,9 @@ fn nested_mesh_start(bytes: &[u8]) -> usize {
     read_i32_at(bytes, instances + 40) as usize
 }
 
-/// The hull blob nested inside a compound is parsed by `read_hull_data`, a second reader
-/// that `sub_blob` only bounds at the outer slice. Its own section offsets and counts have
-/// to be validated too, or a corrupt compound panics deep inside the nested parse.
+/// The hull blob nested inside a compound is sliced out by `sub_blob`, which only bounds its
+/// outer extent, and then parsed by `convert_bytes_to_hull`. Its own section offsets and
+/// counts have to be validated too, or a corrupt compound panics inside the nested parse.
 #[test]
 fn compound_nested_hull_blob_validated() {
     let bytes = serialized_compound();
@@ -212,7 +212,7 @@ fn compound_nested_hull_blob_validated() {
     }
 }
 
-/// Same for the mesh blob nested inside a compound, parsed by `read_mesh_data`.
+/// Same for the mesh blob nested inside a compound, parsed by `convert_bytes_to_mesh`.
 #[test]
 fn compound_nested_mesh_blob_validated() {
     let bytes = serialized_compound();
