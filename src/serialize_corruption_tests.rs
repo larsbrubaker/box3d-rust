@@ -53,7 +53,7 @@ fn mesh_blob_section_offsets_validated() {
     let mesh = create_grid_mesh(4, 4, 2.0, 2, false).expect("mesh");
     let bytes = mesh.to_bytes();
     // node, vertex, triangle, material, flags section offsets.
-    assert_offsets_validated(&bytes, &[52, 60, 68, 76, 84], |b| {
+    assert_offsets_validated(&bytes, &[56, 64, 72, 80, 88], |b| {
         convert_bytes_to_mesh(b).is_some()
     });
     destroy_mesh(mesh);
@@ -64,7 +64,7 @@ fn mesh_blob_negative_counts_rejected() {
     let mesh = create_grid_mesh(4, 4, 2.0, 2, false).expect("mesh");
     let bytes = mesh.to_bytes();
     // node, vertex, triangle, material counts.
-    for offset in [56usize, 64, 72, 80] {
+    for offset in [60usize, 68, 76, 84] {
         assert!(convert_bytes_to_mesh(&with_i32(&bytes, offset, -1)).is_none());
     }
     destroy_mesh(mesh);
@@ -95,7 +95,7 @@ fn height_field_blob_section_offsets_validated() {
     let hf = create_height_field(&def);
     let bytes = hf.to_bytes();
     // heights, material, flags section offsets.
-    assert_offsets_validated(&bytes, &[72, 76, 80], |b| {
+    assert_offsets_validated(&bytes, &[76, 80, 84], |b| {
         convert_bytes_to_height_field(b).is_some()
     });
 }
@@ -220,7 +220,7 @@ fn compound_nested_mesh_blob_validated() {
     assert!(convert_bytes_to_compound(&bytes).is_some());
 
     // node, vertex, triangle, material, flags section offsets.
-    for offset in [52usize, 60, 68, 76, 84] {
+    for offset in [56usize, 64, 72, 80, 88] {
         for poison in [-16, i32::MAX] {
             assert!(
                 convert_bytes_to_compound(&with_i32(&bytes, base + offset, poison)).is_none(),
@@ -229,7 +229,7 @@ fn compound_nested_mesh_blob_validated() {
         }
     }
     // node, vertex, triangle, material counts.
-    for offset in [56usize, 64, 72, 80] {
+    for offset in [60usize, 68, 76, 84] {
         assert!(
             convert_bytes_to_compound(&with_i32(&bytes, base + offset, -1)).is_none(),
             "nested mesh negative count at blob byte {offset} was accepted"

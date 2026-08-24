@@ -180,15 +180,6 @@ pub fn hash64_non_zero(bytes: &[u8]) -> u64 {
     }
 }
 
-/// Geometry content hashes reserve zero to mean unhashed. (core.h: b3NonZeroHash)
-pub fn non_zero_hash(hash: u32) -> u32 {
-    if hash != 0 {
-        hash
-    } else {
-        1
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

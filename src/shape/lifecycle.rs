@@ -301,7 +301,13 @@ pub fn create_hull_shape(
     hull: &HullData,
 ) -> ShapeId {
     debug_assert!(crate::hull::is_valid_hull(hull));
+    debug_assert!(hull.version == crate::hull::HULL_VERSION);
     debug_assert!(hull.hash != 0);
+
+    if hull.version != crate::hull::HULL_VERSION {
+        return NULL_SHAPE_ID;
+    }
+
     let shared = world.hull_database.add(hull);
     let shape_id = create_shape(world, body_id, def, ShapeGeometry::Hull(shared));
     if shape_id.index1 != 0 {
@@ -325,7 +331,13 @@ pub fn create_mesh_shape(
     scale: Vec3,
 ) -> ShapeId {
     debug_assert!(is_valid_mesh(Some(mesh)));
+    debug_assert!(mesh.version == crate::mesh::MESH_VERSION);
     debug_assert!(mesh.hash != 0);
+
+    if mesh.version != crate::mesh::MESH_VERSION {
+        return NULL_SHAPE_ID;
+    }
+
     let shape_id = create_shape(
         world,
         body_id,
@@ -353,7 +365,13 @@ pub fn create_height_field_shape(
     def: &ShapeDef,
     height_field: &HeightFieldData,
 ) -> ShapeId {
+    debug_assert!(height_field.version == crate::height_field::HEIGHT_FIELD_VERSION);
     debug_assert!(height_field.hash != 0);
+
+    if height_field.version != crate::height_field::HEIGHT_FIELD_VERSION {
+        return NULL_SHAPE_ID;
+    }
+
     let shape_id = create_shape(
         world,
         body_id,
@@ -383,6 +401,12 @@ pub fn create_baked_compound_shape(
     compound: &CompoundData,
 ) -> ShapeId {
     debug_assert!(!def.is_sensor);
+    debug_assert!(compound.version == crate::compound::COMPOUND_VERSION);
+
+    if compound.version != crate::compound::COMPOUND_VERSION {
+        return NULL_SHAPE_ID;
+    }
+
     let shape_id = create_shape(
         world,
         body_id,

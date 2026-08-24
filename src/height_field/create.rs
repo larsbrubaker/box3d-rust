@@ -9,7 +9,7 @@ use super::types::{
     INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3,
 };
 use crate::constants::linear_slop;
-use crate::core::{hash, non_zero_hash, HASH_INIT};
+use crate::core::hash64_non_zero;
 use crate::math_functions::{
     align_up8, clamp_float, cross, dot, make_plane_from_points, max_float, min_float, mul,
     normalize, plane_separation, sub, Aabb, Vec3,
@@ -18,9 +18,11 @@ use crate::math_functions::{
 const _: () = assert!(CONCAVE_EDGE3 == 4 * CONCAVE_EDGE1);
 const _: () = assert!(INVERSE_CONCAVE_EDGE3 == 4 * INVERSE_CONCAVE_EDGE1);
 
+// Must ensure the hash is 0 so it doesn't contribute to itself.
 fn finalize_hash(hf: &mut HeightFieldData) {
+    hf.hash = 0;
     let bytes = hf.to_bytes_with_hash(0);
-    hf.hash = non_zero_hash(hash(HASH_INIT, &bytes));
+    hf.hash = hash64_non_zero(&bytes);
 }
 
 /// Create a height field from a definition. (b3CreateHeightField)
@@ -57,7 +59,7 @@ pub fn create_height_field(data: &HeightFieldDef) -> HeightFieldData {
         material_offset,
         flags_offset,
         clockwise: data.clockwise_winding,
-        padding: [0; 3],
+        padding: [0; 7],
         compressed_heights: vec![0; height_count],
         material_indices: vec![0; cell_count],
         flags: vec![0; triangle_count],

@@ -5,11 +5,11 @@
 //! In C, `b3HullData` is a 144-byte header with vertex/point/edge/plane/face arrays plus
 //! structure-of-array (SOA) vertices and normals hanging off the end at the recorded byte
 //! offsets (`b3AlignUp8` between sections). `b3BoxHull` embeds the same header plus fixed
-//! arrays (total 648 bytes).
+//! arrays (total 640 bytes).
 //!
 //! Rust stores the header fields plus owned `Vec`s for the arrays. Offsets and
 //! `byte_count` are kept identical to C so [`HullData::to_bytes`] / [`BoxHull::to_bytes`]
-//! reproduce the contiguous layout used by `b3Hash` and `memcmp`.
+//! reproduce the contiguous layout used by `b3Hash64NonZero` and `memcmp`.
 //!
 //! # SOA arrays
 //!
@@ -21,13 +21,18 @@
 use crate::math_functions::{Aabb, Matrix3, Plane, Vec3, MAT3_ZERO, VEC3_ZERO};
 
 /// 64-bit hull version. Useful for validating serialized data. (B3_HULL_VERSION)
-pub const HULL_VERSION: u64 = 0xDA5150191B994C01;
+pub const HULL_VERSION: u64 = 0x4A4C9587DE57485C;
 
 /// Size of the C `b3HullData` header. (_Static_assert in hull.c)
 pub const HULL_DATA_SIZE: usize = 144;
 
+/// Byte offset of `b3HullData::byteCount`, which C keeps as the last named field of the
+/// header. Readers that only have raw bytes (the compound blob reader) need this to find
+/// the extent of a nested hull. Kept honest by a `debug_assert!` in `write_header`.
+pub const HULL_BYTE_COUNT_OFFSET: usize = 140;
+
 /// Size of the C `b3BoxHull`. (_Static_assert in hull.c)
-pub const BOX_HULL_SIZE: usize = 648;
+pub const BOX_HULL_SIZE: usize = 640;
 
 /// A hull vertex. Identified by a half-edge with this vertex as its tail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -66,8 +71,7 @@ pub struct HullFace {
 #[derive(Debug, Clone)]
 pub struct HullData {
     pub version: u64,
-    pub byte_count: i32,
-    pub hash: u32,
+    pub hash: u64,
     pub aabb: Aabb,
     pub surface_area: f32,
     pub volume: f32,
@@ -84,7 +88,8 @@ pub struct HullData {
     pub face_offset: i32,
     pub soa_vertex_offset: i32,
     pub soa_normal_offset: i32,
-    pub padding: i32,
+    /// The total number of bytes for this hull. Last named field in C.
+    pub byte_count: i32,
     pub vertices: Vec<HullVertex>,
     pub points: Vec<Vec3>,
     pub edges: Vec<HullHalfEdge>,
@@ -102,7 +107,6 @@ impl Default for HullData {
     fn default() -> Self {
         Self {
             version: HULL_VERSION,
-            byte_count: 0,
             hash: 0,
             aabb: Aabb::default(),
             surface_area: 0.0,
@@ -120,7 +124,7 @@ impl Default for HullData {
             face_offset: 0,
             soa_vertex_offset: 0,
             soa_normal_offset: 0,
-            padding: 0,
+            byte_count: 0,
             vertices: Vec::new(),
             points: Vec::new(),
             edges: Vec::new(),
@@ -141,7 +145,7 @@ pub struct BoxHull {
     pub box_edges: [HullHalfEdge; 24],
     pub box_planes: [Plane; 6],
     pub box_faces: [HullFace; 6],
-    pub padding: [u8; 10],
+    pub padding: [u8; 2],
     pub vx: [f32; 8],
     pub vy: [f32; 8],
     pub vz: [f32; 8],
@@ -250,10 +254,6 @@ pub fn get_hull_soa_normals(hull: &HullData) -> &[f32] {
     &hull.soa_normals
 }
 
-fn write_u32_le(buf: &mut Vec<u8>, v: u32) {
-    buf.extend_from_slice(&v.to_le_bytes());
-}
-
 fn write_i32_le(buf: &mut Vec<u8>, v: i32) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -288,10 +288,9 @@ fn write_plane(buf: &mut Vec<u8>, p: Plane) {
     write_f32_le(buf, p.offset);
 }
 
-fn write_header(buf: &mut Vec<u8>, h: &HullData, hash_override: Option<u32>) {
+fn write_header(buf: &mut Vec<u8>, h: &HullData, hash_override: Option<u64>) {
     write_u64_le(buf, h.version);
-    write_i32_le(buf, h.byte_count);
-    write_u32_le(buf, hash_override.unwrap_or(h.hash));
+    write_u64_le(buf, hash_override.unwrap_or(h.hash));
     write_aabb(buf, h.aabb);
     write_f32_le(buf, h.surface_area);
     write_f32_le(buf, h.volume);
@@ -308,7 +307,8 @@ fn write_header(buf: &mut Vec<u8>, h: &HullData, hash_override: Option<u32>) {
     write_i32_le(buf, h.face_offset);
     write_i32_le(buf, h.soa_vertex_offset);
     write_i32_le(buf, h.soa_normal_offset);
-    write_i32_le(buf, h.padding);
+    debug_assert_eq!(buf.len(), HULL_BYTE_COUNT_OFFSET);
+    write_i32_le(buf, h.byte_count);
     debug_assert_eq!(buf.len(), HULL_DATA_SIZE);
 }
 
@@ -391,11 +391,11 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
     if version != HULL_VERSION {
         return None;
     }
-    let byte_count = read_i32_le(bytes, 8);
+    let byte_count = read_i32_le(bytes, HULL_BYTE_COUNT_OFFSET);
     if byte_count < HULL_DATA_SIZE as i32 || bytes.len() != byte_count as usize {
         return None;
     }
-    let hash = read_u32_le(bytes, 12);
+    let hash = read_u64_le(bytes, 8);
     let aabb = read_aabb(bytes, 16);
     let surface_area = read_f32_le(bytes, 40);
     let volume = read_f32_le(bytes, 44);
@@ -412,7 +412,6 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
     let face_offset = read_i32_le(bytes, 128);
     let soa_vertex_offset = read_i32_le(bytes, 132);
     let soa_normal_offset = read_i32_le(bytes, 136);
-    let padding = read_i32_le(bytes, 140);
 
     if vertex_count < 0 || edge_count < 0 || face_count < 0 {
         return None;
@@ -477,7 +476,6 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
 
     Some(HullData {
         version,
-        byte_count,
         hash,
         aabb,
         surface_area,
@@ -495,7 +493,7 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         face_offset,
         soa_vertex_offset,
         soa_normal_offset,
-        padding,
+        byte_count,
         vertices,
         points,
         edges,
@@ -513,7 +511,7 @@ impl HullData {
     }
 
     /// Like [`to_bytes`], but with an explicit hash field (use 0 when computing the hash).
-    pub fn to_bytes_with_hash(&self, hash: u32) -> Vec<u8> {
+    pub fn to_bytes_with_hash(&self, hash: u64) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.byte_count as usize);
         write_header(&mut buf, self, Some(hash));
         pad_to(&mut buf, self.vertex_offset as usize);
@@ -554,12 +552,12 @@ impl HullData {
 }
 
 impl BoxHull {
-    /// Serialize to the C `b3BoxHull` layout (440 bytes).
+    /// Serialize to the C `b3BoxHull` layout (640 bytes).
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_bytes_with_hash(self.base.hash)
     }
 
-    pub fn to_bytes_with_hash(&self, hash: u32) -> Vec<u8> {
+    pub fn to_bytes_with_hash(&self, hash: u64) -> Vec<u8> {
         let mut buf = Vec::with_capacity(BOX_HULL_SIZE);
         write_header(&mut buf, &self.base, Some(hash));
         for v in &self.box_vertices {

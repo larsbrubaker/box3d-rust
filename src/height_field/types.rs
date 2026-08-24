@@ -11,10 +11,10 @@ use crate::math_functions::{Aabb, Vec3, VEC3_ZERO};
 pub const HEIGHT_FIELD_HOLE: u8 = 0xFF;
 
 /// 64-bit height-field version. (B3_HEIGHT_FIELD_VERSION)
-pub const HEIGHT_FIELD_VERSION: u64 = 0x8B18CBD138A6BC84;
+pub const HEIGHT_FIELD_VERSION: u64 = 0x8E41E5FB084848F8;
 
 /// Size of the C `b3HeightFieldData` header (explicit padding, no unnamed gaps).
-pub const HEIGHT_FIELD_DATA_SIZE: usize = 88;
+pub const HEIGHT_FIELD_DATA_SIZE: usize = 96;
 
 /// Triangle mesh edge flags. (b3MeshEdgeFlags)
 pub const CONCAVE_EDGE1: i32 = 0x01;
@@ -65,12 +65,12 @@ impl Default for HeightFieldDef {
 ///
 /// Maps to C's `b3HeightFieldData` + trailing blob. Offsets and `byte_count` match
 /// C so [`HeightFieldData::to_bytes`] reproduces the contiguous layout used by
-/// `b3Hash`.
+/// `b3Hash64NonZero`.
 #[derive(Debug, Clone)]
 pub struct HeightFieldData {
     pub version: u64,
+    pub hash: u64,
     pub byte_count: i32,
-    pub hash: u32,
     pub aabb: Aabb,
     pub min_height: f32,
     pub max_height: f32,
@@ -81,8 +81,9 @@ pub struct HeightFieldData {
     pub heights_offset: i32,
     pub material_offset: i32,
     pub flags_offset: i32,
+    /// Triangle winding. C stores this as a `uint8_t`; the byte layout is identical.
     pub clockwise: bool,
-    pub padding: [u8; 3],
+    pub padding: [u8; 7],
     pub compressed_heights: Vec<u16>,
     pub material_indices: Vec<u8>,
     pub flags: Vec<u8>,
@@ -92,8 +93,8 @@ impl Default for HeightFieldData {
     fn default() -> Self {
         Self {
             version: HEIGHT_FIELD_VERSION,
-            byte_count: 0,
             hash: 0,
+            byte_count: 0,
             aabb: Aabb::default(),
             min_height: 0.0,
             max_height: 0.0,
@@ -105,7 +106,7 @@ impl Default for HeightFieldData {
             material_offset: 0,
             flags_offset: 0,
             clockwise: false,
-            padding: [0; 3],
+            padding: [0; 7],
             compressed_heights: Vec::new(),
             material_indices: Vec::new(),
             flags: Vec::new(),
@@ -199,23 +200,23 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
     if version != HEIGHT_FIELD_VERSION {
         return None;
     }
-    let byte_count = read_i32_le(bytes, 8);
+    let hash = read_u64_le(bytes, 8);
+    let byte_count = read_i32_le(bytes, 16);
     if byte_count < HEIGHT_FIELD_DATA_SIZE as i32 || bytes.len() != byte_count as usize {
         return None;
     }
-    let hash = read_u32_le(bytes, 12);
-    let aabb = read_aabb_at(bytes, 16);
-    let min_height = read_f32_le(bytes, 40);
-    let max_height = read_f32_le(bytes, 44);
-    let height_scale = read_f32_le(bytes, 48);
-    let scale = read_vec3_at(bytes, 52);
-    let column_count = read_i32_le(bytes, 64);
-    let row_count = read_i32_le(bytes, 68);
-    let heights_offset = read_i32_le(bytes, 72);
-    let material_offset = read_i32_le(bytes, 76);
-    let flags_offset = read_i32_le(bytes, 80);
-    let clockwise = bytes[84] != 0;
-    let padding = [bytes[85], bytes[86], bytes[87]];
+    let aabb = read_aabb_at(bytes, 20);
+    let min_height = read_f32_le(bytes, 44);
+    let max_height = read_f32_le(bytes, 48);
+    let height_scale = read_f32_le(bytes, 52);
+    let scale = read_vec3_at(bytes, 56);
+    let column_count = read_i32_le(bytes, 68);
+    let row_count = read_i32_le(bytes, 72);
+    let heights_offset = read_i32_le(bytes, 76);
+    let material_offset = read_i32_le(bytes, 80);
+    let flags_offset = read_i32_le(bytes, 84);
+    let clockwise = bytes[88] != 0;
+    let padding = bytes[89..96].try_into().unwrap();
 
     if column_count < 0 || row_count < 0 {
         return None;
@@ -239,8 +240,8 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
 
     Some(HeightFieldData {
         version,
-        byte_count,
         hash,
+        byte_count,
         aabb,
         min_height,
         max_height,
@@ -257,10 +258,6 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
         material_indices,
         flags,
     })
-}
-
-fn write_u32_le(buf: &mut Vec<u8>, v: u32) {
-    buf.extend_from_slice(&v.to_le_bytes());
 }
 
 fn write_i32_le(buf: &mut Vec<u8>, v: i32) {
@@ -288,10 +285,10 @@ fn pad_to(buf: &mut Vec<u8>, len: usize) {
     }
 }
 
-fn write_header(buf: &mut Vec<u8>, h: &HeightFieldData, hash_override: Option<u32>) {
+fn write_header(buf: &mut Vec<u8>, h: &HeightFieldData, hash_override: Option<u64>) {
     write_u64_le(buf, h.version);
+    write_u64_le(buf, hash_override.unwrap_or(h.hash));
     write_i32_le(buf, h.byte_count);
-    write_u32_le(buf, hash_override.unwrap_or(h.hash));
     write_aabb(buf, h.aabb);
     write_f32_le(buf, h.min_height);
     write_f32_le(buf, h.max_height);
@@ -319,7 +316,7 @@ impl HeightFieldData {
     }
 
     /// Like [`to_bytes`], but with an explicit hash field (use 0 when computing the hash).
-    pub fn to_bytes_with_hash(&self, hash: u32) -> Vec<u8> {
+    pub fn to_bytes_with_hash(&self, hash: u64) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.byte_count as usize);
         write_header(&mut buf, self, Some(hash));
         pad_to(&mut buf, self.heights_offset as usize);

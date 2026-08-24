@@ -5,9 +5,9 @@
 
 use super::types::HullData;
 
-/// Spread the baked 32-bit content hash across 64 bits. (b3HashHullData)
+/// The baked 64-bit content hash. (b3HashHullData)
 pub fn hash_hull_data(hull: &HullData) -> u64 {
-    (hull.hash as u64).wrapping_mul(0x9E3779B97F4A7C15)
+    hull.hash
 }
 
 /// Compare two hulls by C contiguous-blob equality. (b3CompareHullData)

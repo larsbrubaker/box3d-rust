@@ -4,7 +4,7 @@ use super::builder_pool::{compute_hull_work_sizes, HullBuilder, HULL_MAX_COUNT, 
 use super::types::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION};
 use super::validate::is_valid_hull;
 use crate::constants::{MAX_HULL_EDGES, MAX_HULL_FACES, MAX_HULL_VERTICES};
-use crate::core::{hash, non_zero_hash, HASH_INIT, NULL_INDEX};
+use crate::core::{hash64_non_zero, NULL_INDEX};
 use crate::math_functions::{
     add, align_up8, clamp_int, compute_cos_sin, cos, cross, length, make_matrix_from_quat,
     make_plane_from_normal_and_point, max, min, mul, mul_mv, mul_sm, mul_sv, plane_separation,
@@ -132,10 +132,11 @@ fn update_hull_bulk_properties(hull: &mut HullData) -> bool {
     mass > 0.0 && volume > 0.0 && area > 0.0 && radius > 0.0
 }
 
+// Must ensure the hash is 0 so it doesn't contribute to itself.
 fn finalize_hash(hull: &mut HullData) {
     hull.hash = 0;
     let bytes = hull.to_bytes_with_hash(0);
-    hull.hash = non_zero_hash(hash(HASH_INIT, &bytes));
+    hull.hash = hash64_non_zero(&bytes);
 }
 
 /// Create a convex hull from a point cloud. (b3CreateHull)
@@ -251,7 +252,6 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         face_offset,
         soa_vertex_offset,
         soa_normal_offset,
-        padding: 0,
         vertices: vec![HullVertex { edge: 0 }; vertex_count as usize],
         points: vec![VEC3_ZERO; vertex_count as usize],
         edges: vec![HullHalfEdge::default(); edge_count as usize],

@@ -11,7 +11,7 @@ use super::types::{
     INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3, MESH_DATA_SIZE,
     MESH_NODE_SIZE, MESH_TRIANGLE_SIZE, MESH_VERSION,
 };
-use crate::core::{hash, non_zero_hash, HASH_INIT, NULL_INDEX};
+use crate::core::{hash64_non_zero, NULL_INDEX};
 use crate::math_functions::{
     align_up8, cross, dot, max_int, min_int, normalize, signed_volume, sub, Vec3,
 };
@@ -305,6 +305,7 @@ pub fn create_mesh(
         material_offset: material_indices_offset,
         material_count,
         flags_offset,
+        padding: 0,
         nodes: temp_nodes,
         vertices,
         triangles: vec![MeshTriangle::default(); triangle_count as usize],
@@ -329,8 +330,10 @@ pub fn create_mesh(
         identify_edges(&mut mesh);
     }
 
+    // Must ensure the hash is 0 so it doesn't contribute to itself.
+    mesh.hash = 0;
     let bytes = mesh.to_bytes_with_hash(0);
-    mesh.hash = non_zero_hash(hash(HASH_INIT, &bytes));
+    mesh.hash = hash64_non_zero(&bytes);
 
     Some(mesh)
 }

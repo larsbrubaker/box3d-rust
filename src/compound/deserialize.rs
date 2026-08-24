@@ -20,9 +20,9 @@ use super::types::{
 use crate::core::NULL_INDEX;
 use crate::dynamic_tree::{DynamicTree, TreeNode, ALLOCATED_NODE, DYNAMIC_TREE_VERSION, LEAF_NODE};
 use crate::geometry::{SurfaceMaterial, SURFACE_MATERIAL_SIZE};
-use crate::hull::convert_bytes_to_hull;
+use crate::hull::{convert_bytes_to_hull, HULL_BYTE_COUNT_OFFSET, HULL_DATA_SIZE};
 use crate::math_functions::{Aabb, Quat, Transform, Vec3};
-use crate::mesh::convert_bytes_to_mesh;
+use crate::mesh::{convert_bytes_to_mesh, MESH_BYTE_COUNT_OFFSET, MESH_DATA_SIZE};
 
 fn read_u64(buf: &[u8], o: usize) -> u64 {
     u64::from_le_bytes(buf[o..o + 8].try_into().unwrap())
@@ -121,13 +121,20 @@ fn section_offset(offset: i32, count: i32, stride: usize, len: usize) -> Option<
 /// The Rust port bounds-checks both, so a corrupt blob fails the conversion instead of
 /// panicking on the slice. The returned slice is exactly `byteCount` long, which is what
 /// `convert_bytes_to_hull` / `convert_bytes_to_mesh` require of a standalone blob.
-fn sub_blob(bytes: &[u8], offset: u32) -> Option<&[u8]> {
+/// `byte_count_offset` / `header_size` differ between the hull and mesh headers, so the
+/// caller supplies them (b3HullData keeps `byteCount` last, b3MeshData keeps it after the
+/// 64-bit hash).
+fn sub_blob(
+    bytes: &[u8],
+    offset: u32,
+    byte_count_offset: usize,
+    header_size: usize,
+) -> Option<&[u8]> {
     let start = offset as usize;
-    // byteCount is at offset 8 of both the hull and the mesh header.
-    if start.checked_add(12)? > bytes.len() {
+    if start.checked_add(header_size)? > bytes.len() {
         return None;
     }
-    let byte_count = read_i32(bytes, start + 8);
+    let byte_count = read_i32(bytes, start + byte_count_offset);
     if byte_count < 0 {
         return None;
     }
@@ -258,7 +265,12 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
             inst.shared_index = *idx as u32;
         } else {
             let idx = shared_hulls.len();
-            let hull = convert_bytes_to_hull(sub_blob(bytes, off)?)?;
+            let hull = convert_bytes_to_hull(sub_blob(
+                bytes,
+                off,
+                HULL_BYTE_COUNT_OFFSET,
+                HULL_DATA_SIZE,
+            )?)?;
             shared_hulls.push(hull);
             offset_to_shared.push((off, idx));
             inst.shared_index = idx as u32;
@@ -295,7 +307,12 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
             inst.shared_index = *idx as u32;
         } else {
             let idx = shared_meshes.len();
-            let mesh = convert_bytes_to_mesh(sub_blob(bytes, off)?)?;
+            let mesh = convert_bytes_to_mesh(sub_blob(
+                bytes,
+                off,
+                MESH_BYTE_COUNT_OFFSET,
+                MESH_DATA_SIZE,
+            )?)?;
             shared_meshes.push(mesh);
             mesh_offset_to_shared.push((off, idx));
             inst.shared_index = idx as u32;

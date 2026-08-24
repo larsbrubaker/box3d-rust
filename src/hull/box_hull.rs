@@ -4,7 +4,7 @@ use super::types::{
     BoxHull, HullData, HullFace, HullHalfEdge, HullVertex, BOX_HULL_SIZE, HULL_VERSION,
 };
 use crate::constants::linear_slop;
-use crate::core::{hash, non_zero_hash, HASH_INIT};
+use crate::core::hash64_non_zero;
 use crate::math_functions::{
     aabb_transform, abs, box_inertia, inv_rotate_vector, is_valid_transform, make_matrix_from_quat,
     make_plane_from_normal_and_point, make_quat_from_matrix, max, min, min_float, mul, mul_sv, neg,
@@ -166,13 +166,12 @@ fn box_hull_template() -> BoxHull {
     let edge_offset = 248;
     let plane_offset = 344;
     let face_offset = 440;
-    let soa_vertex_offset = 456;
-    let soa_normal_offset = 552;
+    let soa_vertex_offset = 448;
+    let soa_normal_offset = 544;
 
     BoxHull {
         base: HullData {
             version: HULL_VERSION,
-            byte_count: BOX_HULL_SIZE as i32,
             hash: 0,
             aabb: Aabb::default(),
             surface_area: 0.0,
@@ -190,7 +189,7 @@ fn box_hull_template() -> BoxHull {
             face_offset,
             soa_vertex_offset,
             soa_normal_offset,
-            padding: 0,
+            byte_count: BOX_HULL_SIZE as i32,
             vertices: Vec::new(),
             points: Vec::new(),
             edges: Vec::new(),
@@ -223,7 +222,7 @@ fn box_hull_template() -> BoxHull {
             HullFace { edge: 19 },
             HullFace { edge: 21 },
         ],
-        padding: [0; 10],
+        padding: [0; 2],
         vx: [0.0; 8],
         vy: [0.0; 8],
         vz: [0.0; 8],
@@ -384,9 +383,13 @@ pub fn make_transformed_box_hull(hx: f32, hy: f32, hz: f32, transform: Transform
     // the same allocation). Hash still uses the contiguous byte layout.
     box_hull.sync_base_arrays();
 
+    // Must ensure the hash is 0 so it doesn't contribute to itself. C hashes
+    // `&boxHull.base` over `base.byteCount` bytes, which is sizeof(b3BoxHull),
+    // so this covers the whole box hull blob.
     box_hull.base.hash = 0;
     let bytes = box_hull.to_bytes_with_hash(0);
-    box_hull.base.hash = non_zero_hash(hash(HASH_INIT, &bytes));
+    debug_assert_eq!(bytes.len(), box_hull.base.byte_count as usize);
+    box_hull.base.hash = hash64_non_zero(&bytes);
 
     box_hull
 }

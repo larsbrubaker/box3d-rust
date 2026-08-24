@@ -9,10 +9,15 @@
 use crate::math_functions::{Aabb, Vec3, VEC3_ONE};
 
 /// 64-bit mesh version. (B3_MESH_VERSION)
-pub const MESH_VERSION: u64 = 0xABD11AB62A6E886D;
+pub const MESH_VERSION: u64 = 0xAAAB9A00F1A8AAF7;
 
 /// Size of the C `b3MeshData` header.
-pub const MESH_DATA_SIZE: usize = 88;
+pub const MESH_DATA_SIZE: usize = 96;
+
+/// Byte offset of `b3MeshData::byteCount`, which C places right after the version and the
+/// 64-bit hash. Readers that only have raw bytes (the compound blob reader) need this to
+/// find the extent of a nested mesh. Kept honest by a `debug_assert!` in `write_header`.
+pub const MESH_BYTE_COUNT_OFFSET: usize = 16;
 
 /// Size of the C `b3MeshNode`.
 pub const MESH_NODE_SIZE: usize = 32;
@@ -137,12 +142,12 @@ impl MeshNode {
 /// Sorted triangle collision bounding volume hierarchy. (b3MeshData)
 ///
 /// Maps to C's header + trailing blob. Offsets and `byte_count` match C so
-/// [`MeshData::to_bytes`] reproduces the contiguous layout used by `b3Hash`.
+/// [`MeshData::to_bytes`] reproduces the contiguous layout used by `b3Hash64NonZero`.
 #[derive(Debug, Clone)]
 pub struct MeshData {
     pub version: u64,
+    pub hash: u64,
     pub byte_count: i32,
-    pub hash: u32,
     pub bounds: Aabb,
     pub surface_area: f32,
     pub tree_height: i32,
@@ -156,6 +161,8 @@ pub struct MeshData {
     pub material_offset: i32,
     pub material_count: i32,
     pub flags_offset: i32,
+    /// Explicit padding.
+    pub padding: i32,
     pub nodes: Vec<MeshNode>,
     pub vertices: Vec<Vec3>,
     pub triangles: Vec<MeshTriangle>,
@@ -167,8 +174,8 @@ impl Default for MeshData {
     fn default() -> Self {
         Self {
             version: MESH_VERSION,
-            byte_count: 0,
             hash: 0,
+            byte_count: 0,
             bounds: Aabb::default(),
             surface_area: 0.0,
             tree_height: 0,
@@ -182,6 +189,7 @@ impl Default for MeshData {
             material_offset: 0,
             material_count: 0,
             flags_offset: 0,
+            padding: 0,
             nodes: Vec::new(),
             vertices: Vec::new(),
             triangles: Vec::new(),
@@ -298,24 +306,25 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
     if version != MESH_VERSION {
         return None;
     }
-    let byte_count = read_i32_le(bytes, 8);
+    let hash = read_u64_le(bytes, 8);
+    let byte_count = read_i32_le(bytes, MESH_BYTE_COUNT_OFFSET);
     if byte_count < MESH_DATA_SIZE as i32 || bytes.len() != byte_count as usize {
         return None;
     }
-    let hash = read_u32_le(bytes, 12);
-    let bounds = read_aabb_at(bytes, 16);
-    let surface_area = read_f32_le(bytes, 40);
-    let tree_height = read_i32_le(bytes, 44);
-    let degenerate_count = read_i32_le(bytes, 48);
-    let node_offset = read_i32_le(bytes, 52);
-    let node_count = read_i32_le(bytes, 56);
-    let vertex_offset = read_i32_le(bytes, 60);
-    let vertex_count = read_i32_le(bytes, 64);
-    let triangle_offset = read_i32_le(bytes, 68);
-    let triangle_count = read_i32_le(bytes, 72);
-    let material_offset = read_i32_le(bytes, 76);
-    let material_count = read_i32_le(bytes, 80);
-    let flags_offset = read_i32_le(bytes, 84);
+    let bounds = read_aabb_at(bytes, 20);
+    let surface_area = read_f32_le(bytes, 44);
+    let tree_height = read_i32_le(bytes, 48);
+    let degenerate_count = read_i32_le(bytes, 52);
+    let node_offset = read_i32_le(bytes, 56);
+    let node_count = read_i32_le(bytes, 60);
+    let vertex_offset = read_i32_le(bytes, 64);
+    let vertex_count = read_i32_le(bytes, 68);
+    let triangle_offset = read_i32_le(bytes, 72);
+    let triangle_count = read_i32_le(bytes, 76);
+    let material_offset = read_i32_le(bytes, 80);
+    let material_count = read_i32_le(bytes, 84);
+    let flags_offset = read_i32_le(bytes, 88);
+    let padding = read_i32_le(bytes, 92);
 
     if node_count < 0 || vertex_count < 0 || triangle_count < 0 || material_count < 0 {
         return None;
@@ -363,8 +372,8 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
 
     Some(MeshData {
         version,
-        byte_count,
         hash,
+        byte_count,
         bounds,
         surface_area,
         tree_height,
@@ -378,6 +387,7 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
         material_offset,
         material_count,
         flags_offset,
+        padding,
         nodes,
         vertices,
         triangles,
@@ -415,10 +425,11 @@ fn pad_to(buf: &mut Vec<u8>, len: usize) {
     }
 }
 
-fn write_header(buf: &mut Vec<u8>, m: &MeshData, hash_override: Option<u32>) {
+fn write_header(buf: &mut Vec<u8>, m: &MeshData, hash_override: Option<u64>) {
     write_u64_le(buf, m.version);
+    write_u64_le(buf, hash_override.unwrap_or(m.hash));
+    debug_assert_eq!(buf.len(), MESH_BYTE_COUNT_OFFSET);
     write_i32_le(buf, m.byte_count);
-    write_u32_le(buf, hash_override.unwrap_or(m.hash));
     write_aabb(buf, m.bounds);
     write_f32_le(buf, m.surface_area);
     write_i32_le(buf, m.tree_height);
@@ -432,6 +443,7 @@ fn write_header(buf: &mut Vec<u8>, m: &MeshData, hash_override: Option<u32>) {
     write_i32_le(buf, m.material_offset);
     write_i32_le(buf, m.material_count);
     write_i32_le(buf, m.flags_offset);
+    write_i32_le(buf, m.padding);
     debug_assert_eq!(buf.len(), MESH_DATA_SIZE);
 }
 
@@ -454,7 +466,7 @@ impl MeshData {
     }
 
     /// Like [`to_bytes`], but with an explicit hash field (use 0 when computing the hash).
-    pub fn to_bytes_with_hash(&self, hash: u32) -> Vec<u8> {
+    pub fn to_bytes_with_hash(&self, hash: u64) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.byte_count as usize);
         write_header(&mut buf, self, Some(hash));
         pad_to(&mut buf, self.node_offset as usize);

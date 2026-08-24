@@ -218,11 +218,11 @@ fn poisoned_section_offset_fails_replay() {
     assert!(validate_replay(&data, 1), "pristine recording must replay");
 
     let spans = registry_slot_spans(&data);
-    // One section offset per slot, by kind: height field heightsOffset (72), mesh
-    // nodeOffset (52), hull pointOffset (108). Compounds are covered separately below.
+    // One section offset per slot, by kind: height field heightsOffset (76), mesh
+    // nodeOffset (56), hull pointOffset (108). Compounds are covered separately below.
     let field = |kind: GeometryKind| match kind {
-        GeometryKind::HeightField => Some(72usize),
-        GeometryKind::Mesh => Some(52),
+        GeometryKind::HeightField => Some(76usize),
+        GeometryKind::Mesh => Some(56),
         GeometryKind::Hull => Some(108),
         GeometryKind::Compound => None,
     };
@@ -257,11 +257,11 @@ fn corrupt_nested_compound_blob_fails_replay() {
     );
 
     // meshOffset (124) locates the mesh instances; each stores its blob offset at
-    // instance byte 40. Poison the nested mesh's vertexCount (blob byte 64).
+    // instance byte 40. Poison the nested mesh's vertexCount (blob byte 68).
     let mesh_instances = compound + read_i32_at(&data, compound + 124) as usize;
     let nested_mesh = compound + read_i32_at(&data, mesh_instances + 40) as usize;
     assert!(
-        !validate_replay(&poison_i32(&data, nested_mesh + 64, -1), 1),
+        !validate_replay(&poison_i32(&data, nested_mesh + 68, -1), 1),
         "nested mesh negative vertexCount survived the replay"
     );
 }
