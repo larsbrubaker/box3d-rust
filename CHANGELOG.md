@@ -5,8 +5,9 @@ semantic versioning (0.x: minor-compatible additive changes bump the patch numbe
 
 ## Unreleased
 
-Upstream sync: the C reference pin advances to `3fc20f5` (upstream "Fixes 09"
-and "Follow cam"), and this port follows its API and behavior.
+Upstream sync: the C reference pin advances to `30c67b5` (upstream v0.2.0:
+64-bit rapidhash geometry hashes and triangle manifold collision fixes), and
+this port follows its API and behavior.
 
 ### Breaking
 
@@ -17,6 +18,14 @@ and "Follow cam"), and this port follows its API and behavior.
 - Recording format minor version advances to 4. Older recordings still
   replay (the loader gates on major version only), but recordings that use
   the new shape-mutator ops are not readable by 0.3.0.
+- Geometry content hashes are now 64-bit rapidhash: the `HullData`,
+  `MeshData`, and `HeightFieldData` hash fields are `u64`, struct byte
+  layouts and version constants changed (`BoxHull` 648 -> 640 bytes), and
+  serialized geometry from older versions no longer loads.
+- `core::non_zero_hash` and `recording::hash64_blob` are removed;
+  `hash_hull_data` returns the content hash directly.
+- Shape creation now rejects geometry with mismatched version constants at
+  runtime.
 
 ### Changed
 
@@ -35,9 +44,16 @@ and "Follow cam"), and this port follows its API and behavior.
 - Corrupt or kind-mismatched geometry in a recording file now fails the
   replay gracefully instead of panicking (a deliberate, documented divergence
   from C, which trusts the blob).
+- Triangle manifold collision fixes from upstream: plane-side test at exact
+  zero, the capsule-edge parallel-skip bug, corrected capsule contact points,
+  and an early return when no valid edge contact exists. Simulation results
+  change; determinism hashes match upstream's new constants in both
+  precision modes.
 
 ### Added
 
+- New `rapidhash` module and `core::hash64_non_zero`, with the `test_hash.c`
+  suite ported.
 - `ShapeSetMeshMaterial`, `ShapeSetHull`, and `ShapeSetMesh` are now recorded
   and replayed.
 - New tests: overlap hull proxy, transformed box hull, capsule face-deep
