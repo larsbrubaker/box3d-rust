@@ -114,6 +114,7 @@ pub mod math_functions;
 pub mod mesh;
 pub mod mover;
 pub mod name_cache;
+pub mod rapidhash;
 pub mod recording;
 pub mod sensor;
 pub mod shape;
@@ -183,6 +184,9 @@ mod dynamic_tree_tests;
 
 #[cfg(test)]
 mod geometry_tests;
+
+#[cfg(test)]
+mod hash_tests;
 
 #[cfg(test)]
 mod height_field_tests;

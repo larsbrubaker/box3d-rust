@@ -11,6 +11,8 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
+use crate::rapidhash::rapidhash;
+
 /// Used to indicate an unset or invalid index value. (base.h: B3_NULL_INDEX)
 pub const NULL_INDEX: i32 = -1;
 
@@ -159,6 +161,23 @@ pub fn hash(hash: u32, data: &[u8]) -> u32 {
     }
 
     result
+}
+
+/// 64-bit content hash (rapidhash) that reserves zero to mean unhashed.
+/// An empty blob has no content to mix, so it takes the reserved value.
+/// (core.c: b3Hash64NonZero)
+pub fn hash64_non_zero(bytes: &[u8]) -> u64 {
+    // C guards on `n <= 0`; the empty slice is the Rust equivalent.
+    if bytes.is_empty() {
+        return 1;
+    }
+
+    let h = rapidhash(bytes);
+    if h == 0 {
+        1
+    } else {
+        h
+    }
 }
 
 /// Geometry content hashes reserve zero to mean unhashed. (core.h: b3NonZeroHash)
