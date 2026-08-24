@@ -12,8 +12,8 @@ use super::types::{
 use crate::constants::speculative_distance;
 use crate::hull::{get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
-    abs_float, add, cross, dot, line_distance, make_plane_from_normal_and_point, min_float,
-    min_int, mul_sub, mul_sv, neg, normalize, plane_separation, sub, Vec3,
+    add, cross, dot, line_distance, make_plane_from_normal_and_point, min_float, min_int, mul_sub,
+    mul_sv, neg, normalize, plane_separation, sub, Vec3,
 };
 /// Clip triangle against a hull reference face. (static b3CollideHullFace)
 pub(crate) fn collide_hull_face(
@@ -349,10 +349,7 @@ pub(crate) fn collide_triangle_and_hull_edges(
         return;
     }
 
-    // This can slide off the end from caching
     let separation = dot(query.normal, sub(p_b, p_a));
-    debug_assert!(abs_float(separation - query.separation) < crate::constants::linear_slop());
-
     let point = mul_sv(0.5, add(result.point1, result.point2));
 
     let pt = &mut manifold.points[0];

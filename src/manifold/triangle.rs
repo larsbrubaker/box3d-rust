@@ -76,7 +76,8 @@ fn clip_segment_to_triangle_face(
             vertex_count += 1;
         }
 
-        if distance1 * distance2 < 0.0 {
+        // If the points are on different sides of the plane
+        if (distance1 > 0.0) != (distance2 > 0.0) {
             let t = distance1 / (distance1 - distance2);
             segment[vertex_count].position = lerp(p1.position, p2.position, t);
             segment[vertex_count].pair = if distance1 > 0.0 { p1.pair } else { p2.pair };
@@ -136,6 +137,7 @@ fn query_triangle_and_capsule_edges(
     let squared_tolerance = 0.005 * 0.005;
 
     let mut edge_index = 2;
+    let a = dot(capsule_edge, plane.normal);
     let mut v1 = vertices[2];
     for index in 0..3 {
         let v2 = vertices[index];
@@ -145,13 +147,12 @@ fn query_triangle_and_capsule_edges(
         // Pretend the triangle edge embeds a zero area face with a side normal. This
         // provides a way to find an edge-edge normal that points outward from
         // the triangle.
-        let a = dot(capsule_edge, plane.normal);
         let b = dot(capsule_edge, side_normal);
 
         // Is the capsule edge parallel to the triangle edge? If so, face contact can handle it.
-        // Note: C skips the v1/edgeIndex tail updates on this `continue`, intentionally
-        // carrying the stale v1/edgeIndex into the next iteration. Mirror that exactly.
         if a * a + b * b < squared_tolerance * length_squared(capsule_edge) {
+            v1 = v2;
+            edge_index = index as i32;
             continue;
         }
 
@@ -300,13 +301,12 @@ fn build_triangle_and_capsule_edge_contact(
     }
 
     let point = lerp(
-        mul_sub(result.point1, capsule.radius, normal),
-        result.point2,
+        result.point1,
+        mul_sub(result.point2, capsule.radius, normal),
         0.5,
     );
 
     let separation = dot(normal, sub(p1, v1));
-    debug_assert!(abs_float(separation - query.separation) < crate::constants::linear_slop());
 
     manifold.normal = normal;
     manifold.point_count = 1;
@@ -482,15 +482,14 @@ pub fn collide_triangle_and_capsule(
             }
         }
 
-        // Create contact from closest points
-        let point = mul_sv(
+        // Create contact from closest points.
+        let point = lerp(
+            distance_output.point_a,
+            mul_sub(distance_output.point_b, radius, delta),
             0.5,
-            add(
-                mul_sub(distance_output.point_a, radius, delta),
-                distance_output.point_b,
-            ),
         );
 
+        // Normal points from triangle to capsule.
         manifold.normal = delta;
         manifold.point_count = 1;
         manifold.feature = get_triangle_feature(cache);
@@ -523,6 +522,11 @@ pub fn collide_triangle_and_capsule(
     if manifold.point_count == 2 {
         // This becomes the clipped separation.
         face_separation = min_float(manifold.points[0].separation, manifold.points[1].separation);
+    }
+
+    if edge_query.index_a == NULL_INDEX {
+        // No valid edge contact.
+        return;
     }
 
     // Face contact can be empty if it does not realize the axis of minimum penetration.

@@ -138,6 +138,10 @@ fn collide_task(world: &mut World, contact_indices: &[i32], worker_index: i32) {
             && (flags & contact_flags::RECYCLE) != 0
         {
             let contact = &world.contacts[contact_index as usize];
+            // The scalar part of b3InvMulQuat is just the quaternion dot product.
+            // cos(relative_angle/2) = scalar(conj(q1) * q2) = dot(q1, q2)
+            // A small relative angle means this value is close to 1. Need to use abs or square
+            // due to double cover.
             let angle_a = dot_quat(transform_a.q, contact.cached_rotation_a);
             let angle_b = dot_quat(transform_b.q, contact.cached_rotation_b);
             let angular_distance = min_float(angle_a * angle_a, angle_b * angle_b);

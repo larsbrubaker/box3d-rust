@@ -429,22 +429,25 @@ pub fn world_draw(world: &mut World, draw: &mut dyn DebugDraw, mask_bits: u64) {
                 }
             }
 
-            if draw.draw_mass() && world.bodies[body_id as usize].type_ == BodyType::Dynamic {
-                let offset = Vec3 {
-                    x: 0.05,
-                    y: 0.05,
-                    z: 0.05,
-                };
+            if draw.draw_mass() {
                 let body_sim = get_body_sim(world, body_id);
                 let transform = WorldTransform {
                     p: body_sim.center,
                     q: body_sim.transform.q,
                 };
                 draw.draw_transform(transform);
-                let p = transform_world_point(transform, offset);
-                let mass = world.bodies[body_id as usize].mass;
-                let buffer = format!("{:.2}", mass);
-                draw.draw_string(p, &buffer, HexColor::WHITE);
+
+                if world.bodies[body_id as usize].type_ == BodyType::Dynamic {
+                    let offset = Vec3 {
+                        x: 0.05,
+                        y: 0.05,
+                        z: 0.05,
+                    };
+                    let p = transform_world_point(transform, offset);
+                    let mass = world.bodies[body_id as usize].mass;
+                    let buffer = format!("{:.2}", mass);
+                    draw.draw_string(p, &buffer, HexColor::WHITE);
+                }
             }
 
             if draw.draw_sleep() {
