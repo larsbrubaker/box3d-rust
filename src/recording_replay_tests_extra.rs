@@ -545,21 +545,10 @@ fn reserved_header_bytes() {
 /// Geometry hash collision / chain intern. (GeometryHashCollision)
 #[test]
 fn geometry_hash_collision() {
-    use crate::recording::{hash64_blob, GeometryKind, GeometryRegistry};
+    use crate::recording::{GeometryKind, GeometryRegistry};
 
     let n = 16;
     let shared_hash = 0xABCD1234u64;
-
-    {
-        let p = vec![0x11u8; 16];
-        let mut q = vec![0x11u8; 16];
-        q[7] = 0x12;
-        let hp = hash64_blob(&p);
-        let hq = hash64_blob(&q);
-        assert_ne!(hp, hq);
-        assert_ne!((hp >> 32) as u32, (hq >> 32) as u32);
-        let _ = (p, q);
-    }
 
     let mut reg = GeometryRegistry::new();
     let blob_a = vec![0xAAu8; n];

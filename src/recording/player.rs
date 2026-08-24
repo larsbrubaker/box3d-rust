@@ -53,7 +53,7 @@ pub struct RecPlayer {
 }
 
 impl RecPlayer {
-    /// (b3RecPlayer_Create)
+    /// (b3CreatePlayer)
     pub fn create(data: &[u8], _worker_count: i32) -> Option<Box<Self>> {
         let hdr = RecHeader::from_bytes(data)?;
         if hdr.magic != REC_MAGIC {

@@ -24,7 +24,7 @@ pub use capture::rec as record_op;
 pub use hash::{fnv_mix_position, hash_world_state, SNAP_FNV_INIT, SNAP_FNV_PRIME};
 pub use ops::RecOp;
 pub use player::{validate_replay, RecPlayer};
-pub use registry::{hash64_blob, GeometryEntry, GeometryKind, GeometryRegistry, RegistrySlot};
+pub use registry::{GeometryEntry, GeometryKind, GeometryRegistry, RegistrySlot};
 pub use session::{
     start_recording, stop_recording, with_recording, world_public_id, RecHeader, RecTag, Recording,
     REC_MAGIC, REC_VERSION_MAJOR, REC_VERSION_MINOR,

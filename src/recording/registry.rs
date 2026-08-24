@@ -5,6 +5,7 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::compound::{convert_bytes_to_compound, CompoundData};
+use crate::core::hash64_non_zero;
 use crate::height_field::HeightFieldData;
 use crate::hull::HullData;
 use crate::mesh::MeshData;
@@ -88,28 +89,28 @@ impl GeometryRegistry {
     /// (b3RecInternHull)
     pub fn intern_hull(&mut self, hull: &HullData) -> u32 {
         let bytes = hull.to_bytes();
-        let h = hash64_blob(&bytes);
+        let h = hash64_non_zero(&bytes);
         self.intern(GeometryKind::Hull, h, bytes)
     }
 
     /// (b3RecInternMesh)
     pub fn intern_mesh(&mut self, mesh: &MeshData) -> u32 {
         let bytes = mesh.to_bytes();
-        let h = hash64_blob(&bytes);
+        let h = hash64_non_zero(&bytes);
         self.intern(GeometryKind::Mesh, h, bytes)
     }
 
     /// (b3RecInternHeightField)
     pub fn intern_height_field(&mut self, hf: &HeightFieldData) -> u32 {
         let bytes = hf.to_bytes();
-        let h = hash64_blob(&bytes);
+        let h = hash64_non_zero(&bytes);
         self.intern(GeometryKind::HeightField, h, bytes)
     }
 
     /// (b3RecInternCompound)
     pub fn intern_compound(&mut self, compound: &CompoundData) -> u32 {
         let bytes = compound.to_bytes();
-        let h = hash64_blob(&bytes);
+        let h = hash64_non_zero(&bytes);
         self.intern(GeometryKind::Compound, h, bytes)
     }
 
@@ -142,31 +143,4 @@ impl RegistrySlot {
         }
         self.live_compound.as_ref()
     }
-}
-
-/// Content hash for geometry blobs. (b3Hash64Blob)
-///
-/// Word-folded FNV-1a salted by length, then a splitmix64 finalizer.
-pub fn hash64_blob(bytes: &[u8]) -> u64 {
-    let n = bytes.len();
-    let mut h = 0xcbf2_9ce4_8422_2325u64 ^ (n as u32 as u64);
-    const PRIME: u64 = 0x1000_0000_01b3;
-    let mut i = 0;
-    while i + 8 <= n {
-        let mut word_bytes = [0u8; 8];
-        word_bytes.copy_from_slice(&bytes[i..i + 8]);
-        let word = u64::from_le_bytes(word_bytes);
-        h = (h ^ word).wrapping_mul(PRIME);
-        i += 8;
-    }
-    while i < n {
-        h = (h ^ bytes[i] as u64).wrapping_mul(PRIME);
-        i += 1;
-    }
-    h ^= h >> 30;
-    h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    h ^= h >> 27;
-    h = h.wrapping_mul(0x94d0_49bb_1331_11eb);
-    h ^= h >> 31;
-    h
 }
