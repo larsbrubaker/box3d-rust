@@ -475,3 +475,47 @@ pub fn cross_w(a: Vec3W, b: Vec3W) -> Vec3W {
         z: sub_w(mul_w(a.x, b.y), mul_w(a.y, b.x)),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Runtime SIMD width selection (simd.c).
+//
+// Upstream picks the wide kernels at runtime: 8 lanes (AVX2) when the x86 CPU supports
+// them, otherwise 4 lanes (SSE2 / Neon / scalar). `B3_SIMD_HAS_WIDTH_8` is never defined
+// for the scalar `B3_SIMD_NONE` build the port mirrors, so detection always reports 4 and
+// requests for width 8 fall back to 4, exactly like a `BOX3D_DISABLE_SIMD` C build.
+// ---------------------------------------------------------------------------
+
+use core::sync::atomic::{AtomicI32, Ordering};
+
+// C keeps this in a b3AtomicInt; 0 means "not detected yet".
+static SIMD_WIDTH_STATE: AtomicI32 = AtomicI32::new(0);
+
+/// The SIMD width supported by this CPU and build. Always 4 for the scalar path.
+/// (static b3DetectSIMDWidth)
+pub(crate) fn detect_simd_width() -> i32 {
+    4
+}
+
+/// The SIMD width new worlds use, detected on first use. (b3GetSIMDWidth)
+pub fn get_simd_width() -> i32 {
+    let mut width = SIMD_WIDTH_STATE.load(Ordering::Relaxed);
+    if width == 0 {
+        width = detect_simd_width();
+        SIMD_WIDTH_STATE.store(width, Ordering::Relaxed);
+    }
+
+    width
+}
+
+/// Force the SIMD width used by worlds created afterwards. 0 restores detection; 8 falls
+/// back to 4 when the build or CPU lacks AVX2 (always, for the scalar path). This is for
+/// testing and benchmarking. (b3SetSIMDWidth)
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn set_simd_width(mut width: i32) {
+    debug_assert!(width == 0 || width == 4 || width == 8);
+    if width == 8 && detect_simd_width() != 8 {
+        width = 4;
+    }
+
+    SIMD_WIDTH_STATE.store(width, Ordering::Relaxed);
+}

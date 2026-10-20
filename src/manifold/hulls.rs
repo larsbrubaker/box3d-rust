@@ -5,7 +5,7 @@
 
 use super::clip::{build_polygon, clip_polygon, find_incident_face, flip_pair};
 use super::sat::reduce_manifold_points;
-use super::separating_axis::compute_separating_axis;
+use super::separating_axis::compute_separating_axis_at_width;
 use super::types::{
     make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, LocalManifoldPoint, SatCache,
     SeparatingAxis, SeparatingFeature, MAX_CLIP_POINTS,
@@ -277,6 +277,28 @@ pub fn collide_hulls(
     transform_b_to_a: Transform,
     cache: &mut SatCache,
 ) {
+    collide_hulls_at_width(
+        manifold,
+        capacity,
+        hull_a,
+        hull_b,
+        transform_b_to_a,
+        cache,
+        crate::simd_scalar::get_simd_width(),
+    );
+}
+
+/// Collide two convex hulls, running the separating axis test at `simd_width`.
+/// (b3CollideHullsAtWidth)
+pub(crate) fn collide_hulls_at_width(
+    manifold: &mut LocalManifold,
+    capacity: i32,
+    hull_a: &HullData,
+    hull_b: &HullData,
+    transform_b_to_a: Transform,
+    cache: &mut SatCache,
+    simd_width: i32,
+) {
     manifold.point_count = 0;
 
     if capacity < 4 {
@@ -456,7 +478,13 @@ pub fn collide_hulls(
         }
         // This case is for testing
         t if t == SeparatingFeature::ManualFaceAxisA as u8 => {
-            let axis_query = compute_separating_axis(hull_a, hull_b, transform_b_to_a, false);
+            let axis_query = compute_separating_axis_at_width(
+                hull_a,
+                hull_b,
+                transform_b_to_a,
+                false,
+                simd_width,
+            );
             let face_query = axis_query.face_a;
             build_face_a_contact(
                 manifold,
@@ -471,7 +499,13 @@ pub fn collide_hulls(
         }
         // This case is for testing
         t if t == SeparatingFeature::ManualFaceAxisB as u8 => {
-            let axis_query = compute_separating_axis(hull_a, hull_b, transform_b_to_a, false);
+            let axis_query = compute_separating_axis_at_width(
+                hull_a,
+                hull_b,
+                transform_b_to_a,
+                false,
+                simd_width,
+            );
             let face_query = axis_query.face_b;
             build_face_b_contact(
                 manifold,
@@ -486,7 +520,13 @@ pub fn collide_hulls(
         }
         // This case is for testing
         t if t == SeparatingFeature::ManualEdgePairAxis as u8 => {
-            let axis_query = compute_separating_axis(hull_a, hull_b, transform_b_to_a, false);
+            let axis_query = compute_separating_axis_at_width(
+                hull_a,
+                hull_b,
+                transform_b_to_a,
+                false,
+                simd_width,
+            );
             let edge_query = axis_query.edge;
 
             if edge_query.index_a != NULL_INDEX {
@@ -509,7 +549,8 @@ pub fn collide_hulls(
     manifold.point_count = 0;
     *cache = SatCache::default();
 
-    let axis_query = compute_separating_axis(hull_a, hull_b, transform_b_to_a, true);
+    let axis_query =
+        compute_separating_axis_at_width(hull_a, hull_b, transform_b_to_a, true, simd_width);
 
     if axis_query.separated_feature != SeparatingFeature::InvalidAxis {
         // We found a separating axis

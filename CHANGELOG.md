@@ -9,6 +9,7 @@ Syncing the port to newer upstream Box3D commits, one upstream commit at a
 time. Ported so far:
 
 - `51f056e` SAT benchmark (#177)
+- `e77352c` Add support for AVX2 and runtime feature detection (#174)
 
 ### Breaking
 
@@ -21,10 +22,25 @@ time. Ported so far:
   640), and `HULL_VERSION` changes to `0x9D3E61B7C2A4F085`. Hull hashes
   change, and serialized hulls, baked compounds, and recordings that embed
   hulls from earlier versions no longer load.
+- Hull SOA vertex and normal arrays are padded to a multiple of 8 (was 4) so
+  upstream's AVX2 kernels can load full lanes (upstream `e77352c`,
+  `B3_HULL_SOA_PADDING`). New `HULL_SOA_PADDING` and `get_hull_soa_stride`;
+  `hull_soa_vertex_count` / `hull_soa_normal_count` now return the 8-padded
+  stride. Hulls whose vertex or face count is not a multiple of 8 grow, and
+  `HULL_VERSION` changes again to `0x6B1E39D4A87C25F3`. Hull hashes change
+  (box hulls included, through the version), and hull blobs from earlier
+  versions no longer load.
 
 ### Added
 
 - `get_hull_edge_cosines` (upstream `b3GetHullEdgeCosines`).
+- `core::is_avx2_available` (upstream `b3IsAVX2Available`). It returns false:
+  the port implements the scalar path, matching a `BOX3D_DISABLE_SIMD` build.
+- `world_enable_sse2_fallback` (upstream `b3World_EnableSSE2Fallback`). The
+  world's SIMD width (crate-internal, like upstream's `world->simdWidth`) is
+  always 4 in the port, so the call has no effect on the simulation. Internally the port also gains upstream's
+  `b3GetSIMDWidth` / `b3SetSIMDWidth`, `b3ComputeSeparatingAxisAtWidth`, and
+  `b3CollideHullsAtWidth`; contacts collide hulls at the world's width.
 
 ### Changed
 
@@ -37,6 +53,15 @@ time. Ported so far:
   Contact manifolds are unchanged on 30,000 randomized hull pairs; the
   early-return query can report a different (non-winning) edge axis.
   Checked bit-exact against a scalar C build of `51f056e` on those pairs.
+- The wide contact solver blends the clamped rolling resistance impulse to
+  +0 in lanes without rolling resistance instead of scaling it by zero, which
+  produced -0 for negative impulses (upstream `e77352c`). Stored rolling
+  impulses can change from -0 to +0, which can change later results bitwise
+  in scenes that mix rolling and non-rolling contacts. The loops over the hull
+  SOA arrays in the separating axis test and `find_hull_support_vertex` keep
+  running to the count rounded up to 4, so their results are unchanged.
+  Checked against a scalar C build of `e77352c` with upstream's new rolling
+  mix determinism scene (both precision modes).
 
 ### Not ported
 
@@ -46,6 +71,13 @@ time. Ported so far:
 - `b3World_GetCounters` now reports `byteCount` as the world memory
   footprint (`b3GetWorldByteCount`, factored out of
   `b3World_DumpMemoryStats`). `Counters::byte_count` stays zero in the port.
+- The SSE2, AVX2, and Neon kernels (`simd_sse2.h`, `simd_avx2.h`,
+  `simd_neon.h`, `wide8.c`), CPUID based AVX2 detection, the 32 byte
+  allocation alignment, the benchmark `--simd-width` option, and the
+  sample's SSE2 fallback checkbox. The port keeps the scalar width 4 path.
+  Upstream's `SIMDWidthTest` and `CrossWidthReplay` skip when the native width
+  is 4; the port runs both widths anyway (both are 4), which reduces them to
+  repeatability checks.
 
 ## 0.4.1
 

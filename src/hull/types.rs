@@ -14,14 +14,25 @@
 //! # SOA arrays
 //!
 //! The SOA vertex array stores all x values, then all y values, then all z values, each
-//! sub-array padded to a multiple of 4 with a repeat of the first value. The SOA normal
+//! sub-array padded to a multiple of 8 ([`HULL_SOA_PADDING`], big enough for upstream's
+//! AVX2 path) with a repeat of the first value. The SOA normal
 //! array is laid out the same way, but its padded lanes are zero. These arrays back the
 //! SIMD hull collision path (`b3GetHullSoaVertices` / `b3GetHullSoaNormals`).
 
 use crate::math_functions::{Aabb, Matrix3, Plane, Vec3, MAT3_ZERO, VEC3_ZERO};
 
 /// 64-bit hull version. Useful for validating serialized data. (B3_HULL_VERSION)
-pub const HULL_VERSION: u64 = 0x9D3E61B7C2A4F085;
+pub const HULL_VERSION: u64 = 0x6B1E39D4A87C25F3;
+
+/// Big enough to handle AVX2. (hull.h: B3_HULL_SOA_PADDING)
+pub const HULL_SOA_PADDING: i32 = 8;
+
+/// Length of one SOA sub-array: `count` padded up to a multiple of [`HULL_SOA_PADDING`].
+/// (hull.h: b3GetHullSoaStride)
+#[inline]
+pub fn get_hull_soa_stride(count: i32) -> i32 {
+    (count + HULL_SOA_PADDING - 1) & !(HULL_SOA_PADDING - 1)
+}
 
 /// Size of the C `b3HullData` header. (_Static_assert in hull.c)
 pub const HULL_DATA_SIZE: usize = 152;
@@ -101,10 +112,10 @@ pub struct HullData {
     pub faces: Vec<HullFace>,
     pub planes: Vec<Plane>,
     /// SOA vertex components: `vx[..]`, then `vy[..]`, then `vz[..]`, each length
-    /// `(vertex_count + 3) & !3`. See module docs.
+    /// `get_hull_soa_stride(vertex_count)`. See module docs.
     pub soa_vertices: Vec<f32>,
     /// SOA normal components: `nx[..]`, then `ny[..]`, then `nz[..]`, each length
-    /// `(face_count + 3) & !3`. See module docs.
+    /// `get_hull_soa_stride(face_count)`. See module docs.
     pub soa_normals: Vec<f32>,
     /// dot(n1, n2) of the two adjacent face normals for each full edge, length
     /// `edge_count / 2`.
@@ -243,19 +254,21 @@ pub fn get_hull_planes(hull: &HullData) -> &[Plane] {
     &hull.planes[..hull.face_count as usize]
 }
 
-/// SOA vertex sub-array length: `vertex_count` padded up to a multiple of 4.
+/// SOA vertex sub-array length (stride): `vertex_count` padded up to a multiple of
+/// [`HULL_SOA_PADDING`]. (`b3GetHullSoaStride( hull->vertexCount )`)
 pub fn hull_soa_vertex_count(hull: &HullData) -> usize {
-    ((hull.vertex_count + 3) & !3) as usize
+    get_hull_soa_stride(hull.vertex_count) as usize
 }
 
-/// SOA normal sub-array length: `face_count` padded up to a multiple of 4.
+/// SOA normal sub-array length (stride): `face_count` padded up to a multiple of
+/// [`HULL_SOA_PADDING`]. (`b3GetHullSoaStride( hull->faceCount )`)
 pub fn hull_soa_normal_count(hull: &HullData) -> usize {
-    ((hull.face_count + 3) & !3) as usize
+    get_hull_soa_stride(hull.face_count) as usize
 }
 
 /// Get read only SOA vertices. This is an array of vertices with all x values,
 /// y values, and z values as separate sub-arrays. The sub-array lengths are padded
-/// to a multiple of 4. The padded values are repeats of the first value.
+/// to a multiple of 8. The padded values are repeats of the first value.
 /// (collision.h: b3GetHullSoaVertices)
 pub fn get_hull_soa_vertices(hull: &HullData) -> &[f32] {
     &hull.soa_vertices
@@ -263,7 +276,7 @@ pub fn get_hull_soa_vertices(hull: &HullData) -> &[f32] {
 
 /// Get read only SOA unit normal vectors. This is an array of normals with all x values,
 /// y values, and z values as separate sub-arrays. The sub-array lengths are padded to
-/// a multiple of 4. The padded values are zero.
+/// a multiple of 8. The padded values are zero.
 /// (collision.h: b3GetHullSoaNormals)
 pub fn get_hull_soa_normals(hull: &HullData) -> &[f32] {
     &hull.soa_normals
@@ -490,14 +503,14 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         planes.push(read_plane(bytes, ploff + i * 16));
     }
 
-    let soa_vertex_count = (vertex_count as usize + 3) & !3;
+    let soa_vertex_count = get_hull_soa_stride(vertex_count) as usize;
     let svoff = section_offset(soa_vertex_offset, 3 * soa_vertex_count, 4, bytes.len())?;
     let mut soa_vertices = Vec::with_capacity(3 * soa_vertex_count);
     for i in 0..3 * soa_vertex_count {
         soa_vertices.push(read_f32_le(bytes, svoff + i * 4));
     }
 
-    let soa_normal_count = (face_count as usize + 3) & !3;
+    let soa_normal_count = get_hull_soa_stride(face_count) as usize;
     let snoff = section_offset(soa_normal_offset, 3 * soa_normal_count, 4, bytes.len())?;
     let mut soa_normals = Vec::with_capacity(3 * soa_normal_count);
     for i in 0..3 * soa_normal_count {

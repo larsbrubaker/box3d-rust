@@ -318,6 +318,9 @@ pub struct World {
     pub user_debug_shape_context: u64,
 
     pub worker_count: i32,
+    /// Lane width of the wide convex kernels: 4, or 8 for AVX2. Always 4 in the scalar port,
+    /// which only has the width 4 kernels. (world->simdWidth)
+    pub(crate) simd_width: i32,
 
     pub user_data: u64,
 
@@ -515,6 +518,7 @@ impl World {
             destroy_debug_shape: def.destroy_debug_shape,
             user_debug_shape_context: def.user_debug_shape_context,
             worker_count: 1,
+            simd_width: crate::simd_scalar::get_simd_width(),
             user_data: def.user_data,
             inv_h: 0.0,
             inv_dt: 0.0,

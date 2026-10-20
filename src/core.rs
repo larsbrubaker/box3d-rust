@@ -19,8 +19,9 @@ pub const NULL_INDEX: i32 = -1;
 /// Use to validate definitions. (core.h: B3_SECRET_COOKIE)
 pub const SECRET_COOKIE: i32 = 1152023;
 
-/// Number of lanes in a wide float. Every upstream SIMD configuration, including the scalar
-/// `B3_SIMD_NONE` path the port implements, uses a width of 4. (core.h: B3_SIMD_WIDTH)
+/// Number of lanes in a wide float. Upstream compiles its wide kernels at widths 4 and 8
+/// (`wide4.c` / `wide8.c`) and selects one at runtime; the scalar `B3_SIMD_NONE` path the
+/// port implements only has the width 4 kernels. (core.h / wide4.c: B3_SIMD_WIDTH)
 pub const SIMD_WIDTH: usize = 4;
 
 // The length-unit scale is a single global that the user sets once at startup.
@@ -63,6 +64,13 @@ pub fn get_stall_threshold() -> f32 {
 /// (large world mode), mirroring `BOX3D_DOUBLE_PRECISION`.
 pub fn is_double_precision() -> bool {
     cfg!(feature = "double-precision")
+}
+
+/// @return true if the current CPU has the AVX2 instruction set. The port implements the
+/// scalar (`B3_SIMD_NONE`) path, which never selects the AVX2 kernels, so this mirrors a
+/// `BOX3D_DISABLE_SIMD` C build and returns false. (b3IsAVX2Available)
+pub fn is_avx2_available() -> bool {
+    crate::simd_scalar::detect_simd_width() == 8
 }
 
 // _Static_assert( B3_MAX_MANIFOLD_POINTS >= 4, "B3_MAX_MANIFOLD_POINTS must be at least 4" );

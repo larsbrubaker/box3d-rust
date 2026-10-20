@@ -165,6 +165,109 @@ fn hull_dedup() {
     assert_eq!(entry_count, 1);
 }
 
+/// (ValidateReplayAtWidth)
+fn validate_replay_at_width(rec: &Recording, width: i32) -> bool {
+    crate::simd_scalar::set_simd_width(width);
+    let valid = validate_replay(rec.data(), 1);
+    crate::simd_scalar::set_simd_width(0);
+    valid
+}
+
+/// A recording made at the native SIMD width must replay at width 4 and vice versa.
+/// (CrossWidthReplay)
+///
+/// C skips this when the native width is 4, which is always the case for the scalar port. The
+/// port still records and replays at both requested widths, which then proves that forcing the
+/// width leaves replay validation intact.
+#[test]
+fn cross_width_replay() {
+    use crate::hull::{create_complex_hull, create_cone, create_cylinder, create_rock};
+    use crate::math_functions::make_quat_from_axis_angle;
+
+    crate::simd_scalar::set_simd_width(0);
+    let native_width = crate::simd_scalar::get_simd_width();
+    assert_eq!(native_width, 4, "the scalar port has no width 8 kernels");
+
+    const HULL_COUNT: usize = 6;
+    let mut hulls: Vec<HullData> = Vec::with_capacity(HULL_COUNT);
+    hulls.push(create_rock(0.5).expect("rock"));
+    hulls.push(create_complex_hull(0.5).expect("complex hull"));
+    hulls.push(create_cylinder(0.8, 0.4, 0.0, 8).expect("cylinder"));
+    hulls.push(create_cone(0.8, 0.5, 0.2, 7).expect("cone"));
+
+    let mut seed: u32 = 12345;
+    for _ in 4..HULL_COUNT {
+        let mut points = [VEC3_ZERO; 20];
+        for point in points.iter_mut() {
+            let mut v = [0.0f32; 3];
+            for (k, value) in v.iter_mut().enumerate() {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                *value = ((seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5)
+                    * if k == 1 { 0.6 } else { 1.0 };
+            }
+            *point = Vec3 {
+                x: v[0],
+                y: v[1],
+                z: v[2],
+            };
+        }
+        hulls.push(create_hull(&points, 20).expect("random hull"));
+    }
+
+    let rec = Recording::new(0);
+
+    crate::simd_scalar::set_simd_width(native_width);
+
+    let mut world = World::new(&default_world_def());
+
+    world_start_recording(&mut world, rec);
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground_id = create_body(&mut world, &ground_def);
+    let ground_box = make_box_hull(20.0, 1.0, 20.0);
+    let ground_shape = default_shape_def();
+    create_hull_shape(&mut world, ground_id, &ground_shape, &ground_box.base);
+
+    let mut dynamic_shape = default_shape_def();
+    dynamic_shape.density = 1.0;
+
+    for i in 0..18 {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.position = Pos {
+            x: (0.4 * (i % 3) as f32 - 0.4) as _,
+            y: (1.5 + 0.9 * i as f32) as _,
+            z: (0.3 * (i % 2) as f32) as _,
+        };
+        body_def.rotation = make_quat_from_axis_angle(
+            Vec3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            0.37 * i as f32,
+        );
+        let body_id = create_body(&mut world, &body_def);
+        create_hull_shape(&mut world, body_id, &dynamic_shape, &hulls[i % HULL_COUNT]);
+    }
+
+    let time_step = 1.0 / 60.0;
+    for _ in 0..120 {
+        world.step(time_step, 4);
+    }
+
+    let rec = world_stop_recording(&mut world).expect("recording active");
+    assert!(destroy_world(world).is_none());
+    crate::simd_scalar::set_simd_width(0);
+
+    let narrow_valid = validate_replay_at_width(&rec, 4);
+    let native_valid = validate_replay_at_width(&rec, native_width);
+
+    assert!(narrow_valid);
+    assert!(native_valid);
+}
+
 /// Mid-stream snapshot with floating dynamics (no contacts). (MidStreamNoContacts)
 #[test]
 fn mid_stream_no_contacts() {

@@ -32,8 +32,10 @@ pub fn find_hull_support_vertex(hull: &HullData, direction: Vec3) -> i32 {
     let mut best_dot_w = splat_w(-f32::MAX);
     let mut best_index_w = splat_w(-1.0);
 
+    // Keep this at 4 wide to avoid regressing 4 wide platforms.
+    let loop_count = ((vertex_count + 3) & !3) as usize;
     let mut i = 0;
-    while i < soa_vertex_count {
+    while i < loop_count {
         let d = add_w(
             add_w(mul_w(dx, load_w(&vx[i..])), mul_w(dy, load_w(&vy[i..]))),
             mul_w(dz, load_w(&vz[i..])),

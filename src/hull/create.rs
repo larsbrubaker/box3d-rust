@@ -1,7 +1,9 @@
 //! Hull creation: CreateHull, Clone, Destroy, Cylinder/Cone/Rock.
 
 use super::builder_pool::{compute_hull_work_sizes, HullBuilder, HULL_MAX_COUNT, SENTINEL};
-use super::types::{HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION};
+use super::types::{
+    get_hull_soa_stride, HullData, HullFace, HullHalfEdge, HullVertex, HULL_DATA_SIZE, HULL_VERSION,
+};
 use super::validate::is_valid_hull;
 use crate::constants::{MAX_HULL_EDGES, MAX_HULL_FACES, MAX_HULL_VERTICES};
 use crate::core::{hash64_non_zero, NULL_INDEX};
@@ -213,8 +215,8 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         face_node = builder.faces[face as usize].link.next;
     }
 
-    let soa_vertex_count = ((vertex_count + 3) & !3) as usize;
-    let soa_normal_count = ((face_count + 3) & !3) as usize;
+    let soa_vertex_count = get_hull_soa_stride(vertex_count) as usize;
+    let soa_normal_count = get_hull_soa_stride(face_count) as usize;
 
     let mut byte_count = align_up8(HULL_DATA_SIZE);
     let vertex_offset = byte_count as i32;
@@ -420,8 +422,8 @@ pub fn clone_and_transform_hull(
         }
     }
 
-    let soa_vertex_count = (vertex_count + 3) & !3;
-    let soa_normal_count = (face_count + 3) & !3;
+    let soa_vertex_count = get_hull_soa_stride(vertex_count as i32) as usize;
+    let soa_normal_count = get_hull_soa_stride(face_count as i32) as usize;
 
     let matrix = make_matrix_from_quat(transform.q);
     for i in 0..vertex_count {

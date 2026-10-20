@@ -5,30 +5,46 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use crate::core::SIMD_WIDTH;
 use crate::hull::{
     get_hull_edge_cosines, get_hull_edges, get_hull_planes, get_hull_soa_normals,
-    hull_soa_normal_count, HullData,
+    hull_soa_normal_count, HullData, HULL_SOA_PADDING,
 };
 use crate::math_functions::{max_float, min_float, Vec3};
 use crate::simd_scalar::{dot_w, load_vw, splat_vw, store_w};
 
+// _Static_assert( B3_SIMD_WIDTH <= B3_HULL_SOA_PADDING, "hull SoA padding must cover the SIMD width" );
+const _: () = assert!(
+    SIMD_WIDTH as i32 <= HULL_SOA_PADDING,
+    "hull SoA padding must cover the SIMD width"
+);
+
+/// Round a hull SoA element count up to the SIMD width. Loops over the hull SoA arrays use
+/// this count; the arrays themselves are strided by `b3GetHullSoaStride`, which pads further
+/// (to 8) for the AVX2 path. (b3RoundUpToSIMDWidth)
+#[inline]
+pub(super) fn round_up_to_simd_width(count: i32) -> i32 {
+    (count + SIMD_WIDTH as i32 - 1) & !(SIMD_WIDTH as i32 - 1)
+}
+
 /// Wide dot(n, d) for all face normals n of the hull, padded to the SIMD width.
 /// (b3GetFaceDots)
 pub(super) fn get_face_dots(hull: &HullData, d: Vec3, dots: &mut [f32]) {
-    let soa_face_count = hull_soa_normal_count(hull);
+    let face_stride = hull_soa_normal_count(hull);
     let normals = get_hull_soa_normals(hull);
-    let nx = &normals[0..soa_face_count];
-    let ny = &normals[soa_face_count..2 * soa_face_count];
-    let nz = &normals[2 * soa_face_count..3 * soa_face_count];
+    let nx = &normals[0..face_stride];
+    let ny = &normals[face_stride..2 * face_stride];
+    let nz = &normals[2 * face_stride..3 * face_stride];
 
     let d_w = splat_vw(d);
 
+    let wide_face_count = round_up_to_simd_width(hull.face_count) as usize;
     let mut i = 0;
-    while i < soa_face_count {
+    while i < wide_face_count {
         // dot product per lane
         let m = dot_w(load_vw(&nx[i..], &ny[i..], &nz[i..]), d_w);
         store_w(&mut dots[i..], m);
-        i += 4;
+        i += SIMD_WIDTH;
     }
 }
 

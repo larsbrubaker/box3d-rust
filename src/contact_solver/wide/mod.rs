@@ -156,11 +156,12 @@ pub struct ContactConstraintWide {
 }
 
 impl ContactConstraintWide {
-    /// Wide point count: the maximum over the four lanes.
+    /// Wide point count: the maximum over the lanes.
     pub fn point_count(&self) -> usize {
-        let point_count1 = self.point_counts[0].max(self.point_counts[1]);
-        let point_count2 = self.point_counts[2].max(self.point_counts[3]);
-        let point_count = point_count1.max(point_count2);
+        let mut point_count = 0;
+        for lane in 0..SIMD_WIDTH {
+            point_count = crate::math_functions::max_int(point_count, self.point_counts[lane]);
+        }
         debug_assert!(0 < point_count && point_count as usize <= MAX_MANIFOLD_POINTS);
         point_count as usize
     }

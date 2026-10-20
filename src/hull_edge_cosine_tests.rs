@@ -3,7 +3,8 @@
 //! (152 bytes) / `b3BoxHull` (696 bytes) layouts.
 //!
 //! Expected values come from the scalar C build (`BOX3D_DISABLE_SIMD`) of the reference at
-//! 51f056e, printed as raw float bits.
+//! 51f056e, printed as raw float bits. The hashes and the version were re-derived at e77352c,
+//! which pads the SOA arrays to a multiple of 8.
 
 use crate::hull::{
     clone_and_transform_hull, convert_bytes_to_hull, create_complex_hull, create_cylinder,
@@ -30,7 +31,7 @@ const COMPLEX_EDGE_COSINES: [u32; 89] = [
 
 #[test]
 fn hull_layout_constants_match_c() {
-    assert_eq!(HULL_VERSION, 0x9D3E_61B7_C2A4_F085);
+    assert_eq!(HULL_VERSION, 0x6B1E_39D4_A87C_25F3);
     assert_eq!(HULL_DATA_SIZE, 152);
     assert_eq!(HULL_BYTE_COUNT_OFFSET, 144);
     assert_eq!(BOX_HULL_SIZE, 696);
@@ -48,7 +49,7 @@ fn complex_hull_edge_cosines_match_c() {
     }
 
     // The cosine section follows the SOA normals and closes the blob.
-    let soa_normal_count = ((hull.face_count + 3) & !3) as usize;
+    let soa_normal_count = ((hull.face_count + 7) & !7) as usize;
     let soa_normal_end = hull.soa_normal_offset as usize + 3 * soa_normal_count * 4;
     assert_eq!(hull.edge_cosine_offset as usize, (soa_normal_end + 7) & !7);
     assert_eq!(
@@ -61,12 +62,12 @@ fn complex_hull_edge_cosines_match_c() {
 fn hull_hashes_cover_edge_cosines() {
     assert_eq!(
         make_box_hull(1.0, 2.0, 3.0).base.hash,
-        0xec0b_cdf2_f063_e113
+        0xfc96_8302_32f7_676a
     );
-    assert_eq!(create_rock(0.5).expect("rock").hash, 0x8d00_d922_f345_0914);
+    assert_eq!(create_rock(0.5).expect("rock").hash, 0xb2ce_028d_99c2_136c);
     assert_eq!(
         create_cylinder(1.0, 0.1, -0.5, 32).expect("cylinder").hash,
-        0x36f1_c172_b41f_9e8d
+        0xd895_1069_4118_1615
     );
 }
 
@@ -98,7 +99,7 @@ fn clone_and_transform_hull_updates_edge_cosines() {
     };
     let moved = clone_and_transform_hull(&complex, xf, scale).expect("moved hull");
     assert_eq!(moved.edge_count, 178);
-    assert_eq!(moved.hash, 0x6ce8_f417_ab64_52d9);
+    assert_eq!(moved.hash, 0x0e06_fb28_6fcb_2053);
 
     let expected = [
         0x3f690f70u32,

@@ -184,6 +184,10 @@ pub fn solve(world: &mut World, context: &StepContext) {
     // Prepare contact constraints for every color: wide constraints for the convex contacts
     // and scalar constraints for the mesh contacts. The overflow color only has mesh contacts.
     // (b3PrepareContacts_Convex / b3PrepareContacts_Mesh / b3PrepareContacts_Overflow)
+    // C dispatches the convex kernels on world->simdWidth (4 or 8). The scalar port only has
+    // the width 4 kernels, and the world width can never be 8 here (b3SetSIMDWidth and
+    // b3World_EnableSSE2Fallback fall back to 4 without AVX2).
+    debug_assert!(world.simd_width == crate::core::SIMD_WIDTH as i32);
     let mut mesh_constraints: Vec<Vec<ContactConstraint>> = (0..GRAPH_COLOR_COUNT as usize)
         .map(|_| Vec::new())
         .collect();

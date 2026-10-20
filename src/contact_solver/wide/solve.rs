@@ -261,13 +261,16 @@ pub fn solve_contacts_convex(
 
             // No approximate _mm_rsqrt_ps here to maintain cross-platform determinism
             let normalize = div_w(max_impulse, add_w(sqrt_w(length_squared), epsilon_w));
-            let mut scale = blend_w(one_w, normalize, mask);
+            let scale = blend_w(one_w, normalize, mask);
 
             // Ensure zero rolling resistance yields no impulse
             let rolling_mask = greater_than_w(c.rolling_resistance, zero_w());
-            scale = blend_w(zero_w(), scale, rolling_mask);
 
-            c.rolling_impulse = mul_svw(scale, c.rolling_impulse);
+            // Blend the result to ensure there are no +/-0 determinism problems, since 0 * -1 == -0.
+            let scaled_impulse = mul_svw(scale, c.rolling_impulse);
+            c.rolling_impulse.x = blend_w(zero_w(), scaled_impulse.x, rolling_mask);
+            c.rolling_impulse.y = blend_w(zero_w(), scaled_impulse.y, rolling_mask);
+            c.rolling_impulse.z = blend_w(zero_w(), scaled_impulse.z, rolling_mask);
 
             delta_impulse = sub_vw(c.rolling_impulse, old_impulse);
 

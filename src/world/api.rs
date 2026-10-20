@@ -150,6 +150,23 @@ pub fn world_is_warm_starting_enabled(world: &World) -> bool {
     world.enable_warm_starting
 }
 
+/// Enable the SSE2 fallback even when AVX2 is present. This is for testing.
+/// Normally you should use the CMake build settings to disable AVX2.
+/// The port only has the 4 wide scalar path, so the width stays 4 either way.
+/// (b3World_EnableSSE2Fallback)
+pub fn world_enable_sse2_fallback(world: &mut World, flag: bool) {
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    world.simd_width = if flag {
+        4
+    } else {
+        crate::simd_scalar::get_simd_width()
+    };
+}
+
 /// Get the number of awake bodies. (b3World_GetAwakeBodyCount)
 pub fn world_get_awake_body_count(world: &World) -> i32 {
     world.solver_sets[AWAKE_SET as usize].body_sims.len() as i32

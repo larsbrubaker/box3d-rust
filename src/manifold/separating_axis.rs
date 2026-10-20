@@ -18,6 +18,7 @@ use crate::core::{NULL_INDEX, SIMD_WIDTH};
 use crate::hull::{
     get_hull_edge_cosines, get_hull_edges, get_hull_planes, get_hull_soa_normals,
     get_hull_soa_vertices, hull_soa_normal_count, hull_soa_vertex_count, HullData,
+    HULL_SOA_PADDING,
 };
 use crate::math_functions::{
     aabb_center, aabb_extents, abs, abs_float, add, dot, length, make_matrix_from_quat, max_float,
@@ -29,8 +30,8 @@ use crate::simd_scalar::{
 };
 
 use super::edge_candidates::{
-    filter_edge_candidates, get_face_dots, get_face_plane_separations, test_edge_candidate_sorted,
-    EDGE_PROBE_MIN_TESTS,
+    filter_edge_candidates, get_face_dots, get_face_plane_separations, round_up_to_simd_width,
+    test_edge_candidate_sorted, EDGE_PROBE_MIN_TESTS,
 };
 
 const HULL_BIT_COUNT: i32 = 7;
@@ -81,7 +82,7 @@ fn negative_transform_from_soa(
     while i < n {
         let v = load_vw(&in_x[i..], &in_y[i..], &in_z[i..]);
 
-        // Rotate four vectors at a time
+        // Rotate one vector per lane
         let mut out = Vec3W {
             x: dot_w(r0, v),
             y: dot_w(r1, v),
@@ -99,12 +100,12 @@ fn negative_transform_from_soa(
             neg_vw(out),
         );
 
-        i += 4;
+        i += SIMD_WIDTH;
     }
 }
 
 /// SIMD support point calculation using a SoA vertex array padded with repeats of the first
-/// vertex to a multiple of 4.
+/// vertex to a multiple of 8.
 ///
 /// This minimizes `(bias - dot)`, where the caller is expected to provide a bias that makes
 /// this always positive. It can be direction dependent. The bias should be just big enough to
@@ -143,7 +144,7 @@ fn get_support_wide(
         let augmented_value = embed_index_w(value, i as i32, HULL_BIT_COUNT);
         min_value = min_w(min_value, augmented_value);
 
-        i += 4;
+        i += SIMD_WIDTH;
     }
 
     // One horizontal min, the winning lane's value and index bits ride through.
@@ -178,9 +179,44 @@ const NE: usize = crate::constants::MAX_HULL_EDGES as usize + SIMD_WIDTH;
 const NF: usize = crate::constants::MAX_HULL_FACES as usize + SIMD_WIDTH;
 const NV: usize = crate::constants::MAX_HULL_VERTICES as usize + SIMD_WIDTH;
 
-/// SIMD separating axis test based on an implementation developed by Cairn Overturf.
-/// (b3ComputeSeparatingAxis)
+/// Separating axis test at the requested SIMD width. The scalar port only has the width 4
+/// kernel; upstream without `B3_SIMD_HAS_WIDTH_8` ignores the width the same way.
+/// (b3ComputeSeparatingAxisAtWidth)
+pub(crate) fn compute_separating_axis_at_width(
+    hull_a: &HullData,
+    hull_b: &HullData,
+    xf_b: Transform,
+    early_return: bool,
+    simd_width: i32,
+) -> AxisQuery {
+    // B3_UNUSED( simdWidth )
+    let _ = simd_width;
+    compute_separating_axis_w4(hull_a, hull_b, xf_b, early_return)
+}
+
+/// Separating axis test at the process wide SIMD width. (b3ComputeSeparatingAxis)
+// Upstream's callers are the tests and the SAT benchmark; the solver path goes through
+// `collide_hulls_at_width` with the world's width.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn compute_separating_axis(
+    hull_a: &HullData,
+    hull_b: &HullData,
+    xf_b: Transform,
+    early_return: bool,
+) -> AxisQuery {
+    compute_separating_axis_at_width(
+        hull_a,
+        hull_b,
+        xf_b,
+        early_return,
+        crate::simd_scalar::get_simd_width(),
+    )
+}
+
+/// SIMD separating axis test based on an implementation developed by Cairn Overturf.
+/// Width 4 kernel (`convex_manifold_wide.inl` compiled by `wide4.c`).
+/// (b3ComputeSeparatingAxisW4)
+pub(crate) fn compute_separating_axis_w4(
     hull_a: &HullData,
     hull_b: &HullData,
     xf_b: Transform,
@@ -219,11 +255,12 @@ pub(crate) fn compute_separating_axis(
     let face_count_a = hull_a.face_count;
     let planes_a = get_hull_planes(hull_a);
 
-    let soa_vertex_count_b = hull_soa_vertex_count(hull_b);
+    let vertex_stride_b = hull_soa_vertex_count(hull_b);
     let soa_b = get_hull_soa_vertices(hull_b);
-    let vx_b = &soa_b[0..soa_vertex_count_b];
-    let vy_b = &soa_b[soa_vertex_count_b..2 * soa_vertex_count_b];
-    let vz_b = &soa_b[2 * soa_vertex_count_b..3 * soa_vertex_count_b];
+    let vx_b = &soa_b[0..vertex_stride_b];
+    let vy_b = &soa_b[vertex_stride_b..2 * vertex_stride_b];
+    let vz_b = &soa_b[2 * vertex_stride_b..3 * vertex_stride_b];
+    let wide_vertex_count_b = round_up_to_simd_width(hull_b.vertex_count) as usize;
 
     let c_b = aabb_center(hull_b.aabb);
     let h_b = aabb_extents(hull_b.aabb);
@@ -271,7 +308,7 @@ pub(crate) fn compute_separating_axis(
             vx_b,
             vy_b,
             vz_b,
-            soa_vertex_count_b,
+            wide_vertex_count_b,
             c_b,
             h_b,
         );
@@ -299,7 +336,7 @@ pub(crate) fn compute_separating_axis(
                 vx_b,
                 vy_b,
                 vz_b,
-                soa_vertex_count_b,
+                wide_vertex_count_b,
                 c_b,
                 h_b,
             );
@@ -322,11 +359,12 @@ pub(crate) fn compute_separating_axis(
     let face_count_b = hull_b.face_count;
     let planes_b = get_hull_planes(hull_b);
 
-    let soa_vertex_count_a = hull_soa_vertex_count(hull_a);
+    let vertex_stride_a = hull_soa_vertex_count(hull_a);
     let soa_a = get_hull_soa_vertices(hull_a);
-    let vx_a = &soa_a[0..soa_vertex_count_a];
-    let vy_a = &soa_a[soa_vertex_count_a..2 * soa_vertex_count_a];
-    let vz_a = &soa_a[2 * soa_vertex_count_a..3 * soa_vertex_count_a];
+    let vx_a = &soa_a[0..vertex_stride_a];
+    let vy_a = &soa_a[vertex_stride_a..2 * vertex_stride_a];
+    let vz_a = &soa_a[2 * vertex_stride_a..3 * vertex_stride_a];
+    let wide_vertex_count_a = round_up_to_simd_width(hull_a.vertex_count) as usize;
 
     let c_a = aabb_center(hull_a.aabb);
     let h_a = aabb_extents(hull_a.aabb);
@@ -358,7 +396,7 @@ pub(crate) fn compute_separating_axis(
             vx_a,
             vy_a,
             vz_a,
-            soa_vertex_count_a,
+            wide_vertex_count_a,
             c_a,
             h_a,
         );
@@ -388,7 +426,7 @@ pub(crate) fn compute_separating_axis(
                 vx_a,
                 vy_a,
                 vz_a,
-                soa_vertex_count_a,
+                wide_vertex_count_a,
                 c_a,
                 h_a,
             );
@@ -412,12 +450,12 @@ pub(crate) fn compute_separating_axis(
         "must be multiple of SIMD width"
     );
     const _: () = assert!(
-        (crate::constants::MAX_HULL_FACES as usize & (SIMD_WIDTH - 1)) == 0,
-        "must be multiple of SIMD width"
+        (crate::constants::MAX_HULL_FACES & (HULL_SOA_PADDING - 1)) == 0,
+        "must be multiple of hull SoA padding"
     );
     const _: () = assert!(
-        (crate::constants::MAX_HULL_VERTICES as usize & (SIMD_WIDTH - 1)) == 0,
-        "must be multiple of SIMD width"
+        (crate::constants::MAX_HULL_VERTICES & (HULL_SOA_PADDING - 1)) == 0,
+        "must be multiple of hull SoA padding"
     );
 
     debug_assert!(
@@ -537,11 +575,12 @@ pub(crate) fn compute_separating_axis(
     let mut b_wy = [0.0f32; NV];
     let mut b_wz = [0.0f32; NV];
 
-    let soa_face_count_b = hull_soa_normal_count(hull_b);
+    let face_stride_b = hull_soa_normal_count(hull_b);
     let normals_b = get_hull_soa_normals(hull_b);
-    let nx_b = &normals_b[0..soa_face_count_b];
-    let ny_b = &normals_b[soa_face_count_b..2 * soa_face_count_b];
-    let nz_b = &normals_b[2 * soa_face_count_b..3 * soa_face_count_b];
+    let nx_b = &normals_b[0..face_stride_b];
+    let ny_b = &normals_b[face_stride_b..2 * face_stride_b];
+    let nz_b = &normals_b[2 * face_stride_b..3 * face_stride_b];
+    let wide_face_count_b = round_up_to_simd_width(face_count_b) as usize;
 
     negative_transform_from_soa(
         r,
@@ -549,7 +588,7 @@ pub(crate) fn compute_separating_axis(
         nx_b,
         ny_b,
         nz_b,
-        soa_face_count_b,
+        wide_face_count_b,
         &mut b_fnx,
         &mut b_fny,
         &mut b_fnz,
@@ -561,7 +600,7 @@ pub(crate) fn compute_separating_axis(
         vx_b,
         vy_b,
         vz_b,
-        soa_vertex_count_b,
+        wide_vertex_count_b,
         &mut b_wx,
         &mut b_wy,
         &mut b_wz,

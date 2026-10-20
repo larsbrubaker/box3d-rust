@@ -24,6 +24,7 @@ pub use capsules::collide_capsules;
 pub use clip::{find_incident_face, flip_pair};
 pub use hull_capsule::collide_hull_and_capsule;
 pub use hulls::collide_hulls;
+pub(crate) use hulls::collide_hulls_at_width;
 pub use spheres::{collide_capsule_and_sphere, collide_hull_and_sphere, collide_spheres};
 pub use triangle::{collide_triangle_and_capsule, collide_triangle_and_sphere};
 pub use triangle_hull::collide_triangle_and_hull;

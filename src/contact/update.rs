@@ -13,8 +13,8 @@ use crate::geometry::ShapeType;
 use crate::id::ShapeId;
 use crate::manifold::{
     collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
-    collide_hull_and_sphere, collide_hulls, collide_spheres, make_feature_id, LocalManifold,
-    Manifold, ManifoldPoint, SatCache,
+    collide_hull_and_sphere, collide_hulls_at_width, collide_spheres, make_feature_id,
+    LocalManifold, Manifold, ManifoldPoint, SatCache,
 };
 use crate::math_functions::{
     add, inv_mul_world_transforms, make_matrix_from_quat, max_float, mul_mv, mul_world_transforms,
@@ -89,6 +89,7 @@ fn compute_convex_manifold(
     let mut geom_manifold = LocalManifold::default();
     let capacity = MAX_MANIFOLD_POINTS as i32;
     let transform_b_to_a = inv_mul_world_transforms(xf_a, xf_b);
+    let simd_width = world.simd_width;
 
     match type_a {
         ShapeType::Sphere => {
@@ -175,13 +176,14 @@ fn compute_convex_manifold(
                     unreachable!()
                 };
                 let sat = ensure_sat_cache(cache);
-                collide_hulls(
+                collide_hulls_at_width(
                     &mut geom_manifold,
                     capacity,
                     hull_a,
                     hull_b,
                     transform_b_to_a,
                     sat,
+                    simd_width,
                 );
                 world.task_contexts[worker_index as usize].sat_call_count += 1;
                 world.task_contexts[worker_index as usize].sat_cache_hit_count += sat.hit as i32;
