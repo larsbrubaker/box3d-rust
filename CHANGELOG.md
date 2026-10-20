@@ -11,6 +11,7 @@ time. Ported so far:
 - `51f056e` SAT benchmark (#177)
 - `e77352c` Add support for AVX2 and runtime feature detection (#174)
 - `16f7f4c` Tree perf (#179)
+- `f8c4fe8` Shape cast support for box movers (#180)
 
 ### Breaking
 
@@ -112,6 +113,18 @@ time. Ported so far:
   with hashes `0xC24D812B` (double `0x0151E8CA`). All values were confirmed
   with a scalar C build of `16f7f4c` (`BOX3D_DISABLE_SIMD`) in both precision
   modes.
+- `shape_cast` with `can_encroach` no longer reports an initial overlap when
+  the shapes start separated but within the cast target distance and no more
+  than `2 * linear_slop` apart (upstream `f8c4fe8`, for box movers). It
+  advances by first order while retaining half a linear slop of separation:
+  sweeps that cannot consume the free gap (receding, tangential, grazing)
+  miss, as do hits at or beyond `max_fraction`; otherwise it reports a hit at
+  that fraction with the frame A point and normal. Gaps over
+  `2 * linear_slop` still reduce the target as before, and overlapping or
+  touching shapes still report an initial overlap. Ports upstream's eight new
+  shape cast tests. Checked bit-exact against a scalar C build of `f8c4fe8`
+  on 200,000 randomized near-contact casts (about 53,000 reach the new
+  branch).
 
 ### Not ported
 
@@ -132,6 +145,8 @@ time. Ported so far:
   `sample_benchmark.cpp`; listed as planned in the demo registry) and the
   refreshed benchmark CSVs. The width 8
   (`W8`) mesh kernels and `b3MoveMaskW4` for SSE2 / Neon are SIMD-only.
+- The new Encroach Cast collision sample (upstream `f8c4fe8`); it is listed
+  as planned in the demo registry.
 
 ## 0.4.1
 

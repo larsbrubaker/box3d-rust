@@ -89,6 +89,143 @@ fn shape_cast_test() {
     ensure_small(output.fraction - 0.5, 0.005);
 }
 
+// unit box with a segment resting 2mm from its +x face: inside the cast
+// target distance, not overlapped
+const ENCROACH_VAS: [Vec3; 4] = [
+    Vec3 {
+        x: -1.0,
+        y: -1.0,
+        z: 0.0,
+    },
+    Vec3 {
+        x: 1.0,
+        y: -1.0,
+        z: 0.0,
+    },
+    Vec3 {
+        x: 1.0,
+        y: 1.0,
+        z: 0.0,
+    },
+    Vec3 {
+        x: -1.0,
+        y: 1.0,
+        z: 0.0,
+    },
+];
+const ENCROACH_VBS: [Vec3; 2] = [
+    Vec3 {
+        x: 1.002,
+        y: -1.0,
+        z: 0.0,
+    },
+    Vec3 {
+        x: 1.002,
+        y: 1.0,
+        z: 0.0,
+    },
+];
+// 5mm gap segment
+const ENCROACH_VBS_5MM: [Vec3; 2] = [
+    Vec3 {
+        x: 1.005,
+        y: -1.0,
+        z: 0.0,
+    },
+    Vec3 {
+        x: 1.005,
+        y: 1.0,
+        z: 0.0,
+    },
+];
+
+fn encroach_cast_input(translation_b: Vec3) -> ShapeCastPairInput {
+    ShapeCastPairInput {
+        proxy_a: make_proxy(&ENCROACH_VAS, 0.0),
+        proxy_b: make_proxy(&ENCROACH_VBS, 0.0),
+        transform: TRANSFORM_IDENTITY,
+        translation_b,
+        max_fraction: 1.0,
+        can_encroach: true,
+    }
+}
+
+#[test]
+fn shape_cast_encroach_recede_test() {
+    let input = encroach_cast_input(v(1.0, 0.0, 0.0));
+    let output = shape_cast(&input);
+    assert!(!output.hit);
+}
+
+#[test]
+fn shape_cast_encroach_slide_test() {
+    let input = encroach_cast_input(v(0.0, 2.0, 0.0));
+    let output = shape_cast(&input);
+    assert!(!output.hit);
+}
+
+#[test]
+fn shape_cast_encroach_closing_test() {
+    let input = encroach_cast_input(v(-1.0, 0.0, 0.0));
+    let output = shape_cast(&input);
+    assert!(output.hit);
+    ensure_small(output.fraction, f32::EPSILON);
+    ensure_small(output.normal.x - 1.0, 0.001);
+}
+
+#[test]
+fn shape_cast_encroach_graded_test() {
+    // 5mm gap: closing consumes the gap down to the retained rest separation
+    let mut input = encroach_cast_input(v(-1.0, 0.0, 0.0));
+    input.proxy_b = make_proxy(&ENCROACH_VBS_5MM, 0.0);
+    let output = shape_cast(&input);
+    assert!(output.hit);
+    ensure_small(output.fraction - 0.0025, 0.0005);
+    ensure_small(output.normal.x - 1.0, 0.001);
+}
+
+#[test]
+fn shape_cast_encroach_max_fraction_test() {
+    // 5mm gap closes at fraction 0.0025
+    let mut input = encroach_cast_input(v(-1.0, 0.0, 0.0));
+    input.proxy_b = make_proxy(&ENCROACH_VBS_5MM, 0.0);
+    input.max_fraction = 0.002;
+    let output = shape_cast(&input);
+    assert!(!output.hit);
+
+    input.max_fraction = 0.003;
+    let output = shape_cast(&input);
+    assert!(output.hit);
+    ensure_small(output.fraction - 0.0025, 0.0005);
+}
+
+#[test]
+fn shape_cast_encroach_graze_test() {
+    // mostly tangential slide with a slight closing component: free
+    let mut input = encroach_cast_input(v(-0.001, 2.0, 0.0));
+    input.proxy_b = make_proxy(&ENCROACH_VBS_5MM, 0.0);
+    let output = shape_cast(&input);
+    assert!(!output.hit);
+}
+
+#[test]
+fn shape_cast_start_touching_default_test() {
+    let mut input = encroach_cast_input(v(1.0, 0.0, 0.0));
+    input.can_encroach = false;
+    let output = shape_cast(&input);
+    assert!(output.hit);
+}
+
+#[test]
+fn shape_cast_encroach_overlap_test() {
+    let vcs = [v(0.5, -1.0, 0.0), v(0.5, 1.0, 0.0)];
+
+    let mut input = encroach_cast_input(v(1.0, 0.0, 0.0));
+    input.proxy_b = make_proxy(&vcs, 0.0);
+    let output = shape_cast(&input);
+    assert!(output.hit);
+}
+
 #[test]
 fn time_of_impact_test() {
     let vas = [

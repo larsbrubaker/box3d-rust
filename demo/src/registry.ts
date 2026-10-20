@@ -188,6 +188,9 @@ export const SAMPLES: SampleEntry[] = [
     ["Long Ray Cast", "live", "queries", "long-ray-cast"],
     ["Initial Overlap", "live", "queries", "initial-overlap"],
     ["Shape Cast Debug", "live", "queries", "shape-cast-debug"],
+    // Planned: upstream f8c4fe8 EncroachCast (box mover encroach shape cast), not
+    // ported to the demo yet; the library behavior it exercises is ported.
+    ["Encroach Cast", "planned"],
     ["Distance Debug", "live", "queries", "distance-debug"],
     ["Shape Distance", "live", "queries", "shape-distance"],
     // Partial: the on-screen label corrects a mislabel in the C sample's overlay

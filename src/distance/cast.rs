@@ -76,6 +76,36 @@ pub fn shape_cast(input: &ShapeCastPairInput) -> CastOutput {
             if iteration == 0 {
                 if input.can_encroach && distance_output.distance > 2.0 * linear_slop {
                     target = distance_output.distance - linear_slop;
+                } else if input.can_encroach && distance_output.distance > 0.0 {
+                    // This is for box movers and can't normally be reached by capsule
+                    // movers or regular shape casts.
+
+                    // Near-target start without overlap: advance by first order while
+                    // retaining a rest separation. Sweeps that cannot consume the free
+                    // gap (receding, tangential, grazing) miss.
+                    let retained = 0.5 * linear_slop;
+                    let needed = distance_output.distance - retained;
+                    let approach = -dot(delta2, distance_output.normal);
+                    if approach <= max_float(needed, 0.0) {
+                        // Moving away, no hit.
+                        return output;
+                    }
+
+                    let fraction = if needed > 0.0 { needed / approach } else { 0.0 };
+                    if fraction >= input.max_fraction {
+                        // Still no hit because the max fraction is small.
+                        return output;
+                    }
+
+                    output.fraction = fraction;
+                    output.point = mul_add(
+                        distance_output.point_a,
+                        input.proxy_a.radius,
+                        distance_output.normal,
+                    );
+                    output.normal = distance_output.normal;
+                    output.hit = true;
+                    return output;
                 } else {
                     // Initial overlap
                     output.hit = true;
