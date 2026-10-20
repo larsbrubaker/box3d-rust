@@ -1,20 +1,23 @@
 //! Coverage for the inner-sphere culling in the separating axis test (upstream adec25b "SAT
-//! optimizations", revised in 9f998c8 "SAT samples"): `b3TestEdgeCandidate`, the early return
-//! when either hull has no edge candidates, and a pair that needed the adec25b full-SAT
-//! fallback in `b3CollideHulls` (removed in 9f998c8), plus both outcomes of the 9f998c8
-//! edge contact condition when face clipping yields no points.
+//! optimizations", revised in 9f998c8 "SAT samples" and 51f056e "SAT benchmark"):
+//! `b3TestEdgeCandidateSorted` (51f056e replaces `b3TestEdgeCandidate`), the early return
+//! when either hull has no edge candidates, the 51f056e probe point re-culling
+//! (`b3FilterEdgeCandidates`), and a pair that needed the adec25b full-SAT fallback in
+//! `b3CollideHulls` (removed in 9f998c8), plus both outcomes of the 9f998c8 edge contact
+//! condition when face clipping yields no points.
 //!
 //! Every expected value below comes from the scalar C build (`BOX3D_DISABLE_SIMD`) of the
-//! reference at 9f998c8, printed as raw float bits. The hull pairs and transforms in the
+//! reference, printed as raw float bits: 9f998c8 for the original cases (unchanged at
+//! 51f056e) and 51f056e for the probe culling case. The hull pairs and transforms in the
 //! collide tests were found by searching randomized pairs for the rare paths.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
 use crate::core::NULL_INDEX;
-use crate::hull::{create_hull, make_box_hull};
+use crate::hull::{create_complex_hull, create_hull, make_box_hull};
 use crate::manifold::{
-    collide_hulls, compute_separating_axis, test_edge_candidate, LocalManifold, SatCache,
+    collide_hulls, compute_separating_axis, test_edge_candidate_sorted, LocalManifold, SatCache,
     SeparatingFeature,
 };
 use crate::math_functions::{Quat, Transform, Vec3};
@@ -45,28 +48,34 @@ fn assert_vec_bits(actual: Vec3, expected: Vec3) {
     );
 }
 
-// Arguments are (a1, a2, c, bound). Each case exercises one condition of the test.
+// Arguments are (a1, a2, c, bound). Each case exercises one condition of the test. The
+// conditions are written for the sorted endpoints hi = max(a1, a2), lo = min(a1, a2) and
+// u = lo - c * hi.
 #[test]
 fn test_edge_candidate_conditions() {
     // Exterior: face normal n1 already beats the bound.
-    assert_eq!(test_edge_candidate(0.9, 0.1, 0.5, 0.8), 1);
+    assert_eq!(test_edge_candidate_sorted(0.9, 0.1, 0.5, 0.8), 1);
     // Exterior: face normal n2 already beats the bound.
-    assert_eq!(test_edge_candidate(0.1, 0.9, 0.5, 0.8), 1);
-    // Interior: neither endpoint reaches, but the arc peak t / s does.
-    assert_eq!(test_edge_candidate(0.7071, 0.7071, 0.0, 0.9), 1);
+    assert_eq!(test_edge_candidate_sorted(0.1, 0.9, 0.5, 0.8), 1);
+    // Interior: neither endpoint reaches, but the arc peak does: u^2 >= (bound^2 - hi^2) * s.
+    assert_eq!(test_edge_candidate_sorted(0.7071, 0.7071, 0.0, 0.9), 1);
     // Interior peak below the bound.
-    assert_eq!(test_edge_candidate(0.6, 0.6, 0.0, 0.9), 0);
-    // Peak projection falls outside the arc: a1 < c * a2.
-    assert_eq!(test_edge_candidate(0.1, 0.8, 0.5, 0.85), 0);
-    // Peak projection falls outside the arc: a2 < c * a1.
-    assert_eq!(test_edge_candidate(0.8, 0.1, 0.5, 0.85), 0);
-    // Near parallel normals (s < B3_PARALLEL_TOL) pass the candidate on even though t < bound^2 s.
-    assert_eq!(test_edge_candidate(0.5, 0.5, 0.99999, 0.9), 1);
-    // Non-positive bound. With the exterior test failing, the interior test can only pass when
-    // c >= 1, which also makes s < tol, so this case cannot isolate the bound <= 0 term.
-    assert_eq!(test_edge_candidate(-0.5, -0.5, 1.0, -0.1), 1);
+    assert_eq!(test_edge_candidate_sorted(0.6, 0.6, 0.0, 0.9), 0);
+    // Peak falls outside the arc (u < 0) with a1 the smaller endpoint.
+    assert_eq!(test_edge_candidate_sorted(0.1, 0.8, 0.5, 0.85), 0);
+    // Peak falls outside the arc (u < 0) with a2 the smaller endpoint.
+    assert_eq!(test_edge_candidate_sorted(0.8, 0.1, 0.5, 0.85), 0);
+    // Near parallel normals (s < B3_PARALLEL_TOL) pass the candidate on even though the peak
+    // test u^2 >= (bound^2 - hi^2) * s fails.
+    assert_eq!(test_edge_candidate_sorted(0.5, 0.5, 0.99999, 0.9), 1);
+    // Non-positive bound above both endpoints. The interior test needs u >= 0, which with
+    // negative endpoints requires c >= 1 here, and that also makes s < tol.
+    assert_eq!(test_edge_candidate_sorted(-0.5, -0.5, 1.0, -0.1), 1);
     // Without early return the bound is -infinity and every edge is a candidate.
-    assert_eq!(test_edge_candidate(-0.5, -0.4, 0.3, f32::NEG_INFINITY), 1);
+    assert_eq!(
+        test_edge_candidate_sorted(-0.5, -0.4, 0.3, f32::NEG_INFINITY),
+        1
+    );
 }
 
 // A tall pyramid rests its tip on a large rotated cube, just inside the speculative distance.
@@ -313,4 +322,85 @@ fn collide_hulls_empty_clip_edge_below_faces_returns_no_points() {
     assert_eq!(cache.separation.to_bits(), 0);
     assert_eq!(cache.type_, SeparatingFeature::InvalidAxis as u8);
     assert_eq!((cache.index_a, cache.index_b, cache.hit), (0, 0, 0));
+}
+
+// Two complex hulls (32 points each, 89 edges) overlap slightly. Neither face axis separates,
+// and there are enough edge candidates that 51f056e re-culls them against the plane
+// separations of the best face support points. The edge pair the full query finds (18, 136)
+// cannot beat the face A separation, so the probe pass drops it and the early query reports a
+// lesser edge (30, 136). At 9f998c8 the early query still reported (18, 136). The manifold is
+// the same either way: face A wins with four clipped points.
+#[test]
+fn separating_axis_probe_culls_edge_candidates() {
+    let hull = create_complex_hull(0.5).expect("complex hull");
+    let xf = transform_bits([
+        0x3f2a6075, 0xbee22cd3, 0x3efe4df0, 0xbc3b41d6, 0x3f08476a, 0x3ead7276, 0x3f4694cd,
+    ]);
+
+    let early = compute_separating_axis(&hull, &hull, xf, true);
+    let full = compute_separating_axis(&hull, &hull, xf, false);
+
+    for q in [&early, &full] {
+        assert_eq!(q.separated_feature, SeparatingFeature::InvalidAxis);
+        assert_vec_bits(q.face_a.normal, vb(0x3f629139, 0xbea0dc3e, 0x3eafe39b));
+        assert_eq!(q.face_a.separation.to_bits(), 0x3c4bc9a0);
+        assert_eq!((q.face_a.index_a, q.face_a.index_b), (5, 26));
+        assert_vec_bits(q.face_b.normal, vb(0x3f513200, 0xbdf23884, 0x3f106b0a));
+        assert_eq!(q.face_b.separation.to_bits(), 0xbd8d02ec);
+        assert_eq!((q.face_b.index_a, q.face_b.index_b), (14, 38));
+    }
+
+    assert_vec_bits(early.edge.normal, vb(0x3f634f37, 0xbe8534d5, 0x3ec2388d));
+    assert_eq!(early.edge.separation.to_bits(), 0xbbc5b410);
+    assert_eq!((early.edge.index_a, early.edge.index_b), (30, 136));
+
+    assert_vec_bits(full.edge.normal, vb(0x3f668194, 0xbe9d123c, 0x3e9decc7));
+    assert_eq!(full.edge.separation.to_bits(), 0x3beb2c60);
+    assert_eq!((full.edge.index_a, full.edge.index_b), (18, 136));
+
+    let mut manifold = LocalManifold::default();
+    let mut cache = SatCache::default();
+    collide_hulls(&mut manifold, 32, &hull, &hull, xf, &mut cache);
+
+    assert_eq!(manifold.point_count, 4);
+    assert_vec_bits(manifold.normal, vb(0x3f629139, 0xbea0dc3e, 0x3eafe39b));
+    assert_eq!(cache.separation.to_bits(), 0x3c4bc9a0);
+    assert_eq!(cache.type_, SeparatingFeature::FaceAxisA as u8);
+    assert_eq!((cache.index_a, cache.index_b, cache.hit), (5, 26, 0));
+
+    let expected = [
+        (
+            [0x3e9ce454, 0xbe69c1fe, 0x3e63a49f],
+            0x3c558e20,
+            (0, 28, 1, 136),
+        ),
+        (
+            [0x3eab59e7, 0xbe9b2f0e, 0x3e09dc3d],
+            0x3d4bf248,
+            (0, 21, 1, 27),
+        ),
+        (
+            [0x3e9f1a2c, 0xbea79c69, 0x3e2bd99a],
+            0x3d3a60d8,
+            (1, 27, 0, 28),
+        ),
+        (
+            [0x3eaf7bc9, 0xbe85b7f4, 0x3e0e95d5],
+            0x3d278b68,
+            (1, 134, 0, 21),
+        ),
+    ];
+    for (point, (p, sep, pair)) in manifold.points.iter().zip(expected.iter()) {
+        assert_vec_bits(point.point, vb(p[0], p[1], p[2]));
+        assert_eq!(point.separation.to_bits(), *sep);
+        assert_eq!(
+            (
+                point.pair.owner1,
+                point.pair.index1,
+                point.pair.owner2,
+                point.pair.index2
+            ),
+            *pair
+        );
+    }
 }

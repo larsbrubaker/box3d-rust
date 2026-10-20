@@ -9,6 +9,7 @@
 
 mod capsules;
 mod clip;
+mod edge_candidates;
 mod hull_capsule;
 mod hulls;
 mod sat;
@@ -33,6 +34,8 @@ pub use types::{
 };
 
 #[cfg(test)]
-pub(crate) use separating_axis::{compute_separating_axis, test_edge_candidate};
+pub(crate) use edge_candidates::test_edge_candidate_sorted;
+#[cfg(test)]
+pub(crate) use separating_axis::compute_separating_axis;
 #[cfg(test)]
 pub(crate) use types::get_best_axis;

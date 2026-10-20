@@ -199,8 +199,11 @@ impl Default for RayResult {
 /// Counters that give details of the simulation size. (b3Counters)
 ///
 /// byte_count, stack_used, arena_capacity, and task_count are always
-/// zero in this port: there is no global allocation tracker, no arena stack
-/// allocator, and no task system in the serial Rust implementation.
+/// zero in this port. Upstream (since 51f056e) reports byte_count as the world's
+/// memory footprint, summed from C allocation capacities and struct sizes
+/// (`b3GetWorldByteCount`, shared with `b3World_DumpMemoryStats`), which has no
+/// faithful Rust equivalent. There is also no arena stack allocator and no task
+/// system in the serial Rust implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Counters {
     pub byte_count: i64,

@@ -3,6 +3,50 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## Unreleased
+
+Syncing the port to newer upstream Box3D commits, one upstream commit at a
+time. Ported so far:
+
+- `51f056e` SAT benchmark (#177)
+
+### Breaking
+
+- Hulls store the dot product of the two adjacent face normals for each full
+  edge (upstream `51f056e`). `HullData` gains `edge_cosine_offset`,
+  `edge_cosines`, and an explicit `padding` field; `BoxHull` gains
+  `edge_cosines: [f32; 12]` (left zero, as upstream never fills them for
+  boxes). The serialized layout grows: the `HullData` header is 152 bytes
+  (was 144), `HULL_BYTE_COUNT_OFFSET` is 144, `BoxHull` is 696 bytes (was
+  640), and `HULL_VERSION` changes to `0x9D3E61B7C2A4F085`. Hull hashes
+  change, and serialized hulls, baked compounds, and recordings that embed
+  hulls from earlier versions no longer load.
+
+### Added
+
+- `get_hull_edge_cosines` (upstream `b3GetHullEdgeCosines`).
+
+### Changed
+
+- The separating axis test culls edge candidates with upstream's inscribed
+  sphere test `b3TestEdgeCandidateSorted` (replacing `b3TestEdgeCandidate`),
+  using per-hull plane separations of the other hull's center and the stored
+  edge cosines. With early return it re-culls the candidates against the
+  support points of the best face axes when there are enough edge pair
+  tests, and it reuses the seed face separation instead of recomputing it.
+  Contact manifolds are unchanged on 30,000 randomized hull pairs; the
+  early-return query can report a different (non-winning) edge axis.
+  Checked bit-exact against a scalar C build of `51f056e` on those pairs.
+
+### Not ported
+
+- The new GJK-versus-SAT benchmark (`shared/sat_benchmark.c`, `benchmark
+  --sat`) and its sample, plus the other samples-only changes (ImGuizmo).
+  The Rust benches do not mirror the C benchmark harness.
+- `b3World_GetCounters` now reports `byteCount` as the world memory
+  footprint (`b3GetWorldByteCount`, factored out of
+  `b3World_DumpMemoryStats`). `Counters::byte_count` stays zero in the port.
+
 ## 0.4.1
 
 Bug-fix release; no public API changes. The C reference pin is unchanged

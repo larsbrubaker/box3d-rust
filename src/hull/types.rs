@@ -2,10 +2,10 @@
 //!
 //! # C trailing-blob layout
 //!
-//! In C, `b3HullData` is a 144-byte header with vertex/point/edge/plane/face arrays plus
-//! structure-of-array (SOA) vertices and normals hanging off the end at the recorded byte
-//! offsets (`b3AlignUp8` between sections). `b3BoxHull` embeds the same header plus fixed
-//! arrays (total 640 bytes).
+//! In C, `b3HullData` is a 152-byte header with vertex/point/edge/plane/face arrays plus
+//! structure-of-array (SOA) vertices and normals and the per-edge face normal cosines
+//! hanging off the end at the recorded byte offsets (`b3AlignUp8` between sections).
+//! `b3BoxHull` embeds the same header plus fixed arrays (total 696 bytes).
 //!
 //! Rust stores the header fields plus owned `Vec`s for the arrays. Offsets and
 //! `byte_count` are kept identical to C so [`HullData::to_bytes`] / [`BoxHull::to_bytes`]
@@ -21,18 +21,19 @@
 use crate::math_functions::{Aabb, Matrix3, Plane, Vec3, MAT3_ZERO, VEC3_ZERO};
 
 /// 64-bit hull version. Useful for validating serialized data. (B3_HULL_VERSION)
-pub const HULL_VERSION: u64 = 0x4A4C9587DE57485C;
+pub const HULL_VERSION: u64 = 0x9D3E61B7C2A4F085;
 
 /// Size of the C `b3HullData` header. (_Static_assert in hull.c)
-pub const HULL_DATA_SIZE: usize = 144;
+pub const HULL_DATA_SIZE: usize = 152;
 
 /// Byte offset of `b3HullData::byteCount`, which C keeps as the last named field of the
-/// header. Readers that only have raw bytes (the compound blob reader) need this to find
-/// the extent of a nested hull. Kept honest by a `debug_assert!` in `write_header`.
-pub const HULL_BYTE_COUNT_OFFSET: usize = 140;
+/// header (followed only by explicit padding). Readers that only have raw bytes (the
+/// compound blob reader) need this to find the extent of a nested hull. Kept honest by a
+/// `debug_assert!` in `write_header`.
+pub const HULL_BYTE_COUNT_OFFSET: usize = 144;
 
 /// Size of the C `b3BoxHull`. (_Static_assert in hull.c)
-pub const BOX_HULL_SIZE: usize = 640;
+pub const BOX_HULL_SIZE: usize = 696;
 
 /// A hull vertex. Identified by a half-edge with this vertex as its tail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -88,8 +89,12 @@ pub struct HullData {
     pub face_offset: i32,
     pub soa_vertex_offset: i32,
     pub soa_normal_offset: i32,
-    /// The total number of bytes for this hull. Last named field in C.
+    /// Offset of dot(n1, n2) for each full edge.
+    pub edge_cosine_offset: i32,
+    /// The total number of bytes for this hull.
     pub byte_count: i32,
+    /// Explicit padding for determinism.
+    pub padding: i32,
     pub vertices: Vec<HullVertex>,
     pub points: Vec<Vec3>,
     pub edges: Vec<HullHalfEdge>,
@@ -101,6 +106,9 @@ pub struct HullData {
     /// SOA normal components: `nx[..]`, then `ny[..]`, then `nz[..]`, each length
     /// `(face_count + 3) & !3`. See module docs.
     pub soa_normals: Vec<f32>,
+    /// dot(n1, n2) of the two adjacent face normals for each full edge, length
+    /// `edge_count / 2`.
+    pub edge_cosines: Vec<f32>,
 }
 
 impl Default for HullData {
@@ -124,7 +132,9 @@ impl Default for HullData {
             face_offset: 0,
             soa_vertex_offset: 0,
             soa_normal_offset: 0,
+            edge_cosine_offset: 0,
             byte_count: 0,
+            padding: 0,
             vertices: Vec::new(),
             points: Vec::new(),
             edges: Vec::new(),
@@ -132,6 +142,7 @@ impl Default for HullData {
             planes: Vec::new(),
             soa_vertices: Vec::new(),
             soa_normals: Vec::new(),
+            edge_cosines: Vec::new(),
         }
     }
 }
@@ -152,6 +163,8 @@ pub struct BoxHull {
     pub nx: [f32; 8],
     pub ny: [f32; 8],
     pub nz: [f32; 8],
+    /// dot(n1, n2) for each full edge.
+    pub edge_cosines: [f32; 12],
 }
 
 impl BoxHull {
@@ -190,6 +203,8 @@ impl BoxHull {
         soa_normals.extend_from_slice(&self.ny);
         soa_normals.extend_from_slice(&self.nz);
         self.base.soa_normals = soa_normals;
+
+        self.base.edge_cosines = self.edge_cosines.to_vec();
     }
 }
 
@@ -254,6 +269,17 @@ pub fn get_hull_soa_normals(hull: &HullData) -> &[f32] {
     &hull.soa_normals
 }
 
+/// Get the dot products of the two adjacent face normals for each full edge.
+/// C returns NULL when `edgeCosineOffset` is zero; this returns an empty slice instead.
+/// (collision.h: b3GetHullEdgeCosines)
+pub fn get_hull_edge_cosines(hull: &HullData) -> &[f32] {
+    if hull.edge_cosine_offset == 0 {
+        return &[];
+    }
+
+    &hull.edge_cosines
+}
+
 fn write_i32_le(buf: &mut Vec<u8>, v: i32) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -307,8 +333,10 @@ fn write_header(buf: &mut Vec<u8>, h: &HullData, hash_override: Option<u64>) {
     write_i32_le(buf, h.face_offset);
     write_i32_le(buf, h.soa_vertex_offset);
     write_i32_le(buf, h.soa_normal_offset);
+    write_i32_le(buf, h.edge_cosine_offset);
     debug_assert_eq!(buf.len(), HULL_BYTE_COUNT_OFFSET);
     write_i32_le(buf, h.byte_count);
+    write_i32_le(buf, h.padding);
     debug_assert_eq!(buf.len(), HULL_DATA_SIZE);
 }
 
@@ -412,6 +440,8 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
     let face_offset = read_i32_le(bytes, 128);
     let soa_vertex_offset = read_i32_le(bytes, 132);
     let soa_normal_offset = read_i32_le(bytes, 136);
+    let edge_cosine_offset = read_i32_le(bytes, 140);
+    let padding = read_i32_le(bytes, 148);
 
     if vertex_count < 0 || edge_count < 0 || face_count < 0 {
         return None;
@@ -474,6 +504,19 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         soa_normals.push(read_f32_le(bytes, snoff + i * 4));
     }
 
+    let edge_cosine_count = ec / 2;
+    // A zero offset means "no cosines" (b3GetHullEdgeCosines returns NULL), which the
+    // separating axis test cannot handle for a hull with edges. Reject it, like the other
+    // corrupt-blob checks here.
+    if edge_cosine_offset == 0 && edge_cosine_count > 0 {
+        return None;
+    }
+    let ecoff = section_offset(edge_cosine_offset, edge_cosine_count, 4, bytes.len())?;
+    let mut edge_cosines = Vec::with_capacity(edge_cosine_count);
+    for i in 0..edge_cosine_count {
+        edge_cosines.push(read_f32_le(bytes, ecoff + i * 4));
+    }
+
     Some(HullData {
         version,
         hash,
@@ -493,7 +536,9 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         face_offset,
         soa_vertex_offset,
         soa_normal_offset,
+        edge_cosine_offset,
         byte_count,
+        padding,
         vertices,
         points,
         edges,
@@ -501,6 +546,7 @@ pub fn convert_bytes_to_hull(bytes: &[u8]) -> Option<HullData> {
         planes,
         soa_vertices,
         soa_normals,
+        edge_cosines,
     })
 }
 
@@ -545,6 +591,10 @@ impl HullData {
         for n in &self.soa_normals {
             write_f32_le(&mut buf, *n);
         }
+        pad_to(&mut buf, self.edge_cosine_offset as usize);
+        for c in &self.edge_cosines {
+            write_f32_le(&mut buf, *c);
+        }
         pad_to(&mut buf, self.byte_count as usize);
         debug_assert_eq!(buf.len(), self.byte_count as usize);
         buf
@@ -552,7 +602,7 @@ impl HullData {
 }
 
 impl BoxHull {
-    /// Serialize to the C `b3BoxHull` layout (640 bytes).
+    /// Serialize to the C `b3BoxHull` layout (696 bytes).
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_bytes_with_hash(self.base.hash)
     }
@@ -596,6 +646,9 @@ impl BoxHull {
         }
         for n in &self.nz {
             write_f32_le(&mut buf, *n);
+        }
+        for c in &self.edge_cosines {
+            write_f32_le(&mut buf, *c);
         }
         debug_assert_eq!(buf.len(), BOX_HULL_SIZE);
         buf

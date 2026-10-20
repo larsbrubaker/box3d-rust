@@ -213,6 +213,8 @@ mod hull_support_tests;
 
 #[cfg(test)]
 mod hull_complex_tests;
+#[cfg(test)]
+mod hull_edge_cosine_tests;
 
 #[cfg(test)]
 mod hull2d_tests;

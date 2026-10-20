@@ -232,6 +232,8 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
     byte_count += align_up8(3 * soa_vertex_count * core::mem::size_of::<f32>());
     let soa_normal_offset = byte_count as i32;
     byte_count += align_up8(3 * soa_normal_count * core::mem::size_of::<f32>());
+    let edge_cosine_offset = byte_count as i32;
+    byte_count += align_up8((edge_count / 2) as usize * core::mem::size_of::<f32>());
 
     let mut hull = HullData {
         version: HULL_VERSION,
@@ -253,6 +255,8 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         face_offset,
         soa_vertex_offset,
         soa_normal_offset,
+        edge_cosine_offset,
+        padding: 0,
         vertices: vec![HullVertex { edge: 0 }; vertex_count as usize],
         points: vec![VEC3_ZERO; vertex_count as usize],
         edges: vec![HullHalfEdge::default(); edge_count as usize],
@@ -266,6 +270,7 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
         ],
         soa_vertices: vec![0.0f32; 3 * soa_vertex_count],
         soa_normals: vec![0.0f32; 3 * soa_normal_count],
+        edge_cosines: vec![0.0f32; (edge_count / 2) as usize],
     };
 
     for index in 0..vertex_count as usize {
@@ -309,6 +314,8 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
     }
     // Padded SOA normal lanes stay zero (initialized above), matching C.
 
+    update_hull_edge_cosines(&mut hull);
+
     update_hull_bounds(&mut hull);
     if !update_hull_bulk_properties(&mut hull) {
         return None;
@@ -319,6 +326,18 @@ pub fn create_hull(points: &[Vec3], max_vertex_count: i32) -> Option<HullData> {
 
     finalize_hash(&mut hull);
     Some(hull)
+}
+
+/// Store dot(n1, n2) of the two adjacent face normals for each full edge.
+/// (static b3UpdateHullEdgeCosines)
+fn update_hull_edge_cosines(hull: &mut HullData) {
+    let count = (hull.edge_count / 2) as usize;
+
+    for i in 0..count {
+        let n1 = hull.planes[hull.edges[2 * i].face as usize].normal;
+        let n2 = hull.planes[hull.edges[2 * i + 1].face as usize].normal;
+        hull.edge_cosines[i] = crate::math_functions::dot(n1, n2);
+    }
 }
 
 /// Clone a hull. (b3CloneHull)
@@ -470,6 +489,8 @@ pub fn clone_and_transform_hull(
         hull.soa_normals[soa_normal_count + i] = 0.0;
         hull.soa_normals[2 * soa_normal_count + i] = 0.0;
     }
+
+    update_hull_edge_cosines(&mut hull);
 
     update_hull_bounds(&mut hull);
     if !update_hull_bulk_properties(&mut hull) {

@@ -161,13 +161,14 @@ fn box_hull_template() -> BoxHull {
     ];
 
     // Offsets match offsetof in C b3BoxHull.
-    let vertex_offset = 144;
-    let point_offset = 152;
-    let edge_offset = 248;
-    let plane_offset = 344;
-    let face_offset = 440;
-    let soa_vertex_offset = 448;
-    let soa_normal_offset = 544;
+    let vertex_offset = 152;
+    let point_offset = 160;
+    let edge_offset = 256;
+    let plane_offset = 352;
+    let face_offset = 448;
+    let soa_vertex_offset = 456;
+    let soa_normal_offset = 552;
+    let edge_cosine_offset = 648;
 
     BoxHull {
         base: HullData {
@@ -189,7 +190,9 @@ fn box_hull_template() -> BoxHull {
             face_offset,
             soa_vertex_offset,
             soa_normal_offset,
+            edge_cosine_offset,
             byte_count: BOX_HULL_SIZE as i32,
+            padding: 0,
             vertices: Vec::new(),
             points: Vec::new(),
             edges: Vec::new(),
@@ -197,6 +200,7 @@ fn box_hull_template() -> BoxHull {
             planes: Vec::new(),
             soa_vertices: Vec::new(),
             soa_normals: Vec::new(),
+            edge_cosines: Vec::new(),
         },
         box_vertices: [
             HullVertex { edge: 8 },
@@ -229,6 +233,9 @@ fn box_hull_template() -> BoxHull {
         nx: [0.0; 8],
         ny: [0.0; 8],
         nz: [0.0; 8],
+        // C leaves the template's edge cosines zero-initialized (static storage) and
+        // b3MakeTransformedBoxHull never fills them, so box hulls carry zero cosines.
+        edge_cosines: [0.0; 12],
     }
 }
 

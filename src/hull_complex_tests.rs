@@ -2,7 +2,8 @@
 //! BasicRandom LCG with seed 42, hulled with `b3CreateHull`.
 //!
 //! Expected values come from the scalar C build (`BOX3D_DISABLE_SIMD`) of the reference at
-//! 9f998c8, printed as raw float bits.
+//! 9f998c8, printed as raw float bits. The hash was re-derived at 51f056e, whose hull layout
+//! adds the edge cosine section.
 
 use crate::hull::{create_complex_hull, get_hull_points, is_valid_hull};
 
@@ -49,7 +50,7 @@ fn complex_hull_matches_c() {
     assert_eq!(hull.vertex_count, 32);
     assert_eq!(hull.edge_count, 178);
     assert_eq!(hull.face_count, 59);
-    assert_eq!(hull.hash, 0x13f0_2844_16a0_8a97);
+    assert_eq!(hull.hash, 0x706c_a61c_b67c_5ec1);
     assert_eq!(hull.inner_radius.to_bits(), 0x3ebd97a2);
     assert_eq!(hull.volume.to_bits(), 0x3ebb3c07);
     assert_eq!(hull.surface_area.to_bits(), 0x40280b96);

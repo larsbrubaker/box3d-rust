@@ -16,16 +16,21 @@ use super::types::{AxisQuery, SeparatingAxis, SeparatingFeature};
 use crate::constants::{linear_slop, speculative_distance, PARALLEL_EDGE_TOL};
 use crate::core::{NULL_INDEX, SIMD_WIDTH};
 use crate::hull::{
-    get_hull_edges, get_hull_planes, get_hull_soa_normals, get_hull_soa_vertices,
-    hull_soa_normal_count, hull_soa_vertex_count, HullData,
+    get_hull_edge_cosines, get_hull_edges, get_hull_planes, get_hull_soa_normals,
+    get_hull_soa_vertices, hull_soa_normal_count, hull_soa_vertex_count, HullData,
 };
 use crate::math_functions::{
-    aabb_center, aabb_extents, abs, add, dot, length, make_matrix_from_quat, max_float, min_float,
-    mul_add, mul_mv, mul_sv, neg, sub, transpose, Matrix3, Transform, Vec3, VEC3_ZERO,
+    aabb_center, aabb_extents, abs, abs_float, add, dot, length, make_matrix_from_quat, max_float,
+    min_float, mul_add, mul_mv, mul_sv, neg, sub, transpose, Matrix3, Transform, Vec3, VEC3_ZERO,
 };
 use crate::simd_scalar::{
     add_vw, dot_w, embed_index_w, load_vw, min_index_w, min_w, neg_vw, splat_vw, splat_w, store_vw,
     store_w, sub_w, zero_w, Vec3W,
+};
+
+use super::edge_candidates::{
+    filter_edge_candidates, get_face_dots, get_face_plane_separations, test_edge_candidate_sorted,
+    EDGE_PROBE_MIN_TESTS,
 };
 
 const HULL_BIT_COUNT: i32 = 7;
@@ -167,111 +172,6 @@ fn get_face_separation(
     (plane_separation - support, vertex_index)
 }
 
-/// Wide dot(n, d) for all face normals n of the hull, padded to the SIMD width.
-/// (b3GetFaceDots)
-fn get_face_dots(hull: &HullData, d: Vec3, dots: &mut [f32]) {
-    let soa_face_count = hull_soa_normal_count(hull);
-    let normals = get_hull_soa_normals(hull);
-    let nx = &normals[0..soa_face_count];
-    let ny = &normals[soa_face_count..2 * soa_face_count];
-    let nz = &normals[2 * soa_face_count..3 * soa_face_count];
-
-    let d_w = splat_vw(d);
-
-    let mut i = 0;
-    while i < soa_face_count {
-        // dot product per lane
-        let m = dot_w(load_vw(&nx[i..], &ny[i..], &nz[i..]), d_w);
-        store_w(&mut dots[i..], m);
-        i += 4;
-    }
-}
-
-/// (B3_PARALLEL_TOL)
-const PARALLEL_TOL: f32 = 1e-4;
-
-/// A hull edge is bounded by two face normals. On the Gauss map the edge becomes an arc between
-/// those two face normals. An edge can only build the best separating axis if a normal on that arc
-/// can beat the best separation value seen so far. This function determines if the upper bound
-/// separation on that arc can possibly beat the current maximum face separation.
-///
-/// This follows the upper bound used for hull faces:
-/// separation_upper_bound = dot(axis, centerB - centerA) - innerRadiusA - innerRadiusB
-///
-/// Inputs:
-/// d the vector connecting the hull centers
-/// a1 = dot(n1, d)
-/// a2 = dot(n2, d)
-/// c = dot(n1, n2)
-/// bound = maxFaceSeparation + radiusBound
-///
-/// This returns 1 if the edges is a candidate and 0 otherwise.
-/// (b3TestEdgeCandidate)
-pub(crate) fn test_edge_candidate(a1: f32, a2: f32, c: f32, bound: f32) -> usize {
-    // c = cos(theta), the angle between the normals.
-    // s = sin(theta)^2 >= 0
-    let s = 1.0 - c * c;
-
-    // This is coincidentally the law of cosines. Break out your protractor.
-    let t = a1 * a1 + a2 * a2 - 2.0 * a1 * a2 * c;
-
-    // Exterior conditions:
-    // Can either face normal beat the best separation? These cover the case where
-    // d is outside the arc. Note that d pointing outside the arc does not cull this
-    // edge. It can still generate the maximum separation (happens commonly).
-    // Note: when earlyReturn == false, bound == -INFINITY and this is always true.
-    let exterior = (max_float(a1, a2) >= bound) as usize;
-
-    // Project d into the plane that holds both n1 and n2, call that vector dp.
-    // Introduce the coordinates b1 and b2 (these have units of length).
-    //
-    // dp = b1*n1 + b2*n2
-    //
-    // Since dp is the projection of d into the plane formed by the cross(n1, n2):
-    // dot(n1, dp) == dot(n1, d) == a1
-    // dot(n2, dp) == dot(n2, d) == a2
-    //
-    // Dot the equation with n1 and n2:
-    // a1 = b1 + b2*c
-    // a2 = b1*c + b2
-    //
-    // Solve for b1 and b2 using Cramer's Rule
-    // b1 = (a1 - a2 * c) / s
-    // b2 = (a2 - a1 * c) / s
-    //
-    // s = 1 - c * c is positive, so b1 and b2 must be positive for d to live in
-    // the arc between n1 and n2.
-    //
-    // The peak value along d is then norm(dp):
-    // dot(dp, dp) = dot(b1*n1 + b2*n2, d)
-    //             = b1*a1 + b2*a2
-    //             = (a1*a1 - a1*a2*c + a2*a2 - a1*a2*c) / s
-    //             = (a1*a1 + a2*a2 - 2*a1*a2*c) / s
-    //             = t / s
-    //
-    // The interior is a candidate if:
-    // norm(dp) > bound
-    // sqrt(t / s) > bound
-    // If bound < 0 this is always true. Otherwise
-    // t > bound^2 * s
-    //
-    // Interior conditions:
-    // b1 and b2 positive (interior arc): a1 >= c * a2 & a2 >= c * a1
-    // bound <= 0.0: the interior arc is automatically a candidate because it is positive
-    // s < B3_PARALLEL_TOL : n1 and n2 are nearly parallel so give up and pass the edge to the next stage
-    // t >= bound * bound * s : bound is positive and the interior normal direction is a candidate
-    //
-    // Using bit ops here to avoid branches.
-
-    let interior = ((a1 >= c * a2) as usize)
-        & ((a2 >= c * a1) as usize)
-        & (((bound <= 0.0) as usize)
-            | ((s < PARALLEL_TOL) as usize)
-            | ((t >= bound * bound * s) as usize));
-
-    exterior | interior
-}
-
 // Temporary abbreviations for convenience.
 // `NE`/`NF`/`NV` in C: hull limit padded so a tail store of `SIMD_WIDTH` lanes stays in range.
 const NE: usize = crate::constants::MAX_HULL_EDGES as usize + SIMD_WIDTH;
@@ -359,11 +259,13 @@ pub(crate) fn compute_separating_axis(
 
     // Use the seed to get a lower bound on the separation for the faces of hullA.
     let mut floor_a = f32::NEG_INFINITY;
+    let mut seed_separation_a = f32::NEG_INFINITY;
+    let mut seed_vertex_b = 0i32;
     if early_return {
         let plane = planes_a[seed_index_a];
         let direction = neg(mul_mv(inv_r, plane.normal));
         let plane_separation = dot(plane.normal, xf_b.p) - plane.offset;
-        let (separation, _vertex_index) = get_face_separation(
+        (seed_separation_a, seed_vertex_b) = get_face_separation(
             direction,
             plane_separation,
             vx_b,
@@ -373,7 +275,7 @@ pub(crate) fn compute_separating_axis(
             c_b,
             h_b,
         );
-        floor_a = min_float(separation, speculative);
+        floor_a = min_float(seed_separation_a, speculative);
     }
 
     // Test A's face planes against B's vertices.
@@ -384,18 +286,25 @@ pub(crate) fn compute_separating_axis(
         }
 
         let plane = planes_a[i as usize];
-        let direction = neg(mul_mv(inv_r, plane.normal));
-        let plane_separation = dot(plane.normal, xf_b.p) - plane.offset;
-        let (separation, vertex_index) = get_face_separation(
-            direction,
-            plane_separation,
-            vx_b,
-            vy_b,
-            vz_b,
-            soa_vertex_count_b,
-            c_b,
-            h_b,
-        );
+        let mut vertex_index = seed_vertex_b;
+        let mut separation = seed_separation_a;
+
+        // Avoid recomputing the seed face separation.
+        if !early_return || i as usize != seed_index_a {
+            let direction = neg(mul_mv(inv_r, plane.normal));
+            let plane_separation = dot(plane.normal, xf_b.p) - plane.offset;
+            (separation, vertex_index) = get_face_separation(
+                direction,
+                plane_separation,
+                vx_b,
+                vy_b,
+                vz_b,
+                soa_vertex_count_b,
+                c_b,
+                h_b,
+            );
+        }
+
         if separation > res.face_a.separation {
             res.face_a.normal = plane.normal;
             res.face_a.separation = separation;
@@ -437,11 +346,13 @@ pub(crate) fn compute_separating_axis(
 
     // Get a lower bound on the separation for the faces of hullB.
     let mut floor_b = f32::NEG_INFINITY;
+    let mut seed_separation_b = f32::NEG_INFINITY;
+    let mut seed_vertex_a = 0i32;
     if early_return {
         let plane = planes_b[seed_index_b];
         let direction = neg(mul_mv(r, plane.normal));
         let plane_separation = dot(direction, xf_b.p) - plane.offset;
-        let (separation, _vertex_index) = get_face_separation(
+        (seed_separation_b, seed_vertex_a) = get_face_separation(
             direction,
             plane_separation,
             vx_a,
@@ -453,7 +364,7 @@ pub(crate) fn compute_separating_axis(
         );
 
         // Include the floor set by hull A faces.
-        floor_b = max_float(separation, res.face_a.separation);
+        floor_b = max_float(seed_separation_b, res.face_a.separation);
         floor_b = min_float(floor_b, speculative);
     }
 
@@ -465,17 +376,24 @@ pub(crate) fn compute_separating_axis(
 
         let plane = planes_b[i as usize];
         let direction = neg(mul_mv(r, plane.normal));
-        let plane_separation = dot(direction, xf_b.p) - plane.offset;
-        let (separation, vertex_index) = get_face_separation(
-            direction,
-            plane_separation,
-            vx_a,
-            vy_a,
-            vz_a,
-            soa_vertex_count_a,
-            c_a,
-            h_a,
-        );
+        let mut vertex_index = seed_vertex_a;
+        let mut separation = seed_separation_b;
+
+        // Avoid recomputing the seed face separation.
+        if !early_return || i as usize != seed_index_b {
+            let plane_separation = dot(direction, xf_b.p) - plane.offset;
+            (separation, vertex_index) = get_face_separation(
+                direction,
+                plane_separation,
+                vx_a,
+                vy_a,
+                vz_a,
+                soa_vertex_count_a,
+                c_a,
+                h_a,
+            );
+        }
+
         if separation > res.face_b.separation {
             res.face_b.normal = direction;
             res.face_b.separation = separation;
@@ -502,44 +420,104 @@ pub(crate) fn compute_separating_axis(
         "must be multiple of SIMD width"
     );
 
-    // Bound to skip edge tests. Derived from:
-    // dot(edgeNormal, deltaCenter) - radiusBound > maxSep
-    let edge_bound = if early_return {
-        max_float(res.face_a.separation, res.face_b.separation) + radius_bound
-    } else {
-        f32::NEG_INFINITY
-    };
-
-    debug_assert!(!early_return || center_distance >= edge_bound);
+    debug_assert!(
+        !early_return
+            || center_distance
+                >= max_float(res.face_a.separation, res.face_b.separation) + radius_bound
+    );
 
     // Gather edges of A that can feasibly create a separating axis that beats the maximum face separation.
     let half_edge_count_a = hull_a.edge_count;
     let half_edges_a = get_hull_edges(hull_a);
     let mut edge_indices_a = [0i32; NE];
     let mut na = 0usize;
-    let mut i = 0;
-    while i < half_edge_count_a {
-        let i1 = half_edges_a[i as usize].face as usize;
-        let i2 = half_edges_a[(i + 1) as usize].face as usize;
-        let c = dot(planes_a[i1].normal, planes_a[i2].normal);
-        edge_indices_a[na] = i;
-        na += test_edge_candidate(dot_a[i1], dot_a[i2], c, edge_bound);
-        i += 2;
-    }
 
-    // Similar for edges of B.
     let half_edge_count_b = hull_b.edge_count;
     let half_edges_b = get_hull_edges(hull_b);
     let mut edge_indices_b = [0i32; crate::constants::MAX_HULL_EDGES as usize];
     let mut nb = 0usize;
+
+    let max_face_separation = max_float(res.face_a.separation, res.face_b.separation);
+    let bound_slack = radius - radius_bound;
+    let threshold_a = if early_return {
+        max_face_separation + hull_b.inner_radius - bound_slack
+    } else {
+        f32::NEG_INFINITY
+    };
+    let threshold_b = if early_return {
+        max_face_separation + hull_a.inner_radius - bound_slack
+    } else {
+        f32::NEG_INFINITY
+    };
+
+    let center_b_in_a = add(mul_mv(r, hull_b.center), xf_b.p);
+    let center_a_in_b = mul_mv(inv_r, sub(hull_a.center, xf_b.p));
+
+    let mut plane_dot_a = [0.0f32; NF];
+    let mut plane_dot_b = [0.0f32; NF];
+    get_face_plane_separations(hull_a, center_b_in_a, &mut plane_dot_a);
+    get_face_plane_separations(hull_b, center_a_in_b, &mut plane_dot_b);
+
+    let cosines_a = get_hull_edge_cosines(hull_a);
+    let cosines_b = get_hull_edge_cosines(hull_b);
+
+    let mut i = 0;
+    while i < half_edge_count_a {
+        let i1 = half_edges_a[i as usize].face as usize;
+        let i2 = half_edges_a[(i + 1) as usize].face as usize;
+        let c = cosines_a[(i >> 1) as usize];
+        edge_indices_a[na] = i;
+        na += test_edge_candidate_sorted(plane_dot_a[i1], plane_dot_a[i2], c, threshold_a);
+        i += 2;
+    }
+
     let mut i = 0;
     while i < half_edge_count_b {
         let i1 = half_edges_b[i as usize].face as usize;
         let i2 = half_edges_b[(i + 1) as usize].face as usize;
-        let c = dot(planes_b[i1].normal, planes_b[i2].normal);
+        let c = cosines_b[(i >> 1) as usize];
         edge_indices_b[nb] = i;
-        nb += test_edge_candidate(dot_b[i1], dot_b[i2], c, edge_bound);
+        nb += test_edge_candidate_sorted(plane_dot_b[i1], plane_dot_b[i2], c, threshold_b);
         i += 2;
+    }
+
+    // Apply additional culling use the support points for the best face axes.
+    // The support vertices of the best faces are points on the other hull, so an edge pair axis cannot
+    // have a larger separation than the plane separation of these points over the arc of the edge.
+    // This can slow down boxes so skip this if there are not enough edge candidates.
+    if early_return && nb * ((na + 3) >> 2) >= EDGE_PROBE_MIN_TESTS {
+        let probe_bound = max_face_separation
+            - (0.1 * linear_slop() + 0.001 * abs_float(center_distance + radius));
+
+        let vertex_b = if res.face_a.index_b != NULL_INDEX {
+            res.face_a.index_b
+        } else {
+            seed_vertex_b
+        } as usize;
+        let probe_b = Vec3 {
+            x: vx_b[vertex_b],
+            y: vy_b[vertex_b],
+            z: vz_b[vertex_b],
+        };
+        get_face_plane_separations(hull_a, add(mul_mv(r, probe_b), xf_b.p), &mut plane_dot_a);
+        na = filter_edge_candidates(hull_a, &plane_dot_a, probe_bound, &mut edge_indices_a, na);
+
+        let vertex_a = if res.face_b.index_a != NULL_INDEX {
+            res.face_b.index_a
+        } else {
+            seed_vertex_a
+        } as usize;
+        let probe_a = Vec3 {
+            x: vx_a[vertex_a],
+            y: vy_a[vertex_a],
+            z: vz_a[vertex_a],
+        };
+        get_face_plane_separations(
+            hull_b,
+            mul_mv(inv_r, sub(probe_a, xf_b.p)),
+            &mut plane_dot_b,
+        );
+        nb = filter_edge_candidates(hull_b, &plane_dot_b, probe_bound, &mut edge_indices_b, nb);
     }
 
     if na == 0 || nb == 0 {
