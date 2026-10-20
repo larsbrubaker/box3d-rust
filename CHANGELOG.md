@@ -3,6 +3,19 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## 0.4.1
+
+Bug-fix release; no public API changes. The C reference pin is unchanged
+(`9f998c8`).
+
+### Fixed
+
+- `body_set_awake(world, id, false)` on a body whose island had a pending
+  split used the island id read before `split_island` ran, so
+  `try_sleep_island` was handed a stale island id and tripped
+  a `debug_assert` panic. The body's island id is now re-read after the
+  split, matching C `b3Body_SetAwake`. Reported by @KennethWerner in #2.
+
 ## 0.4.0
 
 This release syncs the port to upstream Box3D `9f998c8` and makes `World`

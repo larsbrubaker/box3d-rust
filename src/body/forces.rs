@@ -252,17 +252,18 @@ pub fn body_set_awake(world: &mut World, body_id: BodyId, awake: bool) {
 
     let body_index = get_body_full_id(world, body_id);
     let set_index = world.bodies[body_index as usize].set_index;
-    let island_id = world.bodies[body_index as usize].island_id;
 
     if awake && set_index >= FIRST_SLEEPING_SET {
         wake_body(world, body_index);
     } else if !awake && set_index == AWAKE_SET {
+        let island_id = world.bodies[body_index as usize].island_id;
         if world.islands[island_id as usize].constraint_remove_count > 0 {
             // Must split the island before sleeping. This is expensive.
             split_island(world, island_id);
         }
 
-        try_sleep_island(world, island_id);
+        // Re-read the island id: splitting moves the body into a new island.
+        try_sleep_island(world, world.bodies[body_index as usize].island_id);
     }
 
     world.locked = false;

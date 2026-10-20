@@ -502,3 +502,93 @@ fn enable_contact_recycling() {
     // Stepping after toggling must not trip the flag-sync validator
     world.step(1.0 / 60.0, 4);
 }
+
+/// Regression for GitHub issue #2: `body_set_awake(false)` on a body whose
+/// island has a pending split must sleep the island the body lands in after
+/// the split, not the stale pre-split island. (b3Body_SetAwake re-reads
+/// body->islandId after b3SplitIsland)
+#[test]
+fn set_awake_false_with_pending_island_split() {
+    use crate::core::NULL_INDEX;
+    use crate::hull::make_box_hull;
+    use crate::shape::create_hull_shape;
+
+    let mut world = World::new(&default_world_def());
+
+    let mut ground_def = default_body_def();
+    ground_def.type_ = BodyType::Static;
+    let ground = create_body(&mut world, &ground_def);
+    let ground_box = make_box_hull(5.0, 0.5, 5.0);
+    create_hull_shape(&mut world, ground, &default_shape_def(), &ground_box.base);
+
+    // A stack of three touching boxes forms a single island (the static
+    // ground does not link islands).
+    let mut shape_def = default_shape_def();
+    shape_def.density = 1.0;
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    let mut boxes = Vec::new();
+    for i in 0..3 {
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.position = Pos {
+            x: 0.0 as _,
+            y: (1.0 + i as f32) as _,
+            z: 0.0 as _,
+        };
+        let body_id = create_body(&mut world, &body_def);
+        create_hull_shape(&mut world, body_id, &shape_def, &box_hull.base);
+        boxes.push(body_id);
+    }
+
+    for _ in 0..10 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let indices: Vec<i32> = boxes.iter().map(|&b| get_body_full_id(&world, b)).collect();
+    let island_id = world.bodies[indices[0] as usize].island_id;
+    assert!(island_id != NULL_INDEX);
+    for &index in &indices {
+        assert_eq!(world.bodies[index as usize].island_id, island_id);
+    }
+
+    // Teleport the top box away; the next step ends its contact with the
+    // middle box, leaving the island with a pending split.
+    let top = boxes[2];
+    body_set_transform(
+        &mut world,
+        top,
+        Pos {
+            x: 20.0 as _,
+            y: 20.0 as _,
+            z: 0.0 as _,
+        },
+        QUAT_IDENTITY,
+    );
+    world.step(1.0 / 60.0, 4);
+
+    // Precondition: the top box is still in the shared island and that
+    // island has a pending split.
+    let top_index = indices[2];
+    let stale_island_id = world.bodies[top_index as usize].island_id;
+    assert_eq!(stale_island_id, island_id);
+    assert!(world.islands[stale_island_id as usize].constraint_remove_count > 0);
+    assert!(body_is_awake(&world, top));
+
+    body_set_awake(&mut world, top, false);
+
+    // The top box was split into its own island and put to sleep.
+    assert!(!body_is_awake(&world, top));
+    assert!(world.bodies[top_index as usize].island_id != stale_island_id);
+
+    // The remaining stack is no longer connected to it and stays awake.
+    assert!(body_is_awake(&world, boxes[0]));
+    assert!(body_is_awake(&world, boxes[1]));
+    assert_eq!(
+        world.bodies[indices[0] as usize].island_id,
+        world.bodies[indices[1] as usize].island_id
+    );
+
+    // Stepping afterwards must remain consistent.
+    world.step(1.0 / 60.0, 4);
+    assert!(!body_is_awake(&world, top));
+}
