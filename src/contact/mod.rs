@@ -235,6 +235,7 @@ mod lifecycle;
 mod mesh_cache;
 mod mesh_contact;
 mod mesh_cull;
+mod mesh_survivors;
 mod update;
 
 pub use collide::*;

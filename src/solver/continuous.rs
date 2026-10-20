@@ -3,6 +3,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use crate::aabb::farthest_point_on_aabb;
 use crate::body::{body_flags, should_bodies_collide, BodySim};
 use crate::core::NULL_INDEX;
 use crate::distance::Sweep;
@@ -10,13 +11,14 @@ use crate::dynamic_tree::DEFAULT_MASK_BITS;
 use crate::geometry::ShapeType;
 use crate::id::ShapeId;
 use crate::math_functions::{
-    aabb_contains, aabb_inflate, aabb_union, add, lerp, max_int, mul_sv, nlerp, offset_aabb,
-    offset_pos, rotate_vector, sub, sub_pos, transform_point, Aabb, Pos, Transform, WorldTransform,
+    aabb_contains, aabb_inflate, aabb_union, add, distance, inv_mul_quat, length, lerp, max_int,
+    mul_sv, nlerp, offset_aabb, offset_pos, rotate_vector, sub, sub_pos, transform_point, Aabb,
+    Pos, Transform, Vec3, WorldTransform,
 };
 use crate::sensor::SensorHit;
 use crate::shape::{
-    compute_fat_shape_aabb, compute_shape_aabb, shape_flags, shape_time_of_impact,
-    should_shapes_collide,
+    compute_fat_shape_aabb, compute_shape_aabb, compute_shape_min_extent, shape_flags,
+    shape_time_of_impact, should_shapes_collide, Shape, ShapeGeometry,
 };
 use crate::solver_set::AWAKE_SET;
 use crate::types::BodyType;
@@ -183,6 +185,34 @@ fn continuous_query_callback(world: &mut World, ctx: &mut ContinuousContext, sha
     }
 }
 
+/// (b3IsShapeFast)
+fn is_shape_fast(
+    shape: &Shape,
+    centroid1: Vec3,
+    centroid2: Vec3,
+    rotation_chord: f32,
+    safety_factor: f32,
+) -> bool {
+    let radius = match &shape.geometry {
+        ShapeGeometry::Sphere(sphere) => sphere.radius,
+
+        ShapeGeometry::Capsule(capsule) => {
+            0.5 * distance(capsule.center1, capsule.center2) + capsule.radius
+        }
+
+        ShapeGeometry::Hull(hull) => {
+            let farthest_point = farthest_point_on_aabb(hull.aabb, shape.local_centroid);
+            distance(farthest_point, shape.local_centroid)
+        }
+
+        _ => return true,
+    };
+
+    let min_extent = compute_shape_min_extent(shape, shape.local_centroid);
+    let max_motion = distance(centroid1, centroid2) + rotation_chord * radius;
+    max_motion > safety_factor * min_extent
+}
+
 fn query_tree_shape_ids(world: &World, tree_type: BodyType, swept_box: Aabb) -> Vec<i32> {
     let mut ids = Vec::new();
     world.broad_phase.trees[tree_type as usize].query(
@@ -226,6 +256,8 @@ pub(super) fn solve_continuous(world: &mut World, body_sim_index: i32, dt: f32) 
     let is_bullet = (world.solver_sets[AWAKE_SET as usize].body_sims[sim_index].flags
         & body_flags::IS_BULLET)
         != 0;
+    let safety_factor = world.bodies[fast_body_id as usize].safety_factor;
+    let rotation_chord = 2.0 * length(inv_mul_quat(sweep.q1, sweep.q2).v);
 
     let mut ctx = ContinuousContext {
         fast_body_sim_index: sim_index,
@@ -245,8 +277,8 @@ pub(super) fn solve_continuous(world: &mut World, body_sim_index: i32, dt: f32) 
     while shape_id != NULL_INDEX {
         let next_shape_id = world.shapes[shape_id as usize].next_shape_id;
         let local_centroid = world.shapes[shape_id as usize].local_centroid;
-        let _centroid1 = transform_point(xf1, local_centroid);
-        let _centroid2 = transform_point(xf2, local_centroid);
+        let centroid1 = transform_point(xf1, local_centroid);
+        let centroid2 = transform_point(xf2, local_centroid);
 
         let box1 = world.shapes[shape_id as usize].aabb;
         let box2 = offset_aabb(
@@ -263,6 +295,20 @@ pub(super) fn solve_continuous(world: &mut World, body_sim_index: i32, dt: f32) 
         if world.shapes[shape_id as usize].sensor_index != NULL_INDEX {
             shape_id = next_shape_id;
             continue;
+        }
+
+        if !is_bullet {
+            let is_shape_fast = is_shape_fast(
+                &world.shapes[shape_id as usize],
+                centroid1,
+                centroid2,
+                rotation_chord,
+                safety_factor,
+            );
+            if !is_shape_fast {
+                shape_id = next_shape_id;
+                continue;
+            }
         }
 
         ctx.fast_shape_id = shape_id;

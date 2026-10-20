@@ -284,8 +284,6 @@ export interface Box3dWasm {
   sim_cont_ground_wireframe(): Float32Array;
   /** Fire the Stall rock bullet (C `Stall::Launch`). */
   sim_cont_stall_launch(): number;
-  /** Active CCD stall threshold in ms (C `b3GetStallThreshold` × 1000); Stall sets 1.0. */
-  sim_cont_stall_threshold_ms(): number;
   /** Mesh Drop "Type" combo: 0 box, 1 capsule, 2 cylinder, 3 sphere. */
   sim_cont_mesh_drop_set_type(shape: number): number;
   /** Mesh Drop "Amplitude" slider (0..1); rebuilds ground + grid. */

@@ -208,3 +208,78 @@ fn compound_shape_copies_materials() {
     assert_eq!(world.shapes[raw].get_shape_user_material_id(0, 0), 11);
     assert_eq!(world.shapes[raw].get_shape_user_material_id(1, 0), 22);
 }
+
+/// b3ComputeShapeMinExtent uses the radius for spheres and capsules, the hull inner radius for
+/// hulls, and falls back to b3ComputeShapeExtent for other shapes.
+#[test]
+fn compute_shape_min_extent_matches_shape_type() {
+    use crate::geometry::{Capsule, Sphere};
+    use crate::shape::{
+        compute_shape_extent, compute_shape_min_extent, create_capsule_shape, create_sphere_shape,
+    };
+
+    let mut world = World::new(&default_world_def());
+    let mut body_def = default_body_def();
+    body_def.type_ = BodyType::Dynamic;
+    let body_id = create_body(&mut world, &body_def);
+    let shape_def = default_shape_def();
+
+    let sphere = Sphere {
+        center: Vec3 {
+            x: 0.5,
+            y: 0.0,
+            z: 0.0,
+        },
+        radius: 0.3,
+    };
+    let capsule = Capsule {
+        center1: Vec3 {
+            x: -1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        center2: Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        radius: 0.25,
+    };
+    let box_hull = make_box_hull(0.5, 1.0, 2.0);
+
+    let sphere_id = create_sphere_shape(&mut world, body_id, &shape_def, &sphere);
+    let capsule_id = create_capsule_shape(&mut world, body_id, &shape_def, &capsule);
+    let hull_id = create_hull_shape(&mut world, body_id, &shape_def, &box_hull.base);
+
+    let sphere_shape = &world.shapes[(sphere_id.index1 - 1) as usize];
+    assert_eq!(compute_shape_min_extent(sphere_shape, VEC3_ZERO), 0.3);
+
+    let capsule_shape = &world.shapes[(capsule_id.index1 - 1) as usize];
+    assert_eq!(compute_shape_min_extent(capsule_shape, VEC3_ZERO), 0.25);
+
+    let hull_shape = &world.shapes[(hull_id.index1 - 1) as usize];
+    let inner_radius = match &hull_shape.geometry {
+        ShapeGeometry::Hull(hull) => hull.inner_radius,
+        _ => panic!("expected hull"),
+    };
+    assert!(inner_radius > 0.0);
+    assert_eq!(
+        compute_shape_min_extent(hull_shape, VEC3_ZERO),
+        inner_radius
+    );
+
+    // Meshes use the full extent computation.
+    let ground_id = create_body(&mut world, &default_body_def());
+    let mesh = create_box_mesh(VEC3_ZERO, Vec3::new(2.0, 1.0, 3.0), false).expect("box mesh");
+    let mesh_id = create_mesh_shape(&mut world, ground_id, &shape_def, &mesh, VEC3_ONE);
+    let mesh_shape = &world.shapes[(mesh_id.index1 - 1) as usize];
+    let center = Vec3 {
+        x: 0.25,
+        y: 0.0,
+        z: 0.0,
+    };
+    assert_eq!(
+        compute_shape_min_extent(mesh_shape, center),
+        compute_shape_extent(mesh_shape, center).min_extent
+    );
+}

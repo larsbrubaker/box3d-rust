@@ -220,7 +220,7 @@ pub fn shape_time_of_impact(
     sweep_b: &Sweep,
     max_fraction: f32,
 ) -> ToiOutput {
-    use super::{compute_shape_extent, get_shape_centroid};
+    use super::{compute_shape_min_extent, get_shape_centroid};
 
     let is_sensor = shape_a.sensor_index != NULL_INDEX;
     let type_a = shape_a.shape_type();
@@ -231,8 +231,8 @@ pub fn shape_time_of_impact(
         };
 
         let local_centroid_b = get_shape_centroid(shape_b);
-        let extents = compute_shape_extent(shape_b, local_centroid_b);
-        let fallback_radius = max_float(0.75 * extents.min_extent, speculative_distance());
+        let min_extent = compute_shape_min_extent(shape_b, local_centroid_b);
+        let fallback_radius = max_float(0.75 * min_extent, speculative_distance());
 
         let compound_transform = Transform {
             p: sweep_a.c1,
@@ -283,8 +283,8 @@ pub fn shape_time_of_impact(
             q: sweep_b.q2,
         };
 
-        let extents = compute_shape_extent(shape_b, local_centroid_b);
-        let fallback_radius = max_float(0.5 * extents.min_extent, linear_slop());
+        let min_extent = compute_shape_min_extent(shape_b, local_centroid_b);
+        let fallback_radius = max_float(0.5 * min_extent, linear_slop());
 
         // Swept bounds of shapeB, then local to mesh
         let bounds = compute_swept_shape_aabb(shape_b, sweep_b, max_fraction);

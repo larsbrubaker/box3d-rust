@@ -1,10 +1,13 @@
-//! Wide (four lane) convex contact constraints from contact_solver.c, scalar `b3FloatW` path
+//! Wide (four lane) contact constraints from contact_solver_wide.inl, scalar `b3FloatW` path
 //! (B3_SIMD_NONE).
 //!
-//! Graph-color convex contacts are packed four at a time into a [`ContactConstraintWide`] and
-//! solved with the `b3FloatW` emulation from [`crate::simd_scalar`], so every lane runs exactly
-//! the arithmetic of C's scalar wide path, including the decisions C makes for the whole wide
-//! constraint (the wide point count, rolling resistance, restitution).
+//! Graph-color convex and mesh contacts are packed four at a time into a
+//! [`ContactConstraintWide`] with one [`ContactManifoldWide`] per manifold, and solved with the
+//! `b3FloatW` emulation from [`crate::simd_scalar`], so every lane runs exactly the arithmetic
+//! of C's scalar wide path, including the decisions C makes for the whole wide constraint (the
+//! wide point count, rolling resistance, restitution). Convex contacts have one manifold. Mesh
+//! contacts are grouped by manifold count and padded to the largest count in the group. The
+//! kernels are shared between convex and mesh contacts like the `b3*ContactsW` functions.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -14,10 +17,10 @@ mod restitution;
 mod solve;
 mod store;
 
-pub use prepare::prepare_contacts_convex;
-pub use restitution::apply_restitution_convex;
-pub use solve::{push_contacts_convex, solve_contacts_convex, warm_start_contacts_convex};
-pub use store::store_impulses_convex;
+pub use prepare::{prepare_contacts_convex, prepare_contacts_mesh_wide};
+pub use restitution::apply_restitution_w;
+pub use solve::{push_contacts_w, solve_contacts_w, warm_start_contacts_w};
+pub use store::store_impulses_w;
 
 use crate::body::{body_flags, BodyState, IDENTITY_BODY_STATE};
 use crate::constants::MAX_MANIFOLD_POINTS;
@@ -114,22 +117,10 @@ pub struct ContactConstraintPointWide {
     pub restitution_impulses: FloatW,
 }
 
-/// Solves four contacts. (b3ContactConstraintWide)
-///
-/// C keeps `b3Manifold* manifolds[B3_SIMD_WIDTH]`; the port keeps the contact id of each lane
-/// (`NULL_INDEX` for an empty lane) and reaches the single manifold through the contact.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ContactConstraintWide {
-    /// These are base 1, 0 for null
-    pub index_a: [i32; SIMD_WIDTH],
-    pub index_b: [i32; SIMD_WIDTH],
-
-    pub point_counts: [i32; SIMD_WIDTH],
-
-    pub inv_mass_a: FloatW,
-    pub inv_mass_b: FloatW,
-    pub inv_i_a: SymMatrix3W,
-    pub inv_i_b: SymMatrix3W,
+/// One manifold of a wide contact constraint, one contact per lane. Lanes whose contact has
+/// fewer manifolds are padded with zeros. (b3ContactManifoldWide)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ContactManifoldWide {
     pub normal: Vec3W,
 
     pub tangent1: Vec3W,
@@ -142,28 +133,78 @@ pub struct ContactConstraintWide {
     pub twist_impulse: FloatW,
     pub tangent_mass: SymMatrix2W,
     pub friction_impulse: Vec2W,
-    pub rolling_mass: SymMatrix3W,
     pub rolling_impulse: Vec3W,
-    pub friction: FloatW,
-    pub rolling_resistance: FloatW,
+    pub rolling_mask: FloatW,
     pub tangent_velocity1: FloatW,
     pub tangent_velocity2: FloatW,
-    pub restitution: FloatW,
 
-    pub contact_ids: [i32; SIMD_WIDTH],
+    /// Wide point count: the maximum over the lanes.
+    pub point_count: i32,
 
     pub points: [ContactConstraintPointWide; MAX_MANIFOLD_POINTS],
 }
 
-impl ContactConstraintWide {
-    /// Wide point count: the maximum over the lanes.
-    pub fn point_count(&self) -> usize {
-        let mut point_count = 0;
-        for lane in 0..SIMD_WIDTH {
-            point_count = crate::math_functions::max_int(point_count, self.point_counts[lane]);
-        }
-        debug_assert!(0 < point_count && point_count as usize <= MAX_MANIFOLD_POINTS);
-        point_count as usize
+/// Solves one contact per lane. (b3ContactConstraintWide)
+///
+/// C keeps `b3Contact* contacts[B3_SIMD_WIDTH]` (NULL for an empty lane); the port keeps the
+/// contact id of each lane ([`EMPTY_LANE`] for an empty lane).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContactConstraintWide {
+    /// These are base 1, 0 for null
+    pub index_a: [i32; SIMD_WIDTH],
+    pub index_b: [i32; SIMD_WIDTH],
+
+    pub contact_ids: [i32; SIMD_WIDTH],
+
+    pub inv_mass_a: FloatW,
+    pub inv_mass_b: FloatW,
+    pub inv_i_a: SymMatrix3W,
+    pub inv_i_b: SymMatrix3W,
+    pub rolling_mass: SymMatrix3W,
+    pub friction: FloatW,
+    pub rolling_resistance: FloatW,
+    pub restitution: FloatW,
+
+    pub manifold_count: i32,
+}
+
+/// The wide contact constraints of one graph color.
+///
+/// C stores contact constraint data in a heterogeneous stream: constraints followed by an
+/// array of constraint manifolds, `[c1 m11 m12 c2 m21 c3 m31 m32 m33 ... ]`, and walks it with
+/// `b3GetConstraintW` / `b3NextConstraintW`. The port keeps the constraints and the manifolds
+/// in two arrays: constraint `i` owns `manifolds[manifold_starts[i]..manifold_starts[i + 1]]`.
+/// Convex constraints have exactly one manifold each.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WideContactConstraints {
+    pub constraints: Vec<ContactConstraintWide>,
+    pub manifolds: Vec<ContactManifoldWide>,
+    /// One entry per constraint plus a sentinel at `manifolds.len()`.
+    pub manifold_starts: Vec<i32>,
+}
+
+impl WideContactConstraints {
+    /// Remove all constraints, keeping the allocations.
+    pub fn clear(&mut self) {
+        self.constraints.clear();
+        self.manifolds.clear();
+        self.manifold_starts.clear();
+    }
+
+    /// The constraint count.
+    pub fn len(&self) -> usize {
+        self.constraints.len()
+    }
+
+    /// True if there are no constraints.
+    pub fn is_empty(&self) -> bool {
+        self.constraints.is_empty()
+    }
+
+    /// The manifold range of constraint `index`. (b3GetManifoldsW)
+    #[inline]
+    pub fn manifold_range(&self, index: usize) -> core::ops::Range<usize> {
+        self.manifold_starts[index] as usize..self.manifold_starts[index + 1] as usize
     }
 }
 
@@ -232,42 +273,6 @@ pub fn mul_add_mvw(a: Vec3W, m: SymMatrix3W, b: Vec3W) -> Vec3W {
         x: add_w(a.x, c.x),
         y: add_w(a.y, c.y),
         z: add_w(a.z, c.z),
-    }
-}
-
-/// (b3MakeMatrixFromQuatW)
-#[inline]
-pub fn make_matrix_from_quat_w(q: QuatW) -> Matrix3W {
-    let x2 = add_w(q.v.x, q.v.x);
-    let y2 = add_w(q.v.y, q.v.y);
-    let z2 = add_w(q.v.z, q.v.z);
-    let xx2 = mul_w(q.v.x, x2);
-    let yy2 = mul_w(q.v.y, y2);
-    let zz2 = mul_w(q.v.z, z2);
-    let xy2 = mul_w(q.v.x, y2);
-    let xz2 = mul_w(q.v.x, z2);
-    let yz2 = mul_w(q.v.y, z2);
-    let xw2 = mul_w(q.s, x2);
-    let yw2 = mul_w(q.s, y2);
-    let zw2 = mul_w(q.s, z2);
-    let one = splat_w(1.0);
-
-    Matrix3W {
-        cx: Vec3W {
-            x: sub_w(one, add_w(yy2, zz2)),
-            y: add_w(xy2, zw2),
-            z: sub_w(xz2, yw2),
-        },
-        cy: Vec3W {
-            x: sub_w(xy2, zw2),
-            y: sub_w(one, add_w(xx2, zz2)),
-            z: add_w(yz2, xw2),
-        },
-        cz: Vec3W {
-            x: add_w(xz2, yw2),
-            y: sub_w(yz2, xw2),
-            z: sub_w(one, add_w(xx2, yy2)),
-        },
     }
 }
 
@@ -364,6 +369,12 @@ pub fn perp_w(a: Vec3W) -> Vec3W {
     let valid = greater_than_w(length_squared, splat_w(1000.0 * f32::MIN_POSITIVE));
     let s = blend_w(zero, div_w(splat_w(1.0), sqrt_w(length_squared)), valid);
     mul_svw(s, p)
+}
+
+/// (b3IntsToFloatW)
+#[inline]
+pub fn ints_to_float_w(v: &[i32; SIMD_WIDTH]) -> FloatW {
+    set_w(v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32)
 }
 
 /// Lane `i` of a wide float.

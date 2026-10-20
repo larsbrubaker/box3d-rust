@@ -87,8 +87,10 @@ pub(crate) fn refresh_cache(
         upper_bound: add(bounds.upper_bound, extension),
     };
 
-    let mut triangle_indices = [0i32; MAX_MESH_CONTACT_TRIANGLES];
+    // Query triangles. C bumps these buffers from the step arena (they no longer fit on the
+    // stack with 512 triangles); the port uses heap buffers.
     let triangle_capacity = MAX_MESH_CONTACT_TRIANGLES as i32;
+    let mut triangle_indices = vec![0i32; MAX_MESH_CONTACT_TRIANGLES];
 
     // Bounds are in world space. Convert to the local mesh frame.
     let mesh_transform = to_relative_transform(xf_a, POS_ZERO);
@@ -138,7 +140,7 @@ pub(crate) fn refresh_cache(
     });
 
     // Create new contact cache and match with old one.
-    let mut contact_caches = [ContactCache::default(); MAX_MESH_CONTACT_TRIANGLES];
+    let mut contact_caches = vec![ContactCache::default(); triangle_count as usize];
     let mut index2 = 0i32;
     let old_count = mesh_contact.triangle_cache.len() as i32;
     for index1 in 0..triangle_count {

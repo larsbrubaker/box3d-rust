@@ -1,7 +1,9 @@
 //! Contact constraint kernels from contact_solver.c.
 //!
-//! Graph-color convex contacts use the wide Convex kernels ([`wide`], scalar `b3FloatW`
-//! emulation of the SIMD path). Mesh and overflow contacts use the Mesh kernels.
+//! Graph-color convex and mesh contacts use the wide kernels ([`wide`], scalar `b3FloatW`
+//! emulation of the SIMD path). Overflow contacts use the scalar Mesh kernels.
+//!
+//! todo clean this file up because it is only used for overflow now
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT

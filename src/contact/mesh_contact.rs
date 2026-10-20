@@ -10,6 +10,7 @@ use super::mesh_cache::refresh_cache;
 use super::mesh_cull::{
     claim_triangle_features, reduce_cluster, Cluster, FoundEdges, FoundVertices,
 };
+use super::mesh_survivors::{collect_survivor_triangles, SurvivorTriangles};
 use super::{contact_flags, ContactCache, ContactGeometry, MeshContact};
 use crate::constants::{linear_slop, mesh_rest_offset, MAX_POINTS_PER_TRIANGLE};
 use crate::core::NULL_INDEX;
@@ -130,12 +131,29 @@ pub fn compute_mesh_manifolds(
     let type_b = shape_b.shape_type();
     let geom_b = &shape_b.geometry;
 
-    for index in 0..triangle_count {
+    // Transform the triangles into the shape frame and cull them against the hull bounds.
+    let SurvivorTriangles {
+        indices: survivor_indices,
+        vertices: survivor_vertices,
+    } = collect_survivor_triangles(
+        shape_a,
+        shape_b,
+        &mut triangle_caches,
+        transform_a_to_b,
+        relative_matrix,
+        enable_speculative,
+    );
+
+    let survivor_count = survivor_indices.len();
+    for survivor_index in 0..survivor_count {
         if total_point_count + 3 >= point_buffer_capacity as i32 {
             break;
         }
 
+        let index = survivor_indices[survivor_index] as usize;
         let triangle_index = triangle_caches[index].triangle_index;
+        let vertices = survivor_vertices[survivor_index];
+
         let triangle = match &shape_a.geometry {
             ShapeGeometry::Mesh { data, scale } => get_mesh_triangle(
                 &Mesh {
@@ -147,21 +165,6 @@ pub fn compute_mesh_manifolds(
             ShapeGeometry::HeightField(hf) => get_height_field_triangle(hf, triangle_index),
             _ => unreachable!(),
         };
-
-        let vertices = [
-            add(
-                mul_mv(relative_matrix, triangle.vertices[0]),
-                transform_a_to_b.p,
-            ),
-            add(
-                mul_mv(relative_matrix, triangle.vertices[1]),
-                transform_a_to_b.p,
-            ),
-            add(
-                mul_mv(relative_matrix, triangle.vertices[2]),
-                transform_a_to_b.p,
-            ),
-        ];
 
         let point_capacity = min_int(
             point_buffer_capacity as i32 - total_point_count,

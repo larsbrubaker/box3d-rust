@@ -10,6 +10,7 @@ time. Ported so far:
 
 - `51f056e` SAT benchmark (#177)
 - `e77352c` Add support for AVX2 and runtime feature detection (#174)
+- `16f7f4c` Tree perf (#179)
 
 ### Breaking
 
@@ -30,6 +31,19 @@ time. Ported so far:
   `HULL_VERSION` changes again to `0x6B1E39D4A87C25F3`. Hull hashes change
   (box hulls included, through the version), and hull blobs from earlier
   versions no longer load.
+- `core::set_stall_threshold` / `core::get_stall_threshold` are removed, as
+  upstream removed `b3SetStallThreshold` / `b3GetStallThreshold` and the CCD
+  stall logging (upstream `16f7f4c`). The demo's Continuous / Stall readout
+  goes with them.
+- The wide contact solver types change shape (upstream `16f7f4c`).
+  `contact_solver::wide::ContactConstraintWide` keeps the per-lane body data
+  and gains `manifold_count`; the per-manifold data moves to the new
+  `ContactManifoldWide` (with `rolling_mask`), and a color's constraints live
+  in `WideContactConstraints` (constraints, manifolds, manifold starts). The
+  convex kernels are replaced by kernels shared with mesh contacts:
+  `warm_start_contacts_w`, `push_contacts_w`, `solve_contacts_w`,
+  `apply_restitution_w`, `store_impulses_w`, plus
+  `prepare_contacts_mesh_wide`. `make_matrix_from_quat_w` is removed.
 
 ### Added
 
@@ -41,6 +55,9 @@ time. Ported so far:
   always 4 in the port, so the call has no effect on the simulation. Internally the port also gains upstream's
   `b3GetSIMDWidth` / `b3SetSIMDWidth`, `b3ComputeSeparatingAxisAtWidth`, and
   `b3CollideHullsAtWidth`; contacts collide hulls at the world's width.
+- `shape::compute_shape_min_extent` (upstream `b3ComputeShapeMinExtent`):
+  the radius for spheres and capsules, the inner radius for hulls, and the
+  `compute_shape_extent` minimum otherwise.
 
 ### Changed
 
@@ -62,6 +79,39 @@ time. Ported so far:
   running to the count rounded up to 4, so their results are unchanged.
   Checked against a scalar C build of `e77352c` with upstream's new rolling
   mix determinism scene (both precision modes).
+- Graph-color mesh contacts are solved by the wide (four lane) contact
+  solver instead of the scalar mesh kernels (upstream `16f7f4c`). Each color's
+  mesh contacts are sorted by manifold count (stable, largest first), grouped
+  four at a time, and each group is padded to the largest manifold count in
+  it. Only overflow contacts still use the scalar kernels. The wide warm start,
+  restitution, and rolling resistance now work per manifold; restitution
+  computes the current separation from the normal rotated into each body frame
+  (like push and solve) instead of rotating the anchors.
+- The overflow (scalar) contact warm start sums the impulses of all manifolds
+  and applies them to the bodies once, instead of applying every point
+  impulse in turn.
+- Mesh and height field contacts transform the cached triangles into the
+  shape frame four at a time and, for hulls, cull triangles whose bounds plus
+  the speculative distance miss the hull bounds before the narrow phase,
+  resetting their SAT cache. `MAX_MESH_CONTACT_TRIANGLES` grows from 256 to
+  512, and the per-contact triangle buffers move to the heap (C moved them to
+  the step arena).
+- `query_mesh` tests the root bounds once and then tests both children before
+  descending, pushing only overlapping children. The triangle visit order is
+  unchanged.
+- Continuous collision skips non-bullet shapes that cannot tunnel
+  (`b3IsShapeFast`): the centroid travel plus the rotation chord times the
+  shape radius must exceed the body's `safety_factor` times the shape's
+  minimum extent. The continuous fallback radius uses
+  `compute_shape_min_extent`.
+- Simulation results change. The determinism goldens move to upstream's new
+  values: falling ragdolls 267 / `0x9BCA269D` (double 266 / `0x68FC7728`),
+  wave pile 270 / `0xAD7C3901` (double 312 / `0xFD6BD36B`), mesh drop 218 /
+  `0x0A23CFA2` (double 218 / `0x26F9A566`). Query spawn and the rolling mix
+  hash are unchanged. Adds upstream's mesh mix scene (`SingleMeshMixTest`)
+  with hashes `0xC24D812B` (double `0x0151E8CA`). All values were confirmed
+  with a scalar C build of `16f7f4c` (`BOX3D_DISABLE_SIMD`) in both precision
+  modes.
 
 ### Not ported
 
@@ -78,6 +128,10 @@ time. Ported so far:
   Upstream's `SIMDWidthTest` and `CrossWidthReplay` skip when the native width
   is 4; the port runs both widths anyway (both are 4), which reduces them to
   repeatability checks.
+- The new mesh drop benchmark (`CreateMeshDropBenchmark`, `benchmark/main.c`,
+  `sample_benchmark.cpp`; listed as planned in the demo registry) and the
+  refreshed benchmark CSVs. The width 8
+  (`W8`) mesh kernels and `b3MoveMaskW4` for SSE2 / Neon are SIMD-only.
 
 ## 0.4.1
 

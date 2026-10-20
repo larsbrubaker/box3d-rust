@@ -109,8 +109,11 @@ pub const MAX_MANIFOLD_POINTS: usize = 4;
 /// (B3_MAX_POINTS_PER_TRIANGLE)
 pub const MAX_POINTS_PER_TRIANGLE: usize = 32;
 
-/// Max triangles queried for one mesh contact. (B3_MAX_MESH_CONTACT_TRIANGLES)
-pub const MAX_MESH_CONTACT_TRIANGLES: usize = 256;
+/// This is the limit on how many mesh or heightfield triangles a single convex shape can collide
+/// with. Increasing this will increase stack usage, so be careful. I recommend to simplify your
+/// collision data before increasing this. For example, using render mesh for collision often leads
+/// to poor performance. (B3_MAX_MESH_CONTACT_TRIANGLES)
+pub const MAX_MESH_CONTACT_TRIANGLES: usize = 512;
 
 /// Maximum number of colors in the constraint graph. Constraints that cannot
 /// find a color are added to the overflow set. (B3_GRAPH_COLOR_COUNT)

@@ -167,6 +167,10 @@ pub fn prepare_one_contact(
             // should not contribute to the friction center. They are not important for jitter reduction. Closer
             // points may begin to touch on and off, so the friction center needs to move smoothly.
             // Epsilon to avoid a branch below (or divide by zero). Small enough to get washed out normally.
+            //
+            // Dirk suggested to weight the points by their normal impulse. This would use the total impulse from
+            // the previous time step. I suspect this could jump around if the active point set jitters, leading
+            // to a limit cycle.
             let weight = clamp_float(2.0 - s * inv_tau, MIN_FRICTION_WEIGHT, 1.0);
             center_a = mul_add(center_a, weight, r_a);
             center_b = mul_add(center_b, weight, r_b);
@@ -218,8 +222,8 @@ pub fn prepare_one_contact(
     constraint
 }
 
-/// Prepare the Mesh (and overflow) contact constraints of one graph color. Returns true if any
-/// contact has restitution. (b3PrepareContacts_Mesh — serial)
+/// Prepare overflow constraints. Returns true if any contact has restitution.
+/// (b3PrepareContacts_Mesh — serial)
 pub fn prepare_mesh_contacts(
     constraints: &mut Vec<ContactConstraint>,
     mesh_specs: &[crate::contact::ContactSpec],

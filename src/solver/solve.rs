@@ -8,14 +8,15 @@
 
 use super::continuous::solve_continuous;
 use super::integrate::{finalize_bodies, integrate_positions, integrate_velocities};
+use super::mesh_lanes::compute_mesh_lanes;
 use super::StepContext;
 use crate::body::body_flags;
 use crate::broad_phase::{proxy_id, proxy_type};
 use crate::constants::{GRAPH_COLOR_COUNT, RELAX_ITERATIONS, SOLVER_ITERATIONS};
 use crate::constraint_graph::OVERFLOW_INDEX;
 use crate::contact_solver::wide::{
-    apply_restitution_convex, prepare_contacts_convex, push_contacts_convex, solve_contacts_convex,
-    store_impulses_convex, warm_start_contacts_convex, ContactConstraintWide,
+    apply_restitution_w, prepare_contacts_convex, prepare_contacts_mesh_wide, push_contacts_w,
+    solve_contacts_w, store_impulses_w, warm_start_contacts_w, WideContactConstraints,
 };
 use crate::contact_solver::{
     apply_restitution, flag_hit_events, prepare_mesh_contacts, push_contacts, solve_contacts,
@@ -36,12 +37,13 @@ use crate::world::World;
 /// b3SolveJointsTask / b3PushContacts_* when `use_bias`, else b3SolveContacts_*, + overflow)
 fn solve_joints_then_contacts(
     world: &mut World,
-    mesh_constraints: &mut [Vec<ContactConstraint>],
-    wide_constraints: &mut [Vec<ContactConstraintWide>],
+    overflow_constraints: &mut [ContactConstraint],
+    wide_constraints: &mut [WideContactConstraints],
+    mesh_wide_constraints: &mut [WideContactConstraints],
     context: &StepContext,
     use_bias: bool,
 ) {
-    // Overflow first — always Mesh path (C: b3SolveContacts_Overflow)
+    // Overflow first — always the scalar Mesh kernels (C: b3SolveContacts_Overflow)
     {
         let mut joint_sims =
             std::mem::take(&mut world.constraint_graph.colors[OVERFLOW_INDEX as usize].joint_sims);
@@ -61,18 +63,10 @@ fn solve_joints_then_contacts(
         let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
         if use_bias {
             // (b3PushContacts_Overflow)
-            push_contacts(
-                &mut mesh_constraints[OVERFLOW_INDEX as usize],
-                states,
-                context,
-            );
+            push_contacts(overflow_constraints, states, context);
         } else {
             // (b3SolveContacts_Overflow)
-            solve_contacts(
-                &mut mesh_constraints[OVERFLOW_INDEX as usize],
-                states,
-                context,
-            );
+            solve_contacts(overflow_constraints, states, context);
         }
     }
 
@@ -94,14 +88,16 @@ fn solve_joints_then_contacts(
 
         let states = &mut world.solver_sets[AWAKE_SET as usize].body_states;
         let convex = &mut wide_constraints[color_index];
-        let mesh = &mut mesh_constraints[color_index];
-        // C graph blocks: joints → wide/convex → mesh
+        let mesh = &mut mesh_wide_constraints[color_index];
+        // C graph blocks: joints → wide/convex → mesh (b3_graphContactBlock)
         if use_bias {
-            push_contacts_convex(convex, states, context);
-            push_contacts(mesh, states, context);
+            // (b3PushContacts_Convex, b3PushContacts_MeshWide)
+            push_contacts_w(convex, states, context);
+            push_contacts_w(mesh, states, context);
         } else {
-            solve_contacts_convex(convex, states, context);
-            solve_contacts(mesh, states, context);
+            // (b3SolveContacts_Convex, b3SolveContacts_MeshWide)
+            solve_contacts_w(convex, states, context);
+            solve_contacts_w(mesh, states, context);
         }
     }
 }
@@ -181,22 +177,36 @@ pub fn solve(world: &mut World, context: &StepContext) {
         world.constraint_graph.colors[color_index].joint_sims = joint_sims;
     }
 
-    // Prepare contact constraints for every color: wide constraints for the convex contacts
-    // and scalar constraints for the mesh contacts. The overflow color only has mesh contacts.
-    // (b3PrepareContacts_Convex / b3PrepareContacts_Mesh / b3PrepareContacts_Overflow)
-    // C dispatches the convex kernels on world->simdWidth (4 or 8). The scalar port only has
+    // Prepare contact constraints. Graph colors get wide constraints for the convex contacts
+    // and for the mesh contacts, the overflow color gets scalar constraints.
+    // (b3PrepareContacts_Convex / b3PrepareContacts_MeshWide / b3PrepareContacts_Overflow)
+    // C dispatches the wide kernels on world->simdWidth (4 or 8). The scalar port only has
     // the width 4 kernels, and the world width can never be 8 here (b3SetSIMDWidth and
     // b3World_EnableSSE2Fallback fall back to 4 without AVX2).
     debug_assert!(world.simd_width == crate::core::SIMD_WIDTH as i32);
-    let mut mesh_constraints: Vec<Vec<ContactConstraint>> = (0..GRAPH_COLOR_COUNT as usize)
-        .map(|_| Vec::new())
+    let simd_shift = 2;
+    let color_count = OVERFLOW_INDEX as usize;
+    let mut overflow_constraints: Vec<ContactConstraint> = Vec::new();
+    let mut wide_constraints: Vec<WideContactConstraints> = (0..color_count)
+        .map(|_| WideContactConstraints::default())
         .collect();
-    let mut wide_constraints: Vec<Vec<ContactConstraintWide>> = (0..GRAPH_COLOR_COUNT as usize)
-        .map(|_| Vec::new())
+    let mut mesh_wide_constraints: Vec<WideContactConstraints> = (0..color_count)
+        .map(|_| WideContactConstraints::default())
         .collect();
     let mut any_restitution = false;
 
-    for color_index in 0..GRAPH_COLOR_COUNT as usize {
+    // Sort mesh contacts by manifold count so that contacts with more manifolds are solved
+    // together keeping the SIMD lanes fuller and less ragged.
+    let mesh_lanes = {
+        let color_specs: Vec<&[crate::contact::ContactSpec]> = world.constraint_graph.colors
+            [..color_count]
+            .iter()
+            .map(|color| color.contacts.as_slice())
+            .collect();
+        compute_mesh_lanes(&color_specs, simd_shift)
+    };
+
+    for color_index in 0..color_count {
         let convex_ids = world.constraint_graph.colors[color_index]
             .convex_contacts
             .clone();
@@ -204,7 +214,6 @@ pub fn solve(world: &mut World, context: &StepContext) {
         let contacts = &mut world.contacts;
         let sims = &world.solver_sets[AWAKE_SET as usize].body_sims;
         let states = &world.solver_sets[AWAKE_SET as usize].body_states;
-        debug_assert!(color_index != OVERFLOW_INDEX as usize || convex_ids.is_empty());
         let wide_restitution = prepare_contacts_convex(
             &mut wide_constraints[color_index],
             &convex_ids,
@@ -213,15 +222,37 @@ pub fn solve(world: &mut World, context: &StepContext) {
             states,
             context.enable_warm_starting,
         );
-        let mesh_restitution = prepare_mesh_contacts(
-            &mut mesh_constraints[color_index],
+        let lanes = &mesh_lanes[color_index];
+        let mesh_restitution = prepare_contacts_mesh_wide(
+            &mut mesh_wide_constraints[color_index],
             &mesh_specs,
+            &lanes.order,
+            &lanes.manifold_starts,
+            contacts,
+            sims,
+            states,
+            context.enable_warm_starting,
+        );
+        any_restitution = any_restitution || wide_restitution || mesh_restitution;
+    }
+
+    // (b3PrepareContacts_Overflow)
+    {
+        let overflow = &world.constraint_graph.colors[OVERFLOW_INDEX as usize];
+        debug_assert!(overflow.convex_contacts.is_empty());
+        let overflow_specs = overflow.contacts.clone();
+        let contacts = &mut world.contacts;
+        let sims = &world.solver_sets[AWAKE_SET as usize].body_sims;
+        let states = &world.solver_sets[AWAKE_SET as usize].body_states;
+        let overflow_restitution = prepare_mesh_contacts(
+            &mut overflow_constraints,
+            &overflow_specs,
             contacts,
             sims,
             states,
             context,
         );
-        any_restitution = any_restitution || wide_restitution || mesh_restitution;
+        any_restitution = any_restitution || overflow_restitution;
     }
 
     // Sub-step loop
@@ -241,13 +272,14 @@ pub fn solve(world: &mut World, context: &StepContext) {
             for joint in &mut constraint_graph.colors[OVERFLOW_INDEX as usize].joint_sims {
                 warm_start_joint(joint, states);
             }
-            warm_start_contacts(&mut mesh_constraints[OVERFLOW_INDEX as usize], states);
+            warm_start_contacts(&mut overflow_constraints, states);
             for color_index in 0..OVERFLOW_INDEX as usize {
                 for joint in &mut constraint_graph.colors[color_index].joint_sims {
                     warm_start_joint(joint, states);
                 }
-                warm_start_contacts_convex(&wide_constraints[color_index], states);
-                warm_start_contacts(&mut mesh_constraints[color_index], states);
+                // (b3WarmStartContacts_Convex, b3WarmStartContacts_MeshWide)
+                warm_start_contacts_w(&wide_constraints[color_index], states);
+                warm_start_contacts_w(&mesh_wide_constraints[color_index], states);
             }
         }
 
@@ -255,8 +287,9 @@ pub fn solve(world: &mut World, context: &StepContext) {
             let use_bias = true;
             solve_joints_then_contacts(
                 world,
-                &mut mesh_constraints,
+                &mut overflow_constraints,
                 &mut wide_constraints,
+                &mut mesh_wide_constraints,
                 context,
                 use_bias,
             );
@@ -268,8 +301,9 @@ pub fn solve(world: &mut World, context: &StepContext) {
             let use_bias = false;
             solve_joints_then_contacts(
                 world,
-                &mut mesh_constraints,
+                &mut overflow_constraints,
                 &mut wide_constraints,
+                &mut mesh_wide_constraints,
                 context,
                 use_bias,
             );
@@ -286,7 +320,7 @@ pub fn solve(world: &mut World, context: &StepContext) {
         for _ in 0..restitution_iterations {
             // (b3ApplyRestitution_Overflow)
             apply_restitution(
-                &mut mesh_constraints[OVERFLOW_INDEX as usize],
+                &mut overflow_constraints,
                 states,
                 context,
                 threshold,
@@ -294,15 +328,17 @@ pub fn solve(world: &mut World, context: &StepContext) {
             );
 
             for color_index in 0..OVERFLOW_INDEX as usize {
-                apply_restitution_convex(
+                // (b3ApplyRestitution_Convex)
+                apply_restitution_w(
                     &mut wide_constraints[color_index],
                     states,
                     context,
                     threshold,
                     propagate,
                 );
-                apply_restitution(
-                    &mut mesh_constraints[color_index],
+                // (b3ApplyRestitution_MeshWide)
+                apply_restitution_w(
+                    &mut mesh_wide_constraints[color_index],
                     states,
                     context,
                     threshold,
@@ -313,36 +349,38 @@ pub fn solve(world: &mut World, context: &StepContext) {
     }
 
     // Store impulses. C stores the overflow contacts with b3StoreImpulses_Overflow (the Mesh
-    // kernel, which also flags hit events) and the colors in the store stages.
+    // kernel, which also flags hit events) and the colors in the store stages
+    // (b3StoreImpulses_Convex, b3StoreImpulses_MeshWide).
     {
         let neg_hit_threshold = -world.hit_event_threshold;
         let mut has_hit = world.task_contexts[0].has_hit_events;
 
-        store_impulses(
-            &mesh_constraints[OVERFLOW_INDEX as usize],
-            &mut world.contacts,
+        store_impulses(&overflow_constraints, &mut world.contacts);
+        flag_hit_events(
+            &overflow_constraints,
+            &world.contacts,
+            &mut world.task_contexts[0].hit_event_bit_set,
+            &mut has_hit,
+            neg_hit_threshold,
         );
 
         for color_index in 0..OVERFLOW_INDEX as usize {
-            store_impulses_convex(
+            store_impulses_w(
                 &wide_constraints[color_index],
                 &mut world.contacts,
                 &mut world.task_contexts[0].hit_event_bit_set,
                 &mut has_hit,
                 neg_hit_threshold,
             );
-            store_impulses(&mesh_constraints[color_index], &mut world.contacts);
-        }
-
-        for color_index in 0..GRAPH_COLOR_COUNT as usize {
-            flag_hit_events(
-                &mesh_constraints[color_index],
-                &world.contacts,
+            store_impulses_w(
+                &mesh_wide_constraints[color_index],
+                &mut world.contacts,
                 &mut world.task_contexts[0].hit_event_bit_set,
                 &mut has_hit,
                 neg_hit_threshold,
             );
         }
+
         world.task_contexts[0].has_hit_events = has_hit;
     }
 

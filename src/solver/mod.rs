@@ -10,6 +10,7 @@
 
 mod continuous;
 mod integrate;
+mod mesh_lanes;
 mod solve;
 
 use crate::math_functions::PI;

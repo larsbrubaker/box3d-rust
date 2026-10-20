@@ -116,6 +116,9 @@ pub fn overlap_mesh(shape: &Mesh<'_>, shape_transform: Transform, proxy: &ShapeP
 }
 
 /// Get a scaled mesh triangle with edge flags. (b3GetMeshTriangle)
+///
+/// Making this inline made the tree benchmarks faster.
+#[inline]
 pub fn get_mesh_triangle(mesh: &Mesh<'_>, triangle_index: i32) -> Triangle {
     debug_assert!(0 <= triangle_index && triangle_index < mesh.data.triangle_count);
 
@@ -346,50 +349,85 @@ where
     let triangles = &data.triangles;
     let vertices = &data.vertices;
 
+    // Test node overlap in unscaled space
+    let root = &data.nodes[node_index];
+    if !test_bounds_overlap(
+        root.lower_bound,
+        root.upper_bound,
+        inv_scaled_bounds_min,
+        inv_scaled_bounds_max,
+    ) {
+        return;
+    }
+
     loop {
         let node = &data.nodes[node_index];
-        if test_bounds_overlap(
-            node.lower_bound,
-            node.upper_bound,
-            inv_scaled_bounds_min,
-            inv_scaled_bounds_max,
-        ) {
-            if node.is_leaf() {
-                let triangle_count = node.triangle_count() as i32;
-                let triangle_offset = node.triangle_offset as i32;
+        if node.is_leaf() {
+            let triangle_count = node.triangle_count() as i32;
+            let triangle_offset = node.triangle_offset as i32;
 
-                for index in 0..triangle_count {
-                    let triangle_index = triangle_offset + index;
-                    let triangle = triangles[triangle_index as usize];
+            for index in 0..triangle_count {
+                let triangle_index = triangle_offset + index;
+                let triangle = triangles[triangle_index as usize];
 
-                    let vertex1 = vertices[triangle.index1 as usize];
-                    let vertex2 = vertices[triangle.index2 as usize];
-                    let vertex3 = vertices[triangle.index3 as usize];
+                let vertex1 = vertices[triangle.index1 as usize];
+                let vertex2 = vertices[triangle.index2 as usize];
+                let vertex3 = vertices[triangle.index3 as usize];
 
-                    if test_bounds_triangle_overlap(
-                        inv_scaled_bounds_center,
-                        inv_scaled_bounds_extent,
-                        vertex1,
-                        vertex2,
-                        vertex3,
-                    ) {
-                        let a = mul(mesh_scale, vertex1);
-                        let (b, c) = if ccw {
-                            (mul(mesh_scale, vertex2), mul(mesh_scale, vertex3))
-                        } else {
-                            (mul(mesh_scale, vertex3), mul(mesh_scale, vertex2))
-                        };
+                // Perform triangle overlap test in unscaled space.
+                // todo it is possible that some margins are getting scaled
+                if test_bounds_triangle_overlap(
+                    inv_scaled_bounds_center,
+                    inv_scaled_bounds_extent,
+                    vertex1,
+                    vertex2,
+                    vertex3,
+                ) {
+                    let a = mul(mesh_scale, vertex1);
+                    let (b, c) = if ccw {
+                        (mul(mesh_scale, vertex2), mul(mesh_scale, vertex3))
+                    } else {
+                        (mul(mesh_scale, vertex3), mul(mesh_scale, vertex2))
+                    };
 
-                        if !fcn(a, b, c, triangle_index) {
-                            return;
-                        }
+                    if !fcn(a, b, c, triangle_index) {
+                        return;
                     }
                 }
-            } else {
-                debug_assert!(count <= MESH_STACK_SIZE - 1);
-                stack[count] = node_index as i32 + node.child_offset() as i32;
-                count += 1;
-                node_index += 1;
+            }
+        } else {
+            // (b3GetLeftChild / b3GetRightChild)
+            let left_index = node_index + 1;
+            let right_index = node_index + node.child_offset() as usize;
+            let left_child = &data.nodes[left_index];
+            let right_child = &data.nodes[right_index];
+
+            let overlap_left = test_bounds_overlap(
+                left_child.lower_bound,
+                left_child.upper_bound,
+                inv_scaled_bounds_min,
+                inv_scaled_bounds_max,
+            );
+            let overlap_right = test_bounds_overlap(
+                right_child.lower_bound,
+                right_child.upper_bound,
+                inv_scaled_bounds_min,
+                inv_scaled_bounds_max,
+            );
+
+            if overlap_left {
+                if overlap_right {
+                    debug_assert!(count <= MESH_STACK_SIZE - 1);
+                    stack[count] = right_index as i32;
+                    count += 1;
+                }
+
+                node_index = left_index;
+                continue;
+            }
+
+            if overlap_right {
+                node_index = right_index;
                 continue;
             }
         }

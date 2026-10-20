@@ -267,6 +267,15 @@ pub fn any_true_w(mask: FloatW) -> bool {
     mask.x != 0.0 || mask.y != 0.0 || mask.z != 0.0 || mask.w != 0.0
 }
 
+/// One bit per lane set when the lane mask is true, lane 0 in bit 0. (b3MoveMaskW4)
+#[inline]
+pub fn move_mask_w(mask: FloatW) -> i32 {
+    (if mask.x != 0.0 { 1 } else { 0 })
+        | (if mask.y != 0.0 { 2 } else { 0 })
+        | (if mask.z != 0.0 { 4 } else { 0 })
+        | (if mask.w != 0.0 { 8 } else { 0 })
+}
+
 /// Component-wise `mask ? b : a`. (b3BlendW)
 #[inline]
 pub fn blend_w(a: FloatW, b: FloatW, mask: FloatW) -> FloatW {
@@ -518,4 +527,20 @@ pub fn set_simd_width(mut width: i32) {
     }
 
     SIMD_WIDTH_STATE.store(width, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn move_mask_sets_one_bit_per_true_lane() {
+        assert_eq!(move_mask_w(zero_w()), 0);
+        assert_eq!(move_mask_w(set_w(1.0, 0.0, 0.0, 0.0)), 1);
+        assert_eq!(move_mask_w(set_w(0.0, 1.0, 0.0, 1.0)), 10);
+        assert_eq!(
+            move_mask_w(greater_than_w(set_w(1.0, 2.0, 3.0, 4.0), splat_w(2.5))),
+            12
+        );
+    }
 }

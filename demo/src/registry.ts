@@ -139,6 +139,9 @@ export const SAMPLES: SampleEntry[] = [
     // Live: 10 trees × 22 tapering hulls (C DEBUG bodyCount; release 50 disclosed in
     // SCENE_INFO / too heavy for serial wasm).
     ["Falling Trees", "live", "benchmark", "trees"],
+    // Planned: upstream 16f7f4c BenchmarkMeshDrop (CreateMeshDropBenchmark in
+    // shared/benchmarks.c), not ported yet.
+    ["Mesh Drop", "planned"],
     // Live: full C 40×40 counts; camera matches C SetView(0, 0, 250, {0, 110, 0}).
     ["Sensor", "live", "sensors", "benchmark"],
     // Live: gridCount 8 (C DEBUG; release 20³ = 8000 disclosed in SCENE_INFO / too
@@ -225,8 +228,6 @@ export const SAMPLES: SampleEntry[] = [
     ["Mesh Drop", "live", "continuous", "mesh-drop"],
     ["Hump Mesh", "live", "continuous", "hump"],
     ["Is Fast", "live", "continuous", "is-fast"],
-    // The CCD stall threshold is set to C's 1.0 ms and shown; the C sample's only
-    // other use of it is a console log of slow CCD steps (no on-screen element).
     ["Stall", "live", "continuous", "stall"],
   ]),
   ...cat("Determinism", "sample_determinism.cpp", [

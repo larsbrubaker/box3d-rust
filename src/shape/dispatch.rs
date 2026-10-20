@@ -239,3 +239,18 @@ pub fn compute_shape_extent(shape: &Shape, local_center: Vec3) -> ShapeExtent {
 
     extent
 }
+
+/// The smallest extent of a shape, used for the continuous fallback radius and the fast shape
+/// test. Cheaper than [`compute_shape_extent`] for capsules, spheres, and hulls.
+/// (b3ComputeShapeMinExtent)
+pub fn compute_shape_min_extent(shape: &Shape, local_center: Vec3) -> f32 {
+    match &shape.geometry {
+        ShapeGeometry::Capsule(capsule) => capsule.radius,
+
+        ShapeGeometry::Sphere(sphere) => sphere.radius,
+
+        ShapeGeometry::Hull(hull) => hull.inner_radius,
+
+        _ => compute_shape_extent(shape, local_center).min_extent,
+    }
+}

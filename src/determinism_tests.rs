@@ -8,8 +8,8 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::body::{
-    body_get_contact_data, body_get_transform, body_set_angular_velocity, body_set_linear_velocity,
-    create_body,
+    body_get_angular_velocity, body_get_contact_data, body_get_linear_velocity, body_get_transform,
+    body_set_angular_velocity, body_set_linear_velocity, create_body,
 };
 use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::core::{hash, HASH_INIT};
@@ -23,8 +23,11 @@ use crate::determinism::{
 use crate::geometry::{Capsule, Sphere};
 use crate::hull::make_box_hull;
 use crate::id::BodyId;
-use crate::math_functions::{Pos, Vec3, POS_ZERO};
-use crate::shape::{create_capsule_shape, create_hull_shape, create_sphere_shape};
+use crate::math_functions::{Pos, Vec3, POS_ZERO, VEC3_ONE};
+use crate::mesh::{create_wave_mesh, destroy_mesh};
+use crate::shape::{
+    create_capsule_shape, create_hull_shape, create_mesh_shape, create_sphere_shape,
+};
 use crate::simd_scalar::{get_simd_width, set_simd_width};
 use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
 use crate::world::World;
@@ -33,13 +36,13 @@ use crate::world::World;
 // step and the state hash differ from the float build. Both modes are
 // internally deterministic. Values from test_determinism.c.
 #[cfg(feature = "double-precision")]
-const RAGDOLL_SLEEP_STEP: i32 = 273;
+const RAGDOLL_SLEEP_STEP: i32 = 266;
 #[cfg(feature = "double-precision")]
-const RAGDOLL_HASH: u32 = 0x0F4D_D1EB;
+const RAGDOLL_HASH: u32 = 0x68FC_7728;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_SLEEP_STEP: i32 = 314;
+const WAVE_PILE_SLEEP_STEP: i32 = 312;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_HASH: u32 = 0x03B5_09B6;
+const WAVE_PILE_HASH: u32 = 0xFD6B_D36B;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(feature = "double-precision")]
@@ -49,18 +52,18 @@ const QUERY_SPAWN_HIT_COUNT: i32 = 59;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_QUERY_HASH: u32 = 0x5B44_29DC;
 #[cfg(feature = "double-precision")]
-const MESH_DROP_SLEEP_STEP: i32 = 217;
+const MESH_DROP_SLEEP_STEP: i32 = 218;
 #[cfg(feature = "double-precision")]
-const MESH_DROP_HASH: u32 = 0xCF94_6437;
+const MESH_DROP_HASH: u32 = 0x26F9_A566;
 
 #[cfg(not(feature = "double-precision"))]
-const RAGDOLL_SLEEP_STEP: i32 = 274;
+const RAGDOLL_SLEEP_STEP: i32 = 267;
 #[cfg(not(feature = "double-precision"))]
-const RAGDOLL_HASH: u32 = 0x773A_B8ED;
+const RAGDOLL_HASH: u32 = 0x9BCA_269D;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_SLEEP_STEP: i32 = 314;
+const WAVE_PILE_SLEEP_STEP: i32 = 270;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_HASH: u32 = 0x8CB8_F656;
+const WAVE_PILE_HASH: u32 = 0xAD7C_3901;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(not(feature = "double-precision"))]
@@ -70,16 +73,23 @@ const QUERY_SPAWN_HIT_COUNT: i32 = 59;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_QUERY_HASH: u32 = 0xE327_1F3D;
 #[cfg(not(feature = "double-precision"))]
-const MESH_DROP_SLEEP_STEP: i32 = 217;
+const MESH_DROP_SLEEP_STEP: i32 = 218;
 #[cfg(not(feature = "double-precision"))]
-const MESH_DROP_HASH: u32 = 0x256B_C40B;
+const MESH_DROP_HASH: u32 = 0x0A23_CFA2;
 
 // SingleRollingMixTest has no golden in test_determinism.c (it only compares widths). These
-// come from the scalar C build (BOX3D_DISABLE_SIMD) of e77352c, run with one worker.
+// come from the scalar C build (BOX3D_DISABLE_SIMD) of e77352c and 16f7f4c, run with one worker.
 #[cfg(feature = "double-precision")]
 const ROLLING_MIX_HASH: u32 = 0xC569_B103;
 #[cfg(not(feature = "double-precision"))]
 const ROLLING_MIX_HASH: u32 = 0x0514_27D2;
+
+// SingleMeshMixTest has no golden in test_determinism.c either. These come from the scalar C
+// build (BOX3D_DISABLE_SIMD) of 16f7f4c, run with one worker.
+#[cfg(feature = "double-precision")]
+const MESH_MIX_HASH: u32 = 0x0151_E8CA;
+#[cfg(not(feature = "double-precision"))]
+const MESH_MIX_HASH: u32 = 0xC24D_812B;
 
 // C loops each scenario over several worker counts to prove every schedule reproduces the
 // first run (EnsureRepeatable). The serial port ignores the worker count, so extra runs would
@@ -541,6 +551,164 @@ fn single_rolling_mix_test(reference: &mut DeterminismResult) {
     );
 }
 
+/// Mesh contacts are grouped across lanes by manifold count and padded to the largest count in
+/// the group. Width 8 groups differ from width 4 groups, so mixing large and small shapes on a
+/// fine mesh gives each body a width dependent number of padded manifolds. The hash covers
+/// velocities and impulses bitwise to catch a padded manifold flipping a signed zero.
+/// (SingleMeshMixTest)
+fn single_mesh_mix_test(reference: &mut DeterminismResult) {
+    let mut world = World::new(&default_world_def());
+
+    let mesh = create_wave_mesh(40, 40, 0.5, 0.3, 0.2, 0.3).expect("wave mesh");
+    {
+        let mut ground_def = default_body_def();
+        ground_def.position = Pos {
+            x: -10.0f32 as _,
+            y: 0.0f32 as _,
+            z: -10.0f32 as _,
+        };
+        let ground_id = create_body(&mut world, &ground_def);
+        let shape_def = default_shape_def();
+        create_mesh_shape(&mut world, ground_id, &shape_def, &mesh, VEC3_ONE);
+    }
+
+    const ROW_COUNT: usize = 8;
+    const COLUMN_COUNT: usize = 8;
+    const BODY_COUNT: usize = ROW_COUNT * COLUMN_COUNT;
+
+    let mut body_ids = [BodyId::default(); BODY_COUNT];
+    let small_box = make_box_hull(0.2, 0.2, 0.2);
+    let large_box = make_box_hull(0.9, 0.3, 0.9);
+    let sphere = Sphere {
+        center: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        radius: 0.3,
+    };
+    let capsule = Capsule {
+        center1: Vec3 {
+            x: -0.5,
+            y: 0.0,
+            z: 0.0,
+        },
+        center2: Vec3 {
+            x: 0.5,
+            y: 0.0,
+            z: 0.0,
+        },
+        radius: 0.2,
+    };
+
+    let mut seed: u32 = 314159;
+    for (i, body_id) in body_ids.iter_mut().enumerate() {
+        let row = i / COLUMN_COUNT;
+        let column = i % COLUMN_COUNT;
+
+        let mut body_def = default_body_def();
+        body_def.type_ = BodyType::Dynamic;
+        body_def.position = Pos {
+            x: (2.2 * column as f32 - 7.7) as _,
+            y: 1.2f32 as _,
+            z: (2.2 * row as f32 - 7.7) as _,
+        };
+        *body_id = create_body(&mut world, &body_def);
+
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let mut shape_def = default_shape_def();
+        shape_def.density = 1.0;
+        shape_def.base_material.rolling_resistance = if (seed >> 28) < 5 { 0.2 } else { 0.0 };
+
+        match (seed >> 24) & 3 {
+            0 => {
+                create_hull_shape(&mut world, *body_id, &shape_def, &large_box.base);
+            }
+            1 => {
+                create_hull_shape(&mut world, *body_id, &shape_def, &small_box.base);
+            }
+            2 => {
+                create_sphere_shape(&mut world, *body_id, &shape_def, &sphere);
+            }
+            _ => {
+                create_capsule_shape(&mut world, *body_id, &shape_def, &capsule);
+            }
+        }
+
+        let sign = if (i & 1) != 0 { -1.0 } else { 1.0 };
+        body_set_linear_velocity(
+            &mut world,
+            *body_id,
+            Vec3 {
+                x: -0.0,
+                y: -0.5,
+                z: -0.0,
+            },
+        );
+        body_set_angular_velocity(
+            &mut world,
+            *body_id,
+            Vec3 {
+                x: -0.0,
+                y: sign * 0.5,
+                z: -0.0,
+            },
+        );
+    }
+
+    let mut h = HASH_INIT;
+    let step_count = 180;
+    for _ in 0..step_count {
+        world.step(1.0 / 60.0, 4);
+
+        for body_id in &body_ids {
+            let xf = body_get_transform(&world, *body_id);
+            h = hash_world_transform(h, &xf);
+
+            let v = body_get_linear_velocity(&world, *body_id);
+            let w = body_get_angular_velocity(&world, *body_id);
+            h = hash_floats(h, &[v.x, v.y, v.z]);
+            h = hash_floats(h, &[w.x, w.y, w.z]);
+
+            let contact_data = body_get_contact_data(&world, *body_id, 8);
+            for data in &contact_data {
+                for manifold in &data.manifolds {
+                    let r = manifold.rolling_impulse;
+                    let f = manifold.friction_impulse;
+                    h = hash_floats(h, &[r.x, r.y, r.z]);
+                    h = hash_floats(h, &[f.x, f.y, f.z]);
+                    h = hash_floats(h, &[manifold.twist_impulse]);
+
+                    for p in &manifold.points[..manifold.point_count as usize] {
+                        h = hash_floats(h, &[p.normal_impulse]);
+                        h = hash_floats(h, &[p.total_normal_impulse]);
+                    }
+                }
+            }
+        }
+    }
+
+    drop(world);
+    destroy_mesh(mesh);
+
+    if ENSURE_GOLDEN {
+        assert_eq!(
+            h, MESH_MIX_HASH,
+            "mesh mix hash 0x{h:08X} (expected 0x{MESH_MIX_HASH:08X})"
+        );
+    }
+
+    ensure_repeatable(
+        reference,
+        DeterminismResult {
+            sleep_step: step_count,
+            hash: h,
+            ..Default::default()
+        },
+        "mesh mix",
+    );
+}
+
 /// (SceneFcn)
 type SceneFcn = fn(&mut DeterminismResult);
 
@@ -578,12 +746,13 @@ fn simd_width_test() {
     let native_width = get_simd_width();
     assert_eq!(native_width, 4, "the scalar port has no width 8 kernels");
 
-    let scenes: [SceneFcn; 5] = [
+    let scenes: [SceneFcn; 6] = [
         ragdoll_scene,
         wave_pile_scene,
         query_spawn_scene,
         mesh_drop_scene,
         single_rolling_mix_test,
+        single_mesh_mix_test,
     ];
 
     for scene in scenes {
@@ -608,5 +777,15 @@ fn rolling_mix_test() {
     let mut reference = DeterminismResult::default();
     for _ in 1..=REPEAT_RUNS {
         single_rolling_mix_test(&mut reference);
+    }
+}
+
+/// The mesh mix scene against the scalar C reference. C only runs it inside SIMDWidthTest; this
+/// pins it on its own so a failure names the scene.
+#[test]
+fn mesh_mix_test() {
+    let mut reference = DeterminismResult::default();
+    for _ in 1..=REPEAT_RUNS {
+        single_mesh_mix_test(&mut reference);
     }
 }
