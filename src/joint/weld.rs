@@ -7,14 +7,17 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
-use super::{get_joint_sim_check_type, get_joint_sim_check_type_ref, JointSim, JointType};
+use super::{
+    get_joint_sim_check_type, get_joint_sim_check_type_ref, solve_point_constraint, JointSim,
+    JointType,
+};
 use crate::body::{body_flags, BodyState, IDENTITY_BODY_STATE};
 use crate::core::NULL_INDEX;
 use crate::id::JointId;
 use crate::math_functions::{
     add, add_mm, cross, delta_quat_to_rotation, det, dot_quat, inv_mul_quat, invert_matrix,
-    mul_add, mul_mm, mul_mv, mul_quat, mul_sub, mul_sv, neg, negate_mat3, negate_quat,
-    rotate_vector, skew, solve3, sub, sub_pos, Vec3, QUAT_IDENTITY, VEC3_ZERO,
+    mul_add, mul_mv, mul_quat, mul_sub, mul_sv, neg, negate_quat, rotate_vector, sub, sub_pos,
+    Vec3, QUAT_IDENTITY, VEC3_ZERO,
 };
 use crate::solver::{make_soft, StepContext};
 use crate::solver_set::AWAKE_SET;
@@ -346,16 +349,7 @@ pub fn solve_weld_joint(
         }
 
         // K = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
-        let s_a = skew(r_a);
-        let s_b = skew(r_b);
-        let k_a = mul_mm(s_a, mul_mm(i_a, s_a));
-        let k_b = mul_mm(s_b, mul_mm(i_b, s_b));
-        let mut k = negate_mat3(add_mm(k_a, k_b));
-        k.cx.x += m_a + m_b;
-        k.cy.y += m_a + m_b;
-        k.cz.z += m_a + m_b;
-
-        let b = solve3(k, add(cdot, bias));
+        let b = solve_point_constraint(m_a, m_b, i_a, i_b, r_a, r_b, add(cdot, bias));
 
         let impulse = mul_sub(mul_sv(-mass_scale, b), impulse_scale, joint.linear_impulse);
         joint.linear_impulse = add(joint.linear_impulse, impulse);

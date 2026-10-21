@@ -16,6 +16,8 @@ time. Ported so far:
 - `3d9db79` Various recording fixes (#182)
 - `5d83df8` Improve compound serialization (#183)
 - `a2e4816` Fixes for #175 (#187)
+- `8128d74` Discussion template (#185) (GitHub discussion template only, nothing to port)
+- `0cfc475` Solver stuff (#189)
 
 ### Breaking
 
@@ -261,6 +263,27 @@ time. Ported so far:
   mesh mix hash changes; all confirmed against a scalar C build of
   `a2e4816` in both precision modes. `World::step` documents that a zero
   time step still runs collision and reports contact and sensor events.
+- The solver accumulates velocity changes instead of applying every impulse
+  to the bodies in turn (upstream `0cfc475`). The wide contact push and solve
+  track the linear normal velocity per manifold, apply the normal impulses
+  to the angular velocities through precomputed `invI * (r x n)` terms, and
+  apply the summed normal impulse to the linear velocities once (in solve,
+  together with the central friction impulse). Normal and twist friction
+  clamps compute the delta impulse directly with min / max. Revolute
+  spring, motor, and limits share one axial velocity and apply one combined
+  axial impulse; spherical spring, motor, twist limits, and cone limit do
+  the same with the angular velocity. The revolute, spherical, motor, and
+  weld point constraints solve the 3x3 system with the new
+  `joint::solve_point_constraint` (upstream `b3SolvePointConstraint`)
+  instead of forming the effective mass from skew products and calling
+  `solve3`. Simulation results change. The determinism goldens move to
+  upstream's values: falling ragdolls 265 / `0xB98B3638` (double 267 /
+  `0x01EB8FDB`), wave pile 288 / `0xFC1CD2DC` (double 333 / `0x80D5266B`),
+  query spawn hash `0x58F47348` (double `0x90EE3E7C`), mesh drop
+  `0x983F27EA` (double `0x10051259`). The rolling mix hash becomes
+  `0x3447FD01` (double `0x6686EFA8`) and the mesh mix hash `0x141DBC7E`
+  (double `0xD802486E`). All values were confirmed with a scalar C build of
+  `0cfc475` (`BOX3D_DISABLE_SIMD`) in both precision modes.
 
 ### Not ported
 

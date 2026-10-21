@@ -4,16 +4,18 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
-use super::{get_joint_sim_check_type, get_joint_sim_check_type_ref, JointSim, JointType};
+use super::{
+    get_joint_sim_check_type, get_joint_sim_check_type_ref, solve_point_constraint, JointSim,
+    JointType,
+};
 use crate::body::{body_flags, get_body_transform, BodyState, IDENTITY_BODY_STATE};
 use crate::core::NULL_INDEX;
 use crate::id::JointId;
 use crate::math_functions::{
     add, add_mm, clamp_float, cross, delta_quat_to_rotation, det, dot, dot_quat, get_swing_angle,
     get_twist_angle, inv_mul_quat, invert_matrix, is_valid_float, is_valid_quat, is_valid_vec3,
-    length, max_float, min_float, mul_add, mul_mm, mul_mv, mul_quat, mul_sub, mul_sv, neg,
-    negate_mat3, negate_quat, normalize, rotate_vector, skew, solve3, sub, sub_pos, Quat, Vec3,
-    MAT3_ZERO, PI, VEC3_AXIS_Z, VEC3_ZERO,
+    length, max_float, min_float, mul_add, mul_mv, mul_quat, mul_sub, mul_sv, neg, negate_quat,
+    normalize, rotate_vector, sub, sub_pos, Quat, Vec3, MAT3_ZERO, PI, VEC3_AXIS_Z, VEC3_ZERO,
 };
 use crate::solver::{make_soft, StepContext};
 use crate::solver_set::AWAKE_SET;
@@ -561,82 +563,128 @@ pub fn solve_spherical_joint(
 
     let rel_q = inv_mul_quat(quat_a, quat_b);
 
-    // Solve spring
-    if joint.enable_spring && !fixed_rotation {
-        // Rotation constraint error
-        let delta_rotation = delta_quat_to_rotation(rel_q, joint.target_rotation);
-        let c = neg(rotate_vector(quat_a, delta_rotation));
+    if !fixed_rotation
+        && (joint.enable_spring
+            || joint.enable_motor
+            || joint.enable_twist_limit
+            || joint.enable_cone_limit)
+    {
+        let inv_inertia_sum = add_mm(i_a, i_b);
+        let mut cdot = sub(w_b, w_a);
+        let mut angular_impulse = VEC3_ZERO;
 
-        let bias = mul_sv(joint.spring_softness.bias_rate, c);
-        let mass_scale = joint.spring_softness.mass_scale;
-        let impulse_scale = joint.spring_softness.impulse_scale;
-        let cdot = sub(w_b, w_a);
+        // Solve spring
+        if joint.enable_spring {
+            // Rotation constraint error
+            let delta_rotation = delta_quat_to_rotation(rel_q, joint.target_rotation);
+            let c = neg(rotate_vector(quat_a, delta_rotation));
 
-        let impulse = mul_sub(
-            mul_sv(-mass_scale, mul_mv(joint.rotation_mass, add(cdot, bias))),
-            impulse_scale,
-            joint.spring_impulse,
-        );
-        joint.spring_impulse = add(joint.spring_impulse, impulse);
+            let bias = mul_sv(joint.spring_softness.bias_rate, c);
+            let mass_scale = joint.spring_softness.mass_scale;
+            let impulse_scale = joint.spring_softness.impulse_scale;
 
-        w_a = sub(w_a, mul_mv(i_a, impulse));
-        w_b = add(w_b, mul_mv(i_b, impulse));
-    }
+            let impulse = mul_sub(
+                mul_sv(-mass_scale, mul_mv(joint.rotation_mass, add(cdot, bias))),
+                impulse_scale,
+                joint.spring_impulse,
+            );
+            joint.spring_impulse = add(joint.spring_impulse, impulse);
 
-    if joint.enable_motor && !fixed_rotation {
-        let cdot = sub(w_b, w_a);
-
-        // todo it might be more accurate to have the motor velocity in frameA due to sub-stepping.
-        let mut lambda = neg(mul_mv(joint.rotation_mass, sub(cdot, joint.motor_velocity)));
-        let mut new_impulse = add(joint.motor_impulse, lambda);
-        let len = length(new_impulse);
-        let max_impulse = joint.max_motor_torque * context.h;
-        if len > max_impulse {
-            new_impulse = mul_sv(max_impulse / len, new_impulse);
+            cdot = add(cdot, mul_mv(inv_inertia_sum, impulse));
+            angular_impulse = add(angular_impulse, impulse);
         }
 
-        lambda = sub(new_impulse, joint.motor_impulse);
-        joint.motor_impulse = new_impulse;
-
-        w_a = sub(w_a, mul_mv(i_a, lambda));
-        w_b = add(w_b, mul_mv(i_b, lambda));
-    }
-
-    if joint.enable_twist_limit && !fixed_rotation {
-        let twist_angle = get_twist_angle(rel_q);
-
-        // todo does an updated twist axis help?
-        let twist_jacobian = joint.twist_jacobian;
-
-        // Lower limit
-        {
-            let c = twist_angle - joint.lower_twist_angle;
-            let mut bias = 0.0;
-            let mut mass_scale = 1.0;
-            let mut impulse_scale = 0.0;
-            if c > 0.0 {
-                // speculation
-                bias = c * context.inv_h;
-            } else if use_bias {
-                bias = constraint_softness.bias_rate * c;
-                mass_scale = constraint_softness.mass_scale;
-                impulse_scale = constraint_softness.impulse_scale;
+        if joint.enable_motor {
+            // todo it might be more accurate to have the motor velocity in frameA due to sub-stepping.
+            let mut lambda = neg(mul_mv(joint.rotation_mass, sub(cdot, joint.motor_velocity)));
+            let mut new_impulse = add(joint.motor_impulse, lambda);
+            let len = length(new_impulse);
+            let max_impulse = joint.max_motor_torque * context.h;
+            if len > max_impulse {
+                new_impulse = mul_sv(max_impulse / len, new_impulse);
             }
 
-            let cdot = dot(sub(w_b, w_a), twist_jacobian);
-            let old_impulse = joint.lower_twist_impulse;
-            let mut delta_impulse =
-                -mass_scale * joint.twist_mass * (cdot + bias) - impulse_scale * old_impulse;
-            joint.lower_twist_impulse = max_float(old_impulse + delta_impulse, 0.0);
-            delta_impulse = joint.lower_twist_impulse - old_impulse;
+            lambda = sub(new_impulse, joint.motor_impulse);
+            joint.motor_impulse = new_impulse;
 
-            w_a = mul_sub(w_a, delta_impulse, mul_mv(i_a, twist_jacobian));
-            w_b = mul_add(w_b, delta_impulse, mul_mv(i_b, twist_jacobian));
+            cdot = add(cdot, mul_mv(inv_inertia_sum, lambda));
+            angular_impulse = add(angular_impulse, lambda);
         }
 
-        // Upper limit
-        {
-            let c = joint.upper_twist_angle - twist_angle;
+        if joint.enable_twist_limit {
+            let twist_angle = get_twist_angle(rel_q);
+
+            // todo does an updated twist axis help?
+
+            let twist_jacobian = joint.twist_jacobian;
+            let twist_response = mul_mv(inv_inertia_sum, twist_jacobian);
+
+            // Lower limit
+            {
+                let c = twist_angle - joint.lower_twist_angle;
+                let mut bias = 0.0;
+                let mut mass_scale = 1.0;
+                let mut impulse_scale = 0.0;
+                if c > 0.0 {
+                    // speculation
+                    bias = c * context.inv_h;
+                } else if use_bias {
+                    bias = constraint_softness.bias_rate * c;
+                    mass_scale = constraint_softness.mass_scale;
+                    impulse_scale = constraint_softness.impulse_scale;
+                }
+
+                let twist_cdot = dot(cdot, twist_jacobian);
+                let old_impulse = joint.lower_twist_impulse;
+                let delta_impulse = max_float(
+                    -mass_scale * joint.twist_mass * (twist_cdot + bias)
+                        - impulse_scale * old_impulse,
+                    -old_impulse,
+                );
+                joint.lower_twist_impulse = old_impulse + delta_impulse;
+
+                cdot = mul_add(cdot, delta_impulse, twist_response);
+                angular_impulse = mul_add(angular_impulse, delta_impulse, twist_jacobian);
+            }
+
+            // Upper limit
+            {
+                let c = joint.upper_twist_angle - twist_angle;
+                let mut bias = 0.0;
+                let mut mass_scale = 1.0;
+                let mut impulse_scale = 0.0;
+                if c > 0.0 {
+                    // speculation
+                    bias = c * context.inv_h;
+                } else if use_bias {
+                    bias = constraint_softness.bias_rate * c;
+                    mass_scale = constraint_softness.mass_scale;
+                    impulse_scale = constraint_softness.impulse_scale;
+                }
+
+                // sign flipped on Cdot
+                let twist_cdot = -dot(cdot, twist_jacobian);
+                let old_impulse = joint.upper_twist_impulse;
+                let delta_impulse = max_float(
+                    -mass_scale * joint.twist_mass * (twist_cdot + bias)
+                        - impulse_scale * old_impulse,
+                    -old_impulse,
+                );
+                joint.upper_twist_impulse = old_impulse + delta_impulse;
+
+                // sign flipped on applied impulse
+                cdot = mul_sub(cdot, delta_impulse, twist_response);
+                angular_impulse = mul_sub(angular_impulse, delta_impulse, twist_jacobian);
+            }
+        }
+
+        if joint.enable_cone_limit {
+            let swing_angle = get_swing_angle(rel_q);
+
+            // todo does an updated swing axis help?
+            let swing_axis = joint.swing_axis;
+
+            let c = joint.cone_angle - swing_angle;
             let mut bias = 0.0;
             let mut mass_scale = 1.0;
             let mut impulse_scale = 0.0;
@@ -650,49 +698,20 @@ pub fn solve_spherical_joint(
             }
 
             // sign flipped on Cdot
-            let cdot = dot(sub(w_a, w_b), twist_jacobian);
-            let old_impulse = joint.upper_twist_impulse;
-            let mut delta_impulse =
-                -mass_scale * joint.twist_mass * (cdot + bias) - impulse_scale * old_impulse;
-            joint.upper_twist_impulse = max_float(old_impulse + delta_impulse, 0.0);
-            delta_impulse = joint.upper_twist_impulse - old_impulse;
+            let swing_cdot = -dot(cdot, swing_axis);
+            let old_impulse = joint.swing_impulse;
+            let delta_impulse = max_float(
+                -mass_scale * joint.swing_mass * (swing_cdot + bias) - impulse_scale * old_impulse,
+                -old_impulse,
+            );
+            joint.swing_impulse = old_impulse + delta_impulse;
 
             // sign flipped on applied impulse
-            w_a = mul_add(w_a, delta_impulse, mul_mv(i_a, twist_jacobian));
-            w_b = mul_sub(w_b, delta_impulse, mul_mv(i_b, twist_jacobian));
-        }
-    }
-
-    if joint.enable_cone_limit && !fixed_rotation {
-        let swing_angle = get_swing_angle(rel_q);
-
-        // todo does an updated swing axis help?
-        let swing_axis = joint.swing_axis;
-
-        let c = joint.cone_angle - swing_angle;
-        let mut bias = 0.0;
-        let mut mass_scale = 1.0;
-        let mut impulse_scale = 0.0;
-        if c > 0.0 {
-            // speculation
-            bias = c * context.inv_h;
-        } else if use_bias {
-            bias = constraint_softness.bias_rate * c;
-            mass_scale = constraint_softness.mass_scale;
-            impulse_scale = constraint_softness.impulse_scale;
+            angular_impulse = mul_sub(angular_impulse, delta_impulse, swing_axis);
         }
 
-        // sign flipped on Cdot
-        let cdot = dot(sub(w_a, w_b), swing_axis);
-        let old_impulse = joint.swing_impulse;
-        let mut delta_impulse =
-            -mass_scale * joint.swing_mass * (cdot + bias) - impulse_scale * old_impulse;
-        joint.swing_impulse = max_float(old_impulse + delta_impulse, 0.0);
-        delta_impulse = joint.swing_impulse - old_impulse;
-
-        // sign flipped on applied impulse
-        w_a = mul_add(w_a, delta_impulse, mul_mv(i_a, swing_axis));
-        w_b = mul_sub(w_b, delta_impulse, mul_mv(i_b, swing_axis));
+        w_a = sub(w_a, mul_mv(i_a, angular_impulse));
+        w_b = add(w_b, mul_mv(i_b, angular_impulse));
     }
 
     // Solve point-to-point constraint
@@ -718,16 +737,7 @@ pub fn solve_spherical_joint(
         }
 
         // K = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
-        let s_a = skew(r_a);
-        let s_b = skew(r_b);
-        let k_a = mul_mm(s_a, mul_mm(i_a, s_a));
-        let k_b = mul_mm(s_b, mul_mm(i_b, s_b));
-        let mut k = negate_mat3(add_mm(k_a, k_b));
-        k.cx.x += m_a + m_b;
-        k.cy.y += m_a + m_b;
-        k.cz.z += m_a + m_b;
-
-        let b = solve3(k, add(cdot, bias));
+        let b = solve_point_constraint(m_a, m_b, i_a, i_b, r_a, r_b, add(cdot, bias));
 
         let impulse = mul_sub(mul_sv(-mass_scale, b), impulse_scale, joint.linear_impulse);
         joint.linear_impulse = add(joint.linear_impulse, impulse);

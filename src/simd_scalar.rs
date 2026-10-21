@@ -182,6 +182,9 @@ pub fn max_w(a: FloatW, b: FloatW) -> FloatW {
 
 /// Clamp `a` to `[-b, b]`. (b3SymClampW)
 #[inline]
+// Kept for a complete scalar simd.h API; the 0cfc475 twist friction clamps the delta impulse with
+// min/max instead.
+#[allow(dead_code)]
 pub fn sym_clamp_w(a: FloatW, b: FloatW) -> FloatW {
     let mut r = FloatW {
         x: if a.x <= b.x { a.x } else { b.x },

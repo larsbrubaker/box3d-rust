@@ -617,3 +617,91 @@ fn test_non_dynamic_joint_disable() {
     world.step(1.0 / 60.0, 4);
     assert!(!joint_is_awake(&world, revolute_id));
 }
+
+/// solve_point_constraint (b3SolvePointConstraint) solves the same 3x3 system as the skew
+/// product form it replaced in upstream 0cfc475, and returns zero for a singular K.
+#[test]
+fn solve_point_constraint_matches_skew_form() {
+    use crate::math_functions::{add_mm, mul_mm, mul_mv, negate_mat3, skew, solve3, sub, Matrix3};
+
+    let i_a = Matrix3 {
+        cx: Vec3 {
+            x: 2.0,
+            y: 0.25,
+            z: -0.5,
+        },
+        cy: Vec3 {
+            x: 0.25,
+            y: 1.5,
+            z: 0.125,
+        },
+        cz: Vec3 {
+            x: -0.5,
+            y: 0.125,
+            z: 3.0,
+        },
+    };
+    let i_b = Matrix3 {
+        cx: Vec3 {
+            x: 0.75,
+            y: -0.125,
+            z: 0.0,
+        },
+        cy: Vec3 {
+            x: -0.125,
+            y: 1.25,
+            z: 0.375,
+        },
+        cz: Vec3 {
+            x: 0.0,
+            y: 0.375,
+            z: 0.5,
+        },
+    };
+    let r_a = Vec3 {
+        x: 0.3,
+        y: -1.2,
+        z: 0.7,
+    };
+    let r_b = Vec3 {
+        x: -0.9,
+        y: 0.4,
+        z: 1.1,
+    };
+    let rhs = Vec3 {
+        x: 1.5,
+        y: -2.0,
+        z: 0.25,
+    };
+    let (m_a, m_b) = (0.5, 2.0);
+
+    let b = solve_point_constraint(m_a, m_b, i_a, i_b, r_a, r_b, rhs);
+
+    let s_a = skew(r_a);
+    let s_b = skew(r_b);
+    let mut k = negate_mat3(add_mm(
+        mul_mm(s_a, mul_mm(i_a, s_a)),
+        mul_mm(s_b, mul_mm(i_b, s_b)),
+    ));
+    k.cx.x += m_a + m_b;
+    k.cy.y += m_a + m_b;
+    k.cz.z += m_a + m_b;
+    let expected = solve3(k, rhs);
+
+    let error = sub(b, expected);
+    let tolerance = 1.0e-5;
+    assert!(error.x.abs() < tolerance && error.y.abs() < tolerance && error.z.abs() < tolerance);
+
+    // K * b reproduces the right hand side
+    let residual = sub(mul_mv(k, b), rhs);
+    assert!(residual.x.abs() < 1.0e-4 && residual.y.abs() < 1.0e-4 && residual.z.abs() < 1.0e-4);
+
+    // Two static bodies give a zero K, which solves to zero.
+    let zero = Matrix3 {
+        cx: Vec3::default(),
+        cy: Vec3::default(),
+        cz: Vec3::default(),
+    };
+    let z = solve_point_constraint(0.0, 0.0, zero, zero, r_a, r_b, rhs);
+    assert_eq!(z, Vec3::default());
+}

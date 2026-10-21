@@ -10,9 +10,9 @@ use super::{
 };
 use crate::body::BodyState;
 use crate::simd_scalar::{
-    add_vw, add_w, all_zero_w, blend_w, cross_w, div_w, dot_w, greater_than_w, max_w, mul_add_svw,
-    mul_add_w, mul_sub_svw, mul_svw, mul_w, neg_w, soft_mask_w, splat_w, sqrt_w, sub_vw, sub_w,
-    sym_clamp_w, zero_w,
+    add_vw, add_w, all_zero_w, blend_w, cross_w, div_w, dot_w, greater_than_w, max_w, min_w,
+    mul_add_svw, mul_add_w, mul_sub_svw, mul_svw, mul_w, neg_w, soft_mask_w, splat_w, sqrt_w,
+    sub_vw, sub_w, zero_w,
 };
 use crate::solver::StepContext;
 
@@ -125,6 +125,7 @@ pub fn push_contacts_w(
         let impulse_scale = blend_w(dynamic_impulse_scale, static_impulse_scale, soft_mask);
 
         let dp = sub_vw(b_b.dp, b_a.dp);
+        let inv_mass = add_w(c.inv_mass_a, c.inv_mass_b);
 
         let range = manifold_starts[i] as usize..manifold_starts[i + 1] as usize;
         for cm in &mut manifolds[range] {
@@ -133,6 +134,9 @@ pub fn push_contacts_w(
             let normal_a = inv_rotate_vector_w(b_a.dq, cm.normal);
             let normal_b = inv_rotate_vector_w(b_b.dq, cm.normal);
             let normal = cm.normal;
+
+            let mut linear_normal_velocity = dot_w(normal, sub_vw(b_b.v, b_a.v));
+            let mut manifold_impulse = zero;
 
             for cp in &mut cm.points[..cm.point_count as usize] {
                 // Fixed anchor points for applying impulses
@@ -160,12 +164,16 @@ pub fn push_contacts_w(
                 let point_mass_scale = blend_w(mass_scale, one_w, separated);
                 let point_impulse_scale = blend_w(impulse_scale, zero, separated);
 
-                // Relative velocity at contact
-                let vr_a = add_vw(b_a.v, cross_w(b_a.w, r_a));
-                let vr_b = add_vw(b_b.v, cross_w(b_b.w, r_b));
-                let vn = dot_w(sub_vw(vr_b, vr_a), normal);
+                let u_a = cross_w(r_a, normal);
+                let u_b = cross_w(r_b, normal);
+                let g_a = mul_mvw(c.inv_i_a, u_a);
+                let g_b = mul_mvw(c.inv_i_b, u_b);
 
-                // Compute normal impulse
+                let vn = add_w(
+                    linear_normal_velocity,
+                    sub_w(dot_w(u_b, b_b.w), dot_w(u_a, b_a.w)),
+                );
+
                 let neg_impulse = add_w(
                     mul_w(
                         cp.normal_masses,
@@ -173,19 +181,18 @@ pub fn push_contacts_w(
                     ),
                     mul_w(point_impulse_scale, cp.normal_impulses),
                 );
+                let impulse = max_w(neg_w(neg_impulse), neg_w(cp.normal_impulses));
+                cp.normal_impulses = add_w(cp.normal_impulses, impulse);
 
-                // Clamp the accumulated impulse
-                let new_impulse = max_w(sub_w(cp.normal_impulses, neg_impulse), zero);
-                let delta_impulse = sub_w(new_impulse, cp.normal_impulses);
-                cp.normal_impulses = new_impulse;
-
-                // Apply contact impulse
-                let p = mul_svw(delta_impulse, normal);
-                b_a.w = mul_sub_mvw(b_a.w, c.inv_i_a, cross_w(r_a, p));
-                b_a.v = mul_sub_svw(b_a.v, c.inv_mass_a, p);
-                b_b.w = mul_add_mvw(b_b.w, c.inv_i_b, cross_w(r_b, p));
-                b_b.v = mul_add_svw(b_b.v, c.inv_mass_b, p);
+                linear_normal_velocity = mul_add_w(linear_normal_velocity, inv_mass, impulse);
+                manifold_impulse = add_w(manifold_impulse, impulse);
+                b_a.w = mul_sub_svw(b_a.w, impulse, g_a);
+                b_b.w = mul_add_svw(b_b.w, impulse, g_b);
             }
+
+            let p = mul_svw(manifold_impulse, normal);
+            b_a.v = mul_sub_svw(b_a.v, c.inv_mass_a, p);
+            b_b.v = mul_add_svw(b_b.v, c.inv_mass_b, p);
         }
 
         scatter_bodies(states, &c.index_a, &b_a);
@@ -217,6 +224,7 @@ pub fn solve_contacts_w(
 
         let any_rolling = !all_zero_w(c.rolling_resistance);
         let dp = sub_vw(b_b.dp, b_a.dp);
+        let inv_mass = add_w(c.inv_mass_a, c.inv_mass_b);
 
         let range = manifold_starts[i] as usize..manifold_starts[i + 1] as usize;
         for cm in &mut manifolds[range] {
@@ -224,6 +232,12 @@ pub fn solve_contacts_w(
             let normal_a = inv_rotate_vector_w(b_a.dq, cm.normal);
             let normal_b = inv_rotate_vector_w(b_b.dq, cm.normal);
             let normal = cm.normal;
+
+            let dv = sub_vw(b_b.v, b_a.v);
+            let mut linear_normal_velocity = dot_w(normal, dv);
+            let linear_tangent_velocity1 = sub_w(dot_w(cm.tangent1, dv), cm.tangent_velocity1);
+            let linear_tangent_velocity2 = sub_w(dot_w(cm.tangent2, dv), cm.tangent_velocity2);
+            let mut manifold_impulse = zero;
 
             let mut total_normal_impulse = zero;
             let mut total_twist_limit = zero;
@@ -245,28 +259,28 @@ pub fn solve_contacts_w(
                 // Speculative bias, positive if separated and zero if overlapped
                 let velocity_bias = max_w(zero, mul_w(s, inv_h));
 
-                // Relative velocity at contact
-                let vr_a = add_vw(b_a.v, cross_w(b_a.w, r_a));
-                let vr_b = add_vw(b_b.v, cross_w(b_b.w, r_b));
-                let vn = dot_w(sub_vw(vr_b, vr_a), normal);
+                let u_a = cross_w(r_a, normal);
+                let u_b = cross_w(r_b, normal);
+                let g_a = mul_mvw(c.inv_i_a, u_a);
+                let g_b = mul_mvw(c.inv_i_b, u_b);
 
-                // Compute normal impulse
+                let vn = add_w(
+                    linear_normal_velocity,
+                    sub_w(dot_w(u_b, b_b.w), dot_w(u_a, b_a.w)),
+                );
+
                 let neg_impulse = mul_w(cp.normal_masses, add_w(vn, velocity_bias));
-
-                // Clamp the accumulated impulse
-                let new_impulse = max_w(sub_w(cp.normal_impulses, neg_impulse), zero);
-                let delta_impulse = sub_w(new_impulse, cp.normal_impulses);
+                let impulse = max_w(neg_w(neg_impulse), neg_w(cp.normal_impulses));
+                let new_impulse = add_w(cp.normal_impulses, impulse);
                 cp.normal_impulses = new_impulse;
                 cp.total_normal_impulses = add_w(cp.total_normal_impulses, new_impulse);
                 total_normal_impulse = add_w(total_normal_impulse, new_impulse);
                 total_twist_limit = add_w(total_twist_limit, mul_w(cp.lever_arms, new_impulse));
 
-                // Apply contact impulse
-                let p = mul_svw(delta_impulse, normal);
-                b_a.w = mul_sub_mvw(b_a.w, c.inv_i_a, cross_w(r_a, p));
-                b_a.v = mul_sub_svw(b_a.v, c.inv_mass_a, p);
-                b_b.w = mul_add_mvw(b_b.w, c.inv_i_b, cross_w(r_b, p));
-                b_b.v = mul_add_svw(b_b.v, c.inv_mass_b, p);
+                linear_normal_velocity = mul_add_w(linear_normal_velocity, inv_mass, impulse);
+                manifold_impulse = add_w(manifold_impulse, impulse);
+                b_a.w = mul_sub_svw(b_a.w, impulse, g_a);
+                b_b.w = mul_add_svw(b_b.w, impulse, g_b);
             }
 
             // Rolling resistance. After normal constraints because it uses the normal impulse.
@@ -309,14 +323,16 @@ pub fn solve_contacts_w(
             {
                 let twist_speed = dot_w(normal, sub_vw(b_b.w, b_a.w));
                 let max_lambda = mul_w(c.friction, total_twist_limit);
-                let mut delta_impulse = neg_w(mul_w(cm.twist_mass, twist_speed));
                 let old_impulse = cm.twist_impulse;
-                cm.twist_impulse = sym_clamp_w(add_w(old_impulse, delta_impulse), max_lambda);
-                delta_impulse = sub_w(cm.twist_impulse, old_impulse);
+                let mut impulse = neg_w(mul_w(cm.twist_mass, twist_speed));
+                impulse = max_w(
+                    sub_w(neg_w(max_lambda), old_impulse),
+                    min_w(impulse, sub_w(max_lambda, old_impulse)),
+                );
+                cm.twist_impulse = add_w(old_impulse, impulse);
 
-                let l = mul_svw(delta_impulse, normal);
-                b_a.w = mul_sub_mvw(b_a.w, c.inv_i_a, l);
-                b_b.w = mul_add_mvw(b_b.w, c.inv_i_b, l);
+                b_a.w = mul_sub_svw(b_a.w, impulse, mul_mvw(c.inv_i_a, normal));
+                b_b.w = mul_add_svw(b_b.w, impulse, mul_mvw(c.inv_i_b, normal));
             }
 
             // Central friction. Friction goes last to improve stacking stability.
@@ -328,13 +344,18 @@ pub fn solve_contacts_w(
                 let r_a = cm.center_a;
                 let r_b = cm.center_b;
 
+                let angular_relative_velocity = sub_vw(cross_w(b_b.w, r_b), cross_w(b_a.w, r_a));
+
                 // Relative tangent velocity at contact
-                let vr_a = add_vw(b_a.v, cross_w(b_a.w, r_a));
-                let vr_b = add_vw(b_b.v, cross_w(b_b.w, r_b));
-                let vr = sub_vw(vr_b, vr_a);
                 let vt = Vec2W {
-                    x: sub_w(dot_w(vr, tangent1), cm.tangent_velocity1),
-                    y: sub_w(dot_w(vr, tangent2), cm.tangent_velocity2),
+                    x: add_w(
+                        linear_tangent_velocity1,
+                        dot_w(angular_relative_velocity, tangent1),
+                    ),
+                    y: add_w(
+                        linear_tangent_velocity2,
+                        dot_w(angular_relative_velocity, tangent2),
+                    ),
                 };
 
                 // Incremental tangent impulse
@@ -373,13 +394,15 @@ pub fn solve_contacts_w(
                 cm.friction_impulse = new_impulse;
 
                 // Apply delta impulse
-                let p = add_vw(
+                let mut p = add_vw(
                     mul_svw(delta_impulse.x, tangent1),
                     mul_svw(delta_impulse.y, tangent2),
                 );
                 b_a.w = mul_sub_mvw(b_a.w, c.inv_i_a, cross_w(r_a, p));
-                b_a.v = mul_sub_svw(b_a.v, c.inv_mass_a, p);
                 b_b.w = mul_add_mvw(b_b.w, c.inv_i_b, cross_w(r_b, p));
+
+                p = mul_add_svw(p, manifold_impulse, normal);
+                b_a.v = mul_sub_svw(b_a.v, c.inv_mass_a, p);
                 b_b.v = mul_add_svw(b_b.v, c.inv_mass_b, p);
             }
         }
