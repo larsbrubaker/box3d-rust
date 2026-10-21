@@ -36,5 +36,6 @@ pub use types::{
     get_compound_capsule, get_compound_child, get_compound_hull, get_compound_materials,
     get_compound_mesh, get_compound_sphere, ChildGeometry, ChildShape, CompoundCapsule,
     CompoundCapsuleDef, CompoundData, CompoundDef, CompoundHull, CompoundHullDef, CompoundMesh,
-    CompoundMeshDef, CompoundSphere, CompoundSphereDef, COMPOUND_DATA_SIZE, COMPOUND_VERSION,
+    CompoundMeshDef, CompoundSphere, CompoundSphereDef, COMPOUND_DATA_SIZE, COMPOUND_TREE_OFFSET,
+    COMPOUND_VERSION,
 };

@@ -469,6 +469,7 @@ include!("recording_replay_tests_extra.rs");
 include!("recording_replay_tests_draw.rs");
 include!("recording_replay_tests_geometry.rs");
 include!("recording_replay_tests_corrupt.rs");
+include!("recording_replay_tests_compound.rs");
 
 /// Safety factor of the named body in a replay world, or -1 if the body is not in the list.
 /// (ReplaySafetyFactor)

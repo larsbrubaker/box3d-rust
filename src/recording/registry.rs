@@ -4,7 +4,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::compound::{convert_bytes_to_compound, CompoundData};
+use crate::compound::{convert_bytes_to_compound, convert_compound_to_bytes, CompoundData};
 use crate::core::hash64_non_zero;
 use crate::height_field::HeightFieldData;
 use crate::hull::HullData;
@@ -109,7 +109,9 @@ impl GeometryRegistry {
 
     /// (b3RecInternCompound)
     pub fn intern_compound(&mut self, compound: &CompoundData) -> u32 {
-        let bytes = compound.to_bytes();
+        // Scrub the tree pointers so the canonical bytes are pointer-free.
+        // convert_bytes_to_compound fixes them back on load via nodeOffset/proxyOffset.
+        let bytes = convert_compound_to_bytes(compound);
         let h = hash64_non_zero(&bytes);
         self.intern(GeometryKind::Compound, h, bytes)
     }

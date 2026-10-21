@@ -12,6 +12,7 @@ time. Ported so far:
 - `e77352c` Add support for AVX2 and runtime feature detection (#174)
 - `16f7f4c` Tree perf (#179)
 - `f8c4fe8` Shape cast support for box movers (#180)
+- `003a3f7` Fix recording crash on compounds (#181)
 
 ### Breaking
 
@@ -125,6 +126,18 @@ time. Ported so far:
   shape cast tests. Checked bit-exact against a scalar C build of `f8c4fe8`
   on 200,000 randomized near-contact casts (about 53,000 reach the new
   branch).
+- `GeometryRegistry::intern_compound` scrubs the compound through
+  `convert_compound_to_bytes`, mirroring upstream's `b3RecInternCompound`
+  (upstream `003a3f7`). Upstream previously nulled only `tree.nodes`, so C
+  recordings embedded the live `tree.proxies` pointer and its hash, which
+  broke registry dedup during keyframe capture (an assert in
+  `b3RecCaptureKeyframe`). The port always wrote every tree pointer as zero,
+  so its recorded bytes are unchanged and now match C exactly: the interned
+  blob and hash of a capsule plus three spheres compound were confirmed
+  against a scalar C build of `003a3f7`. Adds tests for the pointer-free blob
+  and for a seek across a live compound that mirrors the keyframe-policy call
+  upstream added to `AllOps`. The port's player seeks by restart-and-replay
+  and captures no keyframes, so that test checks seek and replay only.
 
 ### Not ported
 
@@ -147,6 +160,10 @@ time. Ported so far:
   (`W8`) mesh kernels and `b3MoveMaskW4` for SSE2 / Neon are SIMD-only.
 - The new Encroach Cast collision sample (upstream `f8c4fe8`); it is listed
   as planned in the demo registry.
+- The compound pointer scrub in `b3RecSeedKeyframeRegistry` (upstream
+  `003a3f7`). The port's player has no keyframe ring or keyframe registry
+  (`seek_frame` restarts from frame 0 and replays), so there is nothing to
+  seed.
 
 ## 0.4.1
 
