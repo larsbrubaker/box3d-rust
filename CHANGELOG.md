@@ -15,6 +15,7 @@ time. Ported so far:
 - `003a3f7` Fix recording crash on compounds (#181)
 - `3d9db79` Various recording fixes (#182)
 - `5d83df8` Improve compound serialization (#183)
+- `a2e4816` Fixes for #175 (#187)
 
 ### Breaking
 
@@ -247,6 +248,20 @@ time. Ported so far:
   as upstream did. Adds tests for a zero byte hull entry and an invalid
   compound entry failing player creation, and for the tree node checks.
 
+- Contact recycling no longer skips real overlap (upstream `a2e4816`,
+  discussion #175). `collide_spheres` and `collide_capsule_and_sphere` now
+  report pairs within the speculative distance, like the other manifold
+  routines, instead of only overlapping pairs. A contact recycles only when
+  speculative points are enabled for the pair, and a pre-solve rejection
+  clears the cached relative transform so the next step rebuilds the
+  contact. Reproducing tests (`SpeculativeMarginTest`,
+  `RecycledSphereApproachTest`, `PreSolveRejectRecycleTest`,
+  `SpeculativeOffRecycleTest`, ported from upstream) failed before the fix.
+  The wave pile determinism goldens change to upstream's values, and the
+  mesh mix hash changes; all confirmed against a scalar C build of
+  `a2e4816` in both precision modes. `World::step` documents that a zero
+  time step still runs collision and reports contact and sensor events.
+
 ### Not ported
 
 - The new GJK-versus-SAT benchmark (`shared/sat_benchmark.c`, `benchmark
@@ -289,6 +304,7 @@ time. Ported so far:
   taking ownership, and `b3RecSeedKeyframeRegistry` no longer scrubs
   compounds (upstream `5d83df8`). The port's registry already owns `Vec`
   copies, and its player has no keyframe registry.
+- The new cylinder questions in `docs/faq.md` (upstream `a2e4816`).
 
 ## 0.4.1
 

@@ -40,9 +40,9 @@ const RAGDOLL_SLEEP_STEP: i32 = 266;
 #[cfg(feature = "double-precision")]
 const RAGDOLL_HASH: u32 = 0x68FC_7728;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_SLEEP_STEP: i32 = 312;
+const WAVE_PILE_SLEEP_STEP: i32 = 322;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_HASH: u32 = 0xFD6B_D36B;
+const WAVE_PILE_HASH: u32 = 0x8179_8F75;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(feature = "double-precision")]
@@ -61,9 +61,9 @@ const RAGDOLL_SLEEP_STEP: i32 = 267;
 #[cfg(not(feature = "double-precision"))]
 const RAGDOLL_HASH: u32 = 0x9BCA_269D;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_SLEEP_STEP: i32 = 270;
+const WAVE_PILE_SLEEP_STEP: i32 = 281;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_HASH: u32 = 0xAD7C_3901;
+const WAVE_PILE_HASH: u32 = 0x23A9_0492;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(not(feature = "double-precision"))]
@@ -85,11 +85,11 @@ const ROLLING_MIX_HASH: u32 = 0xC569_B103;
 const ROLLING_MIX_HASH: u32 = 0x0514_27D2;
 
 // SingleMeshMixTest has no golden in test_determinism.c either. These come from the scalar C
-// build (BOX3D_DISABLE_SIMD) of 16f7f4c, run with one worker.
+// build (BOX3D_DISABLE_SIMD) of a2e4816, run with one worker.
 #[cfg(feature = "double-precision")]
-const MESH_MIX_HASH: u32 = 0x0151_E8CA;
+const MESH_MIX_HASH: u32 = 0x0ABC_A27D;
 #[cfg(not(feature = "double-precision"))]
-const MESH_MIX_HASH: u32 = 0xC24D_812B;
+const MESH_MIX_HASH: u32 = 0x799C_7CCB;
 
 // C loops each scenario over several worker counts to prove every schedule reproduces the
 // first run (EnsureRepeatable). The serial port ignores the worker count, so extra runs would

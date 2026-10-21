@@ -8,6 +8,14 @@ use crate::world::{Profile, World};
 
 impl World {
     /// Advance the world simulation by one time step. (b3World_Step)
+    ///
+    /// Simulate a world for one time step. This performs collision detection, integration, and
+    /// constraint solution.
+    /// A time step of zero runs the broad-phase and collision, but skips the solver. So you can
+    /// still get contact and sensor events.
+    /// - `time_step`: the amount of time to simulate, this should be a fixed number. Usually 1/60.
+    /// - `sub_step_count`: the number of sub-steps, increasing the sub-step count can increase
+    ///   accuracy. Usually 4.
     pub fn step(&mut self, time_step: f32, sub_step_count: i32) {
         use crate::broad_phase::update_broad_phase_pairs;
         use crate::math_functions::{is_valid_float, max_int, min_float};

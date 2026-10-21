@@ -14,6 +14,7 @@ mod face_deep;
 mod primitives;
 mod sat;
 mod sat_culling;
+mod speculative;
 
 use crate::hull::{get_hull_edges, get_hull_points, HullData};
 use crate::manifold::LocalManifold;

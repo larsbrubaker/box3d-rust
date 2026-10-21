@@ -122,12 +122,6 @@ pub fn create_contact(world: &mut World, shape_id_a: i32, shape_id_b: i32, child
         contact.encoded_body_sim_b = encoded_b;
     }
 
-    if (world.bodies[body_id_a as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
-        && (world.bodies[body_id_b as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
-    {
-        world.contacts[contact_id as usize].flags |= contact_flags::RECYCLE;
-    }
-
     if type_a == ShapeType::Mesh || type_a == ShapeType::Height {
         world.contacts[contact_id as usize].flags |= contact_flags::SIM_MESH_CONTACT;
         world.contacts[contact_id as usize].geometry =
@@ -170,6 +164,15 @@ pub fn create_contact(world: &mut World, shape_id_a: i32, shape_id_b: i32, child
         && (world.shapes[shape_id_b as usize].flags & shape_flags::ENABLE_SPECULATIVE) != 0
     {
         world.contacts[contact_id as usize].flags |= contact_flags::ENABLE_SPECULATIVE_POINTS;
+    }
+
+    // Disabling speculative collision also disables recycling.
+    if (world.bodies[body_id_a as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
+        && (world.bodies[body_id_b as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
+        && (world.contacts[contact_id as usize].flags & contact_flags::ENABLE_SPECULATIVE_POINTS)
+            != 0
+    {
+        world.contacts[contact_id as usize].flags |= contact_flags::RECYCLE;
     }
 
     // Connect to body A

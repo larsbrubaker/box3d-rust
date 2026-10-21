@@ -358,6 +358,9 @@ fn update_convex_contact(
         let still_touching = pre_solve(shape_id_a, shape_id_b, point, normal, ctx);
         if !still_touching {
             world.contacts[contact_id as usize].manifolds.clear();
+
+            // Invalidate recycling cache.
+            world.contacts[contact_id as usize].flags &= !contact_flags::RELATIVE_TRANSFORM_VALID;
             return false;
         }
     }
