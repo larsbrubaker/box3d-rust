@@ -1,14 +1,38 @@
 #!/usr/bin/env python3
-"""Generate src/recording/ops.rs from box3d-cpp-reference/src/recording_ops.inl."""
+"""Generate the recording op table and framed writers from recording_ops.inl.
+
+Reads box3d-cpp-reference/src/recording_ops.inl (the B3_REC_OP x-macro manifest) and
+writes, under OUT_DIR (default: src/recording):
+
+  ops.rs                 RecOp enum + RecOp::from_u8
+  write_ops/mod.rs       family module list
+  write_ops/<family>.rs  `impl Recording` framed writers, one file per op family
+                         (world, body, shape, joint, joint_setters, query)
+
+The files are written with LF line endings and then formatted with rustfmt (edition
+2021), which is how the checked-in files are kept. Ops appear in manifest order.
+
+Usage:
+  python scripts/gen_recording_ops.py                  # regenerate in src/recording
+  python scripts/gen_recording_ops.py --out-dir DIR    # write elsewhere (e.g. to diff)
+  python scripts/gen_recording_ops.py --no-rustfmt     # skip the rustfmt pass
+
+To check for drift without touching src, generate into a scratch directory and diff
+(ignoring CR, since git may check the files out with CRLF):
+  diff -r --strip-trailing-cr DIR/write_ops src/recording/write_ops
+"""
 
 from __future__ import annotations
 
+import argparse
 import re
 import pathlib
+import subprocess
+
+from recording_manifest import parse_ops
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-INL = ROOT / "box3d-cpp-reference" / "src" / "recording_ops.inl"
-OUT = ROOT / "src" / "recording" / "ops.rs"
+OUT_DIR = ROOT / "src" / "recording"
 
 TAG_TY = {
     "BOOL": "bool",
@@ -35,8 +59,7 @@ TAG_TY = {
     "MATERIAL": "SurfaceMaterial",
     "MASSDATA": "MassData",
     "LOCKS": "MotionLocks",
-    "BODYSTR": "String",
-    "SHAPESTR": "String",
+    "STR": "String",
     "WORLDID": "WorldId",
     "BODYID": "BodyId",
     "SHAPEID": "ShapeId",
@@ -80,8 +103,7 @@ TAG_WRITE = {
     "MATERIAL": "append_material",
     "MASSDATA": "append_mass_data",
     "LOCKS": "append_locks",
-    "BODYSTR": "append_str",
-    "SHAPESTR": "append_str",
+    "STR": "append_str",
     "WORLDID": "append_world_id",
     "BODYID": "append_body_id",
     "SHAPEID": "append_shape_id",
@@ -101,8 +123,7 @@ TAG_WRITE = {
 }
 
 REF_TAGS = {
-    "BODYSTR",
-    "SHAPESTR",
+    "STR",
     "BODYDEF",
     "SHAPEDEF",
     "QUERYFILTER",
@@ -128,59 +149,151 @@ def to_snake(f: str) -> str:
     return s
 
 
-def parse_ops() -> list[tuple[int, str, str, list[tuple[str, str]]]]:
-    text = INL.read_text(encoding="utf-8")
-    flat = re.sub(r"\\\n", " ", text)
-    flat = re.sub(r"[ \t]*\n[ \t]*", " ", flat)
-    ops = []
-    for m in re.finditer(r"B3_REC_OP\(\s*(0x[0-9A-Fa-f]+)\s*,\s*(\w+)\s*,\s*(RET_\w+)\s*,", flat):
-        i = flat.index("(", m.start()) + 1
-        depth = 1
-        while i < len(flat) and depth:
-            if flat[i] == "(":
-                depth += 1
-            elif flat[i] == ")":
-                depth -= 1
-            i += 1
-        inner = flat[m.start() : i]
-        mm = re.match(
-            r"B3_REC_OP\(\s*(0x[0-9A-Fa-f]+)\s*,\s*(\w+)\s*,\s*(RET_\w+)\s*,(.*)\)$",
-            inner,
-            re.S,
-        )
-        if not mm:
+
+# Module path for every Rust type a writer signature can mention.
+TYPE_MODULE = {
+    "ShapeProxy": "crate::distance",
+    "Capsule": "crate::geometry",
+    "MassData": "crate::geometry",
+    "Sphere": "crate::geometry",
+    "SurfaceMaterial": "crate::geometry",
+    "BodyId": "crate::id",
+    "JointId": "crate::id",
+    "ShapeId": "crate::id",
+    "WorldId": "crate::id",
+    "Aabb": "crate::math_functions",
+    "Matrix3": "crate::math_functions",
+    "Pos": "crate::math_functions",
+    "Quat": "crate::math_functions",
+    "Transform": "crate::math_functions",
+    "Vec3": "crate::math_functions",
+    "WorldTransform": "crate::math_functions",
+}
+for _ty in TAG_TY.values():
+    if _ty.endswith("Def") or _ty in ("Filter", "MotionLocks", "QueryFilter"):
+        TYPE_MODULE[_ty] = "crate::types"
+
+PRIMITIVES = {"bool", "i32", "u8", "u16", "u32", "u64", "f32", "f64"}
+
+RET_TY = {"RET_BODYID": "BodyId", "RET_SHAPEID": "ShapeId", "RET_JOINTID": "JointId"}
+RET_WRITE = {
+    "RET_BODYID": "append_body_id",
+    "RET_SHAPEID": "append_shape_id",
+    "RET_JOINTID": "append_joint_id",
+}
+
+JOINT_TYPE_PREFIXES = (
+    "Parallel", "Distance", "Motor", "Prismatic", "Revolute", "Spherical", "Weld", "Wheel",
+)
+
+# Writer families: (module, doc noun). List order is the write_ops/mod.rs order.
+FAMILIES = [
+    ("body", "body"),
+    ("joint", "joint"),
+    ("joint_setters", "joint"),
+    ("query", "query"),
+    ("shape", "shape"),
+    ("world", "world"),
+]
+
+
+def family_of(name: str) -> str:
+    if name in ("DestroyWorld", "Step") or name.startswith("World"):
+        return "world"
+    if name in ("CreateBody", "DestroyBody") or name.startswith("Body"):
+        return "body"
+    if name == "DestroyShape" or name.startswith("Shape") or (
+        name.startswith("Create") and name.endswith("Shape")
+    ):
+        return "shape"
+    if name == "DestroyJoint" or name.startswith("Joint") or (
+        name.startswith("Create") and name.endswith("Joint")
+    ):
+        return "joint"
+    if name.startswith(JOINT_TYPE_PREFIXES) and "Joint" in name:
+        return "joint_setters"
+    if name.startswith("Query") or name in ("StateHash", "RecordingBounds"):
+        return "query"
+    raise SystemExit(f"gen_recording_ops: no writer family for op {name}")
+
+
+def check_tags(ops) -> None:
+    for _opcode, name, ret, fields in ops:
+        for tag, field in fields:
+            if tag not in TAG_TY or tag not in TAG_WRITE:
+                raise SystemExit(
+                    f"gen_recording_ops: unknown arg tag {tag} ({name}.{field}); "
+                    "add it to TAG_TY and TAG_WRITE"
+                )
+        if ret != "RET_NONE" and ret not in RET_TY:
+            raise SystemExit(f"gen_recording_ops: unknown return kind {ret} ({name})")
+
+
+def emit_writer(name: str, ret: str, fields) -> tuple[str, set[str]]:
+    """One framed writer method plus the set of Rust types it mentions."""
+    used: set[str] = set()
+    fn = to_snake(name)
+    params: list[str] = []
+    for tag, field in fields:
+        rf = to_snake(field)
+        ty = TAG_TY[tag]
+        if tag == "STR":
+            params.append(f"{rf}: &str")
             continue
-        opcode, name, ret, args = mm.groups()
-        fields = re.findall(r"ARG\(\s*(\w+)\s*,\s*(\w+)\s*\)", args)
-        ops.append((int(opcode, 16), name, ret, fields))
-    return ops
+        used.add(ty)
+        if tag in REF_TAGS:
+            params.append(f"{rf}: &{ty}")
+        else:
+            params.append(f"{rf}: {ty}")
+
+    ret_param = ""
+    if ret in RET_TY:
+        ret_param = f", ret_id: {RET_TY[ret]}"
+        used.add(RET_TY[ret])
+
+    param_str = (", " + ", ".join(params)) if params else ""
+    out = []
+    out.append(f"    /// Write framed `{name}` op.\n")
+    out.append(f"    pub fn write_{fn}(&mut self{param_str}{ret_param}) {{\n")
+    out.append(f"        self.begin_record(RecOp::{name} as u8);\n")
+    for tag, field in fields:
+        out.append(f"        self.buffer.{TAG_WRITE[tag]}({to_snake(field)});\n")
+    if ret in RET_WRITE:
+        out.append(f"        self.buffer.{RET_WRITE[ret]}(ret_id);\n")
+    out.append("        self.end_record();\n")
+    out.append("    }\n")
+    return "".join(out), used
 
 
-def main() -> None:
-    ops = parse_ops()
+def use_lines(types: set[str]) -> str:
+    by_mod: dict[str, list[str]] = {}
+    for ty in types:
+        if ty in PRIMITIVES:
+            continue
+        if ty not in TYPE_MODULE:
+            raise SystemExit(f"gen_recording_ops: no module known for type {ty}")
+        by_mod.setdefault(TYPE_MODULE[ty], []).append(ty)
+    lines = []
+    for mod in sorted(by_mod):
+        names = sorted(by_mod[mod])
+        if len(names) == 1:
+            lines.append(f"use {mod}::{names[0]};\n")
+        else:
+            lines.append(f"use {mod}::{{{', '.join(names)}}};\n")
+    return "".join(lines)
+
+
+def gen_ops_rs(ops) -> str:
     lines: list[str] = []
     lines.append(
         """//! Recording op table generated from recording_ops.inl.
-//! Opcode constants, arg structs, and framed write helpers.
+//! Opcode constants; the framed write helpers live in write_ops/.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::distance::ShapeProxy;
-use crate::geometry::{Capsule, MassData, Sphere, SurfaceMaterial};
-use crate::id::{BodyId, JointId, ShapeId, WorldId};
-use crate::math_functions::{Aabb, Pos, Quat, Transform, Vec3, WorldTransform};
-use crate::types::{
-    BodyDef, DistanceJointDef, ExplosionDef, Filter, FilterJointDef, MotionLocks, MotorJointDef,
-    ParallelJointDef, PrismaticJointDef, QueryFilter, RevoluteJointDef, ShapeDef, SphericalJointDef,
-    WeldJointDef, WheelJointDef,
-};
-
-use super::session::Recording;
-
 """
     )
-
     lines.append("/// Opcode constants from recording_ops.inl.\n")
     lines.append("#[repr(u8)]\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n")
     lines.append("pub enum RecOp {\n")
@@ -196,59 +309,74 @@ use super::session::Recording;
     lines.append("            _ => None,\n")
     lines.append("        }\n")
     lines.append("    }\n")
-    lines.append("}\n\n")
-
-    for opcode, name, _ret, fields in ops:
-        lines.append(f"/// Args for `{name}` (op 0x{opcode:02X}).\n")
-        lines.append("#[derive(Debug, Clone)]\n")
-        lines.append(f"pub struct Args{name} {{\n")
-        for tag, field in fields:
-            lines.append(f"    pub {to_snake(field)}: {TAG_TY[tag]},\n")
-        lines.append("}\n\n")
-
-    lines.append("impl Recording {\n")
-    for opcode, name, ret, fields in ops:
-        fn = to_snake(name)
-        params: list[str] = []
-        for tag, field in fields:
-            rf = to_snake(field)
-            ty = TAG_TY[tag]
-            if tag in REF_TAGS:
-                if tag in ("BODYSTR", "SHAPESTR"):
-                    params.append(f"{rf}: &str")
-                else:
-                    params.append(f"{rf}: &{ty}")
-            else:
-                params.append(f"{rf}: {ty}")
-
-        ret_param = ""
-        if ret == "RET_BODYID":
-            ret_param = ", ret_id: BodyId"
-        elif ret == "RET_SHAPEID":
-            ret_param = ", ret_id: ShapeId"
-        elif ret == "RET_JOINTID":
-            ret_param = ", ret_id: JointId"
-
-        param_str = (", " + ", ".join(params)) if params else ""
-        lines.append(f"    /// Write framed `{name}` op.\n")
-        lines.append(f"    pub fn write_{fn}(&mut self{param_str}{ret_param}) {{\n")
-        lines.append(f"        self.begin_record(RecOp::{name} as u8);\n")
-        for tag, field in fields:
-            rf = to_snake(field)
-            w = TAG_WRITE[tag]
-            lines.append(f"        self.buffer.{w}({rf});\n")
-        if ret == "RET_BODYID":
-            lines.append("        self.buffer.append_body_id(ret_id);\n")
-        elif ret == "RET_SHAPEID":
-            lines.append("        self.buffer.append_shape_id(ret_id);\n")
-        elif ret == "RET_JOINTID":
-            lines.append("        self.buffer.append_joint_id(ret_id);\n")
-        lines.append("        self.end_record();\n")
-        lines.append("    }\n\n")
     lines.append("}\n")
+    return "".join(lines)
 
-    OUT.write_text("".join(lines), encoding="utf-8")
-    print(f"wrote {OUT} ({OUT.stat().st_size} bytes, {len(ops)} ops)")
+
+def gen_write_ops(ops) -> dict[str, str]:
+    files: dict[str, str] = {}
+    mod_lines = [
+        """//! Framed op writers for `Recording`, split from ops.rs by op family.
+//! Layouts mirror recording_ops.inl.
+//!
+//! SPDX-FileCopyrightText: 2026 Erin Catto
+//! SPDX-License-Identifier: MIT
+
+"""
+    ]
+    for module, noun in FAMILIES:
+        mod_lines.append(f"mod {module};\n")
+        methods: list[str] = []
+        used: set[str] = set()
+        for _opcode, name, ret, fields in ops:
+            if family_of(name) != module:
+                continue
+            text, tys = emit_writer(name, ret, fields)
+            methods.append(text)
+            used |= tys
+        body = (
+            f"""//! Framed {noun} op writers for `Recording`, split from ops.rs to satisfy
+//! the file-length limit. Layouts mirror recording_ops.inl.
+//!
+//! SPDX-FileCopyrightText: 2026 Erin Catto
+//! SPDX-License-Identifier: MIT
+
+"""
+            + use_lines(used)
+            + "\nuse crate::recording::ops::RecOp;\nuse crate::recording::session::Recording;\n\n"
+            + "impl Recording {\n"
+            + "\n".join(methods)
+            + "}\n"
+        )
+        files[f"write_ops/{module}.rs"] = body
+    files["write_ops/mod.rs"] = "".join(mod_lines)
+    return files
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--out-dir", type=pathlib.Path, default=OUT_DIR)
+    ap.add_argument("--no-rustfmt", action="store_true")
+    args = ap.parse_args()
+
+    ops = parse_ops("gen_recording_ops")
+    check_tags(ops)
+    files = {"ops.rs": gen_ops_rs(ops)}
+    files.update(gen_write_ops(ops))
+
+    written = []
+    for rel, text in files.items():
+        path = args.out_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+        written.append(path)
+    if not args.no_rustfmt:
+        subprocess.run(
+            ["rustfmt", "--edition", "2021", *[str(p) for p in written]], check=True
+        )
+    for path in written:
+        print(f"wrote {path} ({path.stat().st_size} bytes)")
+    print(f"{len(ops)} ops")
 
 
 if __name__ == "__main__":
