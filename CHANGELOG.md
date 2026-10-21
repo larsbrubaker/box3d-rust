@@ -378,6 +378,14 @@ Bug-fix release; no public API changes. The C reference pin is unchanged
 
 ### Fixed
 
+- The demo Replay viewer's bundled `demo/public/recordings/sample.b3rec` was
+  stale after the upstream format bumps (recording 6.9, snapshot 11, hull and
+  compound layouts) and was rejected by `RecPlayer::create`. It is regenerated
+  from the current wasm build (same Box Stack scene, 300 frames at 60 Hz, 4
+  sub-steps) by the new reproducible generator `bun run record:sample` in
+  `demo/` (`demo/scripts/record-sample.ts`, run after `bun run build:wasm`),
+  and the new test `bundled_demo_recording_replays_without_divergence` fails
+  whenever a future format change makes the file stale again.
 - `body_set_awake(world, id, false)` on a body whose island had a pending
   split used the island id read before `split_island` ran, so
   `try_sleep_island` was handed a stale island id and tripped

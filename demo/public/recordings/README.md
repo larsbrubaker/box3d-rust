@@ -13,10 +13,27 @@ reset the Stacking **Box Stack** scene (`sim_reset_stacking`), then
 **5 seconds at 60 Hz with 4 sub-steps** of a 41-body box stack settling under
 gravity.
 
-Recording it through the wasm build (rather than a native 64-bit binary) matters:
-the `.b3rec` snapshot layout is pointer-width dependent, and `RecPlayer` rejects a
-recording whose pointer width differs from the host's. The bundled file is
-therefore 32-bit, matching the wasm player it ships with.
+## Regenerating
+
+The file goes stale whenever the recording or snapshot format changes; the Rust
+test `bundled_demo_recording_replays_without_divergence`
+(`src/recording_replay_tests_bundled.rs`) fails when it does. Regenerate it from
+`demo/` with:
+
+    bun run build:wasm
+    bun run record:sample
+
+`scripts/record-sample.ts` performs exactly the capture above through the
+release wasm build in `public/pkg`, then loads the result back with the Replay
+viewer's loader (`replay_load`) and plays it to the end, failing on rejection or
+divergence.
+
+Recording it through the wasm build (rather than a native 64-bit binary) matters.
+The port's `.b3rec` wire format is pointer-width independent (every field is
+serialized explicitly), but `RecPlayer` keeps C's header pointer-width gate
+(`replay.c`) and rejects a recording whose header pointer width differs from the
+host's. The bundled file is therefore recorded through wasm32 so its header
+carries a pointer width of 4, matching the browser player it ships with.
 
 You can also load any `.b3rec` you record yourself: use the **Record** buttons on
 any dynamics demo (e.g. Stacking) to capture and download a recording, then load it
