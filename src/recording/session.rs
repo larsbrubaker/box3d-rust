@@ -22,7 +22,8 @@ pub const REC_VERSION_MAJOR: u16 = 6;
 /// Minor recording version. (B3_REC_VERSION_MINOR)
 /// Minor version 8 added WorldSetRestitutionIterations (0x0E) and
 /// WorldEnableRestitutionPropagation (0x0F)
-pub const REC_VERSION_MINOR: u16 = 8;
+/// Minor version 9 added WorldSetIsotropicInertiaTolerance (0x70)
+pub const REC_VERSION_MINOR: u16 = 9;
 
 /// Maximum query name length. Query names longer than this probably indicate a
 /// bug in user code. (B3_MAX_QUERY_NAME_LENGTH)

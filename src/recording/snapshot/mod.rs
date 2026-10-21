@@ -34,9 +34,10 @@ pub const SNAP_MAGIC: u32 = 0x3353_4E42;
 /// moved the broad phase to the tree against tree pair traversal (move buffer removed), v7
 /// split the fat AABBs into a world array and kept the contact body sim locators (same-step
 /// restitution), v10 stores the world restitution iterations and the restitution propagation
-/// flag (0x10) in the world config (post solve restitution).
+/// flag (0x10) in the world config (post solve restitution), v11 stores the world isotropic
+/// inertia tolerance in the world config (isotropic inertia tolerance).
 /// (B3_SNAP_VERSION)
-pub const SNAP_VERSION: u32 = 10;
+pub const SNAP_VERSION: u32 = 11;
 /// Rust field-layout version — bump when serialized record layouts change.
 /// v2: `Body` record gained `safety_factor` (C gets the equivalent change for free because
 /// b3ComputeLayoutHash hashes `sizeof( b3Body )`).
@@ -44,7 +45,9 @@ pub const SNAP_VERSION: u32 = 10;
 /// b3TreeNode ) changes and b3ComputeLayoutHash mixes in sizeof( b3TreeProxy )).
 /// v4: the shape record lost `fat_aabb` (now the `World::fat_aabbs` section) and the contact
 /// record stores the encoded body sim locators (C: sizeof( b3Shape ) changes).
-pub const SNAP_LAYOUT_VERSION: u32 = 4;
+/// v5: the local inertia moved from the body record to the body sim record (C: sizeof( b3Body )
+/// and sizeof( b3BodySim ) change).
+pub const SNAP_LAYOUT_VERSION: u32 = 5;
 
 pub const SNAP_FLAG_VALIDATION: u32 = 0x1;
 pub const SNAP_FLAG_DOUBLE_PRECISION: u32 = 0x2;

@@ -56,6 +56,9 @@ pub struct WorldDef {
     pub contact_speed: f32,
     /// Maximum linear speed, usually m/s.
     pub maximum_linear_speed: f32,
+    /// Use this to disable gyroscopic torque on sphere-like objects automatically.
+    /// Range is [0, 1]. A sphere is 0 and a 1x1x2 box is 0.5.
+    pub isotropic_inertia_tolerance: f32,
     /// Optional friction mixing callback.
     pub friction_callback: Option<FrictionCallback>,
     /// Optional restitution mixing callback.
@@ -95,6 +98,7 @@ pub fn default_world_def() -> WorldDef {
         contact_damping_ratio: 10.0,
         contact_speed: 3.0 * length_units,
         maximum_linear_speed: 400.0 * length_units,
+        isotropic_inertia_tolerance: 0.2,
         friction_callback: None,
         restitution_callback: None,
         enable_sleep: true,

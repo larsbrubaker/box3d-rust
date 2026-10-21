@@ -622,7 +622,29 @@ fn test_non_dynamic_joint_disable() {
 /// product form it replaced in upstream 0cfc475, and returns zero for a singular K.
 #[test]
 fn solve_point_constraint_matches_skew_form() {
-    use crate::math_functions::{add_mm, mul_mm, mul_mv, negate_mat3, skew, solve3, sub, Matrix3};
+    use crate::math_functions::{add_mm, mul_mm, mul_mv, negate_mat3, solve3, sub, Matrix3};
+
+    // Skew-symmetric cross-product matrix, the reference form the solve replaced. Upstream
+    // efca0c1 removed b3Skew from math_internal.h, so it lives here as a test-only helper.
+    fn skew(v: Vec3) -> Matrix3 {
+        Matrix3 {
+            cx: Vec3 {
+                x: 0.0,
+                y: v.z,
+                z: -v.y,
+            },
+            cy: Vec3 {
+                x: -v.z,
+                y: 0.0,
+                z: v.x,
+            },
+            cz: Vec3 {
+                x: v.y,
+                y: -v.x,
+                z: 0.0,
+            },
+        }
+    }
 
     let i_a = Matrix3 {
         cx: Vec3 {

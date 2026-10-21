@@ -40,9 +40,12 @@ pub mod body_flags {
     /// Dynamic so the solver should write to it. Used for BodyState flags.
     pub const DYNAMIC_FLAG: u32 = 0x0000_1000;
     pub const ENABLE_SLEEP: u32 = 0x0000_2000;
-    pub const BODY_ENABLE_CONTACT_RECYCLING: u32 = 0x0000_4000;
+    pub const ENABLE_CONTACT_RECYCLING: u32 = 0x0000_4000;
     /// User deferred mass computation and mass data still hasn't been set.
     pub const DIRTY_MASS: u32 = 0x0000_8000;
+    /// The inertia is anisotropic beyond the world isotropic inertia tolerance, so the solver
+    /// applies gyroscopic torque.
+    pub const ENABLE_GYROSCOPIC_TORQUE: u32 = 0x0001_0000;
 
     /// All lock flags
     pub const ALL_LOCKS: u32 = LOCK_LINEAR_X
@@ -139,9 +142,6 @@ pub struct Body {
     pub safety_factor: f32,
     pub mass: f32,
 
-    /// Local space inertia
-    pub inertia: Matrix3,
-
     /// Adjusts the fellAsleep flag in the body move array
     pub body_move_index: i32,
 
@@ -178,7 +178,6 @@ impl Default for Body {
             sleep_velocity: 0.0,
             safety_factor: 0.0,
             mass: 0.0,
-            inertia: MAT3_ZERO,
             body_move_index: NULL_INDEX,
             id: NULL_INDEX,
             flags: 0,
@@ -244,6 +243,9 @@ pub struct BodySim {
 
     pub inv_mass: f32,
 
+    /// Local space inertia
+    pub inertia: Matrix3,
+
     /// Rotational inertia about the center of mass. World inverse inertia
     /// must be updated whenever the body rotation is modified.
     pub inv_inertia_local: Matrix3,
@@ -273,6 +275,7 @@ impl Default for BodySim {
             force: VEC3_ZERO,
             torque: VEC3_ZERO,
             inv_mass: 0.0,
+            inertia: MAT3_ZERO,
             inv_inertia_local: MAT3_ZERO,
             inv_inertia_world: MAT3_ZERO,
             min_extent: 0.0,

@@ -13,9 +13,9 @@ use crate::events::BodyMoveEvent;
 use crate::id::BodyId;
 use crate::math_functions::{
     aabb_contains, aabb_inflate, abs, blend2, dot, integrate_rotation, inv_rotate_vector,
-    invert_matrix, is_valid_vec3, length, make_matrix_from_quat, max_float, modified_cross,
-    mul_add, mul_mm, mul_mv, mul_quat, mul_sv, neg, normalize_quat, offset_pos, rotate_vector,
-    solve3, sub, transpose, Matrix3, Vec3, QUAT_IDENTITY, VEC3_ZERO,
+    is_valid_vec3, length, make_matrix_from_quat, max_float, modified_cross, mul_add, mul_mm,
+    mul_mv, mul_quat, mul_sv, neg, normalize_quat, offset_pos, rotate_vector, solve3, sub,
+    transpose, Matrix3, Vec3, QUAT_IDENTITY, VEC3_ZERO,
 };
 use crate::solver_set::AWAKE_SET;
 use crate::types::BodyType;
@@ -53,22 +53,22 @@ pub(super) fn integrate_velocities(world: &mut World, context: &StepContext) {
         let angular_velocity_delta = mul_sv(h, mul_mv(sim.inv_inertia_world, sim.torque));
         w = mul_add(angular_velocity_delta, angular_damping, w);
 
-        // Gyroscopic torque — one Newton iteration (matches C).
-        {
+        // Gyroscopic torque — one Newton iteration (matches C). Bodies within the world
+        // isotropic inertia tolerance skip this solve.
+        if (sim.flags & body_flags::ENABLE_GYROSCOPIC_TORQUE) != 0 {
             let q0 = sim.transform.q;
             let q = mul_quat(state.delta_rotation, q0);
-
-            let inertia_local = invert_matrix(sim.inv_inertia_local);
 
             let omega1 = inv_rotate_vector(q, w);
             let mut omega2 = omega1;
 
-            let i00 = inertia_local.cx.x;
-            let i01 = inertia_local.cy.x;
-            let i02 = inertia_local.cz.x;
-            let i11 = inertia_local.cy.y;
-            let i12 = inertia_local.cz.y;
-            let i22 = inertia_local.cz.z;
+            // Symmetric inertia tensor: 6 unique entries (column-major)
+            let i00 = sim.inertia.cx.x;
+            let i01 = sim.inertia.cy.x;
+            let i02 = sim.inertia.cz.x;
+            let i11 = sim.inertia.cy.y;
+            let i12 = sim.inertia.cz.y;
+            let i22 = sim.inertia.cz.z;
 
             for _gyro_iteration in 0..crate::constants::GYROSCOPIC_ITERATIONS {
                 let w1 = omega2.x;

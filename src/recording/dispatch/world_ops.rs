@@ -182,6 +182,16 @@ pub(super) fn dispatch(
             }
             let _ = (payload_start, payload_size);
         }
+        RecOp::WorldSetIsotropicInertiaTolerance => {
+            let mut s = rdr.snap();
+            let _world_id = s.world_id();
+            let tolerance = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::world::world_set_isotropic_inertia_tolerance(world, tolerance);
+            }
+            let _ = (payload_start, payload_size);
+        }
         _ => return false,
     }
     true

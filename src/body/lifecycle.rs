@@ -344,7 +344,7 @@ pub fn create_body(world: &mut World, def: &crate::types::BodyDef) -> BodyId {
         0
     };
     body_sim.flags |= if def.enable_contact_recycling {
-        body_flags::BODY_ENABLE_CONTACT_RECYCLING
+        body_flags::ENABLE_CONTACT_RECYCLING
     } else {
         0
     };
@@ -395,7 +395,6 @@ pub fn create_body(world: &mut World, def: &crate::types::BodyDef) -> BodyId {
         body.sleep_velocity = 0.0;
         body.safety_factor = def.safety_factor;
         body.mass = 0.0;
-        body.inertia = crate::math_functions::MAT3_ZERO;
         body.name_id = name_id;
         body.type_ = def.type_;
         body.flags = sim_flags;

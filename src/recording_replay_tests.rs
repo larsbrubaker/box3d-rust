@@ -641,3 +641,65 @@ fn restitution_setters_round_trip() {
     assert_eq!(world_get_restitution_iterations(player.world()), 3);
     assert!(world_is_restitution_propagation_enabled(player.world()));
 }
+
+/// The isotropic inertia tolerance setter added to the C `AllOps` session:
+/// `WorldSetIsotropicInertiaTolerance` (0x70). The tolerance only reaches bodies whose mass is
+/// computed afterwards. A free spinning rod made after the change loses its gyroscopic torque,
+/// so replay diverges if the op goes missing.
+#[test]
+fn isotropic_inertia_tolerance_round_trip() {
+    use crate::body::{body_flags, get_body_full_id};
+    use crate::recording::RecPlayer;
+    use crate::world::{
+        world_get_isotropic_inertia_tolerance, world_set_isotropic_inertia_tolerance,
+    };
+
+    let rec = Recording::new(0);
+    let mut world = World::new(&default_world_def());
+    world_start_recording(&mut world, rec);
+
+    world_set_isotropic_inertia_tolerance(&mut world, 1.0);
+    let rod_id = {
+        let mut rod_def = default_body_def();
+        rod_def.type_ = BodyType::Dynamic;
+        rod_def.position = Pos {
+            x: 40.0,
+            y: 10.0,
+            z: 0.0,
+        };
+        rod_def.gravity_scale = 0.0;
+        rod_def.angular_velocity = Vec3 {
+            x: 1.0,
+            y: 5.0,
+            z: 0.5,
+        };
+        let rod_id = create_body(&mut world, &rod_def);
+        let rod = make_box_hull(0.1, 1.0, 0.1);
+        let rod_shape_def = default_shape_def();
+        create_hull_shape(&mut world, rod_id, &rod_shape_def, &rod.base);
+        rod_id
+    };
+
+    // The default tolerance would enable gyroscopic torque on this rod.
+    let rod_index = get_body_full_id(&world, rod_id);
+    assert_eq!(
+        world.bodies[rod_index as usize].flags & body_flags::ENABLE_GYROSCOPIC_TORQUE,
+        0
+    );
+
+    for _ in 0..30 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let rec = world_stop_recording(&mut world).expect("recording active");
+    assert!(validate_replay(rec.data(), 1));
+
+    let mut player = RecPlayer::create(rec.data(), 1).expect("player");
+    while player.step_frame() {}
+    let replay = player.world();
+    assert_eq!(world_get_isotropic_inertia_tolerance(replay), 1.0);
+    assert_eq!(
+        replay.bodies[rod_index as usize].flags & body_flags::ENABLE_GYROSCOPIC_TORQUE,
+        0
+    );
+}

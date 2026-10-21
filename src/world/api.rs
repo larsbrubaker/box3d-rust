@@ -362,6 +362,30 @@ pub fn world_get_maximum_linear_speed(world: &World) -> f32 {
     world.max_linear_speed
 }
 
+/// Set the tolerance for gyroscopic torque. [0, 1]
+/// Modifying this only affects new bodies or bodies that get their mass updated.
+/// (b3World_SetIsotropicInertiaTolerance)
+pub fn world_set_isotropic_inertia_tolerance(world: &mut World, tolerance: f32) {
+    debug_assert!(is_valid_float(tolerance));
+
+    debug_assert!(!world.locked);
+    if world.locked {
+        return;
+    }
+
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_world_set_isotropic_inertia_tolerance(wid, tolerance);
+    });
+
+    world.isotropic_inertia_tolerance = clamp_float(tolerance, 0.0, 1.0);
+}
+
+/// Get the tolerance for gyroscopic torque. [0, 1]
+/// (b3World_GetIsotropicInertiaTolerance)
+pub fn world_get_isotropic_inertia_tolerance(world: &World) -> f32 {
+    world.isotropic_inertia_tolerance
+}
+
 /// Get the current world performance profile. (b3World_GetProfile)
 pub fn world_get_profile(world: &World) -> Profile {
     world.profile

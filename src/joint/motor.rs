@@ -435,7 +435,6 @@ pub fn solve_motor_joint(base: &mut JointSim, context: &StepContext, states: &mu
 
         let cdot = sub(add(v_b, cross(w_b, r_b)), add(v_a, cross(w_a, r_a)));
 
-        // K = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
         let b = solve_point_constraint(m_a, m_b, i_a, i_b, r_a, r_b, add(cdot, bias));
 
         let old_impulse = joint.linear_spring_impulse;
@@ -460,7 +459,7 @@ pub fn solve_motor_joint(base: &mut JointSim, context: &StepContext, states: &mu
     if joint.max_velocity_force > 0.0 {
         let mut cdot = sub(add(v_b, cross(w_b, r_b)), add(v_a, cross(w_a, r_a)));
         cdot = sub(cdot, joint.linear_velocity);
-        // K = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
+
         let b = solve_point_constraint(m_a, m_b, i_a, i_b, r_a, r_b, cdot);
         let mut impulse = neg(b);
 

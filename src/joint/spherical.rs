@@ -736,7 +736,6 @@ pub fn solve_spherical_joint(
             impulse_scale = constraint_softness.impulse_scale;
         }
 
-        // K = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
         let b = solve_point_constraint(m_a, m_b, i_a, i_b, r_a, r_b, add(cdot, bias));
 
         let impulse = mul_sub(mul_sv(-mass_scale, b), impulse_scale, joint.linear_impulse);

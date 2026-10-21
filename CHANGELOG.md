@@ -18,6 +18,7 @@ time. Ported so far:
 - `a2e4816` Fixes for #175 (#187)
 - `8128d74` Discussion template (#185) (GitHub discussion template only, nothing to port)
 - `0cfc475` Solver stuff (#189)
+- `efca0c1` Gyro tolerance (#191)
 
 ### Breaking
 
@@ -68,6 +69,14 @@ time. Ported so far:
 - `RegistrySlot::live_compound` and `RegistrySlot::get_live_compound` are
   replaced by `RegistrySlot::compound`, filled when the registry loads
   (upstream removed `b3RegistrySlot::live` and `b3RecGetLiveCompound`).
+- The local rotational inertia moves from `Body::inertia` to
+  `BodySim::inertia` (upstream `efca0c1`), so the solver reads it directly.
+  `body_flags::BODY_ENABLE_CONTACT_RECYCLING` is renamed
+  `body_flags::ENABLE_CONTACT_RECYCLING`, and `math_functions::skew` is
+  removed (upstream removed `b3Skew`). The snapshot version becomes 11 (the
+  world config stores the isotropic inertia tolerance) and the Rust snapshot
+  layout version 5, so snapshots from earlier versions no longer load. The
+  recording minor version becomes 9.
 
 ### Added
 
@@ -90,6 +99,13 @@ time. Ported so far:
   proxies. A view without proxies skips the category test and reports the
   leaf's shape index as the user data; compound queries use it. The
   `DynamicTree` queries wrap it and are unchanged.
+- `WorldDef::isotropic_inertia_tolerance` (default 0.2, clamped to [0, 1])
+  with `world_set_isotropic_inertia_tolerance` /
+  `world_get_isotropic_inertia_tolerance` (upstream `efca0c1`,
+  `b3World_SetIsotropicInertiaTolerance` / `_GetIsotropicInertiaTolerance`),
+  recorded as the new `WorldSetIsotropicInertiaTolerance` op (0x70). A
+  change only reaches bodies whose mass is computed afterwards. New body
+  flag `body_flags::ENABLE_GYROSCOPIC_TORQUE`.
 
 ### Changed
 
@@ -268,8 +284,9 @@ time. Ported so far:
   track the linear normal velocity per manifold, apply the normal impulses
   to the angular velocities through precomputed `invI * (r x n)` terms, and
   apply the summed normal impulse to the linear velocities once (in solve,
-  together with the central friction impulse). Normal and twist friction
-  clamps compute the delta impulse directly with min / max. Revolute
+  together with the central friction impulse). The normal clamp computes
+  the delta impulse directly with max, and the twist friction clamp with
+  min / max. Revolute
   spring, motor, and limits share one axial velocity and apply one combined
   axial impulse; spherical spring, motor, twist limits, and cone limit do
   the same with the angular velocity. The revolute, spherical, motor, and
@@ -284,6 +301,29 @@ time. Ported so far:
   `0x3447FD01` (double `0x6686EFA8`) and the mesh mix hash `0x141DBC7E`
   (double `0xD802486E`). All values were confirmed with a scalar C build of
   `0cfc475` (`BOX3D_DISABLE_SIMD`) in both precision modes.
+- Gyroscopic torque is skipped for nearly isotropic bodies (upstream
+  `efca0c1`). Each mass update (`update_body_mass_data`,
+  `body_set_mass_data`) measures the deviatoric part of the local inertia
+  (upstream `b3UpdateIsotropicInertia`, the squared Frobenius norm against
+  the mean of the diagonal) and sets `ENABLE_GYROSCOPIC_TORQUE` only when
+  the anisotropy exceeds the world tolerance. `update_body_mass_data`
+  clears the flag first, so bodies without shapes and static or kinematic
+  bodies stay unflagged; fixed rotation zeroes the inertia, which clears it
+  too. The
+  velocity integration runs the gyroscopic Newton solve only for flagged
+  bodies and reads `BodySim::inertia` instead of inverting the inverse
+  inertia. Ports `CompoundInertiaConsistency` and
+  `IsotropicInertiaTolerance` from `test_body.c`, the new
+  `TestWorldCoverage` checks, and the `AllOps` tolerance addition as a
+  replay round trip. Simulation results change. The determinism goldens
+  move to upstream's values: falling ragdolls 291 / `0xFF4C605B` (double
+  263 / `0xA5423F98`), wave pile 272 / `0x266F83B0` (double 272 /
+  `0xC8E5F3D6`), query spawn hash `0xF3AD9BA6` (double `0x489585E6`), mesh
+  drop 226 / `0xD2FF069D` (double 218 / `0xD378CF04`). The rolling mix hash
+  becomes `0x56B250F7` (double `0xB7FBCFC0`) and the mesh mix hash
+  `0x246CC2A7` (double `0x9DA0B374`). All values were confirmed with a
+  scalar C build of `efca0c1` (`BOX3D_DISABLE_SIMD`) in both precision
+  modes.
 
 ### Not ported
 
@@ -328,6 +368,8 @@ time. Ported so far:
   compounds (upstream `5d83df8`). The port's registry already owns `Vec`
   copies, and its player has no keyframe registry.
 - The new cylinder questions in `docs/faq.md` (upstream `a2e4816`).
+- The new Bodies / Spinning Capsule sample (upstream `efca0c1`); it is
+  listed as planned in the demo registry.
 
 ## 0.4.1
 

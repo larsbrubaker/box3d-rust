@@ -224,6 +224,7 @@ pub fn ser_world_config(buf: &mut RecBuffer, world: &World) {
     buf.append_f32(world.restitution_threshold);
     buf.append_i32(world.restitution_iterations);
     buf.append_f32(world.max_linear_speed);
+    buf.append_f32(world.isotropic_inertia_tolerance);
     buf.append_f32(world.contact_speed);
     buf.append_f32(world.contact_hertz);
     buf.append_f32(world.contact_damping_ratio);
@@ -260,6 +261,7 @@ pub fn des_world_config(r: &mut SnapReader<'_>, world: &mut World) {
     world.restitution_threshold = r.f32();
     world.restitution_iterations = r.i32();
     world.max_linear_speed = r.f32();
+    world.isotropic_inertia_tolerance = r.f32();
     world.contact_speed = r.f32();
     world.contact_hertz = r.f32();
     world.contact_damping_ratio = r.f32();

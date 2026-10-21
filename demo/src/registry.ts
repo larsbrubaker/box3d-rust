@@ -102,6 +102,10 @@ export const SAMPLES: SampleEntry[] = [
     // under gravity torque; the measured top carries the heavy-top diagnostic HUD
     // (Goldstein 5.7) and a yellow symmetry-axis line. Enabled upstream at c52908c.
     ["Gyroscopic Precession", "live", "bodies", "gyroscopic-precession"],
+    // Planned: added upstream at efca0c1. A tilted capsule spinning on its lower cap with
+    // Length / Tolerance sliders over the world isotropic inertia tolerance, plus an
+    // anisotropy / gyroscopic torque HUD.
+    ["Spinning Capsule", "planned"],
     ["Weeble", "live", "bodies", "weeble"],
     ["Disable", "live", "bodies", "disable"],
     // Live: ray / sphere-cast / overlap / CollideMover queries against a Shift-drag

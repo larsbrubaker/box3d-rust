@@ -38,7 +38,6 @@ pub fn ser_body(buf: &mut RecBuffer, b: &Body) {
     buf.append_f32(b.sleep_velocity);
     buf.append_f32(b.safety_factor);
     buf.append_f32(b.mass);
-    buf.append_matrix3(b.inertia);
     buf.append_i32(b.body_move_index);
     buf.append_i32(b.id);
     buf.append_u32(b.flags);
@@ -67,7 +66,6 @@ pub fn des_body(r: &mut SnapReader<'_>) -> Body {
         sleep_velocity: r.f32(),
         safety_factor: r.f32(),
         mass: r.f32(),
-        inertia: r.matrix3(),
         body_move_index: r.i32(),
         id: r.i32(),
         flags: r.u32(),
@@ -90,6 +88,7 @@ pub fn ser_body_sim(buf: &mut RecBuffer, s: &BodySim) {
     buf.append_vec3(s.force);
     buf.append_vec3(s.torque);
     buf.append_f32(s.inv_mass);
+    buf.append_matrix3(s.inertia);
     buf.append_matrix3(s.inv_inertia_local);
     buf.append_matrix3(s.inv_inertia_world);
     buf.append_f32(s.min_extent);
@@ -111,6 +110,7 @@ pub fn des_body_sim(r: &mut SnapReader<'_>) -> BodySim {
         force: r.vec3(),
         torque: r.vec3(),
         inv_mass: r.f32(),
+        inertia: r.matrix3(),
         inv_inertia_local: r.matrix3(),
         inv_inertia_world: r.matrix3(),
         min_extent: r.f32(),

@@ -18,6 +18,34 @@ use crate::solver_set::AWAKE_SET;
 use crate::types::BodyType;
 use crate::world::World;
 
+// https://en.wikipedia.org/wiki/Cauchy_stress_tensor#Stress_deviator_tensor
+/// Enable gyroscopic torque only when the body inertia deviates from isotropic by more than
+/// the world tolerance. (b3UpdateIsotropicInertia)
+pub(crate) fn update_isotropic_inertia(world: &mut World, body_index: i32) {
+    let inertia = super::lifecycle::get_body_sim(world, body_index).inertia;
+    let mean = (inertia.cx.x + inertia.cy.y + inertia.cz.z) / 3.0;
+    let dx = inertia.cx.x - mean;
+    let dy = inertia.cy.y - mean;
+    let dz = inertia.cz.z - mean;
+    let off_diagonal =
+        inertia.cy.x * inertia.cy.x + inertia.cz.x * inertia.cz.x + inertia.cz.y * inertia.cz.y;
+
+    // This is the square of the Frobenius matrix norm.
+    // https://en.wikipedia.org/wiki/Matrix_norm
+    let deviation = dx * dx + dy * dy + dz * dz + 2.0 * off_diagonal;
+
+    let tolerance = world.isotropic_inertia_tolerance;
+
+    let body = &mut world.bodies[body_index as usize];
+    if 2.0 * deviation > 3.0 * tolerance * tolerance * mean * mean {
+        body.flags |= body_flags::ENABLE_GYROSCOPIC_TORQUE;
+    } else {
+        body.flags &= !body_flags::ENABLE_GYROSCOPIC_TORQUE;
+    }
+
+    sync_body_flags(world, body_index);
+}
+
 /// Recompute mass, inertia, and extents from the body's shapes.
 /// (b3UpdateBodyMassData)
 pub fn update_body_mass_data(world: &mut World, body_index: i32) {
@@ -25,8 +53,7 @@ pub fn update_body_mass_data(world: &mut World, body_index: i32) {
         let body = &mut world.bodies[body_index as usize];
         // Mass is no longer dirty
         body.flags &= !body_flags::DIRTY_MASS;
-        body.mass = 0.0;
-        body.inertia = MAT3_ZERO;
+        body.flags &= !body_flags::ENABLE_GYROSCOPIC_TORQUE;
         (
             body.set_index,
             body.local_index,
@@ -37,8 +64,11 @@ pub fn update_body_mass_data(world: &mut World, body_index: i32) {
     };
     sync_body_flags(world, body_index);
 
+    // Compute mass data from shapes. Each shape has its own density.
+    world.bodies[body_index as usize].mass = 0.0;
     {
         let sim = &mut world.solver_sets[set_index as usize].body_sims[local_index as usize];
+        sim.inertia = MAT3_ZERO;
         sim.inv_mass = 0.0;
         sim.inv_inertia_local = MAT3_ZERO;
         sim.inv_inertia_world = MAT3_ZERO;
@@ -121,11 +151,11 @@ pub fn update_body_mass_data(world: &mut World, body_index: i32) {
         // Shift to center of mass. This is safe because it can only increase.
         let offset = sub(local_center, mass_data.center);
         let inertia = add_mm(mass_data.inertia, steiner(mass_data.mass, offset));
-        world.bodies[body_index as usize].inertia =
-            add_mm(world.bodies[body_index as usize].inertia, inertia);
+        let sim = &mut world.solver_sets[set_index as usize].body_sims[local_index as usize];
+        sim.inertia = add_mm(sim.inertia, inertia);
     }
 
-    let inertia = world.bodies[body_index as usize].inertia;
+    let inertia = world.solver_sets[set_index as usize].body_sims[local_index as usize].inertia;
     let d = det(inertia);
     debug_assert!(d >= 0.0);
 
@@ -179,11 +209,13 @@ pub fn update_body_mass_data(world: &mut World, body_index: i32) {
     if (world.bodies[body_index as usize].flags & body_flags::FIXED_ROTATION)
         == body_flags::FIXED_ROTATION
     {
-        world.bodies[body_index as usize].inertia = MAT3_ZERO;
         let sim = &mut world.solver_sets[set_index as usize].body_sims[local_index as usize];
+        sim.inertia = MAT3_ZERO;
         sim.inv_inertia_local = MAT3_ZERO;
         sim.inv_inertia_world = MAT3_ZERO;
     }
+
+    update_isotropic_inertia(world, body_index);
 }
 
 /// This updates the mass properties to the sum of the mass properties of the shapes.

@@ -107,6 +107,12 @@ fn test_world_coverage() {
     world_set_maximum_linear_speed(&mut world, 10.0);
     assert_eq!(world_get_maximum_linear_speed(&world), 10.0);
 
+    world_set_isotropic_inertia_tolerance(&mut world, 0.5);
+    assert_eq!(world_get_isotropic_inertia_tolerance(&world), 0.5);
+
+    world_set_isotropic_inertia_tolerance(&mut world, 2.0);
+    assert_eq!(world_get_isotropic_inertia_tolerance(&world), 1.0);
+
     world_enable_warm_starting(&mut world, true);
     assert!(world_is_warm_starting_enabled(&world));
 

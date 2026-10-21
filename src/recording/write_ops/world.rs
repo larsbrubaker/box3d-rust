@@ -154,4 +154,12 @@ impl Recording {
         self.buffer.append_bool(flag);
         self.end_record();
     }
+
+    /// Write framed `WorldSetIsotropicInertiaTolerance` op.
+    pub fn write_world_set_isotropic_inertia_tolerance(&mut self, world: WorldId, tolerance: f32) {
+        self.begin_record(RecOp::WorldSetIsotropicInertiaTolerance as u8);
+        self.buffer.append_world_id(world);
+        self.buffer.append_f32(tolerance);
+        self.end_record();
+    }
 }

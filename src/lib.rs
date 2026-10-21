@@ -161,6 +161,9 @@ mod bitset_tests;
 mod body_tests;
 
 #[cfg(test)]
+mod body_inertia_tests;
+
+#[cfg(test)]
 mod body_api_tests;
 
 #[cfg(test)]

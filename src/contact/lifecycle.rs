@@ -167,8 +167,8 @@ pub fn create_contact(world: &mut World, shape_id_a: i32, shape_id_b: i32, child
     }
 
     // Disabling speculative collision also disables recycling.
-    if (world.bodies[body_id_a as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
-        && (world.bodies[body_id_b as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
+    if (world.bodies[body_id_a as usize].flags & body_flags::ENABLE_CONTACT_RECYCLING) != 0
+        && (world.bodies[body_id_b as usize].flags & body_flags::ENABLE_CONTACT_RECYCLING) != 0
         && (world.contacts[contact_id as usize].flags & contact_flags::ENABLE_SPECULATIVE_POINTS)
             != 0
     {

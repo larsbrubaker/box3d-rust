@@ -33,7 +33,8 @@ pub fn body_get_mass(world: &World, body_id: BodyId) -> f32 {
 /// (b3Body_GetLocalRotationalInertia)
 pub fn body_get_local_rotational_inertia(world: &World, body_id: BodyId) -> Matrix3 {
     let body_index = get_body_full_id(world, body_id);
-    world.bodies[body_index as usize].inertia
+    let body = &world.bodies[body_index as usize];
+    world.solver_sets[body.set_index as usize].body_sims[body.local_index as usize].inertia
 }
 
 /// (b3Body_GetInverseMass)
@@ -73,7 +74,7 @@ pub fn body_get_mass_data(world: &World, body_id: BodyId) -> MassData {
     MassData {
         mass: body.mass,
         center: sim.local_center,
-        inertia: body.inertia,
+        inertia: sim.inertia,
     }
 }
 
@@ -97,7 +98,6 @@ pub fn body_set_mass_data(world: &mut World, body_id: BodyId, mass_data: MassDat
     sync_body_flags(world, body_index);
 
     world.bodies[body_index as usize].mass = mass_data.mass;
-    world.bodies[body_index as usize].inertia = mass_data.inertia;
 
     let old_center;
     {
@@ -112,6 +112,7 @@ pub fn body_set_mass_data(world: &mut World, body_id: BodyId, mass_data: MassDat
         } else {
             0.0
         };
+        sim.inertia = mass_data.inertia;
     }
 
     // Update center of mass velocity
@@ -124,7 +125,7 @@ pub fn body_set_mass_data(world: &mut World, body_id: BodyId, mass_data: MassDat
         state.linear_velocity = add(state.linear_velocity, delta_linear);
     }
 
-    let inertia = world.bodies[body_index as usize].inertia;
+    let inertia = super::lifecycle::get_body_sim(world, body_index).inertia;
     let d = det(inertia);
     debug_assert!(d >= 0.0);
 
@@ -147,11 +148,13 @@ pub fn body_set_mass_data(world: &mut World, body_id: BodyId, mass_data: MassDat
     if (world.bodies[body_index as usize].flags & body_flags::FIXED_ROTATION)
         == body_flags::FIXED_ROTATION
     {
-        world.bodies[body_index as usize].inertia = MAT3_ZERO;
         let sim = get_body_sim_mut(world, body_index);
+        sim.inertia = MAT3_ZERO;
         sim.inv_inertia_local = MAT3_ZERO;
         sim.inv_inertia_world = MAT3_ZERO;
     }
+
+    super::mass::update_isotropic_inertia(world, body_index);
 
     // Update extents using supplied mass center.
     update_body_extents_from_shapes(world, body_index, mass_data.center);
@@ -471,18 +474,17 @@ pub fn body_enable_contact_recycling(world: &mut World, body_id: BodyId, flag: b
     }
 
     let new_flag = if flag {
-        body_flags::BODY_ENABLE_CONTACT_RECYCLING
+        body_flags::ENABLE_CONTACT_RECYCLING
     } else {
         0
     };
     let body_index = get_body_full_id(world, body_id);
-    if (world.bodies[body_index as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING)
-        == new_flag
+    if (world.bodies[body_index as usize].flags & body_flags::ENABLE_CONTACT_RECYCLING) == new_flag
     {
         return;
     }
 
-    world.bodies[body_index as usize].flags &= !body_flags::BODY_ENABLE_CONTACT_RECYCLING;
+    world.bodies[body_index as usize].flags &= !body_flags::ENABLE_CONTACT_RECYCLING;
     world.bodies[body_index as usize].flags |= new_flag;
     sync_body_flags(world, body_index);
 }
@@ -490,7 +492,7 @@ pub fn body_enable_contact_recycling(world: &mut World, body_id: BodyId, flag: b
 /// (b3Body_IsContactRecyclingEnabled)
 pub fn body_is_contact_recycling_enabled(world: &World, body_id: BodyId) -> bool {
     let body_index = get_body_full_id(world, body_id);
-    (world.bodies[body_index as usize].flags & body_flags::BODY_ENABLE_CONTACT_RECYCLING) != 0
+    (world.bodies[body_index as usize].flags & body_flags::ENABLE_CONTACT_RECYCLING) != 0
 }
 
 /// Enable hit events on all shapes attached to this body. (b3Body_EnableHitEvents)
