@@ -246,18 +246,18 @@ fn corrupt_nested_compound_blob_fails_replay() {
     let data = rec.data().to_vec();
     let compound = registry_slot_spans(&data)[1].1;
 
-    // hullOffset (152) locates the hull instances; each stores its blob offset at
+    // hullOffset (64) locates the hull instances; each stores its blob offset at
     // instance byte 28. Poison the nested hull's pointOffset (blob byte 108).
-    let hull_instances = compound + read_i32_at(&data, compound + 152) as usize;
+    let hull_instances = compound + read_i32_at(&data, compound + 64) as usize;
     let nested_hull = compound + read_i32_at(&data, hull_instances + 28) as usize;
     assert!(
         !validate_replay(&poison_i32(&data, nested_hull + 108, i32::MAX), 1),
         "nested hull pointOffset poison survived the replay"
     );
 
-    // meshOffset (164) locates the mesh instances; each stores its blob offset at
+    // meshOffset (76) locates the mesh instances; each stores its blob offset at
     // instance byte 40. Poison the nested mesh's vertexCount (blob byte 68).
-    let mesh_instances = compound + read_i32_at(&data, compound + 164) as usize;
+    let mesh_instances = compound + read_i32_at(&data, compound + 76) as usize;
     let nested_mesh = compound + read_i32_at(&data, mesh_instances + 40) as usize;
     assert!(
         !validate_replay(&poison_i32(&data, nested_mesh + 68, -1), 1),

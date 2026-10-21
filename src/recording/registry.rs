@@ -4,7 +4,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::compound::{convert_bytes_to_compound, convert_compound_to_bytes, CompoundData};
+use crate::compound::{validate_compound, CompoundData};
 use crate::core::hash64_non_zero;
 use crate::height_field::HeightFieldData;
 use crate::hull::HullData;
@@ -109,21 +109,24 @@ impl GeometryRegistry {
 
     /// (b3RecInternCompound)
     pub fn intern_compound(&mut self, compound: &CompoundData) -> u32 {
-        // Scrub the tree pointers so the canonical bytes are pointer-free.
-        // convert_bytes_to_compound fixes them back on load via nodeOffset/proxyOffset.
-        let bytes = convert_compound_to_bytes(compound);
+        let bytes = compound.to_bytes();
         let h = hash64_non_zero(&bytes);
         self.intern(GeometryKind::Compound, h, bytes)
     }
 
-    /// Build reader slots from registry entries (id == index).
+    /// Build reader slots from registry entries (id == index). Compound entries are parsed
+    /// like the loaded ones; interned compounds are always valid.
     pub fn to_slots(&self) -> Vec<RegistrySlot> {
         self.entries
             .iter()
             .map(|e| RegistrySlot {
                 kind: e.kind as u8,
                 bytes: e.bytes.clone(),
-                live_compound: None,
+                compound: if e.kind == GeometryKind::Compound {
+                    validate_compound(&e.bytes)
+                } else {
+                    None
+                },
             })
             .collect()
     }
@@ -136,21 +139,12 @@ pub struct RegistrySlot {
     /// [`GeometryKind`] matches no [`get_slot`] request.
     pub kind: u8,
     pub bytes: Vec<u8>,
-    /// Lazily converted compound (C: slot->live).
-    pub live_compound: Option<CompoundData>,
-}
-
-impl RegistrySlot {
-    /// Get the recorded compound with the tree fixed up, converting it on first use and caching
-    /// the live object. Returns `None` if the blob is corrupt; nothing is cached in that case.
-    /// (b3RecGetLiveCompound)
-    pub fn get_live_compound(&mut self) -> Option<&CompoundData> {
-        debug_assert!(self.kind == GeometryKind::Compound as u8);
-        if self.live_compound.is_none() {
-            self.live_compound = convert_bytes_to_compound(&self.bytes);
-        }
-        self.live_compound.as_ref()
-    }
+    /// The compound for a compound slot, validated and parsed when the registry loads.
+    ///
+    /// C validates compound slots in b3RecLoadSlots and then uses the slot bytes in place as
+    /// the compound. The port parses them into an owned [`CompoundData`] at the same point,
+    /// so this is `Some` for every slot whose kind is compound and `None` otherwise.
+    pub compound: Option<CompoundData>,
 }
 
 /// Get a geometry slot with kind validation. Returns `None` if `id` is out of range or the slot

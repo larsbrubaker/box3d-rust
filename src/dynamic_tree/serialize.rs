@@ -95,7 +95,7 @@ pub(crate) fn read_tree_proxy(buf: &[u8], o: usize) -> TreeProxy {
 }
 
 /// Write the `b3DynamicTree` struct image with every pointer and the rebuild scratch
-/// zeroed, as C does before `fwrite` and before baking into a compound.
+/// zeroed, as C does before `fwrite`.
 pub(crate) fn write_tree_header(buf: &mut Vec<u8>, tree: &DynamicTree, node_capacity: i32) {
     let start = buf.len();
     buf.extend_from_slice(&tree.version.to_le_bytes());
@@ -126,7 +126,6 @@ pub(crate) struct TreeHeader {
     pub proxy_count: i32,
     pub proxy_capacity: i32,
     pub proxy_free_list: i32,
-    pub rebuild_capacity: i32,
     pub dfs_ordered: bool,
 }
 
@@ -140,15 +139,13 @@ pub(crate) fn read_tree_header(buf: &[u8], o: usize) -> TreeHeader {
         proxy_count: read_i32(buf, o + 44),
         proxy_capacity: read_i32(buf, o + 48),
         proxy_free_list: read_i32(buf, o + 52),
-        rebuild_capacity: read_i32(buf, o + 104),
         dfs_ordered: buf[o + 108] != 0,
     }
 }
 
 impl DynamicTree {
     /// Serialize this tree in the `b3DynamicTree_Save` file format. Returns `None` when
-    /// C would write nothing: a tree without nodes, parents, or proxies (a destroyed tree
-    /// or a baked compound tree, which has no parent array).
+    /// C would write nothing: a tree without nodes, parents, or proxies (a destroyed tree).
     pub fn save_to_bytes(&self) -> Option<Vec<u8>> {
         if self.nodes.is_empty() || self.parents.is_empty() || self.proxies.is_empty() {
             return None;

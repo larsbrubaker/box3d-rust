@@ -6,7 +6,7 @@
 pub use super::lifecycle::{
     create_baked_compound_shape, create_capsule_shape, create_height_field_shape,
     create_hull_shape, create_mesh_shape, create_sphere_shape, destroy_shape, get_shape,
-    shape_get_hull, shape_is_valid,
+    shape_get_compound, shape_get_hull, shape_is_valid,
 };
 
 // Accessors / geometry_set are re-exported from mod.rs.

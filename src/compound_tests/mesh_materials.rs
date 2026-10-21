@@ -160,7 +160,7 @@ fn compound_contact_friction_callback(
 #[test]
 fn compound_mesh_contact_material() {
     use crate::body::create_body;
-    use crate::shape::{create_baked_compound_shape, create_sphere_shape};
+    use crate::shape::{create_baked_compound_shape, create_sphere_shape, shape_get_compound};
     use crate::types::{default_body_def, default_shape_def, default_world_def, BodyType};
     use crate::world::{world_set_friction_callback, World};
 
@@ -192,7 +192,12 @@ fn compound_mesh_contact_material() {
     .unwrap();
 
     let ground_shape_def = default_shape_def();
-    create_baked_compound_shape(&mut world, ground_body_id, &ground_shape_def, &compound);
+    let compound_shape_id =
+        create_baked_compound_shape(&mut world, ground_body_id, &ground_shape_def, &compound);
+    // C checks the getter returns the baked compound pointer; the shape owns a copy here, so
+    // compare the compound bytes.
+    let shape_compound = shape_get_compound(&world, compound_shape_id).expect("compound shape");
+    assert_eq!(shape_compound.to_bytes(), compound.to_bytes());
 
     let mut sphere_body_def = default_body_def();
     sphere_body_def.type_ = BodyType::Dynamic;

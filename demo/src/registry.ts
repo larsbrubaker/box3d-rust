@@ -142,6 +142,10 @@ export const SAMPLES: SampleEntry[] = [
     // Planned: upstream 16f7f4c BenchmarkMeshDrop (CreateMeshDropBenchmark in
     // shared/benchmarks.c), not ported yet.
     ["Mesh Drop", "planned"],
+    // Planned: upstream 5d83df8 BenchmarkVillage (CreateVillage / StepVillage in
+    // shared/benchmarks.c, a 100x100 tile compound swept by a curtain of sphere
+    // casts), not ported yet.
+    ["Village", "planned"],
     // Live: full C 40×40 counts; camera matches C SetView(0, 0, 250, {0, 110, 0}).
     ["Sensor", "live", "sensors", "benchmark"],
     // Live: gridCount 8 (C DEBUG; release 20³ = 8000 disclosed in SCENE_INFO / too

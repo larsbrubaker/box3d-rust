@@ -1,7 +1,9 @@
-//! Compound blob deserialization (convert from bytes).
+//! Compound blob validation and deserialization.
 //!
-//! Port of `b3ConvertBytesToCompound`, split from `serialize.rs` to satisfy the
-//! file-length limit.
+//! Port of `b3ValidateCompound` (upstream 5d83df8, which replaced
+//! `b3ConvertBytesToCompound`), split from `serialize.rs` to satisfy the file-length limit.
+//! C validates the header and then uses the bytes in place as the compound. The port runs the
+//! same header checks in the same order, then parses the blob into an owned [`CompoundData`].
 //!
 //! The hull and mesh blobs nested inside a compound buffer are byte-for-byte copies of the
 //! standalone blobs: `b3CreateCompound` memcpy's `hullData->byteCount` / `meshData->byteCount`
@@ -14,16 +16,17 @@
 
 use super::types::{
     CompoundCapsule, CompoundData, CompoundSphere, HullInstance, MeshInstance,
-    COMPOUND_CAPSULE_SIZE, COMPOUND_DATA_SIZE, COMPOUND_SPHERE_SIZE, COMPOUND_TREE_OFFSET,
-    COMPOUND_VERSION, HULL_INSTANCE_SIZE, MESH_INSTANCE_SIZE,
+    COMPOUND_CAPSULE_SIZE, COMPOUND_DATA_SIZE, COMPOUND_SPHERE_SIZE, COMPOUND_VERSION,
+    HULL_INSTANCE_SIZE, MESH_INSTANCE_SIZE,
 };
-use crate::dynamic_tree::{
-    read_tree_header, read_tree_node, read_tree_proxy, DynamicTree, DYNAMIC_TREE_SIZE,
-    TREE_NODE_SIZE, TREE_PROXY_SIZE,
-};
+use crate::dynamic_tree::{read_tree_node, TREE_NODE_SIZE, TREE_STACK_SIZE};
+
+/// The deepest compound tree a validated blob may hold: half the traversal stack. See the
+/// node checks in [`validate_compound`].
+const MAX_COMPOUND_TREE_DEPTH: usize = TREE_STACK_SIZE / 2;
 use crate::geometry::{SurfaceMaterial, SURFACE_MATERIAL_SIZE};
 use crate::hull::{convert_bytes_to_hull, HULL_BYTE_COUNT_OFFSET, HULL_DATA_SIZE};
-use crate::math_functions::{Quat, Transform, Vec3};
+use crate::math_functions::{Aabb, Quat, Transform, Vec3};
 use crate::mesh::{convert_bytes_to_mesh, MESH_BYTE_COUNT_OFFSET, MESH_DATA_SIZE};
 
 fn read_u64(buf: &[u8], o: usize) -> u64 {
@@ -63,9 +66,9 @@ fn read_transform(buf: &[u8], o: usize) -> Transform {
 
 /// Validate one trailing-section offset against the blob and return it as an index.
 ///
-/// Divergence from C: `b3ConvertBytesToCompound` casts the stored offsets straight to
-/// pointers and trusts the blob. The Rust port validates instead, so a corrupt
-/// recording fails the conversion rather than wrapping the index arithmetic, which
+/// Divergence from C: `b3ValidateCompound` checks only the header and the tree node range,
+/// and C then reaches the other sections by adding the stored offsets to the blob address.
+/// The Rust port validates them too, so a corrupt recording fails the conversion rather than wrapping the index arithmetic, which
 /// panics on the overflow in debug builds and on the resulting slice bounds check in
 /// release builds. Well-formed blobs always pass, so the happy path is unchanged.
 fn section_offset(offset: i32, count: i32, stride: usize, len: usize) -> Option<usize> {
@@ -109,9 +112,20 @@ fn sub_blob(
     Some(&bytes[start..end])
 }
 
-/// Restore a compound from a byte buffer. (b3ConvertBytesToCompound)
-pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
-    if bytes.len() < COMPOUND_DATA_SIZE {
+/// Validate serialized compound bytes and restore the compound. Returns `None` if invalid.
+/// (b3ValidateCompound)
+///
+/// C returns the input address cast to a compound and never modifies the bytes. The port
+/// takes the bytes by shared reference, so they cannot be modified either, and returns an
+/// owned compound parsed from them. C's checks come first, in C's order: the size, the
+/// version, the byte count, the node offset (inside the buffer past the header and 8 byte
+/// aligned), the node count (at least the root pair), and the node array end (in 64-bit
+/// arithmetic so a huge count cannot overflow).
+pub fn validate_compound(bytes: &[u8]) -> Option<CompoundData> {
+    // C takes the byte count as an int; a buffer too large for one cannot match a stored
+    // byteCount either.
+    let byte_count_arg = i32::try_from(bytes.len()).ok()?;
+    if byte_count_arg < COMPOUND_DATA_SIZE as i32 {
         return None;
     }
 
@@ -121,72 +135,90 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
     }
 
     let byte_count = read_i32(bytes, 8);
-    if byte_count < COMPOUND_DATA_SIZE as i32 {
-        return None;
-    }
-    if bytes.len() != byte_count as usize {
+    if byte_count != byte_count_arg {
         return None;
     }
 
-    let node_offset = read_i32(bytes, 12);
-    let proxy_offset = read_i32(bytes, 16);
-    if node_offset <= 0 || proxy_offset <= 0 {
+    let bounds = Aabb {
+        lower_bound: read_vec3(bytes, 12),
+        upper_bound: read_vec3(bytes, 24),
+    };
+    let tree_height = read_i32(bytes, 36);
+    let node_offset = read_i32(bytes, 40);
+    let node_count = read_i32(bytes, 44);
+
+    if node_offset < COMPOUND_DATA_SIZE as i32 || (node_offset & 7) != 0 {
         return None;
     }
 
-    // The embedded b3DynamicTree header starts at offset 24
-    let header = read_tree_header(bytes, COMPOUND_TREE_OFFSET);
+    if node_count < 2 {
+        return None;
+    }
 
-    let trailing = COMPOUND_TREE_OFFSET + DYNAMIC_TREE_SIZE;
-    let material_offset = read_i32(bytes, trailing);
-    let material_count = read_i32(bytes, trailing + 4);
-    let capsule_offset = read_i32(bytes, trailing + 8);
-    let capsule_count = read_i32(bytes, trailing + 12);
-    let hull_offset = read_i32(bytes, trailing + 16);
-    let hull_count = read_i32(bytes, trailing + 20);
-    let shared_hull_count = read_i32(bytes, trailing + 24);
-    let mesh_offset = read_i32(bytes, trailing + 28);
-    let mesh_count = read_i32(bytes, trailing + 32);
-    let shared_mesh_count = read_i32(bytes, trailing + 36);
-    let sphere_offset = read_i32(bytes, trailing + 40);
-    let sphere_count = read_i32(bytes, trailing + 44);
+    let node_end = node_offset as i64 + node_count as i64 * TREE_NODE_SIZE as i64;
+    if node_end > byte_count as i64 {
+        return None;
+    }
 
-    // The baked tree carries its live node range (nodeCapacity == nodeEnd) and its proxies
-    // (proxyCapacity == proxyCount). C fixes up the node and proxy pointers from the
-    // offsets; the port reads the arrays out of the blob.
-    let node_capacity = header.node_capacity;
-    let noff = section_offset(node_offset, node_capacity, TREE_NODE_SIZE, bytes.len())?;
-    let mut nodes = Vec::with_capacity(node_capacity as usize);
-    for i in 0..node_capacity as usize {
-        let o = noff + i * TREE_NODE_SIZE;
+    let material_offset = read_i32(bytes, 48);
+    let material_count = read_i32(bytes, 52);
+    let capsule_offset = read_i32(bytes, 56);
+    let capsule_count = read_i32(bytes, 60);
+    let hull_offset = read_i32(bytes, 64);
+    let hull_count = read_i32(bytes, 68);
+    let shared_hull_count = read_i32(bytes, 72);
+    let mesh_offset = read_i32(bytes, 76);
+    let mesh_count = read_i32(bytes, 80);
+    let shared_mesh_count = read_i32(bytes, 84);
+    let sphere_offset = read_i32(bytes, 88);
+    let sphere_count = read_i32(bytes, 92);
+
+    // C queries the node array in place through b3GetCompoundTreeView; the port reads it out
+    // of the blob.
+    let mut nodes = Vec::with_capacity(node_count as usize);
+    for i in 0..node_count as usize {
+        let o = node_offset as usize + i * TREE_NODE_SIZE;
         nodes.push(read_tree_node(bytes, o));
     }
 
-    let proxy_capacity = header.proxy_capacity;
-    let poff = section_offset(proxy_offset, proxy_capacity, TREE_PROXY_SIZE, bytes.len())?;
-    let mut proxies = Vec::with_capacity(proxy_capacity as usize);
-    for i in 0..proxy_capacity as usize {
-        let o = poff + i * TREE_PROXY_SIZE;
-        proxies.push(read_tree_proxy(bytes, o));
+    // Divergence from C: C trusts the node contents. The port requires every internal node to
+    // point at a sibling pair after it inside the node array (the full rebuild is DFS ordered,
+    // so children always follow their parent) and every node with the leaf bit to name a child
+    // of the compound. That includes empty nodes: they carry the leaf bit too, and a traversal
+    // reports one as a leaf if its bounds overlap. Real empty nodes have shape index 0 and a
+    // compound always has a child, so they pass.
+    //
+    // It also bounds the tree depth. The query and cast stacks hold TREE_STACK_SIZE entries
+    // and grow by at most one entry per level, so a validated tree may be at most
+    // MAX_COMPOUND_TREE_DEPTH (half the stack) levels deep. The median split rebuild C bakes
+    // compounds with is balanced, so a real tree is about log2 of the child count deep (at
+    // most 2^CHILD_POWER children), far below the bound. Depths are computed in one forward
+    // pass, since every sibling pair comes after its parent.
+    //
+    // A corrupt tree then fails the conversion instead of panicking on a node or child index,
+    // looping, or overflowing the traversal stack during a query.
+    let child_count =
+        capsule_count as i64 + hull_count as i64 + mesh_count as i64 + sphere_count as i64;
+    let mut depths = vec![0usize; nodes.len()];
+    for (i, node) in nodes.iter().enumerate() {
+        if node.is_leaf() {
+            let child_index = node.shape_index() as i64;
+            if child_index < 0 || child_index >= child_count {
+                return None;
+            }
+        } else {
+            let pair = node.left_child() as usize;
+            if pair <= i || pair + 1 >= nodes.len() {
+                return None;
+            }
+            let depth = depths[i] + 1;
+            if depth > MAX_COMPOUND_TREE_DEPTH {
+                return None;
+            }
+            depths[pair] = depths[pair].max(depth);
+            depths[pair + 1] = depths[pair + 1].max(depth);
+        }
     }
-
-    // Divergence from C: the C reader trusts the blob's tree scalars. The port rejects a
-    // node end outside the node array so a corrupt blob fails the conversion instead of
-    // panicking on a later slice.
-    if header.node_end < 0 || header.node_end > node_capacity {
-        return None;
-    }
-
-    let mut tree = DynamicTree::zeroed();
-    tree.version = header.version;
-    tree.nodes = nodes;
-    tree.proxies = proxies;
-    tree.node_end = header.node_end;
-    tree.pair_free_list = header.pair_free_list;
-    tree.proxy_count = header.proxy_count;
-    tree.proxy_free_list = header.proxy_free_list;
-    tree.rebuild_capacity = header.rebuild_capacity;
-    tree.dfs_ordered = header.dfs_ordered;
 
     let moff = section_offset(
         material_offset,
@@ -387,9 +419,11 @@ pub fn convert_bytes_to_compound(bytes: &[u8]) -> Option<CompoundData> {
     Some(CompoundData {
         version,
         byte_count,
+        bounds,
+        tree_height,
         node_offset,
-        proxy_offset,
-        tree,
+        node_count,
+        nodes,
         material_offset,
         material_count,
         capsule_offset,

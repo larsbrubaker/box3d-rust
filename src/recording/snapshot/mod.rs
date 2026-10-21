@@ -9,9 +9,15 @@ mod pod_bodies;
 mod pod_contacts;
 mod pods;
 
+use crate::compound::{
+    COMPOUND_CAPSULE_SIZE, COMPOUND_DATA_SIZE, COMPOUND_SPHERE_SIZE, COMPOUND_VERSION,
+};
 use crate::constants::GRAPH_COLOR_COUNT;
 use crate::constraint_graph::OVERFLOW_INDEX;
+use crate::height_field::{HEIGHT_FIELD_DATA_SIZE, HEIGHT_FIELD_VERSION};
+use crate::hull::{HULL_DATA_SIZE, HULL_VERSION};
 use crate::island::Island;
+use crate::mesh::{MESH_DATA_SIZE, MESH_NODE_SIZE, MESH_TRIANGLE_SIZE, MESH_VERSION};
 use crate::recording::buffer::{RecBuffer, SnapReader};
 use crate::recording::registry::GeometryRegistry;
 use crate::sensor::Sensor;
@@ -58,6 +64,26 @@ pub fn compute_layout_hash() -> u32 {
     mix!(core::mem::size_of::<i32>());
     mix!(core::mem::size_of::<f32>());
     mix!(core::mem::size_of::<u64>());
+    // Upstream 5d83df8 mixes in the geometry blob layouts and versions, since snapshot images
+    // reference registry blobs. The port mixes the C blob sizes it tracks (the per-element
+    // hull vertex, half edge, face, and plane sizes have no port constant; a change to them
+    // changes HULL_VERSION) and the four geometry versions.
+    mix!(HULL_DATA_SIZE);
+    mix!(MESH_DATA_SIZE);
+    mix!(MESH_NODE_SIZE);
+    mix!(MESH_TRIANGLE_SIZE);
+    mix!(HEIGHT_FIELD_DATA_SIZE);
+    mix!(COMPOUND_DATA_SIZE);
+    mix!(COMPOUND_CAPSULE_SIZE);
+    mix!(COMPOUND_SPHERE_SIZE);
+    mix!(HULL_VERSION & 0xFFFF_FFFF);
+    mix!(HULL_VERSION >> 32);
+    mix!(MESH_VERSION & 0xFFFF_FFFF);
+    mix!(MESH_VERSION >> 32);
+    mix!(HEIGHT_FIELD_VERSION & 0xFFFF_FFFF);
+    mix!(HEIGHT_FIELD_VERSION >> 32);
+    mix!(COMPOUND_VERSION & 0xFFFF_FFFF);
+    mix!(COMPOUND_VERSION >> 32);
     #[cfg(feature = "double-precision")]
     mix!(1u32);
     #[cfg(not(feature = "double-precision"))]

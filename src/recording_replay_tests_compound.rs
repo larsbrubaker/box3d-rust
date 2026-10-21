@@ -5,8 +5,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::compound::{
-    convert_compound_to_bytes, create_compound, CompoundCapsuleDef, CompoundData,
-    CompoundSphereDef, COMPOUND_TREE_OFFSET,
+    create_compound, CompoundCapsuleDef, CompoundData, CompoundSphereDef,
 };
 use crate::geometry::Capsule;
 use crate::shape::create_baked_compound_shape;
@@ -40,11 +39,11 @@ fn rec_compound() -> CompoundData {
     .expect("compound")
 }
 
-/// b3RecInternCompound scrubs every tree pointer through b3ConvertCompoundToBytes, so the
-/// canonical blob (and its content hash) is pointer-free. Before 003a3f7 the C side only nulled
-/// `tree.nodes`, leaving the live `tree.proxies` pointer in the recorded bytes. The expected
-/// byte count and hash come from the scalar C build of 003a3f7 (MSVC, BOX3D_DISABLE_SIMD)
-/// interning this same compound.
+/// b3RecInternCompound interns the compound bytes as they are: since upstream 5d83df8 the
+/// compound is a pointer-free blob addressed by offsets, so the canonical bytes need no
+/// scrubbing. The expected byte count and hash come from the scalar C build of 5d83df8 (MSVC,
+/// BOX3D_DISABLE_SIMD, float and double precision alike) interning this same compound; the
+/// full blob was also compared byte for byte.
 #[test]
 fn intern_compound_is_pointer_free() {
     let compound = rec_compound();
@@ -52,15 +51,10 @@ fn intern_compound_is_pointer_free() {
     let id = rec.registry.intern_compound(&compound);
     let entry = &rec.registry.entries[id as usize];
     assert_eq!(entry.kind, GeometryKind::Compound);
-    assert_eq!(entry.bytes, convert_compound_to_bytes(&compound));
+    assert_eq!(entry.bytes, compound.to_bytes());
 
-    // The embedded b3DynamicTree sits at COMPOUND_TREE_OFFSET in b3CompoundData; its pointer fields (nodes,
-    // parents, proxies) follow the 8 byte version.
-    let ptrs = COMPOUND_TREE_OFFSET + 8;
-    assert!(entry.bytes[ptrs..ptrs + 24].iter().all(|&b| b == 0));
-
-    assert_eq!(entry.bytes.len(), 672);
-    assert_eq!(entry.content_hash, 0x6ec7_dd6f_a6f8_4724);
+    assert_eq!(entry.bytes.len(), 488);
+    assert_eq!(entry.content_hash, 0x58b8_26b8_d7e0_7710);
 
     // Interning the same compound again dedups to the same id.
     assert_eq!(rec.registry.intern_compound(&compound), id);
@@ -239,8 +233,8 @@ fn compound_seek_ray_cast() {
     assert!(!player.has_diverged());
 }
 
-/// A corrupt compound in the geometry registry must fail the replay cleanly. A stale version or a
-/// wrong kind is rejected when the shape is created and a truncated entry is rejected at load.
+/// A corrupt compound in the geometry registry must fail the replay cleanly. A truncated, empty,
+/// or invalid compound entry is rejected at load, and a wrong kind when the shape is created.
 /// (CorruptCompound)
 #[test]
 fn corrupt_compound() {
@@ -258,8 +252,8 @@ fn corrupt_compound() {
     })
     .expect("compound");
     let compound_byte_count = compound.byte_count;
-    // The scalar C build of 3d9db79 (MSVC, BOX3D_DISABLE_SIMD) bakes this compound to 336 bytes.
-    assert_eq!(compound_byte_count, 336);
+    // The scalar C build of 5d83df8 (MSVC, BOX3D_DISABLE_SIMD) bakes this compound to 224 bytes.
+    assert_eq!(compound_byte_count, 224);
 
     let mut world = World::new(&default_world_def());
     world_start_recording(&mut world, Recording::new(0));
@@ -310,6 +304,11 @@ fn corrupt_compound() {
     let mut patched = rec_data.to_vec();
     let short_byte_count = 8i32;
     patched[blob_offset - 4..blob_offset].copy_from_slice(&short_byte_count.to_le_bytes());
+    assert!(RecPlayer::create(&patched, 1).is_none());
+
+    let mut patched = rec_data.to_vec();
+    let zero_byte_count = 0i32;
+    patched[blob_offset - 4..blob_offset].copy_from_slice(&zero_byte_count.to_le_bytes());
     assert!(RecPlayer::create(&patched, 1).is_none());
 
     let mut patched = rec_data.to_vec();

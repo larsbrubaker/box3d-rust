@@ -1,15 +1,17 @@
-//! Compound blob serialization (convert to/from bytes).
+//! Compound blob serialization.
 //!
-//! Port of `b3ConvertCompoundToBytes` / `b3ConvertBytesToCompound`.
+//! In C a compound is a single flat blob with no pointers, so writing `byteCount` bytes from
+//! the compound address serializes it (upstream 5d83df8 removed `b3ConvertCompoundToBytes`).
+//! The port keeps owned arrays, so [`CompoundData::to_bytes`] lays them out at their recorded
+//! offsets to reproduce those bytes exactly.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
 use super::types::{
     CompoundCapsule, CompoundData, CompoundSphere, HullInstance, MeshInstance, COMPOUND_DATA_SIZE,
-    COMPOUND_TREE_OFFSET,
 };
-use crate::dynamic_tree::{write_tree_header, write_tree_node, write_tree_proxy};
+use crate::dynamic_tree::write_tree_node;
 use crate::math_functions::{Quat, Transform, Vec3};
 
 fn write_u64(buf: &mut Vec<u8>, v: u64) {
@@ -49,13 +51,11 @@ fn pad_to(buf: &mut Vec<u8>, len: usize) {
 fn write_compound_header(buf: &mut Vec<u8>, c: &CompoundData) {
     write_u64(buf, c.version);
     write_i32(buf, c.byte_count);
+    write_vec3(buf, c.bounds.lower_bound);
+    write_vec3(buf, c.bounds.upper_bound);
+    write_i32(buf, c.tree_height);
     write_i32(buf, c.node_offset);
-    write_i32(buf, c.proxy_offset);
-    // The embedded b3DynamicTree is 8 byte aligned.
-    pad_to(buf, COMPOUND_TREE_OFFSET);
-    // The baked tree header: pointers scrubbed to null before serialization, the node
-    // capacity trimmed to the node end (the tree arrays were truncated when baked).
-    write_tree_header(buf, &c.tree, c.tree.node_capacity());
+    write_i32(buf, c.node_count);
     write_i32(buf, c.material_offset);
     write_i32(buf, c.material_count);
     write_i32(buf, c.capsule_offset);
@@ -117,19 +117,15 @@ fn write_mesh_materials(buf: &mut Vec<u8>, m: &MeshInstance, map: &[u16]) {
 }
 
 impl CompoundData {
-    /// Serialize to the C contiguous blob layout.
+    /// Serialize to the C contiguous blob layout: the `byteCount` bytes starting at the C
+    /// compound address.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.byte_count as usize);
         write_compound_header(&mut buf, self);
 
         pad_to(&mut buf, self.node_offset as usize);
-        for node in &self.tree.nodes {
+        for node in &self.nodes {
             write_tree_node(&mut buf, node);
-        }
-
-        pad_to(&mut buf, self.proxy_offset as usize);
-        for proxy in &self.tree.proxies {
-            write_tree_proxy(&mut buf, proxy);
         }
 
         pad_to(&mut buf, self.material_offset as usize);
@@ -190,9 +186,4 @@ impl CompoundData {
         debug_assert_eq!(buf.len(), self.byte_count as usize);
         buf
     }
-}
-
-/// Scrub and return the compound as a byte buffer. (b3ConvertCompoundToBytes)
-pub fn convert_compound_to_bytes(compound: &CompoundData) -> Vec<u8> {
-    compound.to_bytes()
 }

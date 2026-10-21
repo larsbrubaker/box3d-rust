@@ -3,7 +3,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::types::{get_compound_child, ChildGeometry, CompoundData};
+use super::types::{get_compound_child, get_compound_tree_view, ChildGeometry, CompoundData};
 use crate::constants::MAX_SHAPE_CAST_POINTS;
 use crate::distance::{compute_proxy_aabb, make_local_proxy, CastOutput, ShapeProxy, Sweep};
 use crate::dynamic_tree::BoxCastInput;
@@ -20,9 +20,7 @@ use crate::mesh::{overlap_mesh, ray_cast_mesh, shape_cast_mesh};
 
 /// Compute the AABB of a compound. (b3ComputeCompoundAABB)
 pub fn compute_compound_aabb(shape: &CompoundData, transform: Transform) -> Aabb {
-    debug_assert!(shape.node_offset > 0);
-    let aabb = shape.tree.nodes[crate::dynamic_tree::ROOT_NODE as usize].aabb;
-    aabb_transform(transform, aabb)
+    aabb_transform(transform, shape.bounds)
 }
 
 /// Test overlap between a compound and a shape proxy. (b3OverlapCompound)
@@ -45,28 +43,27 @@ pub fn overlap_compound(
     let aabb = compute_proxy_aabb(&local_proxy);
 
     // This query must be in the compound frame.
-    shape
-        .tree
-        .query(aabb, !0u64, false, |_proxy_id, user_data| {
-            let child_index = user_data as i32;
-            let child = get_compound_child(shape, child_index);
-            let transform = child.transform;
-            let proxy = &local_proxy;
+    let view = get_compound_tree_view(shape);
+    view.query(aabb, !0u64, false, |_proxy_id, user_data| {
+        let child_index = user_data as i32;
+        let child = get_compound_child(shape, child_index);
+        let transform = child.transform;
+        let proxy = &local_proxy;
 
-            let child_overlap = match child.geometry {
-                ChildGeometry::Capsule(ref capsule) => overlap_capsule(capsule, transform, proxy),
-                ChildGeometry::Hull(hull) => overlap_hull(hull, transform, proxy),
-                ChildGeometry::Mesh(ref mesh) => overlap_mesh(mesh, transform, proxy),
-                ChildGeometry::Sphere(ref sphere) => overlap_sphere(sphere, transform, proxy),
-            };
+        let child_overlap = match child.geometry {
+            ChildGeometry::Capsule(ref capsule) => overlap_capsule(capsule, transform, proxy),
+            ChildGeometry::Hull(hull) => overlap_hull(hull, transform, proxy),
+            ChildGeometry::Mesh(ref mesh) => overlap_mesh(mesh, transform, proxy),
+            ChildGeometry::Sphere(ref sphere) => overlap_sphere(sphere, transform, proxy),
+        };
 
-            if child_overlap {
-                overlap = true;
-                false
-            } else {
-                true
-            }
-        });
+        if child_overlap {
+            overlap = true;
+            false
+        } else {
+            true
+        }
+    });
 
     overlap
 }
@@ -75,53 +72,52 @@ pub fn overlap_compound(
 pub fn ray_cast_compound(shape: &CompoundData, input: &RayCastInput) -> CastOutput {
     let mut result = CastOutput::default();
 
-    shape
-        .tree
-        .ray_cast(input, !0u64, false, |ray_input, _proxy_id, user_data| {
-            let child_index = user_data as i32;
-            let child = get_compound_child(shape, child_index);
+    let view = get_compound_tree_view(shape);
+    view.ray_cast(input, !0u64, false, |ray_input, _proxy_id, user_data| {
+        let child_index = user_data as i32;
+        let child = get_compound_child(shape, child_index);
 
-            // Get the input in child local space.
-            let local_input = RayCastInput {
-                origin: inv_transform_point(child.transform, ray_input.origin),
-                translation: inv_rotate_vector(child.transform.q, ray_input.translation),
-                max_fraction: ray_input.max_fraction,
-            };
+        // Get the input in child local space.
+        let local_input = RayCastInput {
+            origin: inv_transform_point(child.transform, ray_input.origin),
+            translation: inv_rotate_vector(child.transform.q, ray_input.translation),
+            max_fraction: ray_input.max_fraction,
+        };
 
-            let mut output = match child.geometry {
-                ChildGeometry::Capsule(ref capsule) => {
-                    let mut o = ray_cast_capsule(capsule, &local_input);
-                    o.material_index = child.material_indices[0] as i32;
-                    o
-                }
-                ChildGeometry::Hull(hull) => {
-                    let mut o = ray_cast_hull(hull, &local_input);
-                    o.material_index = child.material_indices[0] as i32;
-                    o
-                }
-                ChildGeometry::Mesh(ref mesh) => {
-                    let mut o = ray_cast_mesh(mesh, &local_input);
-                    debug_assert!(0 <= o.material_index && o.material_index < child.material_count);
-                    o.material_index = child.material_indices[o.material_index as usize] as i32;
-                    o
-                }
-                ChildGeometry::Sphere(ref sphere) => {
-                    let mut o = ray_cast_sphere(sphere, &local_input);
-                    o.material_index = child.material_indices[0] as i32;
-                    o
-                }
-            };
-
-            if output.hit {
-                output.point = transform_point(child.transform, output.point);
-                output.normal = rotate_vector(child.transform.q, output.normal);
-                output.child_index = child_index;
-                result = output;
-                return output.fraction;
+        let mut output = match child.geometry {
+            ChildGeometry::Capsule(ref capsule) => {
+                let mut o = ray_cast_capsule(capsule, &local_input);
+                o.material_index = child.material_indices[0] as i32;
+                o
             }
+            ChildGeometry::Hull(hull) => {
+                let mut o = ray_cast_hull(hull, &local_input);
+                o.material_index = child.material_indices[0] as i32;
+                o
+            }
+            ChildGeometry::Mesh(ref mesh) => {
+                let mut o = ray_cast_mesh(mesh, &local_input);
+                debug_assert!(0 <= o.material_index && o.material_index < child.material_count);
+                o.material_index = child.material_indices[o.material_index as usize] as i32;
+                o
+            }
+            ChildGeometry::Sphere(ref sphere) => {
+                let mut o = ray_cast_sphere(sphere, &local_input);
+                o.material_index = child.material_indices[0] as i32;
+                o
+            }
+        };
 
-            ray_input.max_fraction
-        });
+        if output.hit {
+            output.point = transform_point(child.transform, output.point);
+            output.normal = rotate_vector(child.transform.q, output.normal);
+            output.child_index = child_index;
+            result = output;
+            return output.fraction;
+        }
+
+        ray_input.max_fraction
+    });
 
     result
 }
@@ -144,7 +140,8 @@ pub fn shape_cast_compound(shape: &CompoundData, input: &ShapeCastInput) -> Cast
         max_fraction: input.max_fraction,
     };
 
-    shape.tree.box_cast(
+    let view = get_compound_tree_view(shape);
+    view.box_cast(
         &tree_input,
         !0u64,
         false,

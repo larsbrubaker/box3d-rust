@@ -2,9 +2,9 @@
 
 use super::v;
 use crate::compound::{
-    compute_compound_aabb, convert_bytes_to_compound, convert_compound_to_bytes, create_compound,
-    destroy_compound, ray_cast_compound, CompoundCapsuleDef, CompoundData, CompoundDef,
-    CompoundHullDef, CompoundMeshDef, CompoundSphereDef,
+    compute_compound_aabb, create_compound, destroy_compound, ray_cast_compound, validate_compound,
+    CompoundCapsuleDef, CompoundData, CompoundDef, CompoundHullDef, CompoundMeshDef,
+    CompoundSphereDef,
 };
 use crate::geometry::{default_surface_material, Capsule, RayCastInput, Sphere};
 use crate::hull::make_box_hull;
@@ -68,15 +68,21 @@ fn compound_serialize_roundtrip() {
     let ray_a = ray_cast_compound(&a, &ray_input);
     assert!(ray_a.hit);
     let byte_count = a.byte_count;
-    let buffer = convert_compound_to_bytes(&a);
+    let buffer = a.to_bytes();
+    let reference = buffer.clone();
     destroy_compound(a);
-    let b = convert_bytes_to_compound(&buffer).expect("deserialize");
+    let b = validate_compound(&buffer).expect("deserialize");
     assert_eq!(b.byte_count, byte_count);
     assert_eq!(
         (b.capsule_count, b.hull_count, b.mesh_count, b.sphere_count),
         (1, 1, 1, 1)
     );
-    assert!(!b.tree.nodes.is_empty());
+
+    // Validation must not touch the bytes. C also checks the validated compound is the input
+    // address; the port parses an owned compound, so it checks the compound writes back the
+    // same bytes instead.
+    assert_eq!(buffer, reference);
+    assert_eq!(b.to_bytes(), buffer);
     let aabb_b = compute_compound_aabb(&b, TRANSFORM_IDENTITY);
     assert!((aabb_a.lower_bound.x - aabb_b.lower_bound.x).abs() < 1e-5);
     assert!((aabb_a.upper_bound.z - aabb_b.upper_bound.z).abs() < 1e-5);
@@ -114,9 +120,9 @@ fn compound_serialize_multi_material_mesh_child() {
         spheres: &[],
     })
     .expect("compound");
-    let buffer = convert_compound_to_bytes(&a);
+    let buffer = a.to_bytes();
     destroy_compound(a);
-    let b = convert_bytes_to_compound(&buffer).expect("deserialize");
+    let b = validate_compound(&buffer).expect("deserialize");
     assert_eq!(b.shared_meshes.len(), 1);
     let restored = &b.shared_meshes[0];
     assert_eq!(
@@ -155,9 +161,9 @@ fn compound_deserialized_mesh_child_material_lookup() {
         ..Default::default()
     })
     .expect("compound");
-    let buffer = convert_compound_to_bytes(&a);
+    let buffer = a.to_bytes();
     destroy_compound(a);
-    let restored = convert_bytes_to_compound(&buffer).expect("deserialize");
+    let restored = validate_compound(&buffer).expect("deserialize");
 
     let mut world = World::new(&default_world_def());
     let mut ground_def = default_body_def();
@@ -201,10 +207,10 @@ fn compound_deserialized_mesh_child_material_lookup() {
 fn compound_serialize_bad_version() {
     let md = create_box_mesh(VEC3_ZERO, v(0.5, 0.5, 0.5), false).expect("mesh");
     let a = build_serializable_compound(&md);
-    let mut buffer = convert_compound_to_bytes(&a);
+    let mut buffer = a.to_bytes();
     destroy_compound(a);
     buffer[0] ^= 1;
-    assert!(convert_bytes_to_compound(&buffer).is_none());
+    assert!(validate_compound(&buffer).is_none());
     destroy_mesh(md);
 }
 
@@ -212,10 +218,10 @@ fn compound_serialize_bad_version() {
 fn compound_serialize_wrong_byte_count() {
     let md = create_box_mesh(VEC3_ZERO, v(0.5, 0.5, 0.5), false).expect("mesh");
     let a = build_serializable_compound(&md);
-    let mut buffer = convert_compound_to_bytes(&a);
+    let mut buffer = a.to_bytes();
     destroy_compound(a);
     buffer.push(0);
-    assert!(convert_bytes_to_compound(&buffer).is_none());
+    assert!(validate_compound(&buffer).is_none());
     destroy_mesh(md);
 }
 
@@ -258,10 +264,46 @@ fn compound_serialize_multiple_spheres() {
     .expect("compound");
     // The sphere array is the last section: alignUp8( 3 * 20 ) = 64 bytes.
     assert_eq!(a.byte_count - a.sphere_offset, 64);
-    let buffer = convert_compound_to_bytes(&a);
-    let b = convert_bytes_to_compound(&buffer).expect("deserialize");
+    let buffer = a.to_bytes();
+    let b = validate_compound(&buffer).expect("deserialize");
     assert_eq!(b.spheres, a.spheres);
-    assert_eq!(convert_compound_to_bytes(&b), buffer);
+    assert_eq!(b.to_bytes(), buffer);
     destroy_compound(a);
     destroy_compound(b);
+}
+
+/// A node count that runs the node array off the end of the buffer, including one whose byte
+/// size overflows 32-bit arithmetic, is rejected. (CompoundSerializeBadNodeCount)
+#[test]
+fn compound_serialize_bad_node_count() {
+    let md = create_box_mesh(VEC3_ZERO, v(0.5, 0.5, 0.5), false).expect("mesh");
+    let a = build_serializable_compound(&md);
+    let byte_count = a.byte_count;
+    let mut buffer = a.to_bytes();
+    destroy_compound(a);
+
+    // b3CompoundData::nodeCount sits after the version, byteCount, bounds, treeHeight, and
+    // nodeOffset.
+    const NODE_COUNT_OFFSET: usize = 44;
+    let node_count = i32::from_le_bytes(
+        buffer[NODE_COUNT_OFFSET..NODE_COUNT_OFFSET + 4]
+            .try_into()
+            .unwrap(),
+    );
+    let set_node_count = |buffer: &mut Vec<u8>, value: i32| {
+        buffer[NODE_COUNT_OFFSET..NODE_COUNT_OFFSET + 4].copy_from_slice(&value.to_le_bytes());
+    };
+
+    // Node array runs off the end of the buffer
+    set_node_count(&mut buffer, byte_count);
+    assert!(validate_compound(&buffer).is_none());
+
+    // Overflow in 32 bit arithmetic must still be caught
+    set_node_count(&mut buffer, i32::MAX);
+    assert!(validate_compound(&buffer).is_none());
+
+    set_node_count(&mut buffer, node_count);
+    assert!(validate_compound(&buffer).is_some());
+
+    destroy_mesh(md);
 }

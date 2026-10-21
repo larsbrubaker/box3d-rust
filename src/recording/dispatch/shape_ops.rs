@@ -44,11 +44,12 @@ fn check_slot(rdr: &mut RecReader<'_>, kind: GeometryKind, geometry_id: u32) -> 
 
 /// Resolve a geometry registry slot for a shape op, or fail the replay.
 ///
-/// Divergence from C: after `b3RecGetSlot`, `b3ReplayFile` casts hull and mesh slot bytes
-/// straight to a `b3HullData*` / `b3MeshData*` and trusts the recording, so a corrupt blob
-/// makes it read garbage. The Rust converters validate instead, and a rejected blob fails the
-/// replay with the "geometry %u is corrupt" message C uses for height fields and compounds.
-/// Well-formed recordings always resolve, so the happy path is unchanged.
+/// Divergence from C: after `b3RecGetSlot`, `b3ReplayFile` casts hull, mesh, and height field
+/// slot bytes straight to a `b3HullData*` / `b3MeshData*` / `b3HeightFieldData*` and trusts the
+/// recording, so a corrupt blob makes it read garbage. The Rust converters validate instead,
+/// and a rejected blob fails the replay with a "geometry %u is corrupt" message (C printed it
+/// for height fields and compounds before upstream 5d83df8). Well-formed recordings always
+/// resolve, so the happy path is unchanged.
 fn slot_geometry<T>(
     rdr: &mut RecReader<'_>,
     kind: GeometryKind,
@@ -69,20 +70,19 @@ fn slot_geometry<T>(
     }
 }
 
-/// [`slot_geometry`] for compounds, which convert lazily through the slot's cache
-/// ([`RegistrySlot::get_live_compound`](crate::recording::RegistrySlot::get_live_compound)).
+/// [`slot_geometry`] for compounds. The registry loader already validated and parsed every
+/// compound slot ([`RegistrySlot::compound`](crate::recording::RegistrySlot::compound)), so
+/// like C this only needs the range and kind check.
 fn slot_compound(rdr: &mut RecReader<'_>, geometry_id: u32) -> Option<CompoundData> {
     if !check_slot(rdr, GeometryKind::Compound, geometry_id) {
         return None;
     }
-    match rdr.slots[geometry_id as usize].get_live_compound().cloned() {
-        Some(compound) => Some(compound),
-        None => {
-            eprintln!("b3ReplayFile: compound geometry {geometry_id} is corrupt");
-            rdr.ok = false;
-            None
-        }
+    let compound = rdr.slots[geometry_id as usize].compound.clone();
+    debug_assert!(compound.is_some());
+    if compound.is_none() {
+        rdr.ok = false;
     }
+    compound
 }
 
 /// Handle one shape op. Returns false if `op` is not in this family.

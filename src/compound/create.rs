@@ -12,7 +12,7 @@ use super::types::{
 };
 use crate::constants::MAX_CHILD_SHAPES;
 use crate::core::NULL_INDEX;
-use crate::dynamic_tree::{DynamicTree, TREE_NODE_SIZE, TREE_PROXY_SIZE};
+use crate::dynamic_tree::{DynamicTree, TREE_NODE_SIZE};
 use crate::geometry::{
     compute_capsule_aabb, compute_sphere_aabb, SurfaceMaterial, SURFACE_MATERIAL_SIZE,
 };
@@ -214,11 +214,9 @@ pub fn create_compound(def: &CompoundDef<'_>) -> Option<CompoundData> {
 
     let mut byte_count = align_up8(COMPOUND_DATA_SIZE);
 
-    // Tree nodes and proxies. The rebuild is dense, so only the live nodes travel.
+    // Tree nodes. The rebuild is dense, so only the live nodes travel.
     let node_offset = byte_count as i32;
     byte_count += align_up8(tree.node_end() as usize * TREE_NODE_SIZE);
-    let proxy_offset = byte_count as i32;
-    byte_count += align_up8(tree.proxy_count() as usize * TREE_PROXY_SIZE);
 
     let material_offset = byte_count as i32;
     byte_count += align_up8(material_count as usize * SURFACE_MATERIAL_SIZE);
@@ -265,32 +263,24 @@ pub fn create_compound(def: &CompoundDef<'_>) -> Option<CompoundData> {
             mesh_material_map_offset as u32 + material_start * core::mem::size_of::<u16>() as u32;
     }
 
-    // Immutable tree. C copies only the version, node end, proxy count, and DFS order flag
-    // into the zeroed blob header: only the live node range and the proxies travel, the
-    // free lists are cleared, and the parent array, the spare array, and the rebuild
-    // scratch are dropped (a baked tree is never inserted into).
-    debug_assert!(tree.pair_free_list == NULL_INDEX);
-    let node_end = tree.node_end() as usize;
-    let proxy_count = tree.proxy_count() as usize;
-    tree.nodes.truncate(node_end);
-    tree.pair_free_list = NULL_INDEX;
-    tree.proxies.truncate(proxy_count);
-    tree.proxy_free_list = NULL_INDEX;
-    tree.parents = Vec::new();
-    tree.swap_nodes = Vec::new();
-    tree.leaf_indices = Vec::new();
-    tree.leaf_nodes = Vec::new();
-    tree.leaf_centers = Vec::new();
-    tree.rebuild_capacity = 0;
+    // Tree nodes. Only the live node range travels; the leaves keep the child index in
+    // shapeIndex, so the proxies are not needed.
+    let bounds = tree.root_bounds();
+    let tree_height = tree.height();
+    let node_count = tree.node_end();
+    let mut nodes = tree.nodes;
+    nodes.truncate(node_count as usize);
 
     debug_assert!(material_count > 0);
 
     Some(CompoundData {
         version: COMPOUND_VERSION,
         byte_count: byte_count as i32,
+        bounds,
+        tree_height,
         node_offset,
-        proxy_offset,
-        tree,
+        node_count,
+        nodes,
         material_offset,
         material_count,
         capsule_offset,

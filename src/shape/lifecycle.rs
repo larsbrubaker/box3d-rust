@@ -463,6 +463,21 @@ pub fn shape_get_hull(world: &World, shape_id: ShapeId) -> Option<&HullData> {
     }
 }
 
+/// (b3Shape_GetCompound) — returns None for non-compound shapes.
+///
+/// C returns the compound pointer the shape was created with. The port's shape owns a copy
+/// of the compound, so this returns that copy.
+pub fn shape_get_compound(world: &World, shape_id: ShapeId) -> Option<&CompoundData> {
+    let index = get_shape(world, shape_id);
+    match &world.shapes[index as usize].geometry {
+        ShapeGeometry::Compound(compound) => Some(compound),
+        _ => {
+            debug_assert!(false, "shape is not a compound");
+            None
+        }
+    }
+}
+
 /// Release hull-database ownership when geometry is about to change.
 /// Does not clear materials. (`b3DestroyShapeAllocationForShapeChange`)
 pub(crate) fn destroy_shape_allocation_for_shape_change(world: &mut World, shape_index: i32) {

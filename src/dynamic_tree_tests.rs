@@ -7,13 +7,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::aabb::ray_cast_aabb;
-use crate::compound::{create_compound, destroy_compound, CompoundDef, CompoundHullDef};
 use crate::dynamic_tree::{BoxCastInput, DynamicTree, DEFAULT_CATEGORY_BITS, DEFAULT_MASK_BITS};
-use crate::geometry::{default_surface_material, RayCastInput};
-use crate::hull::make_box_hull;
+use crate::geometry::RayCastInput;
 use crate::math_functions::{
-    aabb_contains, aabb_inflate, aabb_overlaps, add, clamp, dot, max, min, mul_add, sub, Aabb,
-    Transform, Vec3, QUAT_IDENTITY,
+    aabb_contains, aabb_inflate, aabb_overlaps, add, clamp, dot, max, min, mul_add, sub, Aabb, Vec3,
 };
 
 const PROXY_COUNT: usize = 300;
@@ -613,9 +610,7 @@ fn temp_tree_path(name: &str) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// A saved tree carries only its live node range. A baked compound tree has no parent
-/// array, so saving one has to bail out rather than write from a null pointer.
-/// (TreeSaveLoadRoundtrip)
+/// A saved tree carries only its live node range. (TreeSaveLoadRoundtrip)
 #[test]
 fn tree_save_load_roundtrip() {
     let mut rng = Lcg::new(4242);
@@ -653,43 +648,4 @@ fn tree_save_load_roundtrip() {
 
     drop(loaded);
     tree.destroy();
-
-    let box_hull = make_box_hull(0.5, 0.5, 0.5);
-
-    let hulls = [
-        CompoundHullDef {
-            hull: &box_hull.base,
-            transform: Transform {
-                p: Vec3::new(-1.0, 0.0, 0.0),
-                q: QUAT_IDENTITY,
-            },
-            material: default_surface_material(),
-        },
-        CompoundHullDef {
-            hull: &box_hull.base,
-            transform: Transform {
-                p: Vec3::new(1.0, 0.0, 0.0),
-                q: QUAT_IDENTITY,
-            },
-            material: default_surface_material(),
-        },
-    ];
-
-    let compound_def = CompoundDef {
-        hulls: &hulls,
-        ..CompoundDef::default()
-    };
-    let compound = create_compound(&compound_def).expect("compound");
-    assert!(compound.tree.parents.is_empty());
-    assert_eq!(compound.tree.proxy_capacity(), compound.tree.proxy_count());
-
-    let compound_path = temp_tree_path("test_dynamic_tree_compound.dat");
-    let _ = std::fs::remove_file(&compound_path);
-    compound.tree.save(&compound_path);
-
-    let no_tree = DynamicTree::load(&compound_path, 1.0);
-    let _ = std::fs::remove_file(&compound_path);
-    assert!(no_tree.nodes.is_empty());
-
-    destroy_compound(compound);
 }

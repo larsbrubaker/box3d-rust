@@ -67,10 +67,9 @@ fn compound_create_mixed() {
     assert_eq!(compound.material_count, 1);
     assert_eq!(compound.shared_hull_count, 1);
     assert_eq!(compound.shared_mesh_count, 1);
-    assert!(compound.tree.node_end() >= 2);
-    assert!(compound.tree.proxy_count() > 0);
-    assert!(!compound.tree.nodes.is_empty());
-    assert!(!compound.tree.proxies.is_empty());
+    assert!(compound.node_count >= 2);
+    assert!(compound.node_offset > 0);
+    assert!(compound.bounds.lower_bound.x < compound.bounds.upper_bound.x);
     destroy_compound(compound);
     destroy_mesh(mesh_data);
 }

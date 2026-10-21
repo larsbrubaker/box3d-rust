@@ -229,8 +229,7 @@ fn shape_geometry_mutator_replay() {
 #[test]
 fn compound_mesh_material_map_round_trip() {
     use crate::compound::{
-        convert_compound_to_bytes, create_compound, get_compound_child, CompoundDef,
-        CompoundMeshDef, CompoundSphereDef,
+        create_compound, get_compound_child, CompoundDef, CompoundMeshDef, CompoundSphereDef,
     };
     use crate::math_functions::TRANSFORM_IDENTITY;
     use crate::shape::create_baked_compound_shape;
@@ -325,10 +324,7 @@ fn compound_mesh_material_map_round_trip() {
     let mesh_child = get_compound_child(replayed, 0);
     assert_eq!(mesh_child.material_count, 5);
     assert_eq!(mesh_child.material_indices.len(), 5);
-    assert_eq!(
-        convert_compound_to_bytes(replayed),
-        convert_compound_to_bytes(&compound)
-    );
+    assert_eq!(replayed.to_bytes(), compound.to_bytes());
 
     drop(world);
     crate::mesh::destroy_mesh(compound_mesh_data);

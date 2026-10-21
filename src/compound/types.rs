@@ -6,24 +6,21 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::dynamic_tree::{DynamicTree, DYNAMIC_TREE_VERSION};
+use crate::dynamic_tree::{TreeNode, TreeView};
 use crate::geometry::{Capsule, ShapeType, Sphere, SurfaceMaterial};
 use crate::hull::{HullData, HULL_VERSION};
-use crate::math_functions::{Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ONE};
+use crate::math_functions::{Aabb, Transform, Vec3, TRANSFORM_IDENTITY, VEC3_ONE, VEC3_ZERO};
 use crate::mesh::{Mesh, MeshData, MESH_VERSION};
 
-/// The baked compound version depends on the tree, mesh, and hull versions.
+/// The baked compound version depends on the mesh and hull versions.
 /// (B3_COMPOUND_VERSION)
-pub const COMPOUND_VERSION: u64 =
-    0x7A2F_41C9_E6D0_B358u64 ^ DYNAMIC_TREE_VERSION ^ MESH_VERSION ^ HULL_VERSION;
+pub const COMPOUND_VERSION: u64 = 0x9E4B_17D3_A25C_68F1u64 ^ MESH_VERSION ^ HULL_VERSION;
 
-/// Size of the C `b3CompoundData` header on 64-bit (MSVC/GCC): version, byteCount,
-/// nodeOffset, proxyOffset, 4 bytes of padding, the 112 byte `b3DynamicTree`, then the 12
-/// trailing ints.
-pub const COMPOUND_DATA_SIZE: usize = 184;
-
-/// Byte offset of the embedded `b3DynamicTree` inside the `b3CompoundData` header.
-pub const COMPOUND_TREE_OFFSET: usize = 24;
+/// Size of the C `b3CompoundData` header: the 64-bit version, byteCount, the 24 byte
+/// `b3AABB` bounds, then 15 ints (treeHeight, nodeOffset, nodeCount, and the material,
+/// capsule, hull, mesh, and sphere offsets and counts). C asserts
+/// `sizeof( b3CompoundData ) == sizeof( uint64_t ) + sizeof( b3AABB ) + 16 * sizeof( int )`.
+pub const COMPOUND_DATA_SIZE: usize = 96;
 
 /// Size of the C `b3HullInstance`: transform, hullOffset, then the `uint16_t`
 /// materialIndex and padding.
@@ -192,19 +189,25 @@ pub struct ChildShape<'a> {
 
 /// The data for a baked compound shape. (b3CompoundData)
 ///
-/// Owned arrays replace C's trailing-blob offsets. Offsets are retained so
-/// [`CompoundData::to_bytes`] / [`from_bytes`](crate::compound::convert_bytes_to_compound)
-/// reproduce the contiguous layout.
+/// In C the compound is a single flat, pointer-free blob addressed by byte offsets. The port
+/// keeps owned arrays instead and retains the offsets so [`CompoundData::to_bytes`] /
+/// [`validate_compound`](crate::compound::validate_compound) reproduce the contiguous layout.
 #[derive(Debug, Clone)]
 pub struct CompoundData {
     pub version: u64,
+    /// The total number of bytes for this compound.
     pub byte_count: i32,
+    /// Bounds of the tree.
+    pub bounds: Aabb,
+    /// Tree height for diagnostics.
+    pub tree_height: i32,
+    /// Offset of the tree node array in bytes from the struct address.
     pub node_offset: i32,
-    /// Offset of the tree proxy array in bytes from the struct address.
-    pub proxy_offset: i32,
-    /// Immutable dynamic tree. A baked tree is never inserted into, so the parent array
-    /// stays empty.
-    pub tree: DynamicTree,
+    /// The number of tree nodes.
+    pub node_count: i32,
+    /// The tree nodes (C: `node_count` nodes at `node_offset` in the blob). Leaves store the
+    /// child index in `shapeIndex`; the baked tree carries no proxies.
+    pub nodes: Vec<TreeNode>,
     pub material_offset: i32,
     pub material_count: i32,
     pub capsule_offset: i32,
@@ -234,9 +237,14 @@ impl Default for CompoundData {
         Self {
             version: COMPOUND_VERSION,
             byte_count: 0,
+            bounds: Aabb {
+                lower_bound: VEC3_ZERO,
+                upper_bound: VEC3_ZERO,
+            },
+            tree_height: 0,
             node_offset: 0,
-            proxy_offset: 0,
-            tree: DynamicTree::new(0),
+            node_count: 0,
+            nodes: Vec::new(),
             material_offset: 0,
             material_count: 0,
             capsule_offset: 0,
@@ -258,6 +266,15 @@ impl Default for CompoundData {
             shared_meshes: Vec::new(),
             spheres: Vec::new(),
         }
+    }
+}
+
+/// The compound tree as a view without proxies. (b3GetCompoundTreeView)
+#[inline]
+pub(crate) fn get_compound_tree_view(compound: &CompoundData) -> TreeView<'_> {
+    TreeView {
+        nodes: &compound.nodes,
+        proxies: None,
     }
 }
 

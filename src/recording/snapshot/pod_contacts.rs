@@ -312,7 +312,7 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
                 if !r.ok {
                     ShapeGeometry::default()
                 } else if let Some(c) = get_slot(slots, gid, GeometryKind::Compound)
-                    .and_then(|slot| slot.get_live_compound().cloned())
+                    .and_then(|slot| slot.compound.clone())
                 {
                     ShapeGeometry::Compound(c)
                 } else {

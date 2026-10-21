@@ -6,8 +6,8 @@
 //! Layout:
 //! - `types`     — CompoundDef/Data, child accessors, SurfaceMaterial consumers
 //! - `create`    — create/destroy with material/hull/mesh sharing
-//! - `serialize`   — convert to contiguous bytes
-//! - `deserialize` — convert from contiguous bytes
+//! - `serialize`   — write the contiguous bytes
+//! - `deserialize` — validate and read the contiguous bytes
 //! - `cast`      — AABB, overlap, ray cast, shape cast
 //! - `query`     — AABB query, collide mover
 //!
@@ -29,13 +29,13 @@ pub use cast::{
     shape_cast_compound,
 };
 pub use create::{create_compound, destroy_compound};
-pub use deserialize::convert_bytes_to_compound;
+pub use deserialize::validate_compound;
 pub use query::{collide_mover_and_compound, query_compound};
-pub use serialize::convert_compound_to_bytes;
+pub(crate) use types::get_compound_tree_view;
 pub use types::{
     get_compound_capsule, get_compound_child, get_compound_hull, get_compound_materials,
     get_compound_mesh, get_compound_sphere, ChildGeometry, ChildShape, CompoundCapsule,
     CompoundCapsuleDef, CompoundData, CompoundDef, CompoundHull, CompoundHullDef, CompoundMesh,
-    CompoundMeshDef, CompoundSphere, CompoundSphereDef, COMPOUND_DATA_SIZE, COMPOUND_TREE_OFFSET,
-    COMPOUND_VERSION,
+    CompoundMeshDef, CompoundSphere, CompoundSphereDef, COMPOUND_CAPSULE_SIZE, COMPOUND_DATA_SIZE,
+    COMPOUND_SPHERE_SIZE, COMPOUND_VERSION,
 };

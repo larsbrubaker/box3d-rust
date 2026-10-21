@@ -12,8 +12,8 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::compound::{
-    convert_bytes_to_compound, convert_compound_to_bytes, create_compound, destroy_compound,
-    CompoundCapsuleDef, CompoundDef, CompoundHullDef, CompoundMeshDef, CompoundSphereDef,
+    create_compound, destroy_compound, validate_compound, CompoundCapsuleDef, CompoundDef,
+    CompoundHullDef, CompoundMeshDef, CompoundSphereDef,
 };
 use crate::geometry::{default_surface_material, Capsule, Sphere};
 use crate::height_field::{convert_bytes_to_height_field, create_height_field, HeightFieldDef};
@@ -142,7 +142,7 @@ fn serialized_compound() -> Vec<u8> {
         }],
     })
     .expect("compound");
-    let bytes = convert_compound_to_bytes(&compound);
+    let bytes = compound.to_bytes();
     destroy_compound(compound);
     destroy_mesh(md);
     bytes
@@ -152,17 +152,16 @@ fn serialized_compound() -> Vec<u8> {
 fn compound_blob_section_offsets_validated() {
     let bytes = serialized_compound();
 
-    // nodeOffset (12), proxyOffset (16), then material/capsule/hull/mesh/sphere offsets in
-    // the trailing header block that starts at 24 + DYNAMIC_TREE_SIZE (112) = 136.
-    assert_offsets_validated(&bytes, &[12, 16, 136, 144, 152, 164, 176], |b| {
-        convert_bytes_to_compound(b).is_some()
+    // nodeOffset (40), then the material/capsule/hull/mesh/sphere offsets (48, 56, 64, 76, 88).
+    assert_offsets_validated(&bytes, &[40, 48, 56, 64, 76, 88], |b| {
+        validate_compound(b).is_some()
     });
 
     // Negative counts must be rejected before they become huge `with_capacity` requests.
-    // Tree nodeCapacity (24 + 36) and proxyCapacity (24 + 48), then the trailing counts.
-    for offset in [60usize, 72, 140, 148, 156, 168, 180] {
+    // nodeCount (44), then the material/capsule/hull/mesh/sphere counts.
+    for offset in [44usize, 52, 60, 68, 80, 92] {
         assert!(
-            convert_bytes_to_compound(&with_i32(&bytes, offset, -1)).is_none(),
+            validate_compound(&with_i32(&bytes, offset, -1)).is_none(),
             "negative count at header byte {offset} was accepted"
         );
     }
@@ -172,17 +171,17 @@ fn read_i32_at(bytes: &[u8], offset: usize) -> i32 {
     i32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
 }
 
-/// Start of the nested hull blob: hullOffset (header byte 152) locates the hull instance
+/// Start of the nested hull blob: hullOffset (header byte 64) locates the hull instance
 /// array, and each instance stores its shared blob's offset at instance byte 28.
 fn nested_hull_start(bytes: &[u8]) -> usize {
-    let instances = read_i32_at(bytes, 152) as usize;
+    let instances = read_i32_at(bytes, 64) as usize;
     read_i32_at(bytes, instances + 28) as usize
 }
 
-/// Start of the nested mesh blob: meshOffset (header byte 164) locates the mesh instance
+/// Start of the nested mesh blob: meshOffset (header byte 76) locates the mesh instance
 /// array, and each instance stores its shared blob's offset at instance byte 40.
 fn nested_mesh_start(bytes: &[u8]) -> usize {
-    let instances = read_i32_at(bytes, 164) as usize;
+    let instances = read_i32_at(bytes, 76) as usize;
     read_i32_at(bytes, instances + 40) as usize
 }
 
@@ -193,13 +192,13 @@ fn nested_mesh_start(bytes: &[u8]) -> usize {
 fn compound_nested_hull_blob_validated() {
     let bytes = serialized_compound();
     let base = nested_hull_start(&bytes);
-    assert!(convert_bytes_to_compound(&bytes).is_some());
+    assert!(validate_compound(&bytes).is_some());
 
     // vertex, point, edge, plane, face, soaVertex, soaNormal section offsets.
     for offset in [104usize, 108, 116, 124, 128, 132, 136] {
         for poison in [-16, i32::MAX] {
             assert!(
-                convert_bytes_to_compound(&with_i32(&bytes, base + offset, poison)).is_none(),
+                validate_compound(&with_i32(&bytes, base + offset, poison)).is_none(),
                 "nested hull offset at blob byte {offset} accepted poison {poison}"
             );
         }
@@ -207,7 +206,7 @@ fn compound_nested_hull_blob_validated() {
     // vertex, edge, face counts.
     for offset in [100usize, 112, 120] {
         assert!(
-            convert_bytes_to_compound(&with_i32(&bytes, base + offset, -1)).is_none(),
+            validate_compound(&with_i32(&bytes, base + offset, -1)).is_none(),
             "nested hull negative count at blob byte {offset} was accepted"
         );
     }
@@ -218,13 +217,13 @@ fn compound_nested_hull_blob_validated() {
 fn compound_nested_mesh_blob_validated() {
     let bytes = serialized_compound();
     let base = nested_mesh_start(&bytes);
-    assert!(convert_bytes_to_compound(&bytes).is_some());
+    assert!(validate_compound(&bytes).is_some());
 
     // node, vertex, triangle, material, flags section offsets.
     for offset in [56usize, 64, 72, 80, 88] {
         for poison in [-16, i32::MAX] {
             assert!(
-                convert_bytes_to_compound(&with_i32(&bytes, base + offset, poison)).is_none(),
+                validate_compound(&with_i32(&bytes, base + offset, poison)).is_none(),
                 "nested mesh offset at blob byte {offset} accepted poison {poison}"
             );
         }
@@ -232,7 +231,7 @@ fn compound_nested_mesh_blob_validated() {
     // node, vertex, triangle, material counts.
     for offset in [60usize, 68, 76, 84] {
         assert!(
-            convert_bytes_to_compound(&with_i32(&bytes, base + offset, -1)).is_none(),
+            validate_compound(&with_i32(&bytes, base + offset, -1)).is_none(),
             "nested mesh negative count at blob byte {offset} was accepted"
         );
     }
@@ -327,18 +326,18 @@ fn snapshot_fat_aabb_count_mismatch_rejected() {
 #[test]
 fn compound_mesh_material_map_validated() {
     let bytes = serialized_compound();
-    assert!(convert_bytes_to_compound(&bytes).is_some());
-    let instances = read_i32_at(&bytes, 164) as usize;
+    assert!(validate_compound(&bytes).is_some());
+    let instances = read_i32_at(&bytes, 76) as usize;
 
     for poison in [-16, i32::MAX] {
         assert!(
-            convert_bytes_to_compound(&with_i32(&bytes, instances + 44, poison)).is_none(),
+            validate_compound(&with_i32(&bytes, instances + 44, poison)).is_none(),
             "mesh material offset accepted poison {poison}"
         );
     }
     for poison in [-1, i32::MAX] {
         assert!(
-            convert_bytes_to_compound(&with_i32(&bytes, instances + 48, poison)).is_none(),
+            validate_compound(&with_i32(&bytes, instances + 48, poison)).is_none(),
             "mesh material count accepted poison {poison}"
         );
     }
@@ -358,20 +357,20 @@ fn with_u16(bytes: &[u8], offset: usize, value: u16) -> Vec<u8> {
 #[test]
 fn compound_mesh_material_run_inside_map_section() {
     let bytes = serialized_compound();
-    assert!(convert_bytes_to_compound(&bytes).is_some());
-    let instances = read_i32_at(&bytes, 164) as usize;
+    assert!(validate_compound(&bytes).is_some());
+    let instances = read_i32_at(&bytes, 76) as usize;
     let mesh_blob = nested_mesh_start(&bytes);
 
     for offset in [instances as i32, mesh_blob as i32] {
         assert!(
-            convert_bytes_to_compound(&with_i32(&bytes, instances + 44, offset)).is_none(),
+            validate_compound(&with_i32(&bytes, instances + 44, offset)).is_none(),
             "mesh material run at blob byte {offset} outside the map section was accepted"
         );
     }
 
     // The map section holds alignUp8( 1 * 2 ) = 8 bytes; five entries run into the mesh blob.
     assert!(
-        convert_bytes_to_compound(&with_i32(&bytes, instances + 48, 5)).is_none(),
+        validate_compound(&with_i32(&bytes, instances + 48, 5)).is_none(),
         "mesh material run overrunning the map section was accepted"
     );
 }
@@ -382,14 +381,14 @@ fn compound_mesh_material_run_inside_map_section() {
 #[test]
 fn compound_material_indices_validated() {
     let bytes = serialized_compound();
-    assert!(convert_bytes_to_compound(&bytes).is_some());
+    assert!(validate_compound(&bytes).is_some());
     // The compound has one shared material and the mesh child one map entry.
-    assert_eq!(read_i32_at(&bytes, 140), 1);
+    assert_eq!(read_i32_at(&bytes, 52), 1);
 
     // Mesh instance with fewer map entries than its mesh has materials
-    let instances = read_i32_at(&bytes, 164) as usize;
+    let instances = read_i32_at(&bytes, 76) as usize;
     assert!(
-        convert_bytes_to_compound(&with_i32(&bytes, instances + 48, 0)).is_none(),
+        validate_compound(&with_i32(&bytes, instances + 48, 0)).is_none(),
         "mesh material count below the mesh material count was accepted"
     );
 
@@ -397,20 +396,180 @@ fn compound_material_indices_validated() {
     let map = read_i32_at(&bytes, instances + 44) as usize;
     for value in [1u16, u16::MAX] {
         assert!(
-            convert_bytes_to_compound(&with_u16(&bytes, map, value)).is_none(),
+            validate_compound(&with_u16(&bytes, map, value)).is_none(),
             "mesh material map entry {value} was accepted"
         );
     }
 
-    // Convex children: capsule (header 144, byte 28), hull instance (header 152, byte 32),
-    // sphere (header 176, byte 16).
-    for (header, field) in [(144usize, 28usize), (152, 32), (176, 16)] {
+    // Convex children: capsule (header 56, byte 28), hull instance (header 64, byte 32),
+    // sphere (header 88, byte 16).
+    for (header, field) in [(56usize, 28usize), (64, 32), (88, 16)] {
         let at = read_i32_at(&bytes, header) as usize + field;
         for value in [1u16, u16::MAX] {
             assert!(
-                convert_bytes_to_compound(&with_u16(&bytes, at, value)).is_none(),
+                validate_compound(&with_u16(&bytes, at, value)).is_none(),
                 "convex child material index {value} (header byte {header}) was accepted"
             );
         }
     }
+}
+
+/// The tree nodes are used as slice indexes during queries (an internal node's sibling pair, a
+/// leaf's child index), so a validated compound must not carry an out of range or backward
+/// pointing node. C trusts the node contents; see the divergence note in `validate_compound`.
+#[test]
+fn compound_tree_nodes_validated() {
+    use crate::dynamic_tree::{LEAF_NODE, TREE_NODE_SIZE};
+
+    let bytes = serialized_compound();
+    assert!(validate_compound(&bytes).is_some());
+    let node_offset = read_i32_at(&bytes, 40) as usize;
+    let node_count = read_i32_at(&bytes, 44) as usize;
+    // b3TreeNode: the 24 byte AABB, then flagIndex, then the height / shapeIndex union.
+    let flag = |i: usize| node_offset + i * TREE_NODE_SIZE + 24;
+    let shape_index = |i: usize| node_offset + i * TREE_NODE_SIZE + 28;
+
+    // The root of this four child compound is internal.
+    let root_flag = read_i32_at(&bytes, flag(0)) as u32;
+    assert_eq!(root_flag & LEAF_NODE, 0);
+
+    // Root pointing at itself (a cycle) or past the node array
+    for pair in [0u32, node_count as u32, node_count as u32 - 1] {
+        assert!(
+            validate_compound(&with_i32(&bytes, flag(0), pair as i32)).is_none(),
+            "root sibling pair {pair} was accepted"
+        );
+    }
+
+    // A leaf naming a child the compound does not have
+    let leaf = (0..node_count)
+        .find(|&i| {
+            let f = read_i32_at(&bytes, flag(i)) as u32;
+            f & LEAF_NODE != 0 && f != crate::dynamic_tree::EMPTY_NODE
+        })
+        .expect("leaf");
+    for child in [-1, 4, i32::MAX] {
+        assert!(
+            validate_compound(&with_i32(&bytes, shape_index(leaf), child)).is_none(),
+            "leaf child index {child} was accepted"
+        );
+    }
+}
+
+/// An empty node also carries the leaf bit, and the traversals treat it as a leaf when its AABB
+/// overlaps, so a node relabeled empty must still name an existing child. A corrupt blob that
+/// keeps the leaf's bounds and points it past the children is rejected.
+#[test]
+fn compound_empty_node_child_validated() {
+    use crate::dynamic_tree::{EMPTY_NODE, LEAF_NODE, TREE_NODE_SIZE};
+
+    let bytes = serialized_compound();
+    let node_offset = read_i32_at(&bytes, 40) as usize;
+    let node_count = read_i32_at(&bytes, 44) as usize;
+    let flag = |i: usize| node_offset + i * TREE_NODE_SIZE + 24;
+    let shape_index = |i: usize| node_offset + i * TREE_NODE_SIZE + 28;
+
+    let leaf = (0..node_count)
+        .find(|&i| {
+            let f = read_i32_at(&bytes, flag(i)) as u32;
+            f & LEAF_NODE != 0 && f != EMPTY_NODE
+        })
+        .expect("leaf");
+    let corrupt = with_i32(
+        &with_i32(&bytes, flag(leaf), EMPTY_NODE as i32),
+        shape_index(leaf),
+        1000,
+    );
+    assert!(
+        validate_compound(&corrupt).is_none(),
+        "empty node naming child 1000 was accepted"
+    );
+
+    // An empty node naming an existing child is harmless and still validates.
+    let harmless = with_i32(&bytes, flag(leaf), EMPTY_NODE as i32);
+    assert!(validate_compound(&harmless).is_some());
+}
+
+/// Rewrite a compound's node array into a chain: each pair holds a leaf and the internal node
+/// for the next pair, `depth` internal levels below the root. Unused nodes become empty.
+fn chain_tree_blob(bytes: &[u8], depth: usize) -> Vec<u8> {
+    use crate::dynamic_tree::{EMPTY_NODE, LEAF_NODE, TREE_NODE_SIZE};
+
+    let node_offset = read_i32_at(bytes, 40) as usize;
+    let node_count = read_i32_at(bytes, 44) as usize;
+    assert!(2 * depth + 2 <= node_count);
+    let root_aabb = bytes[node_offset..node_offset + 24].to_vec();
+    let mut out = bytes.to_vec();
+    let mut set = |i: usize, flag: u32, shape: i32| {
+        let o = node_offset + i * TREE_NODE_SIZE;
+        out[o..o + 24].copy_from_slice(&root_aabb);
+        out[o + 24..o + 28].copy_from_slice(&flag.to_le_bytes());
+        out[o + 28..o + 32].copy_from_slice(&shape.to_le_bytes());
+    };
+    // Root at depth 0 points at pair 2.
+    set(0, 2, 1);
+    set(1, EMPTY_NODE, 0);
+    for k in 1..=depth {
+        let pair = 2 * k;
+        set(pair, LEAF_NODE | k as u32, 0);
+        if k < depth {
+            set(pair + 1, (pair + 2) as u32, 1);
+        } else {
+            set(pair + 1, LEAF_NODE, 0);
+        }
+    }
+    for i in 2 * depth + 2..node_count {
+        set(i, EMPTY_NODE, 0);
+    }
+    out
+}
+
+/// The traversal stacks hold TREE_STACK_SIZE entries and grow by about one per tree level, so a
+/// corrupt chain deeper than the stack would trip its debug assert. Validated blobs are bounded;
+/// a shallower chain still validates and can be queried.
+#[test]
+fn compound_tree_depth_validated() {
+    use crate::compound::{query_compound, ray_cast_compound};
+    use crate::geometry::RayCastInput;
+
+    let spheres: Vec<CompoundSphereDef> = (0..400)
+        .map(|i| CompoundSphereDef {
+            sphere: Sphere {
+                center: v(i as f32, 0.0, 0.0),
+                radius: 0.25,
+            },
+            material: default_surface_material(),
+        })
+        .collect();
+    let compound = create_compound(&CompoundDef {
+        spheres: &spheres,
+        ..Default::default()
+    })
+    .expect("compound");
+    let bytes = compound.to_bytes();
+    assert!(validate_compound(&bytes).is_some());
+
+    assert!(
+        validate_compound(&chain_tree_blob(&bytes, 300)).is_none(),
+        "300 level chain was accepted"
+    );
+
+    let shallow = validate_compound(&chain_tree_blob(&bytes, 100)).expect("100 level chain");
+    let aabb =
+        crate::compound::compute_compound_aabb(&shallow, crate::math_functions::TRANSFORM_IDENTITY);
+    let mut visits = 0;
+    query_compound(&shallow, aabb, |_, _| {
+        visits += 1;
+        true
+    });
+    assert_eq!(visits, 101);
+    let output = ray_cast_compound(
+        &shallow,
+        &RayCastInput {
+            origin: v(-1.0, 0.0, 0.0),
+            translation: v(2.0, 0.0, 0.0),
+            max_fraction: 1.0,
+        },
+    );
+    assert!(output.hit);
 }

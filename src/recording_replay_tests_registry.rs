@@ -137,3 +137,48 @@ fn registry_truncated_entry_fails_create() {
     let corrupt = with_registry_count(&data, count + 1);
     assert!(RecPlayer::create(&corrupt, 1).is_none());
 }
+
+/// A registry entry with no bytes fails player creation for every kind, not just compounds.
+/// ("registry entry %u has an invalid byte count", upstream 5d83df8)
+#[test]
+fn zero_byte_registry_entry_fails_create() {
+    use crate::recording::RecPlayer;
+
+    let rec = record_all_geometry_ops();
+    let data = rec.data().to_vec();
+    let (kind, start) = registry_slot_spans(&data)[3];
+    assert_eq!(kind, GeometryKind::Hull);
+    let byte_count = read_i32_at(&data, start - 4) as usize;
+    assert!(byte_count > 0);
+
+    // Drop the hull blob and record a zero length, keeping the registry block consistent.
+    let mut corrupt = data[..start].to_vec();
+    corrupt.extend_from_slice(&data[start + byte_count..]);
+    corrupt[start - 4..start].copy_from_slice(&0i32.to_le_bytes());
+    let hdr = RecHeader::from_bytes(&data).expect("header");
+    let registry_byte_count = hdr.registry_byte_count - byte_count as u64;
+    corrupt[40..48].copy_from_slice(&registry_byte_count.to_le_bytes());
+
+    assert!(RecPlayer::create(&data, 1).is_some());
+    assert!(RecPlayer::create(&corrupt, 1).is_none());
+}
+
+/// Compound entries are validated when the registry loads (b3ValidateCompound), so a compound
+/// whose tree node array runs off the blob fails player creation rather than the shape op.
+/// ("registry entry %u is not a valid compound", upstream 5d83df8)
+#[test]
+fn invalid_compound_entry_fails_create() {
+    use crate::recording::RecPlayer;
+
+    let rec = record_all_geometry_ops();
+    let data = rec.data().to_vec();
+    let (kind, start) = registry_slot_spans(&data)[1];
+    assert_eq!(kind, GeometryKind::Compound);
+
+    // b3CompoundData::nodeCount is header byte 44.
+    for node_count in [1, i32::MAX] {
+        let corrupt = poison_i32(&data, start + 44, node_count);
+        assert!(RecPlayer::create(&corrupt, 1).is_none());
+    }
+    assert!(RecPlayer::create(&data, 1).is_some());
+}

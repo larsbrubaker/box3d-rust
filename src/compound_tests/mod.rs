@@ -5,6 +5,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+mod c_parity;
 mod cast_overlap_transformed;
 mod create_material;
 mod mesh_materials;

@@ -19,6 +19,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::body::get_body_transform;
+use crate::compound::get_compound_tree_view;
 use crate::constants::{CHILD_MASK, SHAPE_MASK, SHAPE_POWER};
 use crate::core::NULL_INDEX;
 use crate::dynamic_tree::{
@@ -194,7 +195,8 @@ fn emit_compound_pairs(context: &mut PairContext<'_>, compound_shape_id: i32, ot
 
     if let ShapeGeometry::Compound(compound) = &compound_shape.geometry {
         let pair_keys = &mut *context.pair_keys;
-        compound.tree.query(
+        let view = get_compound_tree_view(compound);
+        view.query(
             local_aabb,
             DEFAULT_MASK_BITS,
             false,

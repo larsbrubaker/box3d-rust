@@ -5,7 +5,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::compound::COMPOUND_DATA_SIZE;
+use crate::compound::validate_compound;
 use crate::recording::registry::{GeometryKind, RegistrySlot};
 use crate::recording::session::RecTag;
 
@@ -59,27 +59,35 @@ pub(crate) fn load_slots(
         let kind_byte = data[cursor];
         let byte_count = u32::from_le_bytes(data[cursor + 1..cursor + 5].try_into().unwrap());
         cursor += 5;
-        let error = if cursor as u64 + byte_count as u64 > end as u64 {
-            Some("bytes out of bounds")
-        } else if kind_byte == GeometryKind::Compound as u8
-            && (byte_count as usize) < COMPOUND_DATA_SIZE
-        {
-            Some("too small for a compound")
+        let mut error = None;
+        if byte_count == 0 || byte_count > i32::MAX as u32 {
+            error = Some("has an invalid byte count");
+        } else if byte_count as usize > end - cursor {
+            error = Some("bytes out of bounds");
         } else {
-            None
-        };
+            let bytes = data[cursor..cursor + byte_count as usize].to_vec();
+            let mut compound = None;
+
+            // Validate the compound.
+            // todo validate other types?
+            if kind_byte == GeometryKind::Compound as u8 {
+                compound = validate_compound(&bytes);
+                if compound.is_none() {
+                    error = Some("is not a valid compound");
+                }
+            }
+
+            slots.push(RegistrySlot {
+                kind: kind_byte,
+                bytes,
+                compound,
+            });
+        }
         if let Some(error) = error {
             eprintln!("b3ReplayFile: registry entry {i} {error}");
             return None;
         }
-        let byte_count = byte_count as usize;
-        let bytes = data[cursor..cursor + byte_count].to_vec();
-        cursor += byte_count;
-        slots.push(RegistrySlot {
-            kind: kind_byte,
-            bytes,
-            live_compound: None,
-        });
+        cursor += byte_count as usize;
     }
 
     Some((slots, load_tags(data, cursor, end)))

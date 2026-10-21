@@ -388,10 +388,6 @@ impl RecPlayer {
             [self.frame0_image_start..self.frame0_image_start + self.frame0_image_size]
             .to_vec();
         let mut slots = self.reader_slots.clone();
-        // Clear live compounds so deserialize rebuilds.
-        for s in &mut slots {
-            s.live_compound = None;
-        }
         if !deserialize_into_shell(&snap, &mut self.world, &mut slots) {
             self.reader_ok = false;
             return;

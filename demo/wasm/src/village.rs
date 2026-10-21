@@ -210,8 +210,8 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
         compound.mesh_count as f32,
         compound.sphere_count as f32,
         compound.byte_count as f32,
-        compound.tree.byte_count() as f32,
-        compound.tree.height() as f32,
+        (compound.node_count as usize * box3d_rust::dynamic_tree::TREE_NODE_SIZE) as f32,
+        compound.tree_height as f32,
     ];
 
     let mut body_def = default_body_def();

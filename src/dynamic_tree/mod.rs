@@ -18,6 +18,7 @@
 // - moved.rs     — moved-flag propagation, gathering, clearing, and refit
 // - validate.rs  — structure validation and tree metrics
 // - serialize.rs — b3DynamicTree_Save / b3DynamicTree_Load
+// - view.rs      — b3TreeView, the read-only node/proxy view the queries and casts run on
 //
 // The C `#else` SAH build heuristic (B3_TREE_HEURISTIC == 1) is compiled out upstream and
 // is not ported; only the median-split heuristic is live. The C allocates `leafBoxes` and
@@ -36,13 +37,12 @@ mod query;
 mod rebuild;
 mod serialize;
 mod validate;
+mod view;
 
 pub(crate) use aabbv::{overlap_aabb_v, overlap_v, union_pair_v, union_v};
-pub(crate) use serialize::{
-    read_tree_header, read_tree_node, read_tree_proxy, write_tree_header, write_tree_node,
-    write_tree_proxy,
-};
+pub(crate) use serialize::{read_tree_node, write_tree_node};
 pub use serialize::{DYNAMIC_TREE_SIZE, TREE_NODE_SIZE, TREE_PROXY_SIZE};
+pub use view::{make_tree_view, TreeView};
 
 use crate::core::NULL_INDEX;
 use crate::math_functions::{Aabb, Vec3, VEC3_ZERO};
@@ -232,8 +232,7 @@ pub struct DynamicTree {
     /// `nodes.len()` is the C `nodeCapacity`.
     pub(crate) nodes: Vec<TreeNode>,
 
-    /// Parent index per node. The free list is interweaved. Empty (C null) for a baked
-    /// compound tree, which is never inserted into.
+    /// Parent index per node. The free list is interweaved. Empty (C null) once destroyed.
     pub(crate) parents: Vec<i32>,
 
     /// Proxy data split from node array as cold data. `proxies.len()` is the C
