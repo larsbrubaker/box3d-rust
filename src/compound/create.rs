@@ -265,8 +265,8 @@ pub fn create_compound(def: &CompoundDef<'_>) -> Option<CompoundData> {
             mesh_material_map_offset as u32 + material_start * core::mem::size_of::<u16>() as u32;
     }
 
-    // Immutable tree. C copies the tree struct into the blob and then fixes it up
-    // ("todo clean up this mess"): only the live node range and the proxies travel, the
+    // Immutable tree. C copies only the version, node end, proxy count, and DFS order flag
+    // into the zeroed blob header: only the live node range and the proxies travel, the
     // free lists are cleared, and the parent array, the spare array, and the rebuild
     // scratch are dropped (a baked tree is never inserted into).
     debug_assert!(tree.pair_free_list == NULL_INDEX);

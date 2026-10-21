@@ -1,4 +1,4 @@
-//! Recording player and validate-replay. Port of recording_replay.c player API.
+//! Recording player and validate-replay. Port of replay.c (formerly recording_replay.c) player API.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -9,12 +9,12 @@ use crate::id::BodyId;
 use crate::math_functions::{Aabb, Vec3};
 use crate::recording::dispatch::{dispatch_one, RecReader};
 use crate::recording::ops::RecOp;
-use crate::recording::registry::{GeometryKind, RegistrySlot};
+use crate::recording::registry::RegistrySlot;
+use crate::recording::registry_load::load_slots;
 use crate::recording::session::{RecHeader, RecTag, REC_MAGIC, REC_VERSION_MAJOR};
 use crate::recording::snapshot::deserialize_into_shell;
 use crate::types::default_world_def;
 use crate::world::{destroy_world, destroy_world_in_place, World};
-use std::collections::HashMap;
 
 const KEYFRAME_INTERVAL_DEFAULT: i32 = 16;
 
@@ -108,8 +108,15 @@ impl RecPlayer {
         let snap_start = 48usize;
         let snap_size = hdr.snapshot_size as usize;
 
-        let (mut slots, tags) =
-            load_registry_block(&copy, hdr.registry_offset as usize, copy.len());
+        // Divergence from C: on a registry or seed snapshot failure b3CreatePlayer returns NULL
+        // without restoring the length scale it just set, leaking the recording's units into the
+        // global state. The port restores the previous scale on every failure path.
+        let Some((mut slots, tags)) =
+            load_slots(&copy, hdr.registry_offset, hdr.registry_byte_count)
+        else {
+            set_length_units_per_meter(previous_length_scale);
+            return None;
+        };
 
         let mut world = World::new(&default_world_def());
         if !deserialize_into_shell(
@@ -544,8 +551,10 @@ impl RecPlayer {
         self.frame_queries.get(index as usize)
     }
 
+    /// Look up a query tag by key. C's tag map replaces on insert, so when a corrupt table holds a
+    /// key more than once the last loaded tag wins.
     pub fn resolve_tag(&self, key: u64) -> Option<&crate::recording::session::RecTag> {
-        self.reader_tags.iter().find(|t| t.key == key)
+        self.reader_tags.iter().rev().find(|t| t.key == key)
     }
 }
 
@@ -580,85 +589,4 @@ pub fn validate_replay(data: &[u8], worker_count: i32) -> bool {
         }
     }
     player.reader_ok && !player.reader_diverged
-}
-
-fn load_registry_block(data: &[u8], offset: usize, end: usize) -> (Vec<RegistrySlot>, Vec<RecTag>) {
-    if offset == 0 || offset + 4 > end {
-        return (Vec::new(), Vec::new());
-    }
-    let mut cursor = offset;
-    let entry_count = u32::from_le_bytes(data[cursor..cursor + 4].try_into().unwrap()) as usize;
-    cursor += 4;
-    let mut slots = Vec::with_capacity(entry_count);
-    for _ in 0..entry_count {
-        if cursor + 5 > end {
-            break;
-        }
-        let kind = match data[cursor] {
-            0 => GeometryKind::Hull,
-            1 => GeometryKind::Mesh,
-            2 => GeometryKind::HeightField,
-            _ => GeometryKind::Compound,
-        };
-        cursor += 1;
-        let byte_count = u32::from_le_bytes(data[cursor..cursor + 4].try_into().unwrap()) as usize;
-        cursor += 4;
-        if cursor + byte_count > end {
-            break;
-        }
-        let bytes = data[cursor..cursor + byte_count].to_vec();
-        cursor += byte_count;
-        slots.push(RegistrySlot {
-            kind,
-            bytes,
-            live_compound: None,
-        });
-    }
-
-    let mut tags = Vec::new();
-    if cursor + 4 <= end {
-        let tag_count = u32::from_le_bytes(data[cursor..cursor + 4].try_into().unwrap()) as usize;
-        cursor += 4;
-        for _ in 0..tag_count {
-            if cursor + 16 > end {
-                break;
-            }
-            let key = u64::from_le_bytes(data[cursor..cursor + 8].try_into().unwrap());
-            cursor += 8;
-            let id = u64::from_le_bytes(data[cursor..cursor + 8].try_into().unwrap());
-            cursor += 8;
-            if cursor + 2 > end {
-                break;
-            }
-            let len = u16::from_le_bytes(data[cursor..cursor + 2].try_into().unwrap());
-            cursor += 2;
-            let query_name = if len == 0xFFFF {
-                String::new()
-            } else {
-                let full = len as usize;
-                if cursor + full > end {
-                    break;
-                }
-                // C clamps the stored name to B3_MAX_QUERY_NAME_LENGTH but always
-                // advances the cursor by the full recorded length.
-                let n = full.min(crate::recording::session::MAX_QUERY_NAME_LENGTH);
-                let s = String::from_utf8_lossy(&data[cursor..cursor + n]).into_owned();
-                cursor += full;
-                s
-            };
-            tags.push(RecTag {
-                key,
-                id,
-                query_name,
-            });
-        }
-    }
-    let _ = cursor;
-    let _map: HashMap<u64, u32> = tags
-        .iter()
-        .enumerate()
-        .map(|(i, t)| (t.key, i as u32))
-        .collect();
-    let _ = _map;
-    (slots, tags)
 }

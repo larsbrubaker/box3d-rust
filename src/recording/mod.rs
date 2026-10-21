@@ -1,6 +1,6 @@
 //! Recording, replay, and world snapshots.
 //!
-//! Port of recording.c / recording.h / recording_replay.c / world_snapshot.c.
+//! Port of recording.c / recording.h / replay.c (formerly recording_replay.c) / world_snapshot.c.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -14,6 +14,7 @@ pub mod player;
 pub(crate) mod query_capture;
 pub mod query_replay;
 mod registry;
+pub(crate) mod registry_load;
 pub(crate) mod session;
 pub mod snapshot;
 mod write_ops;

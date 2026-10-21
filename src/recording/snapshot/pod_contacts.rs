@@ -24,7 +24,7 @@ use crate::manifold::{Manifold, ManifoldPoint, SatCache};
 use crate::math_functions::Aabb;
 use crate::mesh::convert_bytes_to_mesh;
 use crate::recording::buffer::{RecBuffer, SnapReader};
-use crate::recording::registry::{GeometryRegistry, RegistrySlot};
+use crate::recording::registry::{get_slot, GeometryKind, GeometryRegistry, RegistrySlot};
 use crate::recording::snapshot::joints::{des_joint_sim, ser_joint_sim};
 use crate::shape::{Shape, ShapeGeometry};
 use crate::world::World;
@@ -268,11 +268,12 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
             x if x == ShapeType::Sphere as i32 => ShapeGeometry::Sphere(r.sphere()),
             x if x == ShapeType::Capsule as i32 => ShapeGeometry::Capsule(r.capsule()),
             x if x == ShapeType::Hull as i32 => {
-                let gid = r.u32() as usize;
-                if gid >= slots.len() {
-                    r.ok = false;
+                let gid = r.u32();
+                if !r.ok {
                     ShapeGeometry::default()
-                } else if let Some(hull) = convert_bytes_to_hull(&slots[gid].bytes) {
+                } else if let Some(hull) = get_slot(slots, gid, GeometryKind::Hull)
+                    .and_then(|slot| convert_bytes_to_hull(&slot.bytes))
+                {
                     ShapeGeometry::Hull(world.hull_database.add(&hull))
                 } else {
                     r.ok = false;
@@ -280,12 +281,13 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
                 }
             }
             x if x == ShapeType::Mesh as i32 => {
-                let gid = r.u32() as usize;
+                let gid = r.u32();
                 let scale = r.vec3();
-                if gid >= slots.len() {
-                    r.ok = false;
+                if !r.ok {
                     ShapeGeometry::default()
-                } else if let Some(mesh) = convert_bytes_to_mesh(&slots[gid].bytes) {
+                } else if let Some(mesh) = get_slot(slots, gid, GeometryKind::Mesh)
+                    .and_then(|slot| convert_bytes_to_mesh(&slot.bytes))
+                {
                     ShapeGeometry::Mesh { data: mesh, scale }
                 } else {
                     r.ok = false;
@@ -293,11 +295,12 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
                 }
             }
             x if x == ShapeType::Height as i32 => {
-                let gid = r.u32() as usize;
-                if gid >= slots.len() {
-                    r.ok = false;
+                let gid = r.u32();
+                if !r.ok {
                     ShapeGeometry::default()
-                } else if let Some(hf) = convert_bytes_to_height_field(&slots[gid].bytes) {
+                } else if let Some(hf) = get_slot(slots, gid, GeometryKind::HeightField)
+                    .and_then(|slot| convert_bytes_to_height_field(&slot.bytes))
+                {
                     ShapeGeometry::HeightField(hf)
                 } else {
                     r.ok = false;
@@ -305,11 +308,12 @@ pub fn des_shapes(r: &mut SnapReader<'_>, world: &mut World, slots: &mut [Regist
                 }
             }
             x if x == ShapeType::Compound as i32 => {
-                let gid = r.u32() as usize;
-                if gid >= slots.len() {
-                    r.ok = false;
+                let gid = r.u32();
+                if !r.ok {
                     ShapeGeometry::default()
-                } else if let Some(c) = slots[gid].ensure_compound().cloned() {
+                } else if let Some(c) = get_slot(slots, gid, GeometryKind::Compound)
+                    .and_then(|slot| slot.get_live_compound().cloned())
+                {
                     ShapeGeometry::Compound(c)
                 } else {
                     r.ok = false;

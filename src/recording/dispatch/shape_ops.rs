@@ -11,7 +11,7 @@ use crate::hull::convert_bytes_to_hull;
 use crate::mesh::convert_bytes_to_mesh;
 use crate::recording::dispatch::RecReader;
 use crate::recording::ops::RecOp;
-use crate::recording::registry::GeometryKind;
+use crate::recording::registry::{get_slot, GeometryKind};
 use crate::shape::{
     create_baked_compound_shape, create_capsule_shape, create_height_field_shape,
     create_hull_shape, create_mesh_shape, create_sphere_shape,
@@ -20,42 +20,35 @@ use crate::shape::{
 #[allow(unused_imports)]
 use crate::recording::query_replay;
 
+/// The geometry name used in C's replay messages.
 fn kind_name(kind: GeometryKind) -> &'static str {
     match kind {
         GeometryKind::Hull => "hull",
         GeometryKind::Mesh => "mesh",
-        GeometryKind::HeightField => "height field",
+        GeometryKind::HeightField => "heightfield",
         GeometryKind::Compound => "compound",
     }
 }
 
-/// Range- and kind-check a geometry registry slot, or fail the replay.
-///
-/// Divergence from C: `b3ReplayFile` casts the slot bytes straight to a `b3HullData*` /
-/// `b3MeshData*` / `b3HeightFieldData*` and trusts the recording, so a corrupt or
-/// kind-mismatched geometryId makes it read garbage. The Rust port validates instead and
-/// fails the replay with a "b3ReplayFile: ..." message, matching the graceful path the
-/// out-of-range check already used. Well-formed recordings always resolve, so the happy
-/// path is unchanged.
+/// Range- and kind-check a geometry registry slot via [`get_slot`], or fail the replay
+/// (the `b3RecGetSlot` + "is invalid" pattern every geometry dispatch arm uses).
 fn check_slot(rdr: &mut RecReader<'_>, kind: GeometryKind, geometry_id: u32) -> bool {
-    let name = kind_name(kind);
-    if geometry_id as usize >= rdr.slots.len() {
-        eprintln!("b3ReplayFile: {name} geometryId {geometry_id} out of range");
-        rdr.ok = false;
-        return false;
-    }
-    let actual = rdr.slots[geometry_id as usize].kind;
-    if actual != kind {
-        let actual = kind_name(actual);
-        eprintln!("b3ReplayFile: {name} geometryId {geometry_id} is a {actual} slot");
+    if get_slot(&mut rdr.slots, geometry_id, kind).is_none() {
+        let name = kind_name(kind);
+        eprintln!("b3ReplayFile: {name} geometryId {geometry_id} is invalid");
         rdr.ok = false;
         return false;
     }
     true
 }
 
-/// Resolve a geometry registry slot for a shape op, or fail the replay. See
-/// [`check_slot`] for the divergence from C.
+/// Resolve a geometry registry slot for a shape op, or fail the replay.
+///
+/// Divergence from C: after `b3RecGetSlot`, `b3ReplayFile` casts hull and mesh slot bytes
+/// straight to a `b3HullData*` / `b3MeshData*` and trusts the recording, so a corrupt blob
+/// makes it read garbage. The Rust converters validate instead, and a rejected blob fails the
+/// replay with the "geometry %u is corrupt" message C uses for height fields and compounds.
+/// Well-formed recordings always resolve, so the happy path is unchanged.
 fn slot_geometry<T>(
     rdr: &mut RecReader<'_>,
     kind: GeometryKind,
@@ -69,22 +62,23 @@ fn slot_geometry<T>(
         Some(value) => Some(value),
         None => {
             let name = kind_name(kind);
-            eprintln!("b3ReplayFile: {name} geometryId {geometry_id} has a corrupt blob");
+            eprintln!("b3ReplayFile: {name} geometry {geometry_id} is corrupt");
             rdr.ok = false;
             None
         }
     }
 }
 
-/// [`slot_geometry`] for compounds, which convert lazily through the slot's cache.
+/// [`slot_geometry`] for compounds, which convert lazily through the slot's cache
+/// ([`RegistrySlot::get_live_compound`](crate::recording::RegistrySlot::get_live_compound)).
 fn slot_compound(rdr: &mut RecReader<'_>, geometry_id: u32) -> Option<CompoundData> {
     if !check_slot(rdr, GeometryKind::Compound, geometry_id) {
         return None;
     }
-    match rdr.slots[geometry_id as usize].ensure_compound().cloned() {
+    match rdr.slots[geometry_id as usize].get_live_compound().cloned() {
         Some(compound) => Some(compound),
         None => {
-            eprintln!("b3ReplayFile: compound geometryId {geometry_id} has a corrupt blob");
+            eprintln!("b3ReplayFile: compound geometry {geometry_id} is corrupt");
             rdr.ok = false;
             None
         }

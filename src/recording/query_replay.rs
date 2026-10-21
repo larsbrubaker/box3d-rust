@@ -1,4 +1,4 @@
-//! Spatial-query replay helpers. Port of recording_replay.c query dispatch.
+//! Spatial-query replay helpers. Port of replay.c (formerly recording_replay.c) query dispatch.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT

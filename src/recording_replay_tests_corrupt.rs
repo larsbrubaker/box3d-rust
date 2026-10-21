@@ -306,3 +306,91 @@ fn out_of_range_geometry_id_fails_replay() {
         "ops referencing missing registry slots must fail the replay"
     );
 }
+
+/// The seed snapshot resolves its geometry through the same registry. Upstream 3d9db79 routed
+/// b3DesShapes through b3RecGetSlot, so a seeded shape whose registry slot carries the wrong kind
+/// fails the snapshot restore and b3CreatePlayer returns NULL instead of reinterpreting the
+/// bytes. Every shape here exists before recording starts, so each slot is reached only through
+/// the seed snapshot.
+#[test]
+fn kind_mismatched_snapshot_slot_fails_create() {
+    use crate::recording::RecPlayer;
+
+    let mut world = World::new(&default_world_def());
+    let mut static_def = default_body_def();
+    static_def.type_ = BodyType::Static;
+
+    let hull_body = create_body(&mut world, &static_def);
+    let box_hull = make_box_hull(0.5, 0.5, 0.5);
+    create_hull_shape(&mut world, hull_body, &default_shape_def(), &box_hull.base);
+
+    let mesh_body = create_body(&mut world, &static_def);
+    let mesh = crate::mesh::create_grid_mesh(4, 4, 2.0, 1, false).expect("mesh");
+    let one = Vec3 {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+    };
+    crate::shape::create_mesh_shape(&mut world, mesh_body, &default_shape_def(), &mesh, one);
+
+    let hf_body = create_body(&mut world, &static_def);
+    let hf = crate::height_field::create_height_field(&crate::height_field::HeightFieldDef {
+        heights: vec![0.0, 0.1, 0.0, 0.1, 0.2, 0.1, 0.0, 0.1, 0.0],
+        material_indices: vec![0u8; 4],
+        scale: one,
+        count_x: 3,
+        count_z: 3,
+        global_minimum_height: -1.0,
+        global_maximum_height: 1.0,
+        clockwise_winding: false,
+    });
+    crate::shape::create_height_field_shape(&mut world, hf_body, &default_shape_def(), &hf);
+
+    let compound_body = create_body(&mut world, &static_def);
+    let compound = crate::compound::create_compound(&crate::compound::CompoundDef {
+        spheres: &[crate::compound::CompoundSphereDef {
+            sphere: Sphere {
+                center: VEC3_ZERO,
+                radius: 1.0,
+            },
+            material: crate::geometry::default_surface_material(),
+        }],
+        ..Default::default()
+    })
+    .expect("compound");
+    crate::shape::create_baked_compound_shape(
+        &mut world,
+        compound_body,
+        &default_shape_def(),
+        &compound,
+    );
+
+    world_start_recording(&mut world, Recording::new(0));
+    world.step(1.0 / 60.0, 4);
+    let rec = world_stop_recording(&mut world).expect("recording active");
+    let data = rec.data().to_vec();
+    assert!(RecPlayer::create(&data, 1).is_some(), "pristine recording must load");
+
+    let spans = registry_slot_spans(&data);
+    assert_eq!(
+        spans.iter().map(|s| s.0).collect::<Vec<_>>(),
+        vec![
+            GeometryKind::Hull,
+            GeometryKind::Mesh,
+            GeometryKind::HeightField,
+            GeometryKind::Compound,
+        ],
+        "one slot per seeded geometry shape, in shape order"
+    );
+
+    for (slot, (kind, start)) in spans.iter().enumerate() {
+        // The kind byte sits just before the 4-byte blob length.
+        let wrong = if *kind == GeometryKind::Hull { 1u8 } else { 0 };
+        let mut corrupt = data.clone();
+        corrupt[start - 5] = wrong;
+        assert!(
+            RecPlayer::create(&corrupt, 1).is_none(),
+            "seeded slot {slot} was accepted under the wrong geometry kind"
+        );
+    }
+}

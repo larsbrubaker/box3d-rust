@@ -1,5 +1,5 @@
 //! Additional RecBuffer / SnapReader writers and readers for recording wire types.
-//! Port of b3RecW_* / b3RecR_* def and id helpers from recording.c / recording_replay.c.
+//! Port of b3RecW_* / b3RecR_* def and id helpers from recording.c / replay.c.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT

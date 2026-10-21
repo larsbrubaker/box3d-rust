@@ -121,7 +121,7 @@ impl GeometryRegistry {
         self.entries
             .iter()
             .map(|e| RegistrySlot {
-                kind: e.kind,
+                kind: e.kind as u8,
                 bytes: e.bytes.clone(),
                 live_compound: None,
             })
@@ -132,17 +132,36 @@ impl GeometryRegistry {
 /// Resolved geometry slot for deserialization. (b3RegistrySlot)
 #[derive(Debug, Clone)]
 pub struct RegistrySlot {
-    pub kind: GeometryKind,
+    /// The raw kind byte from the registry, as C stores it unchecked. A value outside
+    /// [`GeometryKind`] matches no [`get_slot`] request.
+    pub kind: u8,
     pub bytes: Vec<u8>,
     /// Lazily converted compound (C: slot->live).
     pub live_compound: Option<CompoundData>,
 }
 
 impl RegistrySlot {
-    pub fn ensure_compound(&mut self) -> Option<&CompoundData> {
+    /// Get the recorded compound with the tree fixed up, converting it on first use and caching
+    /// the live object. Returns `None` if the blob is corrupt; nothing is cached in that case.
+    /// (b3RecGetLiveCompound)
+    pub fn get_live_compound(&mut self) -> Option<&CompoundData> {
+        debug_assert!(self.kind == GeometryKind::Compound as u8);
         if self.live_compound.is_none() {
             self.live_compound = convert_bytes_to_compound(&self.bytes);
         }
         self.live_compound.as_ref()
+    }
+}
+
+/// Get a geometry slot with kind validation. Returns `None` if `id` is out of range or the slot
+/// holds a different kind of geometry. (b3RecGetSlot)
+pub fn get_slot(
+    slots: &mut [RegistrySlot],
+    id: u32,
+    kind: GeometryKind,
+) -> Option<&mut RegistrySlot> {
+    match slots.get_mut(id as usize) {
+        Some(slot) if slot.kind == kind as u8 => Some(slot),
+        _ => None,
     }
 }

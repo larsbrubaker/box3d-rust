@@ -13,6 +13,7 @@ time. Ported so far:
 - `16f7f4c` Tree perf (#179)
 - `f8c4fe8` Shape cast support for box movers (#180)
 - `003a3f7` Fix recording crash on compounds (#181)
+- `3d9db79` Various recording fixes (#182)
 
 ### Breaking
 
@@ -138,6 +139,46 @@ time. Ported so far:
   and for a seek across a live compound that mirrors the keyframe-policy call
   upstream added to `AllOps`. The port's player seeks by restart-and-replay
   and captures no keyframes, so that test checks seek and replay only.
+- Replay checks the kind of every geometry registry slot it resolves
+  (upstream `3d9db79`, `b3RecGetSlot`). The seed snapshot path (`des_shapes`,
+  upstream `b3DesShapes`) used to check only the range and reinterpret a
+  slot of the wrong kind, so a relabeled hull, mesh, height field, or
+  compound slot restored the seed; now `RecPlayer::create` returns `None`.
+  The shape op dispatch already checked kinds; its messages now match C
+  ("`<kind> geometryId <id> is invalid`", "`<kind> geometry <id> is
+  corrupt`"). New `recording::registry::get_slot`; `RegistrySlot::
+  ensure_compound` is renamed `get_live_compound` (`b3RecGetLiveCompound`).
+- Loading the geometry registry follows upstream's `b3RecLoadSlots`: a block
+  past the end of the file, a count that cannot fit, a truncated or out of
+  bounds entry, or a compound entry smaller than `b3CompoundData` (new in
+  `3d9db79`) fails `RecPlayer::create` with upstream's message. The port
+  used to stop loading silently and keep going, so a compound entry with a
+  shortened length loaded and the following bytes were parsed as more
+  entries. The registry and tag table are now bounded by the header's
+  `registryByteCount`, as in C. The loader moves to
+  `recording::registry_load` (`load_slots`, `load_tags`). Two deliberate
+  divergences: the bounds are checked in `u64` where C narrows the header
+  offsets with `(int)` casts first, and a failed `RecPlayer::create`
+  restores the previous length scale where C leaves the recording's scale
+  set globally.
+- `RegistrySlot::kind` is now the raw `u8` kind byte, as C stores it. An
+  unknown kind (above 3) matches no `get_slot` request and fails the shape
+  op with "`<kind> geometryId <id> is invalid`"; the port used to treat it as
+  a compound.
+- The query tag table loads like upstream's `b3RecLoadTags`: a count that
+  cannot fit the remaining bytes (18 per tag) loads no tags instead of the
+  ones that fit, names end at the first NUL, and `RecPlayer::resolve_tag`
+  returns the last tag loaded for a duplicate key (C's tag map replaces on
+  insert). Names that are not valid UTF-8 are still converted lossily, the
+  one remaining difference from C's raw `char` buffer.
+- Ports upstream's `CorruptCompound` test and the `AllOps` seek addition
+  (seek to frames 6 and 9, ray cast the compound). Both, plus a new test that
+  relabels each seeded registry slot and one that sets a compound slot's kind
+  to 7, were checked against a scalar C build
+  of `3d9db79`: same messages, same failures. `b3CreateCompound` now copies
+  the tree header fields explicitly instead of copying the whole struct and
+  fixing it up; the port always wrote that header this way, and the interned
+  compound blob and hash are unchanged against C.
 
 ### Not ported
 
@@ -164,6 +205,13 @@ time. Ported so far:
   `003a3f7`). The port's player has no keyframe ring or keyframe registry
   (`seek_frame` restarts from frame 0 and replays), so there is nothing to
   seed.
+- The `b3RecPlayer_GetKeyframeBytes( player ) > 0` check upstream added to
+  `AllOps` (upstream `3d9db79`); the port's player captures no keyframes.
+- The `b3Free` zero-size fix in `core.c` (upstream `3d9db79`). The port has
+  no custom allocator hooks.
+- The rename of `recording_replay.c` / `.h` to `replay.c` / `.h` and the
+  `CMakeLists.txt` reorder (upstream `3d9db79`) have no Rust counterpart
+  beyond updated doc comments; the Rust module names stay as they were.
 
 ## 0.4.1
 

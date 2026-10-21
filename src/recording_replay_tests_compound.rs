@@ -125,3 +125,194 @@ fn compound_keyframe_seek() {
     assert_eq!(player.get_frame(), 20);
     assert!(!player.has_diverged());
 }
+
+/// The seek addition upstream made to the C `AllOps` session (3d9db79): after playing to the end,
+/// seek back to frame 6 and forward to frame 9 with a 4 frame keyframe interval. Each restore
+/// rebuilds the compound from the registry, so a ray must still reach its tree and the state
+/// hashes must hold through the re-stepped frames. C also asserts the player captured keyframes
+/// (`b3RecPlayer_GetKeyframeBytes > 0`); the Rust player seeks by restart-and-replay and keeps no
+/// keyframes, so that check has no counterpart here.
+#[test]
+fn compound_seek_ray_cast() {
+    use crate::shape::shape_get_type;
+    use crate::geometry::ShapeType;
+    use crate::types::default_query_filter;
+    use crate::world::world_cast_ray;
+
+    let compound = create_compound(&crate::compound::CompoundDef {
+        spheres: &[CompoundSphereDef {
+            sphere: Sphere {
+                center: VEC3_ZERO,
+                radius: 1.0,
+            },
+            material: crate::geometry::default_surface_material(),
+        }],
+        ..Default::default()
+    })
+    .expect("compound");
+
+    let mut world = World::new(&default_world_def());
+    world_start_recording(&mut world, Recording::new(0));
+
+    let mut compound_body_def = default_body_def();
+    compound_body_def.type_ = BodyType::Static;
+    compound_body_def.position = Pos {
+        x: 30.0 as _,
+        y: 0.0 as _,
+        z: 0.0 as _,
+    };
+    let compound_body_id = create_body(&mut world, &compound_body_def);
+    create_baked_compound_shape(
+        &mut world,
+        compound_body_id,
+        &default_shape_def(),
+        &compound,
+    );
+
+    let mut ball_def = default_body_def();
+    ball_def.type_ = BodyType::Dynamic;
+    ball_def.position = Pos {
+        x: 0.0 as _,
+        y: 3.0 as _,
+        z: 0.0 as _,
+    };
+    let ball_id = create_body(&mut world, &ball_def);
+    create_sphere_shape(
+        &mut world,
+        ball_id,
+        &default_shape_def(),
+        &Sphere {
+            center: VEC3_ZERO,
+            radius: 0.25,
+        },
+    );
+
+    for _ in 0..12 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let rec = world_stop_recording(&mut world).expect("recording active");
+    drop(world);
+
+    let mut player = RecPlayer::create(rec.data(), 1).expect("player");
+    let budget = player.get_keyframe_budget();
+    player.set_keyframe_policy(budget, 4);
+
+    while player.step_frame() {}
+    assert_eq!(player.get_frame(), 12);
+    assert!(player.is_at_end());
+    assert!(!player.has_diverged());
+
+    // Seek back onto the frame 4 keyframe, then skip forward onto the frame 8 keyframe. Each
+    // restore rebuilds the compound from the registry, so a ray must still reach its tree and
+    // the state hashes must hold through the re-stepped frames.
+    for target in [6, 9] {
+        player.seek_frame(target);
+        assert_eq!(player.get_frame(), target);
+
+        let replay_world = player.world();
+        let mut hit_compound = false;
+        world_cast_ray(
+            replay_world,
+            Pos {
+                x: 30.0 as _,
+                y: 10.0 as _,
+                z: 0.0 as _,
+            },
+            Vec3 {
+                x: 0.0,
+                y: -20.0,
+                z: 0.0,
+            },
+            &default_query_filter(),
+            |shape_id, _p, _n, _f, _m, _t, _c| {
+                if shape_get_type(replay_world, shape_id) == ShapeType::Compound {
+                    hit_compound = true;
+                }
+                1.0
+            },
+        );
+        assert!(hit_compound);
+    }
+    while player.step_frame() {}
+    assert_eq!(player.get_frame(), 12);
+    assert!(!player.has_diverged());
+}
+
+/// A corrupt compound in the geometry registry must fail the replay cleanly. A stale version or a
+/// wrong kind is rejected when the shape is created and a truncated entry is rejected at load.
+/// (CorruptCompound)
+#[test]
+fn corrupt_compound() {
+    use crate::compound::COMPOUND_VERSION;
+
+    let compound = create_compound(&crate::compound::CompoundDef {
+        spheres: &[CompoundSphereDef {
+            sphere: Sphere {
+                center: VEC3_ZERO,
+                radius: 1.0,
+            },
+            material: crate::geometry::default_surface_material(),
+        }],
+        ..Default::default()
+    })
+    .expect("compound");
+    let compound_byte_count = compound.byte_count;
+    // The scalar C build of 3d9db79 (MSVC, BOX3D_DISABLE_SIMD) bakes this compound to 336 bytes.
+    assert_eq!(compound_byte_count, 336);
+
+    let mut world = World::new(&default_world_def());
+    world_start_recording(&mut world, Recording::new(0));
+
+    let mut bd = default_body_def();
+    let ground_id = create_body(&mut world, &bd);
+    let sd = default_shape_def();
+    create_baked_compound_shape(&mut world, ground_id, &sd, &compound);
+
+    bd.type_ = BodyType::Dynamic;
+    bd.position = Pos {
+        x: 0.0 as _,
+        y: 3.0 as _,
+        z: 0.0 as _,
+    };
+    let body_id = create_body(&mut world, &bd);
+    let s = Sphere {
+        center: VEC3_ZERO,
+        radius: 0.5,
+    };
+    create_sphere_shape(&mut world, body_id, &sd, &s);
+
+    for _ in 0..10 {
+        world.step(1.0 / 60.0, 4);
+    }
+
+    let rec = world_stop_recording(&mut world).expect("recording active");
+    drop(world);
+
+    let rec_data = rec.data();
+    let rec_size = rec_data.len();
+    assert!(validate_replay(rec_data, 1));
+
+    // The registry entry is a kind byte and a 4 byte length, then the blob, which leads with its version
+    let version = COMPOUND_VERSION.to_le_bytes();
+    let blob_offset = (5..=rec_size - version.len())
+        .find(|&i| rec_data[i..i + version.len()] == version)
+        .expect("compound blob");
+    assert_eq!(rec_data[blob_offset - 5], GeometryKind::Compound as u8);
+    let stored_byte_count =
+        i32::from_le_bytes(rec_data[blob_offset - 4..blob_offset].try_into().unwrap());
+    assert_eq!(stored_byte_count, compound_byte_count);
+
+    let mut patched = rec_data.to_vec();
+    patched[blob_offset] ^= 0xFF;
+    assert!(!validate_replay(&patched, 1));
+
+    let mut patched = rec_data.to_vec();
+    let short_byte_count = 8i32;
+    patched[blob_offset - 4..blob_offset].copy_from_slice(&short_byte_count.to_le_bytes());
+    assert!(RecPlayer::create(&patched, 1).is_none());
+
+    let mut patched = rec_data.to_vec();
+    patched[blob_offset - 5] = GeometryKind::Mesh as u8;
+    assert!(!validate_replay(&patched, 1));
+}
