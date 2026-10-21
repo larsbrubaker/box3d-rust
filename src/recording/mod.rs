@@ -9,6 +9,7 @@ mod buffer;
 pub(crate) mod capture;
 pub mod dispatch;
 pub(crate) mod hash;
+mod keyframes;
 pub mod ops;
 pub mod player;
 pub(crate) mod query_capture;

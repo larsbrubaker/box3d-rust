@@ -35,10 +35,10 @@
 //!   `BuildQueryIndex` replays the entire recording once to index every recorded
 //!   spatial query — a heavy scan our player *could* drive via `get_frame_query*`,
 //!   scoped out as too large for the browser demo) and the **keyframe-policy popup**.
-//!   The popup only configures `b3RecPlayer_SetKeyframePolicy` (a backward-seek
-//!   keyframe-ring budget); our [`replay_seek`] implements backward seeks by
-//!   restart-and-replay-forward and never consumes that ring, so a policy control
-//!   would configure a knob with no observable effect — skipped rather than faked.
+//!   The popup only tunes `b3RecPlayer_SetKeyframePolicy` (the keyframe ring's
+//!   byte budget and minimum interval) and pre-generates the ring behind a progress
+//!   bar; [`replay_seek`] already seeks through the ring under the default policy
+//!   (512 MiB, every 16 frames), so only the tuning UI is skipped.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -186,8 +186,9 @@ pub fn replay_step() {
     });
 }
 
-/// Seek to an absolute frame, clamped to `[0, frameCount]`. Backward seeks restart
-/// and replay forward, exactly like `b3RecPlayer_SeekFrame`.
+/// Seek to an absolute frame, clamped to `[0, frameCount]`. Restores the nearest
+/// keyframe before the target (or restarts) and replays the gap forward, exactly
+/// like `b3RecPlayer_SeekFrame`.
 #[wasm_bindgen]
 pub fn replay_seek(frame: i32) {
     with_player(|p| {

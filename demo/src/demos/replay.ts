@@ -19,9 +19,9 @@
 //     ordinal), matching C.
 //   - Not ported (disclosed): the whole-recording query SEARCH INDEX (C replays the
 //     entire recording once to index every spatial query — scoped out as too heavy for
-//     the browser demo) and the KEYFRAME-POLICY popup (it only tunes a backward-seek
-//     keyframe-ring budget our restart-and-replay seek never consumes, so a control
-//     would have no observable effect). Compound-shape bodies are not individually
+//     the browser demo) and the KEYFRAME-POLICY popup (it only tunes the keyframe
+//     ring's budget and interval; seeks already restore through the ring under the
+//     default policy). Compound-shape bodies are not individually
 //     tessellated, so they render nothing (but still list + inspect).
 //
 // Loading a LOCAL .b3rec via the file picker is ordinary in-page behavior; nothing

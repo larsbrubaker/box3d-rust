@@ -63,9 +63,10 @@ fn intern_compound_is_pointer_free() {
 /// Mirrors the keyframe-policy call upstream added to the C `AllOps` session: set a 4 frame
 /// keyframe interval while a baked compound is live, play to the end, seek backward, and replay
 /// to the end. In C, the stale `tree.proxies` pointer made keyframe capture re-intern the
-/// compound under a new hash, tripping the registry-growth assert in b3RecCaptureKeyframe. The
-/// Rust player has no keyframe capture: `seek_frame` restarts from frame 0 and replays, so here
-/// the policy call only mirrors C and the test checks the seek and replay stay in sync.
+/// compound under a new hash, tripping the registry-growth assert in b3RecCaptureKeyframe. Here
+/// every capture re-serializes the live compound, which must resolve to its pre-seeded registry
+/// slot (the same assert is a `debug_assert` in `capture_keyframe`), and the backward seek restores
+/// the frame 4 keyframe.
 #[test]
 fn compound_keyframe_seek() {
     let compound = rec_compound();
@@ -102,14 +103,17 @@ fn compound_keyframe_seek() {
     drop(world);
 
     let mut player = RecPlayer::create(rec.data(), 1).expect("player");
-    // Mirrors C's AllOps keyframe-policy call. The Rust player stores the policy but seeks by
-    // restart-and-replay, so no keyframes are captured.
+    // Mirrors C's AllOps keyframe-policy call.
     let budget = player.get_keyframe_budget();
     player.set_keyframe_policy(budget, 4);
 
+    let slot_count = player.keyframe_registry.entries.len();
     while player.step_frame() {}
     assert_eq!(player.get_frame(), 20);
     assert!(!player.has_diverged());
+    assert!(player.get_keyframe_bytes() > 0);
+    assert_eq!(player.get_keyframe_frames(), vec![4, 8, 12, 16, 20]);
+    assert_eq!(player.keyframe_registry.entries.len(), slot_count);
 
     player.seek_frame(5);
     assert_eq!(player.get_frame(), 5);
@@ -124,8 +128,7 @@ fn compound_keyframe_seek() {
 /// seek back to frame 6 and forward to frame 9 with a 4 frame keyframe interval. Each restore
 /// rebuilds the compound from the registry, so a ray must still reach its tree and the state
 /// hashes must hold through the re-stepped frames. C also asserts the player captured keyframes
-/// (`b3RecPlayer_GetKeyframeBytes > 0`); the Rust player seeks by restart-and-replay and keeps no
-/// keyframes, so that check has no counterpart here.
+/// (`b3RecPlayer_GetKeyframeBytes > 0`, upstream 3d9db79).
 #[test]
 fn compound_seek_ray_cast() {
     use crate::shape::shape_get_type;
@@ -196,6 +199,8 @@ fn compound_seek_ray_cast() {
     assert_eq!(player.get_frame(), 12);
     assert!(player.is_at_end());
     assert!(!player.has_diverged());
+    assert!(player.get_keyframe_bytes() > 0);
+    assert_eq!(player.get_keyframe_frames(), vec![4, 8, 12]);
 
     // Seek back onto the frame 4 keyframe, then skip forward onto the frame 8 keyframe. Each
     // restore rebuilds the compound from the registry, so a ray must still reach its tree and

@@ -8,15 +8,16 @@ use crate::debug_draw::{CreateDebugShapeCallback, DestroyDebugShapeCallback};
 use crate::id::BodyId;
 use crate::math_functions::{Aabb, Vec3};
 use crate::recording::dispatch::{dispatch_one, RecReader};
+use crate::recording::keyframes::{
+    RecKeyframe, KEYFRAME_BUDGET_DEFAULT, KEYFRAME_INTERVAL_DEFAULT,
+};
 use crate::recording::ops::RecOp;
-use crate::recording::registry::RegistrySlot;
+use crate::recording::registry::{GeometryRegistry, RegistrySlot};
 use crate::recording::registry_load::load_slots;
 use crate::recording::session::{RecHeader, RecTag, REC_MAGIC, REC_VERSION_MAJOR};
 use crate::recording::snapshot::deserialize_into_shell;
 use crate::types::default_world_def;
 use crate::world::{destroy_world, destroy_world_in_place, World};
-
-const KEYFRAME_INTERVAL_DEFAULT: i32 = 16;
 
 /// Interactive / headless recording player. (b3RecPlayer)
 pub struct RecPlayer {
@@ -35,18 +36,23 @@ pub struct RecPlayer {
     pub diverge_frame: i32,
     pub body_ids: Vec<BodyId>,
     pub frame0_body_ids: Vec<BodyId>,
-    pub keyframe_interval: i32,
-    pub keyframe_min_interval: i32,
+    // Keyframe ring
+    pub(crate) keyframes: Vec<RecKeyframe>,
     pub keyframe_budget: usize,
     pub keyframe_bytes: usize,
+    pub keyframe_min_interval: i32,
+    pub keyframe_interval: i32,
     pub last_keyframe_frame: i32,
+    /// Pre-populated registry used by `serialize_world` during keyframe capture. Its entries
+    /// mirror the reader slots 1:1 so geometry ids stay stable. (keyframeRec's registry)
+    pub(crate) keyframe_registry: GeometryRegistry,
     pub world: World,
     pub frame_queries: Vec<crate::recording::query_replay::FrameQuery>,
     /// Reader borrows `data` via raw pointer for self-referential layout.
-    reader_cursor: i32,
-    reader_ok: bool,
-    reader_diverged: bool,
-    reader_slots: Vec<RegistrySlot>,
+    pub(crate) reader_cursor: i32,
+    pub(crate) reader_ok: bool,
+    pub(crate) reader_diverged: bool,
+    pub(crate) reader_slots: Vec<RegistrySlot>,
     reader_tags: Vec<RecTag>,
     reader_pending_query_key: u64,
     frame0_image_start: usize,
@@ -146,11 +152,13 @@ impl RecPlayer {
             diverge_frame: -1,
             body_ids: Vec::new(),
             frame0_body_ids: Vec::new(),
-            keyframe_interval: KEYFRAME_INTERVAL_DEFAULT,
-            keyframe_min_interval: KEYFRAME_INTERVAL_DEFAULT,
-            keyframe_budget: 0,
+            keyframes: Vec::new(),
+            keyframe_budget: KEYFRAME_BUDGET_DEFAULT,
             keyframe_bytes: 0,
+            keyframe_min_interval: KEYFRAME_INTERVAL_DEFAULT,
+            keyframe_interval: KEYFRAME_INTERVAL_DEFAULT,
             last_keyframe_frame: 0,
+            keyframe_registry: GeometryRegistry::new(),
             world,
             frame_queries: Vec::new(),
             reader_cursor: header_end,
@@ -164,7 +172,13 @@ impl RecPlayer {
         });
 
         player.scan_file();
+        // Seed the outliner from the restored world (snapshot bodies bypass the create hook) and
+        // save the frame-0 restore copy.
         player.seed_frame0_body_ids();
+
+        // Build the keyframe registry pre-seeded to mirror the reader slots, so serialize_world
+        // geometry ids stay stable across captures.
+        player.seed_keyframe_registry();
         Some(player)
     }
 
@@ -300,9 +314,17 @@ impl RecPlayer {
                 return stepped;
             }
 
+            // Once stepped, the StateHash is the only record still belonging to this frame.
+            // Anything else begins the next frame, so stop and let the next StepFrame consume it.
+            // Capture a keyframe at the boundary.
             if stepped {
                 let next = self.data[self.reader_cursor as usize];
                 if next != RecOp::StateHash as u8 {
+                    if self.frame > self.last_keyframe_frame
+                        && self.frame % self.keyframe_interval == 0
+                    {
+                        self.capture_keyframe();
+                    }
                     return true;
                 }
             }
@@ -346,8 +368,15 @@ impl RecPlayer {
                 return;
             }
 
+            // Once stepped, the StateHash is the only record still belonging to this frame.
+            // Anything else begins the next frame, so stop and let the next StepFrame consume it.
+            // Capture a keyframe at the boundary.
             let current = self.data[self.reader_cursor as usize];
             if stepped && current != RecOp::StateHash as u8 {
+                if self.frame > self.last_keyframe_frame && self.frame % self.keyframe_interval == 0
+                {
+                    self.capture_keyframe();
+                }
                 return;
             }
 
@@ -402,7 +431,8 @@ impl RecPlayer {
         self.at_pre_step = false;
         self.diverge_frame = -1;
         self.body_ids = self.frame0_body_ids.clone();
-        self.last_keyframe_frame = 0;
+        // The keyframe ring and lastKeyframeFrame survive a restart, so re-stepping frames that
+        // were already captured does not capture them again.
     }
 
     /// Wire the host debug-shape callbacks into the replay world.
@@ -451,11 +481,34 @@ impl RecPlayer {
         self.seed_frame0_body_ids();
     }
 
+    /// Seek to `target_frame`. A backward seek, or a forward seek that can skip ahead, restores
+    /// the nearest keyframe strictly before the target and then re-steps the remaining gap.
     /// (b3RecPlayer_SeekFrame)
     pub fn seek_frame(&mut self, target_frame: i32) {
-        if target_frame <= self.frame {
-            self.restart();
+        self.at_pre_step = false;
+
+        let target_frame = target_frame.max(0);
+
+        // Find the best keyframe strictly before the target.
+        let mut best: Option<usize> = None;
+        for (i, kf) in self.keyframes.iter().enumerate() {
+            if kf.frame < target_frame && best.map_or(true, |b| kf.frame > self.keyframes[b].frame)
+            {
+                best = Some(i);
+            }
         }
+
+        if target_frame < self.frame {
+            // Backward seek: restore keyframe or restart from frame 0.
+            match best {
+                Some(b) => self.restore_keyframe(b),
+                None => self.restart(),
+            }
+        } else if let Some(b) = best.filter(|&b| self.keyframes[b].frame > self.frame) {
+            // Forward seek that can skip ahead via a keyframe.
+            self.restore_keyframe(b);
+        }
+
         while self.frame < target_frame && self.step_frame() {}
     }
 
@@ -510,30 +563,6 @@ impl RecPlayer {
             sub_step_count: self.recorded_sub_step_count,
             bounds: self.bounds,
         }
-    }
-
-    /// (b3RecPlayer_SetKeyframePolicy)
-    pub fn set_keyframe_policy(&mut self, budget_bytes: usize, min_interval_frames: i32) {
-        self.keyframe_budget = budget_bytes;
-        self.keyframe_min_interval = min_interval_frames.max(1);
-        self.keyframe_interval = self.keyframe_min_interval;
-        self.keyframe_bytes = 0;
-    }
-
-    pub fn get_keyframe_min_interval(&self) -> i32 {
-        self.keyframe_min_interval
-    }
-
-    pub fn get_keyframe_interval(&self) -> i32 {
-        self.keyframe_interval
-    }
-
-    pub fn get_keyframe_budget(&self) -> usize {
-        self.keyframe_budget
-    }
-
-    pub fn get_keyframe_bytes(&self) -> usize {
-        self.keyframe_bytes
     }
 
     pub fn get_frame_query_count(&self) -> i32 {

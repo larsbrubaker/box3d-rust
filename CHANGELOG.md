@@ -106,9 +106,36 @@ time. Ported so far:
   recorded as the new `WorldSetIsotropicInertiaTolerance` op (0x70). A
   change only reaches bodies whose mass is computed afterwards. New body
   flag `body_flags::ENABLE_GYROSCOPIC_TORQUE`.
+- The replay keyframe ring (upstream `b3RecCaptureKeyframe`,
+  `b3RecPlayerRestoreKeyframe`, `b3RecSeedKeyframeRegistry`). `RecPlayer`
+  now snapshots the world every keyframe interval while stepping (also in
+  `sub_step_frame` and `validate_replay`), within a byte budget: when a
+  capture would exceed it, the interval doubles and keyframes off the new
+  grid are evicted. `seek_frame` restores the nearest keyframe strictly
+  before the target (or restarts) and re-steps only the gap, and seeking to
+  the current frame is now a no-op, as in C. The policy defaults to a 16
+  frame interval and a 512 MiB budget (`get_keyframe_budget` used to report
+  0); `set_keyframe_policy` keeps the current value for a zero budget or a
+  non-positive interval and drops the ring, and `restart` keeps the ring.
+  Captures serialize through a registry pre-seeded 1:1 from the player's
+  geometry slots, so geometry ids stay stable and the registry never grows.
+  `get_keyframe_bytes` charges each keyframe its image allocation plus its
+  outliner body list, as C does; the images are the port's field-by-field
+  snapshots, so the totals differ from C's (in float, 8744 bytes per
+  keyframe of the four box stack where C charges 12400 to 12496), and a
+  budget sized between keyframes can keep a different ring than C's.
+  Capture cadence, eviction, and seek targets under the default and a one
+  byte budget, and the world hashes after each seek, were confirmed against
+  a scalar C build of `efca0c1` in both precision modes; two budgets sized
+  relative to the first keyframe also keep C's ring in float.
+  `RecBuffer` gains `capacity`, the allocation size C's `b3RecBufAppend`
+  growth rule would reach, which the keyframe budget charges.
 
 ### Changed
 
+- `GeometryRegistry::intern` matches an existing entry by bytes only, as
+  upstream's `b3InternGeometry` does; it used to also require the same
+  kind.
 - The separating axis test culls edge candidates with upstream's inscribed
   sphere test `b3TestEdgeCandidateSorted` (replacing `b3TestEdgeCandidate`),
   using per-hull plane separations of the other hull's center and the stored
@@ -182,8 +209,7 @@ time. Ported so far:
   blob and hash of a capsule plus three spheres compound were confirmed
   against a scalar C build of `003a3f7`. Adds tests for the pointer-free blob
   and for a seek across a live compound that mirrors the keyframe-policy call
-  upstream added to `AllOps`. The port's player seeks by restart-and-replay
-  and captures no keyframes, so that test checks seek and replay only.
+  upstream added to `AllOps`.
 - Replay checks the kind of every geometry registry slot it resolves
   (upstream `3d9db79`, `b3RecGetSlot`). The seed snapshot path (`des_shapes`,
   upstream `b3DesShapes`) used to check only the range and reinterpret a
@@ -346,12 +372,6 @@ time. Ported so far:
   (`W8`) mesh kernels and `b3MoveMaskW4` for SSE2 / Neon are SIMD-only.
 - The new Encroach Cast collision sample (upstream `f8c4fe8`); it is listed
   as planned in the demo registry.
-- The compound pointer scrub in `b3RecSeedKeyframeRegistry` (upstream
-  `003a3f7`). The port's player has no keyframe ring or keyframe registry
-  (`seek_frame` restarts from frame 0 and replays), so there is nothing to
-  seed.
-- The `b3RecPlayer_GetKeyframeBytes( player ) > 0` check upstream added to
-  `AllOps` (upstream `3d9db79`); the port's player captures no keyframes.
 - The `b3Free` zero-size fix in `core.c` (upstream `3d9db79`). The port has
   no custom allocator hooks.
 - The rename of `recording_replay.c` / `.h` to `replay.c` / `.h` and the
@@ -364,9 +384,14 @@ time. Ported so far:
   `debug_adapter.c` culling switch to `b3QueryCompound`, and the
   `docs/compound.md` update.
 - `b3InternGeometry` / `b3AppendGeometry` now copy the bytes instead of
-  taking ownership, and `b3RecSeedKeyframeRegistry` no longer scrubs
-  compounds (upstream `5d83df8`). The port's registry already owns `Vec`
-  copies, and its player has no keyframe registry.
+  taking ownership (upstream `5d83df8`). The port's registry already owns
+  `Vec` copies. The compound pointer scrub upstream added to
+  `b3RecSeedKeyframeRegistry` in `003a3f7` and removed again in `5d83df8`
+  needs no port: the port's keyframe seed hashes and appends the slot bytes
+  as they are, like upstream's current seed.
+- The replay sample's keyframe-policy popup (budget, minimum interval, and
+  pre-generating the ring behind a progress bar). The demo's replay viewer
+  seeks through the ring under the default policy.
 - The new cylinder questions in `docs/faq.md` (upstream `a2e4816`).
 - The new Bodies / Spinning Capsule sample (upstream `efca0c1`); it is
   listed as planned in the demo registry.

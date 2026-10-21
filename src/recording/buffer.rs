@@ -14,6 +14,13 @@ use crate::types::Filter;
 pub struct RecBuffer {
     pub data: Vec<u8>,
     pub count_only: bool,
+    /// The allocation size C's `b3RecBuffer::capacity` would hold after the same appends.
+    ///
+    /// The bytes live in `data`, whose real capacity follows `Vec`'s own growth policy. The
+    /// replay keyframe ring charges each image by its C allocation size (`imageCapacity`), so
+    /// this mirrors b3RecBufAppend's growth rule (double, or grow to `size + n + 64` when that
+    /// is larger) to keep the budget accounting on C's footing.
+    pub capacity: i32,
 }
 
 impl RecBuffer {
@@ -22,6 +29,7 @@ impl RecBuffer {
         Self {
             data: Vec::new(),
             count_only: false,
+            capacity: 0,
         }
     }
 
@@ -29,6 +37,7 @@ impl RecBuffer {
         Self {
             data: Vec::with_capacity(cap),
             count_only: false,
+            capacity: cap as i32,
         }
     }
 
@@ -53,6 +62,15 @@ impl RecBuffer {
             // We store count_only length in data.len by resizing without fill of content:
             self.data.resize(new_len, 0);
             return;
+        }
+        let size = self.data.len() as i32;
+        let n = bytes.len() as i32;
+        if size + n > self.capacity {
+            let mut new_cap = self.capacity * 2;
+            if new_cap < size + n + 64 {
+                new_cap = size + n + 64;
+            }
+            self.capacity = new_cap;
         }
         self.data.extend_from_slice(bytes);
     }

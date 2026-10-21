@@ -61,12 +61,17 @@ impl GeometryRegistry {
     }
 
     /// (b3InternGeometry)
+    ///
+    /// Like C, the chain walk compares the byte count and bytes only, never the kind. The keyframe
+    /// registry depends on that: it mirrors the reader slots 1:1 (whatever kind byte each carries),
+    /// and capture only needs a live blob to resolve back to its slot index.
     pub fn intern(&mut self, kind: GeometryKind, content_hash: u64, bytes: Vec<u8>) -> u32 {
         if let Some(&head) = self.dedup.get(&content_hash) {
+            // Walk every entry sharing this hash so a collision still finds the identical blob.
             let mut idx = head;
             while idx >= 0 {
                 let e = &self.entries[idx as usize];
-                if e.kind == kind && e.bytes == bytes {
+                if e.bytes == bytes {
                     return e.id;
                 }
                 idx = e.hash_next;

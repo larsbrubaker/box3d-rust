@@ -411,10 +411,16 @@ fn seek_with_hull() {
     let rec = world_stop_recording(&mut world).expect("recording active");
 
     let mut player = RecPlayer::create(rec.data(), 1).expect("player");
+    let slot_count = player.keyframe_registry.entries.len();
     while !player.is_at_end() {
         player.step_frame();
     }
     assert!(!player.has_diverged());
+
+    // The keyframe-by-geometry-id invariant: capture never grows the keyframe registry beyond the
+    // initial slot count.
+    assert_eq!(player.get_keyframe_frames(), vec![16, 32]);
+    assert_eq!(player.keyframe_registry.entries.len(), slot_count);
 
     let mid = total_frames / 2;
     player.seek_frame(mid);
@@ -502,6 +508,7 @@ fn player_accessors() {
     assert!(!player.has_diverged());
     assert_eq!(player.get_diverge_frame(), -1);
 
+    // Ordinals survive a backward seek that restores from a keyframe.
     let before = player.get_body_id(2);
     player.seek_frame(total_frames / 2);
     player.seek_frame(total_frames);
@@ -509,6 +516,7 @@ fn player_accessors() {
     assert_eq!(before.index1, after.index1);
     assert_eq!(before.generation, after.generation);
 
+    // Keyframe policy: defaults present, setter takes effect and clears the ring.
     assert_eq!(player.get_keyframe_min_interval(), 16);
     player.set_keyframe_policy(256 * 1024 * 1024, 8);
     assert_eq!(player.get_keyframe_min_interval(), 8);

@@ -434,8 +434,8 @@ export const SAMPLES: SampleEntry[] = [
   // the outline or the 3D view to highlight it and read its live transform / velocity /
   // state; C DrawOutlineTree + DrawBodyDetail). Still disclosed-skipped: the
   // whole-recording query search index (too heavy for the browser) and the
-  // keyframe-policy popup (tunes a backward-seek keyframe ring our restart-and-replay
-  // seek never consumes, so it would have no effect). See demos/replay.ts.
+  // keyframe-policy popup (only tunes the keyframe ring, which seeks already use under
+  // the default policy). See demos/replay.ts.
   ...cat("Replay", "sample_replay.cpp", [
     ["Viewer", "partial", "replay"],
   ]),
