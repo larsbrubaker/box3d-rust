@@ -474,6 +474,7 @@ include!("recording_replay_tests_registry.rs");
 include!("recording_replay_tests_bundled.rs");
 include!("recording_replay_tests_keyframes.rs");
 include!("recording_replay_tests_keyframe_seek.rs");
+include!("recording_replay_tests_frame_queries.rs");
 
 /// Safety factor of the named body in a replay world, or -1 if the body is not in the list.
 /// (ReplaySafetyFactor)

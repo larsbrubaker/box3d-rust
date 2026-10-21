@@ -77,6 +77,12 @@ time. Ported so far:
   world config stores the isotropic inertia tolerance) and the Rust snapshot
   layout version 5, so snapshots from earlier versions no longer load. The
   recording minor version becomes 9.
+- The `RecPlayer` keyframe ring fields `keyframe_interval`,
+  `keyframe_min_interval`, `keyframe_budget`, `keyframe_bytes`, and
+  `last_keyframe_frame` (public in 0.4.1) are now crate-private, as C keeps
+  them private. Set the budget and minimum interval with
+  `set_keyframe_policy` and read the first four with the `get_keyframe_*`
+  getters; `last_keyframe_frame` has no public replacement.
 
 ### Added
 
@@ -350,6 +356,18 @@ time. Ported so far:
   `0x246CC2A7` (double `0x9DA0B374`). All values were confirmed with a
   scalar C build of `efca0c1` (`BOX3D_DISABLE_SIMD`) in both precision
   modes.
+
+### Fixed
+
+- `RecPlayer` per-frame query store now matches C `b3RecPlayer_StepFrame` /
+  `b3RecPlayer_Restart`: `restart` (and a backward `seek_frame` that falls
+  back to it) clears the stashed queries, `step_frame` at the end of the
+  recording no longer wipes the last frame's queries, and `restart` keeps
+  the pending query-tag key as C does. The keyframe ring tuning fields
+  (`keyframe_interval`, `keyframe_min_interval`, `keyframe_budget`,
+  `keyframe_bytes`, `last_keyframe_frame`) are now crate-private (see
+  Breaking); external code could set `keyframe_interval` to 0 and panic on
+  a divide by zero.
 
 ### Not ported
 

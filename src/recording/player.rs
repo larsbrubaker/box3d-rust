@@ -38,11 +38,11 @@ pub struct RecPlayer {
     pub frame0_body_ids: Vec<BodyId>,
     // Keyframe ring
     pub(crate) keyframes: Vec<RecKeyframe>,
-    pub keyframe_budget: usize,
-    pub keyframe_bytes: usize,
-    pub keyframe_min_interval: i32,
-    pub keyframe_interval: i32,
-    pub last_keyframe_frame: i32,
+    pub(crate) keyframe_budget: usize,
+    pub(crate) keyframe_bytes: usize,
+    pub(crate) keyframe_min_interval: i32,
+    pub(crate) keyframe_interval: i32,
+    pub(crate) last_keyframe_frame: i32,
     /// Pre-populated registry used by `serialize_world` during keyframe capture. Its entries
     /// mirror the reader slots 1:1 so geometry ids stay stable. (keyframeRec's registry)
     pub(crate) keyframe_registry: GeometryRegistry,
@@ -301,11 +301,15 @@ impl RecPlayer {
 
     /// (b3RecPlayer_StepFrame)
     pub fn step_frame(&mut self) -> bool {
+        // This is never true when full stepping
         self.at_pre_step = false;
-        self.frame_queries.clear();
+
         if self.at_end {
             return false;
         }
+
+        // Reset the per-frame query store before this frame's records are dispatched.
+        self.frame_queries.clear();
 
         let mut stepped = false;
         loop {
@@ -425,11 +429,19 @@ impl RecPlayer {
         self.reader_cursor = self.header_end;
         self.reader_ok = true;
         self.reader_diverged = false;
-        self.reader_pending_query_key = 0;
+        // C leaves rdr.pendingQueryKey untouched here, so a QueryTag left dangling by a skipped
+        // query op pairs with the first query stashed after the restart.
         self.frame = 0;
+        self.diverge_frame = -1;
         self.at_end = false;
         self.at_pre_step = false;
-        self.diverge_frame = -1;
+
+        // Frame 0 is the pre-step snapshot with no recorded queries, so clear the per-frame
+        // store. This keeps the last stepped frame's queries from lingering on a restart or a
+        // backward scrub to 0.
+        self.frame_queries.clear();
+
+        // Roll the outliner body list back to its frame-0 contents.
         self.body_ids = self.frame0_body_ids.clone();
         // The keyframe ring and lastKeyframeFrame survive a restart, so re-stepping frames that
         // were already captured does not capture them again.
