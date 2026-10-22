@@ -3,10 +3,15 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
-## Unreleased
+## 0.5.0
 
-Syncing the port to newer upstream Box3D commits, one upstream commit at a
-time. Ported so far:
+This release syncs the port to upstream Box3D `efca0c1`. The C reference pin
+advances from `9f998c8`, and this port follows its API and behavior. The sync
+ran one upstream commit at a time. Simulation results are not bit-compatible
+with 0.4.x, and hull, compound, recording, and snapshot blobs from earlier
+versions no longer load (see Breaking). The release also ports the replay
+keyframe ring (`RecPlayer::seek_frame`), regenerates the demo's bundled replay
+recording, and fixes the recording code generators. Ported:
 
 - `51f056e` SAT benchmark (#177)
 - `e77352c` Add support for AVX2 and runtime feature detection (#174)
@@ -359,6 +364,22 @@ time. Ported so far:
 
 ### Fixed
 
+- The demo Replay viewer's bundled `demo/public/recordings/sample.b3rec` was
+  stale after the upstream format bumps (recording 6.9, snapshot 11, hull and
+  compound layouts) and was rejected by `RecPlayer::create`. It is regenerated
+  from the current wasm build (same Box Stack scene, 300 frames at 60 Hz, 4
+  sub-steps) by the new reproducible generator `bun run record:sample` in
+  `demo/` (`demo/scripts/record-sample.ts`, run after `bun run build:wasm`),
+  and the new test `bundled_demo_recording_replays_without_divergence` fails
+  whenever a future format change makes the file stale again.
+- The recording code generators (`scripts/gen_recording_ops.py`,
+  `scripts/gen_recording_dispatch.py`) failed with `KeyError: STR` after
+  upstream merged the `BODYSTR`/`SHAPESTR` argument tags into `STR`. They now
+  handle `STR`, fail with a clear message on any unknown tag, emit the
+  current split `src/recording` layout (run through rustfmt), and share the
+  op-manifest parser in the new `scripts/recording_manifest.py`.
+  Regenerating reproduces the checked-in files; the only change is that the
+  body setter writers and dispatch arms now follow manifest order.
 - `RecPlayer` per-frame query store now matches C `b3RecPlayer_StepFrame` /
   `b3RecPlayer_Restart`: `restart` (and a backward `seek_frame` that falls
   back to it) clears the stashed queries, `step_frame` at the end of the
@@ -421,14 +442,6 @@ Bug-fix release; no public API changes. The C reference pin is unchanged
 
 ### Fixed
 
-- The demo Replay viewer's bundled `demo/public/recordings/sample.b3rec` was
-  stale after the upstream format bumps (recording 6.9, snapshot 11, hull and
-  compound layouts) and was rejected by `RecPlayer::create`. It is regenerated
-  from the current wasm build (same Box Stack scene, 300 frames at 60 Hz, 4
-  sub-steps) by the new reproducible generator `bun run record:sample` in
-  `demo/` (`demo/scripts/record-sample.ts`, run after `bun run build:wasm`),
-  and the new test `bundled_demo_recording_replays_without_divergence` fails
-  whenever a future format change makes the file stale again.
 - `body_set_awake(world, id, false)` on a body whose island had a pending
   split used the island id read before `split_island` ran, so
   `try_sleep_island` was handed a stale island id and tripped
