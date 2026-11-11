@@ -21,6 +21,10 @@ pub fn collide_spheres(
     sphere_b: &Sphere,
     transform_b_to_a: Transform,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     if capacity == 0 {
         return;
     }
@@ -78,6 +82,10 @@ pub fn collide_capsule_and_sphere(
     sphere_b: &Sphere,
     transform_b_to_a: Transform,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity < 1 {
@@ -141,6 +149,10 @@ pub fn collide_hull_and_sphere(
     transform_b_to_a: Transform,
     cache: &mut SimplexCache,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity == 0 {

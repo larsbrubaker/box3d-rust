@@ -155,6 +155,10 @@ pub fn collide_hull_and_capsule(
     transform_b_to_a: Transform,
     cache: &mut SimplexCache,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity < 2 {

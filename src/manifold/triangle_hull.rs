@@ -234,6 +234,10 @@ pub fn collide_triangle_and_hull(
     cache: &mut SatCache,
     enable_speculative: bool,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
     manifold.feature = TriangleFeature::None;
 

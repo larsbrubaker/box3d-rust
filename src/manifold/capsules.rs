@@ -23,6 +23,10 @@ pub fn collide_capsules(
     capsule_b: &Capsule,
     transform_b_to_a: Transform,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity < 2 {

@@ -607,3 +607,18 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
     assert_eq!(back.point_count, 0);
     assert_eq!(back_cache.type_, SeparatingFeature::BacksideAxis as u8);
 }
+
+/// A capacity larger than the point buffer is caller misuse; debug builds name it instead of
+/// failing later with an index error.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "capacity exceeds the manifold point buffer")]
+fn collide_capacity_larger_than_buffer_asserts() {
+    let sphere = Sphere {
+        center: VEC3_ZERO,
+        radius: 1.0,
+    };
+    let mut manifold_points = [LocalManifoldPoint::default(); 1];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
+    collide_spheres(&mut manifold, 2, &sphere, &sphere, xf_at(v(1.5, 0.0, 0.0)));
+}

@@ -299,6 +299,10 @@ pub(crate) fn collide_hulls_at_width(
     cache: &mut SatCache,
     simd_width: i32,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity < 4 {

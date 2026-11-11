@@ -338,6 +338,10 @@ pub fn collide_triangle_and_sphere(
     triangle_a: &[Vec3; 3],
     sphere_b: &Sphere,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity == 0 {
@@ -401,6 +405,10 @@ pub fn collide_triangle_and_capsule(
     capsule_b: &Capsule,
     cache: &mut SimplexCache,
 ) {
+    debug_assert!(
+        capacity <= 0 || capacity as usize <= manifold.points.len(),
+        "capacity exceeds the manifold point buffer"
+    );
     manifold.point_count = 0;
 
     if capacity < 2 {

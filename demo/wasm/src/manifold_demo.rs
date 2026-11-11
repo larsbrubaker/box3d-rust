@@ -17,7 +17,6 @@ use std::cell::RefCell;
 
 use wasm_bindgen::prelude::*;
 
-use box3d_rust::constants::MAX_MANIFOLD_POINTS;
 use box3d_rust::distance::SimplexCache;
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
@@ -42,6 +41,11 @@ const SHAPE_SPHERE: f32 = 0.0;
 const SHAPE_CAPSULE: f32 = 1.0;
 const SHAPE_BOX: f32 = 2.0;
 const SHAPE_TRIANGLE: f32 = 3.0;
+
+/// C `Manifold::m_pointCapacity`.
+const MANIFOLD_POINT_CAPACITY: usize = 64;
+/// C `TriangleManifold::m_pointCapacity`.
+const TRIANGLE_MANIFOLD_POINT_CAPACITY: usize = 8;
 
 /// A collide entry point paired with the shapes it consumes. One variant per C
 /// sample class; the discriminant is the scene id used by the TS route.
@@ -80,6 +84,16 @@ impl Kind {
             Kind::TriangleSphere | Kind::TriangleCapsule | Kind::TriangleHull
         )
     }
+
+    /// The C base class `m_pointCapacity`: the size of `m_points` and the capacity every
+    /// sample passes to its `b3Collide*` call (no sample overrides it).
+    fn point_capacity(self) -> usize {
+        if self.is_triangle() {
+            TRIANGLE_MANIFOLD_POINT_CAPACITY
+        } else {
+            MANIFOLD_POINT_CAPACITY
+        }
+    }
 }
 
 fn vec3(x: f32, y: f32, z: f32) -> Vec3 {
@@ -106,12 +120,12 @@ const BASE_CAMERA: Camera = Camera {
     },
 };
 
-/// The C samples' `m_manifold` with its `m_points` buffer. The header persists across steps as
-/// in C; each collide call borrows the buffer through a [`LocalManifold`].
+/// The C samples' `m_manifold` with its `m_points[m_pointCapacity]` buffer. The header persists
+/// across steps as in C; each collide call borrows the buffer through a [`LocalManifold`].
 struct ManifoldState {
     normal: Vec3,
     triangle_normal: Vec3,
-    points: [LocalManifoldPoint; MAX_MANIFOLD_POINTS],
+    points: Vec<LocalManifoldPoint>,
     point_count: i32,
     triangle_index: i32,
     feature: TriangleFeature,
@@ -119,11 +133,11 @@ struct ManifoldState {
 
 impl ManifoldState {
     /// C: `m_manifold = {}; memset( m_points, 0, sizeof( m_points ) ); m_manifold.points = m_points;`
-    fn new() -> ManifoldState {
+    fn new(point_capacity: usize) -> ManifoldState {
         ManifoldState {
             normal: VEC3_ZERO,
             triangle_normal: VEC3_ZERO,
-            points: [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS],
+            points: vec![LocalManifoldPoint::default(); point_capacity],
             point_count: 0,
             triangle_index: 0,
             feature: TriangleFeature::None,
@@ -221,7 +235,7 @@ impl ManifoldDemo {
             sat_cache: SatCache::default(),
             use_cache: false,
             manual_feature: 0,
-            manifold: ManifoldState::new(),
+            manifold: ManifoldState::new(kind.point_capacity()),
         };
 
         demo.setup();
@@ -427,7 +441,7 @@ impl ManifoldDemo {
 
     /// Recompute the manifold in the current pose (C `Sample::Step`).
     fn step(&mut self) {
-        let cap = MAX_MANIFOLD_POINTS as i32;
+        let cap = self.kind.point_capacity() as i32;
 
         match self.kind {
             Kind::SphereSphere => {
@@ -779,3 +793,7 @@ pub fn manifold_step() -> Vec<f32> {
         demo.pack_step()
     })
 }
+
+#[cfg(test)]
+#[path = "manifold_demo_tests.rs"]
+mod manifold_demo_tests;
