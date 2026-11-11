@@ -357,10 +357,11 @@ export function init(container: HTMLElement, initialScene?: string) {
         wasm.sim_reset_edge_crossing();
         break;
     }
-    // C GetGuiDraw()->forceScale: Cylinder = 0.01, Cylinder Stack = 0.001, else 1.
+    // C GetGuiDraw()->forceScale: Cylinder = 0.01, Cylinder Stack = 0.001, else the
+    // b3DefaultDebugDraw default 0.001.
     if (mode === "cylinder") wasm.sim_set_draw_scales(1, 0.01);
     else if (mode === "cylinder-stack") wasm.sim_set_draw_scales(1, 0.001);
-    else wasm.sim_set_draw_scales(1, 1);
+    else wasm.sim_set_draw_scales(1, 0.001);
     setCameraForMode();
     panel.setScene(mode);
   }

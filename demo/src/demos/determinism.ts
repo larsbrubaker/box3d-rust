@@ -69,7 +69,7 @@ interface SettleConfig {
     gridSize?: number;
     gridDivisions?: number;
   };
-  /** C GetGuiDraw()->forceScale (Mesh Drop = 0.1); default 1. */
+  /** C GetGuiDraw()->forceScale (Mesh Drop = 0.1); default b3DefaultDebugDraw 0.001. */
   forceScale?: number;
 }
 
@@ -126,7 +126,7 @@ function initSettleScene(container: HTMLElement, cfg: SettleConfig) {
     syncMeshesFromPoses(demo.content, pool, []);
     cfg.reset();
     // C GetGuiDraw()->forceScale — scales the optional force debug overlay.
-    wasm.sim_set_draw_scales(1, cfg.forceScale ?? 1);
+    wasm.sim_set_draw_scales(1, cfg.forceScale ?? 0.001);
     buildGround();
     // Show the freshly dropped scene immediately (before the first step).
     syncMeshesFromPoses(demo.content, pool, wasm.determinism_poses(), {
@@ -410,7 +410,7 @@ function initQuerySpawn(container: HTMLElement) {
     clearOverlay();
     syncMeshesFromPoses(demo.content, pool, []);
     w.determinism_reset_query_spawn();
-    w.sim_set_draw_scales(1, 1);
+    w.sim_set_draw_scales(1, 0.001);
     setView(demo, 45, 25, 30, [0, 0, 0]);
     overlay.innerHTML = "spawning…";
   }

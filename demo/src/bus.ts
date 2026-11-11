@@ -72,10 +72,11 @@ export const demoBus = new DemoBus();
 // subscriber can sync without duplicating the numbers.
 // ---------------------------------------------------------------------------
 
-// C uses unbounded ImGui::InputFloat for these (default 1.0). We surface bounded
-// sliders; some C samples set forceScale = 0.1 in their own setup.
+// C uses unbounded ImGui::InputFloat for these (b3DefaultDebugDraw: joint 1.0, force
+// 0.001 since upstream 3362633). We surface bounded sliders; some C samples set their
+// own forceScale (0.1 / 0.01) in their setup.
 const viewScaleDefaults: Record<string, number> = {
-  force: 1.0, // b3DefaultDebugDraw.forceScale
+  force: 0.001, // b3DefaultDebugDraw.forceScale
   joint: 1.0, // b3DefaultDebugDraw.jointScale
   drawDistance: 100.0, // sample.h SampleContext.drawDistance (meters)
 };

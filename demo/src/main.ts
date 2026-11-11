@@ -768,6 +768,13 @@ async function navigate(): Promise<void> {
     return;
   }
 
+  // Legacy alias: the Character "Mover" sample was renamed "Geometric Mover" upstream,
+  // so its slug moved from `#/character/mover` to `#/character/geometric-mover`.
+  if (parsed.route === "character" && parsed.slug === "mover") {
+    window.location.hash = "#/character/geometric-mover";
+    return;
+  }
+
   // Legacy alias: the old single-sample `#/hull` route (Box Hull) is now the
   // Box Hull scene of the Geometry page (`#/geometry/box-hull`).
   if (parsed.route === "hull") {

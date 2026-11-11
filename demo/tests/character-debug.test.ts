@@ -16,7 +16,7 @@ test("shouldDrawCharacterDebug gates only the Rigid Body scene", () => {
   expect(shouldDrawCharacterDebug("rigid-body", false)).toBe(false);
 
   // Other character scenes always draw their own overlays (no Debug (V) gate).
-  for (const scene of ["capsule-plane", "mover-overlap", "mover"] as const) {
+  for (const scene of ["capsule-plane", "mover-overlap", "mover", "dynamic-mover"] as const) {
     expect(shouldDrawCharacterDebug(scene, false)).toBe(true);
     expect(shouldDrawCharacterDebug(scene, true)).toBe(true);
   }

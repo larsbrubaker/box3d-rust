@@ -153,9 +153,9 @@ pub(crate) fn build_rigid_body(
     let mut ground_edges: Vec<f32> = Vec::new();
     let ident = QUAT_IDENTITY;
 
-    // Static collision meshes: (obj, position, scale, three_materials?).
-    let meshes: [(&str, Vec3, Vec3, bool); 5] = [
-        (test_map_obj, VEC3_ZERO, VEC3_ONE, true),
+    // Static collision meshes: (obj, position, scale).
+    let meshes: [(&str, Vec3, Vec3); 5] = [
+        (test_map_obj, VEC3_ZERO, VEC3_ONE),
         (
             stairs_obj,
             Vec3 {
@@ -164,7 +164,6 @@ pub(crate) fn build_rigid_body(
                 z: 0.0,
             },
             VEC3_ONE,
-            false,
         ),
         (
             building_obj,
@@ -174,7 +173,6 @@ pub(crate) fn build_rigid_body(
                 z: -10.0,
             },
             VEC3_ONE,
-            false,
         ),
         (
             voxel1_obj,
@@ -184,7 +182,6 @@ pub(crate) fn build_rigid_body(
                 z: -10.0,
             },
             VEC3_ONE,
-            false,
         ),
         (
             voxel2_obj,
@@ -194,17 +191,15 @@ pub(crate) fn build_rigid_body(
                 z: 10.0,
             },
             VEC3_ONE,
-            false,
         ),
     ];
-    for (obj, position, scale, mats) in meshes {
+    // C RigidBodyCharacter creates every level mesh and the height field with
+    // b3DefaultShapeDef() (no per-triangle material table).
+    for (obj, position, scale) in meshes {
         let Some(mesh) = load_level_mesh(obj) else {
             continue;
         };
-        let mut shape_def = default_shape_def();
-        if mats {
-            shape_def.materials = super::super::ground_materials();
-        }
+        let shape_def = default_shape_def();
         let mut body_def = default_body_def();
         body_def.position = Pos {
             x: position.x as _,
@@ -225,8 +220,7 @@ pub(crate) fn build_rigid_body(
 
     // Height field 50×50 at {20,0,0}.
     {
-        let mut shape_def = default_shape_def();
-        shape_def.materials = super::super::ground_materials();
+        let shape_def = default_shape_def();
         let mut body_def = default_body_def();
         body_def.position = Pos {
             x: 20.0,
