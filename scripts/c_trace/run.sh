@@ -1,6 +1,6 @@
 #!/bin/sh
-# Build the C reference at upstream 3362633 (scalar path, -ffp-contract=off, f32 and
-# BOX3D_DOUBLE_PRECISION), generate the Character mover trace drivers from the pinned
+# Build the C reference (default: the pin, upstream 38f2ae1) on the scalar path with
+# -ffp-contract=off, in f32 and BOX3D_DOUBLE_PRECISION, generate the Character mover trace drivers from the pinned
 # samples/sample_character.cpp, run the scripted Dynamic Mover and Geometric Mover
 # sessions, and print the FNV-1a 64 of each trace. Those hashes are the golden values
 # in demo/wasm/src/character_demo/{dynamic,mover}/tests.rs; dump the Rust traces with
@@ -12,7 +12,7 @@
 set -eu
 REF=$(cd "$1" && pwd)
 OUT=$(mkdir -p "$2" && cd "$2" && pwd)
-COMMIT=${3:-3362633}
+COMMIT=${3:-38f2ae1}
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 mkdir -p "$OUT/c" "$OUT/drivers/gfx"

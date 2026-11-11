@@ -3,7 +3,7 @@
 
 The drivers copy the scene construction and physics methods of `DynamicMoverSample`
 and `GeometricMoverSample` verbatim out of the pinned C sample source
-(`samples/sample_character.cpp` at upstream 3362633) and replace only the app
+(`samples/sample_character.cpp`, unchanged from upstream 3362633 to 38f2ae1) and replace only the app
 plumbing (camera, key table, ImGui, rendering) with a scripted camera + keys, so the
 C reference and the Rust port (`demo/wasm/src/character_demo/{dynamic,mover}/tests.rs`)
 can run the same script and be diffed bit-for-bit.

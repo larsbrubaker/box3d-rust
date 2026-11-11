@@ -182,7 +182,7 @@ reference pin advances from `efca0c1`. Ported so far:
 - Character / Dynamic Mover is live (upstream `3362633`): the vendored
   `DynamicMover` and the full `DynamicMoverSample` playground with its
   controls, aim camera, and ball launcher, bit-exact with a scalar C build of
-  `3362633` under a scripted session in both precision modes
+  `38f2ae1` under a scripted session in both precision modes
   (`scripts/c_trace/`).
 - Character / Mover is renamed Geometric Mover (the old `#/character/mover`
   link redirects) and ports `GeometricMoverSample`: the vendored
