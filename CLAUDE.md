@@ -50,7 +50,7 @@ This project is a strict port of the Box3D C library to Rust. These rules ensure
 
 ### The C Reference
 
-The exact source being ported is the git submodule at `box3d-cpp-reference/` (pinned, currently at `efca0c1`). **Always read the pinned submodule, not the upstream website** — upstream moves fast (Box3D was released June 2026). Layout:
+The exact source being ported is the git submodule at `box3d-cpp-reference/` (pinned, currently at `38f2ae1`). **Always read the pinned submodule, not the upstream website** — upstream moves fast (Box3D was released June 2026). Layout:
 
 - `src/*.c` + `src/*.h` — internal implementation (the bulk of the port)
 - `include/box3d/*.h` — public API and inline functions (port these with the module that owns them)
