@@ -78,11 +78,29 @@ reference pin advances from `efca0c1`. Ported so far:
   Rust counterpart. Its new zero initializers in `replay.c`, `simd.h`, and
   `world_snapshot.c` need no port, as the Rust code initializes those values
   already.
-- The new Character / Dynamic Mover sample and the other samples-only changes
-  in upstream `3362633` (the geometric mover split into
-  `geometric_mover.cpp`, plus compound, manifold, replay, camera, and input
-  updates). Dynamic Mover is listed as planned in the demo registry. The
-  header comment rewrapping in that commit needs no port.
+- The remaining samples-only changes in upstream `3362633` (the compound
+  Village query stress panel, manifold, replay, camera speed-scroll, and
+  Shift+Tab text toggle updates). The header comment rewrapping in that commit
+  needs no port.
+
+### Demo
+
+- Character / Dynamic Mover is live (upstream `3362633`): the vendored
+  `DynamicMover` and the full `DynamicMoverSample` playground with its
+  controls, aim camera, and ball launcher, bit-exact with a scalar C build of
+  `3362633` under a scripted session in both precision modes
+  (`scripts/c_trace/`).
+- Character / Mover is renamed Geometric Mover (the old `#/character/mover`
+  link redirects) and ports `GeometricMoverSample`: the vendored
+  `GeometricMover` (shared with Compound / Village), the falling tree and box
+  with their `b3Body_TimeOfImpactMover` impacts, and `GetMoverInput` keys, also
+  bit-exact with C under a scripted session.
+- The OBJ loader splits quads along the shorter diagonal like tinyobj (it fanned
+  them); larger polygons still fan where C uses earcut.
+- Character / Rigid Body builds its level with the default shape material like
+  C (it attached an old three-material table).
+- The demo's default debug-draw force scale is 0.001, as in
+  `b3DefaultDebugDraw`.
 
 ## 0.5.0
 
