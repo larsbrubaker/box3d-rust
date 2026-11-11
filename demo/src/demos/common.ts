@@ -103,6 +103,32 @@ export type DemoPageOpts = {
 };
 
 /**
+ * Publish the canvas hint pill's bottom edge (px from the canvas-area top, 0 while
+ * the pill is hidden) as `--canvas-hint-bottom` on the canvas area, so the C
+ * `DrawTextLine` HUD (`.sample-draw-text`) starts on the row below the pill instead
+ * of running underneath it. The pill wraps on narrow canvases and its text follows
+ * the active scene, so its height is measured live rather than assumed in CSS.
+ */
+function trackCanvasHintBottom(hintEl: HTMLElement, canvasArea: HTMLElement): void {
+  const sync = () => {
+    // offsetParent is null while the pill is display:none (empty hint).
+    const bottom = hintEl.offsetParent ? hintEl.offsetTop + hintEl.offsetHeight : 0;
+    canvasArea.style.setProperty("--canvas-hint-bottom", `${bottom}px`);
+  };
+  sync();
+  if (typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(() => {
+    // The page was torn down (route change): stop observing the detached pill.
+    if (!hintEl.isConnected) {
+      observer.disconnect();
+      return;
+    }
+    sync();
+  });
+  observer.observe(hintEl);
+}
+
+/**
  * Build a sample page: canvas area + the shared Info panel (see sample-panel.ts).
  * `controls` is the panel body — everything a page appends lands directly under
  * the active sample's description; the shared sim chrome (transport, scene
@@ -141,15 +167,18 @@ export function demoPage(
       </div>
     </div>
   `;
+  const hintEl = container.querySelector(".canvas-hint") as HTMLElement | null;
   const panel = new SamplePanel(document.getElementById("controls")!, {
     title,
     category: opts.category,
-    hintEl: container.querySelector(".canvas-hint") as HTMLElement | null,
+    hintEl,
     hint,
     info: opts.info,
     sceneHints: opts.sceneHints,
     about: opts.about,
   });
+  const canvasArea = container.querySelector(".demo-canvas-area") as HTMLElement | null;
+  if (hintEl && canvasArea) trackCanvasHintBottom(hintEl, canvasArea);
   return {
     canvas: document.getElementById("demo-canvas") as HTMLCanvasElement,
     controls: panel.body,

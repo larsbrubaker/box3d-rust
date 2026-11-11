@@ -793,7 +793,10 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   pointer-events: none;
-  white-space: nowrap;
+  /* One line when it fits; long hints wrap inside the pill instead of running
+     off a narrow canvas (the DrawTextLine HUD follows the pill's live height). */
+  white-space: normal;
+  width: max-content;
   box-shadow: var(--shadow);
   max-width: calc(100% - 24px);
   text-align: center;
@@ -1325,18 +1328,45 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* C DrawTextLine HUD. Starts on the row below the centered hint pill
+   (--canvas-hint-bottom is measured live by demoPage, 0 while the pill is hidden)
+   and sits on a translucent dark backing like the pill, so it reads over light sky
+   and dark scenes alike. Bottom-centered prompts reuse the class with inline
+   top/left overrides; max-content + max-width keeps them inside the canvas.
+   pre-wrap: textContent HUDs separate their C lines with "\n" (and align with
+   spaces); lines wrap only on canvases narrower than the line. */
 .demo-page.samples-shell .sample-draw-text {
   position: absolute;
-  top: 12px;
+  top: max(12px, calc(var(--canvas-hint-bottom, 0px) + 6px));
   left: 12px;
   z-index: 3;
   pointer-events: none;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(30, 34, 40, 0.72);
+  border: 1px solid rgba(52, 59, 70, 0.85);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  white-space: nowrap;
+  color: #e6e8ec;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  white-space: pre-wrap;
+}
+
+.demo-page.samples-shell .sample-draw-text:empty {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .demo-page.samples-shell .sample-draw-text {
+    top: max(8px, calc(var(--canvas-hint-bottom, 0px) + 4px));
+    left: 8px;
+    max-width: calc(100% - 16px);
+    padding: 2px 6px;
+    font-size: 10px;
+  }
 }
 
 .demo-page.samples-shell .canvas-hint:empty {

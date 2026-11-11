@@ -139,9 +139,9 @@ export function init(container: HTMLElement, initialScene?: string) {
   );
 
   // C `DrawTextLine` overlay pinned over the canvas (styled by the samples shell);
-  // multi-line via `pre`.
+  // multi-line via `pre-wrap` (wraps only on canvases narrower than a line).
   const overlay = createCanvasOverlay(page);
-  overlay.style.whiteSpace = "pre";
+  overlay.style.whiteSpace = "pre-wrap";
 
   // --- Per-scene parameters (defaults mirror the C sample constructors) ---
   // Box Hull

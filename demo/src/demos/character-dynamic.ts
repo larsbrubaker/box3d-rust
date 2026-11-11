@@ -128,7 +128,7 @@ export function createDynamicMoverMode(host: DynamicMoverHost): DynamicMoverMode
   const hud = document.createElement("div");
   hud.className = "sample-draw-text";
   hud.style.pointerEvents = "none";
-  hud.style.whiteSpace = "pre";
+  hud.style.whiteSpace = "pre-wrap";
   hud.style.display = "none";
   host.canvasArea?.appendChild(hud);
 
