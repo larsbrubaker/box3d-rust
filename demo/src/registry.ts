@@ -179,11 +179,18 @@ export const SAMPLES: SampleEntry[] = [
   ...cat("Character", "sample_character.cpp", [
     ["CapsulePlane", "live", "character", "capsule-plane"],
     ["MoverOverlap", "live", "character", "mover-overlap"],
-    ["Mover", "live", "character", "mover"],
-    // Planned: added upstream at 3362633. A capsule character driven by the new mover joint
-    // and held up by a pogo joint rebuilt every step; the library joints are ported, the
-    // sample is not.
-    ["Dynamic Mover", "planned"],
+    // Live: GeometricMoverSample (named "Geometric Mover" since upstream 47d7f7c; the old
+    // `#/character/mover` deep link redirects here). Scene key stays "mover".
+    ["Geometric Mover", "live", "character", "mover"],
+    // Live: DynamicMoverSample (upstream 3362633), the vendored DynamicMover driven by the
+    // mover + pogo joints over the full playground (bridge, ramps, platforms, seesaw, door,
+    // ball pit, pressure plate, sweeper, pillars, 17 gems, box swap, ball launcher with the
+    // aim camera). Bit-exact with the C reference under a scripted run in both precision
+    // modes (character_demo/dynamic/tests.rs). Disclosed: C debug-build counts (pyramid
+    // baseCount 20, release-only skittles skipped — too heavy for serial wasm, the Village /
+    // Benchmark DEBUG convention); the mouse locks on a canvas click since browsers only
+    // allow pointer lock from a user gesture (C locks at construction).
+    ["Dynamic Mover", "live", "character", "dynamic-mover"],
     // Partial: RigidbodyCharacter physics, third-person boom, and Debug (V) match C.
     // Remaining disclosed divergence: mouse locks on canvas click (browsers can't
     // auto-lock like sapp_lock_mouse).

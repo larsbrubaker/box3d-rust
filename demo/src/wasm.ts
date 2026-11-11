@@ -731,6 +731,36 @@ export interface Box3dWasm {
   character_debug_segments(): Float32Array;
   character_debug_points(): Float32Array;
   character_follow_target(): Float32Array;
+  /** Convex-hull render channel: `[count, (color, floatCount, ...tris)*]` (fetch per reset). */
+  character_hull_geometry(): Float32Array;
+  /** Per hull `[px,py,pz, qx,qy,qz,qw, alpha]`; alpha 0 hides it. */
+  character_hull_poses(): Float32Array;
+  character_hull_styles(): Uint32Array;
+  /** World-space debug labels JSON (`[{x,y,z,color,text}]`, C DrawString3D). */
+  character_debug_text(): string;
+  /** C `IsKeyDown` table for the `GetMoverInput` scenes (Geometric / Dynamic Mover). */
+  character_set_keys(
+    w: boolean,
+    a: boolean,
+    s: boolean,
+    d: boolean,
+    space: boolean,
+    shift: boolean,
+    control: boolean,
+  ): void;
+  /** Camera yaw / pitch (radians), wheel-zoom radius, and frame dt (Dynamic Mover aim blend). */
+  character_set_camera(yaw: number, pitch: number, radius: number, frame_dt: number): void;
+  // Dynamic Mover (DynamicMoverSample; demo/wasm/src/character_demo/dynamic/).
+  character_reset_dynamic_mover(): number;
+  /** C button numbering: 0 left, 1 right. */
+  character_dynamic_mouse_down(button: number): void;
+  character_dynamic_mouse_up(button: number): void;
+  /** C KEY_K "align for video": returns the snapped `[yaw, pitch]`. */
+  character_dynamic_snap(): Float32Array;
+  character_dynamic_set_param(id: number, value: number): void;
+  /** Slider values (param ids 0..9) then checkbox states (flag ids 0..2). */
+  character_dynamic_params(): Float32Array;
+  character_dynamic_set_flag(id: number, on: boolean): void;
 
   // --- Issues category (sample_issues.cpp; demo/wasm/src/issues_demo/).
   issues_reset_crash(): number;

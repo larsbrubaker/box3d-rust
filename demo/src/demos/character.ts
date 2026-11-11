@@ -1,12 +1,14 @@
-// Character samples — a 1:1 port of the four upstream `sample_character.cpp`
-// scenes: CapsulePlane, MoverOverlap, Mover (BasicMover), and Rigid Body.
+// Character samples — a 1:1 port of the five upstream `sample_character.cpp`
+// scenes: CapsulePlane, MoverOverlap, Geometric Mover, Dynamic Mover, and Rigid Body.
 //
 // - CapsulePlane / MoverOverlap: drag a query capsule with the mouse into static
 //   shapes; watch the returned collision planes and the b3SolvePlanes push-out.
-// - Mover: the real BasicMover level (test_map01 + stairs + torus mesh + wave
-//   height field + spring door + enemy/friendly capsules + dynamic sphere) driven
-//   by the C-exact CharacterMover. WASD / Space / Shift, Third Person + Clip
-//   Velocity controls.
+// - Geometric Mover: the real level (test_map01 + stairs + torus mesh + wave height
+//   field + spring door + enemy/friendly capsules + dynamic sphere + falling tree / box)
+//   driven by the C-exact GeometricMover through the shared third-person rig
+//   (character-rig.ts). Third Person + Clip Velocity controls.
+// - Dynamic Mover: the DynamicMoverSample playground (character-dynamic.ts) — a
+//   pogo-joint rigid-body mover with platforms, gems, a pressure plate, and a launcher.
 // - Rigid Body: the s&box-style dynamic character over the full obstacle course.
 
 import * as THREE from "three";
@@ -28,12 +30,15 @@ import {
   setView,
   trianglesFromWireframe,
 } from "../three-scene.ts";
-import { pickRay } from "../interaction.ts";
+import { parseDebugText, pickRay, TextLabelOverlay } from "../interaction.ts";
 import { createMeshPool, disposeMeshPool, syncMeshesFromPoses } from "./sim-mesh.ts";
+import { createDynamicMoverMode } from "./character-dynamic.ts";
+import { createHullLayer } from "./character-hulls.ts";
+import { createThirdPersonRig } from "./character-rig.ts";
 
-type Scene = "capsule-plane" | "mover-overlap" | "mover" | "rigid-body";
+type Scene = "capsule-plane" | "mover-overlap" | "mover" | "dynamic-mover" | "rigid-body";
 
-export const SCENES: Scene[] = ["capsule-plane", "mover-overlap", "mover", "rigid-body"];
+export const SCENES: Scene[] = ["capsule-plane", "mover-overlap", "mover", "dynamic-mover", "rigid-body"];
 
 /** C `m_showDebug` default (`sample_character.cpp:1488`). */
 export const RIGID_BODY_SHOW_DEBUG_DEFAULT = true;
@@ -71,10 +76,12 @@ export function init(container: HTMLElement, initialScene?: string) {
   const { canvas, controls } = demoPage(
     container,
     "Character",
-    "Erin Catto’s four <code>sample_character.cpp</code> scenes: drag a query capsule into " +
-      "shapes (CapsulePlane, MoverOverlap), or walk the real level with the C-exact " +
-      "<code>CharacterMover</code> (Mover) and the s&box-style dynamic character (Rigid Body).",
-    "drag capsule · WASD/arrows move · Space jump · Shift sprint · drag to orbit",
+    "Erin Catto’s five <code>sample_character.cpp</code> scenes: drag a query capsule into " +
+      "shapes (CapsulePlane, MoverOverlap), walk the real level with the C-exact " +
+      "<code>GeometricMover</code>, play in the <b>Dynamic Mover</b> playground (a rigid-body " +
+      "capsule on the new mover + pogo joints: platforms, gems, an exploding plate, a ball " +
+      "launcher), or drive the s&box-style dynamic character (Rigid Body).",
+    "WASD/arrows move · Space jump · Shift sprint · Ctrl walk · T camera · RMB aim + LMB shoot",
     wasm.version(),
     { category: "Character", samplesShell: true },
   );
@@ -93,7 +100,8 @@ export function init(container: HTMLElement, initialScene?: string) {
     [
       { label: "CapsulePlane", value: "capsule-plane" },
       { label: "MoverOverlap", value: "mover-overlap" },
-      { label: "Mover", value: "mover" },
+      { label: "Geometric Mover", value: "mover" },
+      { label: "Dynamic Mover", value: "dynamic-mover" },
       { label: "Rigid Body", value: "rigid-body" },
       { label: "Respawn", value: "respawn" },
     ],
@@ -119,6 +127,8 @@ export function init(container: HTMLElement, initialScene?: string) {
     thirdPerson = v;
     wasm.character_set_third_person(v);
     if (!v && pointerLocked) document.exitPointerLock?.();
+    dynamicMode.onThirdPerson(v);
+    moverRig.onThirdPerson(v);
     updateLookHint();
   });
   const debugRow = createCheckbox("Debug (V)", showDebug, (v) => {
@@ -138,6 +148,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   demo.camera.updateProjectionMatrix();
 
   const pool = createMeshPool();
+  const hullLayer = createHullLayer(demo, wasm);
 
   // Static ground wireframe (mesh + height field), rebuilt on each reset.
   let groundMesh: THREE.Mesh | null = null;
@@ -237,6 +248,10 @@ export function init(container: HTMLElement, initialScene?: string) {
       thirdPerson = !thirdPerson;
       wasm.character_set_third_person(thirdPerson);
       if (!thirdPerson && pointerLocked) document.exitPointerLock?.();
+      const thirdInput = thirdRow.querySelector("input") as HTMLInputElement | null;
+      if (thirdInput) thirdInput.checked = thirdPerson;
+      dynamicMode.onThirdPerson(thirdPerson);
+      moverRig.onThirdPerson(thirdPerson);
       updateLookHint();
     }
     // C RigidBodyCharacter::Keyboard KEY_V → toggle m_showDebug (:1511-1514).
@@ -311,6 +326,31 @@ export function init(container: HTMLElement, initialScene?: string) {
   let pointerLocked = false;
 
   const canvasArea = (canvas.closest(".demo-canvas-area") as HTMLElement | null) ?? canvas.parentElement;
+
+  // Dynamic Mover page mode: its DrawControls panel, HUD, aim / shoot mouse, and camera.
+  const dynamicMode = createDynamicMoverMode({
+    wasm,
+    demo,
+    canvas,
+    controls,
+    canvasArea,
+    keys,
+    isActive: () => scene === "dynamic-mover",
+    isThirdPerson: () => thirdPerson,
+  });
+  // Geometric Mover: the same C GetMoverInput keys + third-person look / wheel rig.
+  const moverRig = createThirdPersonRig({
+    wasm,
+    demo,
+    canvas,
+    canvasArea,
+    keys,
+    isActive: () => scene === "mover",
+    isThirdPerson: () => thirdPerson,
+    lockedPrompt: "WASD move, Space jump, Shift sprint, Ctrl walk",
+  });
+  // C DrawString3D labels (the Geometric Mover impact speeds).
+  const labels = new TextLabelOverlay(demo);
   const lookHint = document.createElement("div");
   lookHint.className = "sample-draw-text";
   lookHint.style.bottom = "0.6em";
@@ -333,7 +373,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   }
 
   const onLookMove = (e: MouseEvent) => {
-    if (!pointerLocked) return;
+    if (!pointerLocked || scene !== "rigid-body") return;
     // Raw relative deltas (sample.cpp: m_mouseDelta = { mouseDX, mouseDY }).
     demo.controls.yaw -= 2 * LOOK_SENS * e.movementX;
     demo.controls.pitch += LOOK_SENS * e.movementY;
@@ -364,7 +404,12 @@ export function init(container: HTMLElement, initialScene?: string) {
         setView(demo, 120, 18, 9, [0, 1, 0]);
         break;
       case "mover":
-        setView(demo, 35, 20, 14, [7.5, 1, 9]);
+        // C GeometricMoverSample: SetView( 120, 30, 5, moverPosition ).
+        setView(demo, 120, 30, 5, [7.5, 0.75, 9]);
+        break;
+      case "dynamic-mover":
+        // C SetView( 180, 20, 6, startPosition ); the follow cam takes over each frame.
+        setView(demo, 180, 20, 6, [0, 1.5, 0]);
         break;
       case "rigid-body":
         setView(demo, 30, 18, 6, [7.5, 2, 9]);
@@ -380,8 +425,11 @@ export function init(container: HTMLElement, initialScene?: string) {
   function updateControlVisibility() {
     solveBtn.style.display = scene === "capsule-plane" ? "" : "none";
     clipRow.style.display = scene === "mover" ? "" : "none";
-    thirdRow.style.display = isWalker(scene) ? "" : "none";
+    thirdRow.style.display = isWalker(scene) || scene === "dynamic-mover" ? "" : "none";
     debugRow.style.display = scene === "rigid-body" ? "" : "none";
+    dynamicMode.setVisible(scene === "dynamic-mover");
+    moverRig.setVisible(scene === "mover");
+    labels.clear();
     const hints: Record<Scene, string> = {
       "capsule-plane":
         "Drag the green capsule into the box; yellow marks the returned planes. " +
@@ -390,9 +438,21 @@ export function init(container: HTMLElement, initialScene?: string) {
         "Drag the yellow capsule into the sphere / capsule / box. Lime arrows are valid plane " +
         "normals (red = degenerate — must stay 0); the cyan capsule is the solved push-out.",
       mover:
-        "Walk the C-exact <code>CharacterMover</code> over the real level. Blue capsule + purple " +
-        "velocity + green/gray pogo ray. It shoves the dynamic sphere and swings the spring door. " +
-        "Click the canvas to focus keys.",
+        "The C-exact <code>GeometricMover</code> on the real level. Starts on the free camera " +
+        "like C — press <b>T</b> to drive (mouse looks, wheel zooms): WASD move, Space jump, " +
+        "Shift sprint, Ctrl (or C) walk. Blue capsule, purple velocity, green/gray pogo ray, " +
+        "yellow contact planes. It shoves the sphere and the spring door; the gold box and the " +
+        "falling tree report their <code>b3Body_TimeOfImpactMover</code> hit (yellow/cyan " +
+        "arrow + speed, translucent box at first touch).",
+      "dynamic-mover":
+        "<b>Click the canvas to play.</b> WASD (or arrows) move relative to the camera, " +
+        "<b>Space</b> jump, <b>Shift</b> sprint, <b>Ctrl</b> walk (or C), mouse looks. Hold " +
+        "<b>right mouse</b> to aim the launcher and <b>left click</b> to shoot. Collect the 17 " +
+        "gold gems: up the stairs and across the rope bridge, the moving platforms to the ledges, " +
+        "the purple pillar jumps, around the sweeper; stomp the red pressure plate in the ball " +
+        "pit. <b>T</b> frees the camera, wheel zooms, <b>K</b> snaps the view. Probes: green = " +
+        "chosen pogo ray, yellow = other skirt hits, gray = misses. C debug-build counts: the " +
+        "pyramid is 20 wide and the release-only skittles are skipped.",
       "rigid-body":
         "The s&box dynamic character (green feet box + blue capsule) with trace-based step-up over " +
         "the obstacle course. Purple velocity, orange wish, yellow mass center (V toggles). " +
@@ -405,6 +465,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   async function reset(): Promise<void> {
     sceneReady = false;
     dragging = false;
+    hullLayer.clear();
     updateControlVisibility();
     applyCamera();
 
@@ -416,6 +477,16 @@ export function init(container: HTMLElement, initialScene?: string) {
       wasm.character_reset(1);
       clearGround();
       sceneReady = true;
+    } else if (scene === "dynamic-mover") {
+      wasm.character_reset_dynamic_mover();
+      thirdPerson = true;
+      const thirdInput = thirdRow.querySelector("input") as HTMLInputElement | null;
+      if (thirdInput) thirdInput.checked = true;
+      wasm.character_set_third_person(true);
+      clearGround();
+      hullLayer.rebuild();
+      dynamicMode.onReset();
+      sceneReady = true;
     } else if (scene === "mover") {
       const activeScene = scene;
       const [map, stairs] = await Promise.all([
@@ -425,7 +496,14 @@ export function init(container: HTMLElement, initialScene?: string) {
       if (scene !== activeScene) return;
       wasm.character_reset_mover(map, stairs);
       wasm.character_set_clip_velocity(clipVelocity);
-      wasm.character_set_third_person(thirdPerson);
+      // C GeometricMoverSample starts with the free camera (m_thirdPerson = false).
+      thirdPerson = false;
+      const thirdInput = thirdRow.querySelector("input") as HTMLInputElement | null;
+      if (thirdInput) thirdInput.checked = false;
+      wasm.character_set_third_person(false);
+      moverRig.setRadius(5);
+      moverRig.setVisible(true);
+      hullLayer.rebuild();
       buildGround();
       sceneReady = true;
     } else {
@@ -468,7 +546,11 @@ export function init(container: HTMLElement, initialScene?: string) {
       const rightX = -fwdZ;
       const rightZ = fwdX;
 
-      if (isWalker(scene)) {
+      if (scene === "dynamic-mover") {
+        dynamicMode.beforeStep();
+      } else if (scene === "mover") {
+        moverRig.beforeStep();
+      } else if (isWalker(scene)) {
         let tx = 0;
         let ty = 0;
         if (keys.has("KeyW") || keys.has("ArrowUp")) tx += 1;
@@ -483,10 +565,12 @@ export function init(container: HTMLElement, initialScene?: string) {
       wasm.character_step(1 / 60, 4);
 
       const poses = wasm.character_poses();
+      const styles = wasm.character_styles();
       syncMeshesFromPoses(demo.content, pool, poses, {
         groundIndex: null,
-        styles: wasm.character_styles(),
+        styles,
       });
+      hullLayer.update();
 
       // C gates Rigid Body DrawDebug behind m_showDebug (:1609-1612); clear overlays when off.
       if (shouldDrawCharacterDebug(scene, showDebug)) {
@@ -498,6 +582,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       }
 
       lastStatus = wasm.character_status();
+      if (scene === "dynamic-mover") dynamicMode.afterStep(pool, styles);
 
       // Third-person / follow camera for the walkers.
       if (scene === "rigid-body") {
@@ -537,24 +622,21 @@ export function init(container: HTMLElement, initialScene?: string) {
           lastBoomApplied = applied;
         }
       } else if (scene === "mover") {
+        // C: if third person, m_camera->m_pivot = m_mover.m_position (wheel radius);
+        // the free camera is the ordinary orbit / fly camera.
         const follow = wasm.character_follow_target();
-        if (follow.length >= 3) {
-          _target.set(follow[0]!, follow[1]! + 0.5, follow[2]!);
-          if (thirdPerson) {
-            // Chase: translate the camera rigidly with the character so the boom trails.
-            const dx = _target.x - tgt.x;
-            const dy = _target.y - tgt.y;
-            const dz = _target.z - tgt.z;
-            demo.camera.position.set(cam.x + dx, cam.y + dy, cam.z + dz);
-          }
-          demo.controls.target.copy(_target);
-          demo.controls.update();
-        }
+        moverRig.place(
+          follow.length >= 3 ? [follow[0]!, follow[1]!, follow[2]!] : null,
+          moverRig.radius(),
+        );
+        labels.update(parseDebugText(wasm.character_debug_text()));
       }
 
       frame += 1;
       if (frame % 10 === 0) {
-        if (isDrag(scene)) {
+        if (scene === "dynamic-mover") {
+          updateReadout(readout, dynamicMode.readout());
+        } else if (isDrag(scene)) {
           updateReadout(readout, [
             { label: "scene", value: scene },
             { label: "planes", value: String(Math.round(lastStatus[0] ?? 0)) },
@@ -564,6 +646,9 @@ export function init(container: HTMLElement, initialScene?: string) {
           const speed = Math.hypot(lastStatus[3] ?? 0, lastStatus[5] ?? 0);
           updateReadout(readout, [
             { label: "scene", value: scene },
+            ...(scene === "mover"
+              ? [{ label: "third person (T)", value: thirdPerson ? "1" : "0" }]
+              : []),
             { label: "ground", value: (lastStatus[6] ?? 0) > 0.5 ? "yes" : "no" },
             { label: "sprint", value: (lastStatus[7] ?? 0) > 0.5 ? "yes" : "no" },
             { label: "y", value: (lastStatus[1] ?? 0).toFixed(2) },
@@ -590,6 +675,10 @@ export function init(container: HTMLElement, initialScene?: string) {
     document.removeEventListener("pointerlockchange", onPointerLockChange);
     if (pointerLocked) document.exitPointerLock?.();
     lookHint.remove();
+    dynamicMode.dispose();
+    moverRig.dispose();
+    labels.dispose();
+    hullLayer.clear();
     clearGround();
     disposeMeshPool(pool);
     segGeo.dispose();
