@@ -17,7 +17,7 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
-import { createCanvasOverlay, createInfoBox } from "../controls.ts";
+import { createCanvasOverlay } from "../controls.ts";
 import { demoPage, makeStyleGate, runLoop } from "./common.ts";
 import {
   DemoScene,
@@ -82,10 +82,8 @@ function initSettleScene(container: HTMLElement, cfg: SettleConfig) {
     cfg.description,
     "Runs to sleep, then prints the hash · P/O/R",
     wasm.version(),
-    { category: "Determinism", samplesShell: true },
+    { category: "Determinism", samplesShell: true, info: cfg.info },
   );
-
-  controls.appendChild(createInfoBox(cfg.info));
 
   const overlay = createCanvasOverlay(page);
 
@@ -277,19 +275,18 @@ function initQuerySpawn(container: HTMLElement) {
       "50 bodies drift into a settled cloud.",
     "Query-driven spawning · P/O/R",
     w.version(),
-    { category: "Determinism", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "Each cycle a ray cast picks the spawn position, an overlap query picks the shape type, " +
+    {
+      category: "Determinism",
+      samplesShell: true,
+      info:
+        "Each cycle a ray cast picks the spawn position, an overlap query picks the shape type, " +
         "and a sphere cast sets its size (all ported library functions). Overlay: <strong>ray = " +
         "yellow</strong>, <strong>overlap box = magenta</strong>, <strong>sphere cast = cyan</strong> " +
         "(gray on a full-length miss), <strong>spawn = white</strong>.<br><br>" +
         "<strong>Disclosure:</strong> the on-screen version advances the scenario every 10th step " +
         "so each query lingers (C <code>QuerySpawn::Step</code>). That diverges from the unit-test " +
         "cadence, so the settled hash differs from the pinned <code>test_determinism.c</code> constants.",
-    ),
+    },
   );
 
   const overlay = createCanvasOverlay(page);

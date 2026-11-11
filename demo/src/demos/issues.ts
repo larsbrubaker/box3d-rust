@@ -9,7 +9,6 @@ import * as THREE from "three";
 import {
   createButton,
   createCanvasOverlay,
-  createInfoBox,
   createSlider,
 } from "../controls.ts";
 import {
@@ -183,9 +182,8 @@ export function init(container: HTMLElement, initialScene?: string) {
     cfg.desc,
     cfg.hint,
     wasm.version(),
-    { category: "Issues", samplesShell: true },
+    { category: "Issues", samplesShell: true, info: cfg.desc },
   );
-  controls.appendChild(createInfoBox(cfg.desc));
 
   // Restitution Overshoot bounce HUD / s&box Ghost Collisions launch HUD
   // (C RestitutionOvershoot::Step / SBoxGhostCollisions::Step DrawTextLine).
