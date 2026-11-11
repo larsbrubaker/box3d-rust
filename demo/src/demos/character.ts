@@ -10,17 +10,10 @@
 // - Rigid Body: the s&box-style dynamic character over the full obstacle course.
 
 import * as THREE from "three";
-import {
-  createButton,
-  createButtonGroup,
-  createCheckbox,
-  createInfoBox,
-  createReadout,
-  updateReadout,
-} from "../controls.ts";
+import { createButton, createCheckbox, createReadout, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
-import { demoPage, runLoop } from "./common.ts";
+import { demoPage, ORBIT_HINT, runLoop } from "./common.ts";
 import {
   DemoScene,
   makeTriangleMesh,
@@ -68,15 +61,39 @@ export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("character", SCENES);
 
-  const { canvas, controls } = demoPage(
+  const WALK_HINT = "WASD/arrows move · Space jump · Shift sprint";
+  const { canvas, controls, panel } = demoPage(
     container,
     "Character",
     "Erin Catto’s four <code>sample_character.cpp</code> scenes: drag a query capsule into " +
       "shapes (CapsulePlane, MoverOverlap), or walk the real level with the C-exact " +
       "<code>CharacterMover</code> (Mover) and the s&box-style dynamic character (Rigid Body).",
-    "drag capsule · WASD/arrows move · Space jump · Shift sprint · drag to orbit",
+    `Drag the capsule · ${ORBIT_HINT}`,
     wasm.version(),
-    { category: "Character", samplesShell: true },
+    {
+      category: "Character",
+      samplesShell: true,
+      info: {
+        "capsule-plane":
+          "Drag the green capsule into the box; yellow marks the returned planes. " +
+          "<b>Solve</b> pushes it out with <code>b3SolvePlanes</code>.",
+        "mover-overlap":
+          "Drag the yellow capsule into the sphere / capsule / box. Lime arrows are valid plane " +
+          "normals (red = degenerate — must stay 0); the cyan capsule is the solved push-out.",
+        mover:
+          "Walk the C-exact <code>CharacterMover</code> over the real level. Blue capsule + purple " +
+          "velocity + green/gray pogo ray. It shoves the dynamic sphere and swings the spring door. " +
+          "Click the canvas to focus keys.",
+        "rigid-body":
+          "The s&box dynamic character (green feet box + blue capsule) with trace-based step-up over " +
+          "the obstacle course. Purple velocity, orange wish, yellow mass center (V toggles). " +
+          "<b>Click to look</b> (FPS mouse-look, Esc releases); the camera boom won't clip walls you back into.",
+      },
+      sceneHints: {
+        mover: `${WALK_HINT} · T third person · ${ORBIT_HINT}`,
+        "rigid-body": `${WALK_HINT} · V debug · click to look (Esc releases)`,
+      },
+    },
   );
 
   let scene: Scene =
@@ -86,31 +103,24 @@ export function init(container: HTMLElement, initialScene?: string) {
   // C RigidBodyCharacter `m_showDebug` (sample_character.cpp:1488 / :1609-1612 / :1639).
   let showDebug = RIGID_BODY_SHOW_DEBUG_DEFAULT;
 
-  const info = createInfoBox("");
-  controls.appendChild(info);
-
-  const sceneButtons = createButtonGroup(
-    [
-      { label: "CapsulePlane", value: "capsule-plane" },
-      { label: "MoverOverlap", value: "mover-overlap" },
-      { label: "Mover", value: "mover" },
-      { label: "Rigid Body", value: "rigid-body" },
-      { label: "Respawn", value: "respawn" },
-    ],
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  // Respawn is an action, not one of the scenes: its own button (previously it
+  // sat in the scene radio group and stole the active highlight).
+  panel.addSceneSelect(
+    SCENES.map((s) => ({ label: s, value: s })),
     scene,
     (v) => {
-      if (v === "respawn") {
-        void reset();
-        return;
-      }
       scene = v as Scene;
       void reset();
     },
   );
-  controls.appendChild(sceneButtons);
 
   // Scene-specific controls (shown/hidden per scene).
+  const actionRow = document.createElement("div");
+  actionRow.className = "control-row";
   const solveBtn = createButton("Solve (push out)", () => wasm.character_solve());
+  const respawnBtn = createButton("Respawn", () => void reset());
+  actionRow.append(solveBtn, respawnBtn);
   const clipRow = createCheckbox("Clip Velocity", clipVelocity, (v) => {
     clipVelocity = v;
     wasm.character_set_clip_velocity(v);
@@ -125,7 +135,12 @@ export function init(container: HTMLElement, initialScene?: string) {
     showDebug = v;
   });
   const debugInput = debugRow.querySelector("input") as HTMLInputElement | null;
-  controls.appendChild(solveBtn);
+  const thirdInput = thirdRow.querySelector("input") as HTMLInputElement | null;
+  /** Keep the Third Person checkbox showing the real mode (T key / Rigid Body force it). */
+  const syncThirdPerson = () => {
+    if (thirdInput) thirdInput.checked = thirdPerson;
+  };
+  controls.appendChild(actionRow);
   controls.appendChild(clipRow);
   controls.appendChild(thirdRow);
   controls.appendChild(debugRow);
@@ -235,6 +250,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     keys.add(e.code);
     if (e.code === "KeyT") {
       thirdPerson = !thirdPerson;
+      syncThirdPerson();
       wasm.character_set_third_person(thirdPerson);
       if (!thirdPerson && pointerLocked) document.exitPointerLock?.();
       updateLookHint();
@@ -382,23 +398,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     clipRow.style.display = scene === "mover" ? "" : "none";
     thirdRow.style.display = isWalker(scene) ? "" : "none";
     debugRow.style.display = scene === "rigid-body" ? "" : "none";
-    const hints: Record<Scene, string> = {
-      "capsule-plane":
-        "Drag the green capsule into the box; yellow marks the returned planes. " +
-        "<b>Solve</b> pushes it out with <code>b3SolvePlanes</code>.",
-      "mover-overlap":
-        "Drag the yellow capsule into the sphere / capsule / box. Lime arrows are valid plane " +
-        "normals (red = degenerate — must stay 0); the cyan capsule is the solved push-out.",
-      mover:
-        "Walk the C-exact <code>CharacterMover</code> over the real level. Blue capsule + purple " +
-        "velocity + green/gray pogo ray. It shoves the dynamic sphere and swings the spring door. " +
-        "Click the canvas to focus keys.",
-      "rigid-body":
-        "The s&box dynamic character (green feet box + blue capsule) with trace-based step-up over " +
-        "the obstacle course. Purple velocity, orange wish, yellow mass center (V toggles). " +
-        "<b>Click to look</b> (FPS mouse-look, Esc releases); the camera boom won't clip walls you back into.",
-    };
-    info.innerHTML = hints[scene];
+    panel.setScene(scene);
     updateLookHint();
   }
 
@@ -440,7 +440,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       if (scene !== activeScene) return;
       wasm.character_reset_rigid_body(map, stairs, building, v1, v2);
       thirdPerson = true;
-      thirdRow.querySelector("input")?.setAttribute("checked", "true");
+      syncThirdPerson();
       wasm.character_set_third_person(true);
       // Rigid Body forces third-person on; refresh the look hint (updateControlVisibility
       // ran before this with the old thirdPerson value, so the hint was hidden).

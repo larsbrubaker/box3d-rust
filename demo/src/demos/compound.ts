@@ -3,7 +3,6 @@
 // plus the sweeping ray/shape/overlap query visualization.
 
 import * as THREE from "three";
-import { createButtonGroup, createInfoBox } from "../controls.ts";
 import {
   attachInteraction,
   type ParamValues,
@@ -38,25 +37,30 @@ export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   // Self-check the scene table against the registry (see registry.ts pattern).
   assertRouteScenes("compound", SCENES);
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, panel } = demoPage(
     container,
     "Compound",
     "Compound shape gallery from <code>sample_compound.cpp</code>: Simple, Spheres, Hulls, " +
       "Tile Floor (2500-hull compound), Mesh Tile (box-mesh compound), and Village (real " +
       "<code>building.obj</code> compound meshes with the C character mover + query sweep).",
-    "WASD/arrows walk (Village) · Ctrl+click grab · Shift+click spawn · click select · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
-    { category: "Compound", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "Village ports Erin’s Compound / Village: hull tiles, odd-tile props, instanced " +
-        "<code>data/meshes/building.obj</code> meshes, the embedded character mover (WASD, " +
-        "space to jump, shift to sprint, T for third person) and the sweeping ray / shape-cast / " +
-        "overlap-shape query visualization. Grid is fixed at the C debug value 8 (release uses " +
-        "200, too heavy for serial wasm). Tile Floor keeps the C release count (2500 hulls).",
-    ),
+    {
+      category: "Compound",
+      samplesShell: true,
+      info: {
+        village:
+          "Village ports Erin’s Compound / Village: hull tiles, odd-tile props, instanced " +
+          "<code>data/meshes/building.obj</code> meshes, the embedded character mover (WASD, " +
+          "space to jump, shift to sprint, T for third person) and the sweeping ray / shape-cast / " +
+          "overlap-shape query visualization. Grid is fixed at the C debug value 8 (release uses " +
+          "200, too heavy for serial wasm).",
+        "tile-floor": "Tile Floor keeps the C release count (2500 hulls).",
+      },
+      sceneHints: {
+        village: "WASD/arrows walk · Space jump · Shift sprint · T third person · Ctrl+click grab · P/O/R",
+      },
+    },
   );
 
   const statsEl = document.createElement("pre");
@@ -289,24 +293,17 @@ export function init(container: HTMLElement, initialScene?: string) {
       syncVillageBuildings();
     }
     refreshStats();
+    panel.setScene(mode);
   }
 
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Simple", value: "simple" },
-        { label: "Spheres", value: "spheres" },
-        { label: "Hulls", value: "hulls" },
-        { label: "Tile Floor", value: "tile-floor" },
-        { label: "Mesh Tile", value: "mesh-tile" },
-        { label: "Village", value: "village" },
-      ],
-      mode,
-      (v) => {
-        mode = v as Mode;
-        reset();
-      },
-    ),
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  panel.addSceneSelect(
+    SCENES.map((s) => ({ label: s, value: s })),
+    mode,
+    (v) => {
+      mode = v as Mode;
+      reset();
+    },
   );
 
   let subSteps = 4;
@@ -317,7 +314,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     canvas,
     controls,
     onRestart: reset,
-    sampleName: "Village",
+    sampleName: "Compound",
     sampleCategory: "Compound",
     params: [
       {
