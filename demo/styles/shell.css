@@ -414,6 +414,28 @@ a.tree-item.active {
 
 /* --- Home category grid --------------------------------------------------- */
 
+/* "Sample coverage" heading: the three status chips stay together as one unit
+   and wrap below the title as a row on narrow screens (never one-by-one). */
+.coverage-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.coverage-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.coverage-chips > span {
+  white-space: nowrap;
+}
+
 .badge-partial {
   font-size: 0.7rem;
   font-weight: 700;
@@ -520,5 +542,11 @@ a.cat-card:hover {
 
   #main-content {
     margin-left: 0;
+  }
+
+  /* Fit the visible viewport on phones (the URL bar makes 100vh too tall);
+     browsers without dvh keep the 100vh rule above. */
+  .demo-page {
+    height: calc(100dvh - var(--menubar-h));
   }
 }

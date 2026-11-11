@@ -613,16 +613,31 @@ const menuToggle = document.getElementById("menu-toggle")!;
 const sidebar = document.getElementById("sidebar")!;
 const sidebarOverlay = document.getElementById("sidebar-overlay")!;
 
+// The drawer only animates for an explicit open/close. Without this gate the
+// slide transition also ran whenever the layout crossed the mobile breakpoint
+// (rotation, window resize, devtools/emulator width switch), so the drawer was
+// caught half-open over the canvas with its left edge clipped at x=0.
+let sidebarAnimTimer = 0;
+function animateSidebar(): void {
+  sidebar.classList.add("animating");
+  window.clearTimeout(sidebarAnimTimer);
+  sidebarAnimTimer = window.setTimeout(() => sidebar.classList.remove("animating"), 300);
+}
 function openSidebar(): void {
+  animateSidebar();
   sidebar.classList.add("open");
   menuToggle.classList.add("open");
+  menuToggle.setAttribute("aria-expanded", "true");
   sidebarOverlay.classList.add("visible");
 }
 function closeSidebar(): void {
+  if (sidebar.classList.contains("open")) animateSidebar();
   sidebar.classList.remove("open");
   menuToggle.classList.remove("open");
+  menuToggle.setAttribute("aria-expanded", "false");
   sidebarOverlay.classList.remove("visible");
 }
+menuToggle.setAttribute("aria-expanded", "false");
 menuToggle.addEventListener("click", () => {
   if (sidebar.classList.contains("open")) closeSidebar();
   else openSidebar();
@@ -679,11 +694,13 @@ function renderHome(container: HTMLElement): void {
         </p>
       </div>
 
-      <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">
-        Sample coverage
-        <span class="badge-live">${total.live} exact</span>
-        <span class="badge-partial">${total.partial} partial</span>
-        <span class="badge-planned">${total.planned} planned</span>
+      <h2 class="coverage-title">
+        <span>Sample coverage</span>
+        <span class="coverage-chips">
+          <span class="badge-live">${total.live} exact</span>
+          <span class="badge-partial">${total.partial} partial</span>
+          <span class="badge-planned">${total.planned} planned</span>
+        </span>
       </h2>
       <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">
         ${total.total} samples across ${byCat.size} categories, one per upstream
@@ -764,6 +781,10 @@ async function navigate(): Promise<void> {
     currentCleanup();
     currentCleanup = null;
   }
+
+  // A navigation always lands with the mobile drawer closed, so a sample route
+  // opens on its canvas, never under the tree.
+  closeSidebar();
 
   const active = currentEntry(parsed);
   if (active && !expanded.has(active.category)) expanded.add(active.category);

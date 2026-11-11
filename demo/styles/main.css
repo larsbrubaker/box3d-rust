@@ -1128,10 +1128,16 @@ body {
     pointer-events: auto;
   }
 
+  /* Closed by default. The slide only animates for an explicit open/close
+     (main.ts adds `.animating`), never when the layout crosses this breakpoint,
+     so a resize/rotation can't leave the drawer caught half-open over the page. */
   #sidebar {
     transform: translateX(-100%);
-    transition: transform 250ms ease;
     box-shadow: none;
+  }
+
+  #sidebar.animating {
+    transition: transform 250ms ease;
   }
 
   #sidebar.open {
@@ -1193,6 +1199,18 @@ body {
 
   .demo-controls {
     flex-shrink: 0;
+  }
+
+  /* Sample pages: canvas on top, the Info panel fills the rest of the screen and
+     scrolls on its own — no outer page scroll, so the canvas stays in view while
+     tweaking the sample's controls. */
+  .demo-page.samples-shell .demo-body {
+    overflow: hidden;
+  }
+
+  .demo-page.samples-shell .demo-canvas-area {
+    height: 46%;
+    min-height: 200px;
   }
 
   /* Code panel: hide desktop toggle, show mobile toggle inside panel */
@@ -1661,13 +1679,24 @@ body {
   opacity: 0.45;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .demo-page.samples-shell .demo-controls,
   .demo-page.samples-shell .demo-controls.samples-info-panel {
     width: 100%;
     min-width: 0;
-    max-height: 42vh;
     border-left: none;
     border-top: 1px solid var(--samples-border);
+  }
+}
+
+@media (max-width: 768px) {
+  .demo-page.samples-shell .demo-controls,
+  .demo-page.samples-shell .demo-controls.samples-info-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px 14px 20px;
   }
 }
