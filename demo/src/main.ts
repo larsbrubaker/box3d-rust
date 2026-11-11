@@ -564,8 +564,7 @@ function buildMenuBar(): void {
           ["F", "Frame selection"],
           ["Tab", "Hide UI"],
           ["M", "Diagnostics"],
-          ["Ctrl+O", "Sample picker"],
-          ["Esc", "Clear selection"],
+          ["Esc", "Close menus"],
         ];
         const mouse: [string, string][] = [
           ["Scroll", "Zoom to cursor"],

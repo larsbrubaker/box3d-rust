@@ -837,13 +837,11 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       }),
     );
 
-    const workers = createSlider("Workers", 1, 8, 1, 1, () => {});
-    workers.querySelector("input")!.setAttribute("disabled", "true");
-    workers.title = "WASM demos run single-threaded (serial port)";
+    // C has a Workers slider; the port is serial, so state the fixed value
+    // instead of showing a slider that can never move.
     const workersNote = document.createElement("div");
     workersNote.className = "control-note";
-    workersNote.textContent = "Workers: 1 (WASM is serial)";
-    solver.body.appendChild(workers);
+    workersNote.textContent = "Workers: 1 (the WASM port runs serially)";
     solver.body.appendChild(workersNote);
 
     solver.body.appendChild(
@@ -867,17 +865,17 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     restartBtn.classList.add("control-btn-block");
     solver.body.appendChild(restartBtn);
 
-    // --- Recording ---
-    const hasRecordingApi = typeof wasm.sim_start_recording === "function";
-    const recording = createCollapsingSection("Recording", true);
-    panel.simSlot.appendChild(recording.root);
+    // --- Recording (only where this demo's wasm family exports the recorder;
+    // elsewhere the section used to show two permanently disabled buttons) ---
+    if (typeof wasm.sim_start_recording === "function") {
+      const recording = createCollapsingSection("Recording", true);
+      panel.simSlot.appendChild(recording.root);
 
-    const fileField = createTextInput("File", recordingFile, (v) => {
-      recordingFile = v.trim() || "recording.b3rec";
-    });
-    recording.body.appendChild(fileField.root);
+      const fileField = createTextInput("File", recordingFile, (v) => {
+        recordingFile = v.trim() || "recording.b3rec";
+      });
+      recording.body.appendChild(fileField.root);
 
-    if (hasRecordingApi) {
       recordRestartBtn = createButton("Record (restart)", () => {
         state.restart();
         wasm.sim_start_recording?.();
@@ -901,18 +899,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       row.append(recordRestartBtn, recordNowBtn, recordStopBtn);
       recording.body.appendChild(row);
       recording.body.appendChild(recordingStatusEl);
-    } else {
-      const note = document.createElement("div");
-      note.className = "control-note";
-      note.textContent = "Recording API coming soon";
-      const disabledRow = document.createElement("div");
-      disabledRow.className = "control-row";
-      const a = createButton("Record (restart)", () => {});
-      const b = createButton("Record Now", () => {});
-      a.disabled = true;
-      b.disabled = true;
-      disabledRow.append(a, b);
-      recording.body.append(disabledRow, note);
     }
   }
 

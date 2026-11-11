@@ -519,6 +519,11 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.control-group .control-row:last-child {
+  margin-bottom: 0;
 }
 
 .control-btn {
@@ -590,6 +595,14 @@ body {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 16px;
+}
+
+/* A readout / info box with nothing to show yet (or a scene without a HUD)
+   must not leave an empty framed box in the panel. */
+.info-readout:empty,
+.info-box:empty,
+.village-stats:empty {
+  display: none;
 }
 
 .info-readout .label {
@@ -1202,6 +1215,11 @@ body {
   .canvas-hint {
     font-size: 10px;
     top: 8px;
+    /* Long per-scene hints wrap inside the pill instead of running off-canvas. */
+    white-space: normal;
+    width: max-content;
+    max-width: calc(100% - 16px);
+    line-height: 1.4;
   }
 
   /* Fill rules: keep compact 2x2 grid on mobile */
