@@ -1,4 +1,5 @@
-//! Mesh creation, edge identification, validation, and destroy.
+//! Mesh creation, validation, and destroy. Edge identification lives in `edges` and the
+//! vertex rings in `vertex_ring`.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -6,158 +7,14 @@
 use super::bvh::{
     build_recursive, collect_primitives, fill_triangles, sort_mesh_triangles, weld_vertices,
 };
+use super::edges::identify_edges;
 use super::types::{
-    MeshData, MeshDef, MeshNode, MeshTriangle, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3,
-    INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3, MESH_DATA_SIZE,
-    MESH_NODE_SIZE, MESH_TRIANGLE_SIZE, MESH_VERSION,
+    MeshData, MeshDef, MeshNode, MeshTriangle, MESH_DATA_SIZE, MESH_NODE_SIZE, MESH_TRIANGLE_SIZE,
+    MESH_VERSION,
 };
-use crate::core::{hash64_non_zero, NULL_INDEX};
-use crate::math_functions::{
-    align_up8, cross, dot, max_int, min_int, normalize, signed_volume, sub, Vec3,
-};
-use std::collections::HashMap;
-
-struct MeshEdge {
-    vertex1: i32,
-    vertex2: i32,
-    triangle1: i32,
-    triangle2: i32,
-    triangle_count: u16,
-    triangle_edge_index1: u8,
-    triangle_edge_index2: u8,
-}
-
-fn identify_edges(mesh: &mut MeshData) {
-    let triangle_count = mesh.triangle_count as usize;
-    let edge_count = 3 * triangle_count;
-    let mut edges = Vec::with_capacity(edge_count);
-    let mut normals = vec![Vec3::default(); triangle_count];
-
-    for i in 0..triangle_count {
-        let triangle = mesh.triangles[i];
-        let i1 = triangle.index1;
-        let i2 = triangle.index2;
-        let i3 = triangle.index3;
-
-        edges.push(MeshEdge {
-            vertex1: min_int(i1, i2),
-            vertex2: max_int(i1, i2),
-            triangle1: i as i32,
-            triangle2: NULL_INDEX,
-            triangle_edge_index1: 0,
-            triangle_edge_index2: 0xFF,
-            triangle_count: 1,
-        });
-        edges.push(MeshEdge {
-            vertex1: min_int(i2, i3),
-            vertex2: max_int(i2, i3),
-            triangle1: i as i32,
-            triangle2: NULL_INDEX,
-            triangle_edge_index1: 1,
-            triangle_edge_index2: 0xFF,
-            triangle_count: 1,
-        });
-        edges.push(MeshEdge {
-            vertex1: min_int(i3, i1),
-            vertex2: max_int(i3, i1),
-            triangle1: i as i32,
-            triangle2: NULL_INDEX,
-            triangle_edge_index1: 2,
-            triangle_edge_index2: 0xFF,
-            triangle_count: 1,
-        });
-
-        let v1 = mesh.vertices[i1 as usize];
-        let v2 = mesh.vertices[i2 as usize];
-        let v3 = mesh.vertices[i3 as usize];
-        let e1 = sub(v2, v1);
-        let e2 = sub(v3, v1);
-        let n = cross(e1, e2);
-        normals[i] = normalize(n);
-    }
-
-    let mut map: HashMap<u64, i32> = HashMap::with_capacity(edge_count);
-    let key0 = ((edges[0].vertex1 as u64) << 32) | (edges[0].vertex2 as u64);
-    map.insert(key0, 0);
-
-    for i in 1..edge_count {
-        let key = ((edges[i].vertex1 as u64) << 32) | (edges[i].vertex2 as u64);
-        let triangle1 = edges[i].triangle1;
-        let triangle_edge_index1 = edges[i].triangle_edge_index1;
-        if let Some(&other_index) = map.get(&key) {
-            debug_assert!((other_index as usize) < i);
-            let base = &mut edges[other_index as usize];
-            if base.triangle_count == 1 {
-                base.triangle2 = triangle1;
-                base.triangle_edge_index2 = triangle_edge_index1;
-            }
-            base.triangle_count += 1;
-        } else {
-            map.insert(key, i as i32);
-        }
-    }
-    drop(map);
-
-    let edge_flags_concave = [CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3];
-    let edge_flags_inverse = [
-        INVERSE_CONCAVE_EDGE1,
-        INVERSE_CONCAVE_EDGE2,
-        INVERSE_CONCAVE_EDGE3,
-    ];
-
-    for i in 0..edge_count {
-        let edge = &edges[i];
-        if edge.triangle_count != 2 {
-            continue;
-        }
-
-        debug_assert!(edge.triangle_edge_index1 < 3);
-        debug_assert!(edge.triangle_edge_index2 < 3);
-
-        let triangle1 = mesh.triangles[edge.triangle1 as usize];
-        let triangle2 = mesh.triangles[edge.triangle2 as usize];
-
-        let j1 = triangle2.index1;
-        let j2 = triangle2.index2;
-        let j3 = triangle2.index3;
-
-        let opposite = match edge.triangle_edge_index2 {
-            0 => j3,
-            1 => j1,
-            2 => j2,
-            _ => unreachable!(),
-        };
-
-        let i1 = triangle1.index1;
-        let i2 = triangle1.index2;
-        let i3 = triangle1.index3;
-
-        let v1 = mesh.vertices[i1 as usize];
-        let v2 = mesh.vertices[i2 as usize];
-        let v3 = mesh.vertices[i3 as usize];
-        let p = mesh.vertices[opposite as usize];
-
-        let cos5_deg = 0.9962f32;
-        let signed_vol = signed_volume(v1, v2, v3, p);
-        let n1 = normals[edge.triangle1 as usize];
-        let n2 = normals[edge.triangle2 as usize];
-        let cos_angle = dot(n1, n2);
-
-        if signed_vol > 0.0 || cos_angle > cos5_deg {
-            mesh.flags[edge.triangle1 as usize] |=
-                edge_flags_concave[edge.triangle_edge_index1 as usize] as u8;
-            mesh.flags[edge.triangle2 as usize] |=
-                edge_flags_concave[edge.triangle_edge_index2 as usize] as u8;
-        }
-
-        if signed_vol < 0.0 || cos_angle > cos5_deg {
-            mesh.flags[edge.triangle1 as usize] |=
-                edge_flags_inverse[edge.triangle_edge_index1 as usize] as u8;
-            mesh.flags[edge.triangle2 as usize] |=
-                edge_flags_inverse[edge.triangle_edge_index2 as usize] as u8;
-        }
-    }
-}
+use super::vertex_ring::append_vertex_rings;
+use crate::core::hash64_non_zero;
+use crate::math_functions::{align_up8, cross, sub, Vec3};
 
 fn node_height(nodes: &[MeshNode], index: usize) -> i32 {
     let node = &nodes[index];
@@ -359,6 +216,14 @@ pub fn create_mesh(
     byte_count += align_up8(triangle_count as usize);
     let flags_offset = byte_count as i32;
     byte_count += align_up8(triangle_count as usize);
+    let mut edge_angle_offset = 0;
+    let mut vertex_flag_offset = 0;
+    if def.identify_edges {
+        edge_angle_offset = byte_count as i32;
+        byte_count += align_up8(3 * triangle_count as usize);
+        vertex_flag_offset = byte_count as i32;
+        byte_count += align_up8(vertex_count as usize);
+    }
 
     let mut mesh = MeshData {
         version: MESH_VERSION,
@@ -377,12 +242,26 @@ pub fn create_mesh(
         material_offset: material_indices_offset,
         material_count,
         flags_offset,
-        padding: 0,
+        edge_angle_offset,
+        vertex_flag_offset,
+        vertex_ring_offset: 0,
         nodes: temp_nodes,
         vertices,
         triangles: vec![MeshTriangle::default(); triangle_count as usize],
         material_indices: vec![0u8; triangle_count as usize],
         flags: vec![0u8; triangle_count as usize],
+        edge_angles: if def.identify_edges {
+            vec![0i8; 3 * triangle_count as usize]
+        } else {
+            Vec::new()
+        },
+        vertex_flags: if def.identify_edges {
+            vec![0u8; vertex_count as usize]
+        } else {
+            Vec::new()
+        },
+        vertex_ring_starts: Vec::new(),
+        vertex_ring_data: Vec::new(),
     };
 
     fill_triangles(
@@ -400,7 +279,12 @@ pub fn create_mesh(
     }
 
     if def.identify_edges {
-        identify_edges(&mut mesh);
+        let mesh_triangle_count = mesh.triangle_count as usize;
+        let mut normals = vec![Vec3::default(); mesh_triangle_count];
+
+        identify_edges(&mut mesh, &mut normals);
+
+        append_vertex_rings(&mut mesh, &normals);
     }
 
     // Must ensure the hash is 0 so it doesn't contribute to itself.

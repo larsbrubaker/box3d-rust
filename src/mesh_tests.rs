@@ -272,7 +272,7 @@ fn mesh_negative_scale_winding() {
 const VALLEY_VERTEX_COUNT: usize = 6;
 const VALLEY_TRIANGLE_COUNT: usize = 4;
 
-fn make_valley() -> (Vec<Vec3>, Vec<i32>) {
+pub(crate) fn make_valley() -> (Vec<Vec3>, Vec<i32>) {
     let vertices = vec![
         v(-1.0, 1.0, -1.0),
         v(0.0, 0.0, -1.0),
@@ -380,7 +380,7 @@ fn has_concave_edge(mesh: &MeshData) -> bool {
     false
 }
 
-fn make_valley_def(vertices: &[Vec3], indices: &[i32]) -> MeshDef {
+pub(crate) fn make_valley_def(vertices: &[Vec3], indices: &[i32]) -> MeshDef {
     MeshDef {
         vertices: vertices.to_vec(),
         stride: core::mem::size_of::<Vec3>(),

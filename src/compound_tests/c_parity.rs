@@ -1,7 +1,9 @@
 //! Compound blob layout checks against the scalar C build of upstream 5d83df8 (MSVC,
 //! `BOX3D_DISABLE_SIMD`). Every expected value below was printed by that build, in float and
 //! double precision alike (the compound blob holds no `b3Pos`), and the full blobs were also
-//! compared byte for byte.
+//! compared byte for byte. The version, byte counts, and hashes were re-taken from the scalar C
+//! build of 38f2ae1 (clang, both precisions), whose mesh version and 104 byte mesh header
+//! change the compound version and the nested mesh blob.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -146,27 +148,27 @@ fn summary(c: &CompoundData) -> (i32, i32, i32, i32, u64) {
 #[test]
 fn compound_version_and_header_size_match_c() {
     assert_eq!(COMPOUND_DATA_SIZE, 96);
-    assert_eq!(COMPOUND_VERSION, 0x5ffe_b407_fb88_e7f5);
+    assert_eq!(COMPOUND_VERSION, 0xd1ff_25f0_4ca2_1d1f);
 }
 
 #[test]
 fn compound_blobs_match_c() {
     assert_eq!(
         summary(&rec_compound()),
-        (488, 8, 96, 3, 0x58b8_26b8_d7e0_7710)
+        (488, 8, 96, 3, 0x99d8_3625_4fad_4040)
     );
     assert_eq!(
         summary(&sphere_compound()),
-        (224, 2, 96, 0, 0x37a2_9941_e13e_6541)
+        (224, 2, 96, 0, 0x4790_5a38_f8c4_61ee)
     );
     let md = create_box_mesh(VEC3_ZERO, v(0.5, 0.5, 0.5), false).unwrap();
     assert_eq!(
         summary(&serializable_compound(&md)),
-        (1904, 8, 96, 2, 0x4209_07e5_bc18_1f1a)
+        (1912, 8, 96, 2, 0x4b4e_e3a8_96bd_7d76)
     );
     assert_eq!(
         summary(&grid_compound()),
-        (3496, 80, 96, 7, 0x3786_f126_26a3_4b8f)
+        (3496, 80, 96, 7, 0xaf5c_314a_419a_aba2)
     );
 }
 

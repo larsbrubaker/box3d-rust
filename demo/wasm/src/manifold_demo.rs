@@ -121,7 +121,6 @@ struct ManifoldDemo {
     hull_b: BoxHull,
     /// Triangle in frame A (TriangleManifold samples).
     triangle: [Vec3; 3],
-    triangle_flags: i32,
     camera: Camera,
     simplex_cache: SimplexCache,
     sat_cache: SatCache,
@@ -166,7 +165,6 @@ impl ManifoldDemo {
             },
             hull_b: make_box_hull(1.0, 1.0, 1.0),
             triangle: [VEC3_ZERO; 3],
-            triangle_flags: 0,
             camera: BASE_CAMERA,
             simplex_cache: SimplexCache::default(),
             sat_cache: SatCache::default(),
@@ -363,7 +361,6 @@ impl ManifoldDemo {
                 ];
                 // bodyHalfWidth = 0.304800004, bodyHalfHeight = 0.914399981.
                 self.hull_b = make_box_hull(0.304_800_004, 0.914_399_981, 0.304_800_004);
-                self.triangle_flags = 0;
                 self.transform_a = Transform {
                     p: VEC3_ZERO,
                     q: QUAT_IDENTITY,
@@ -478,7 +475,6 @@ impl ManifoldDemo {
                     local[0],
                     local[1],
                     local[2],
-                    self.triangle_flags,
                     &self.hull_b.base,
                     &mut self.sat_cache,
                     true,

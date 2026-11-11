@@ -9,7 +9,7 @@ use super::types::{
     make_feature_pair, ClipVertex, FeatureOwner, LocalManifold, SatCache, SeparatingAxis,
     SeparatingFeature, TriangleFeature, MAX_CLIP_POINTS,
 };
-use crate::constants::speculative_distance;
+use crate::constants::{mesh_rest_offset, speculative_distance};
 use crate::hull::{get_hull_edges, get_hull_faces, get_hull_planes, get_hull_points, HullData};
 use crate::math_functions::{
     add, cross, dot, line_distance, make_plane_from_normal_and_point, min_float, min_int, mul_sub,
@@ -119,7 +119,7 @@ pub(crate) fn collide_hull_face(
         let clip_point = &input[i as usize];
         min_separation = min_float(min_separation, clip_point.separation);
 
-        if !enable_speculative && clip_point.separation > 0.0 {
+        if !enable_speculative && clip_point.separation > mesh_rest_offset() {
             continue;
         }
 
@@ -137,7 +137,7 @@ pub(crate) fn collide_hull_face(
     let speculative_distance = if enable_speculative {
         speculative_distance()
     } else {
-        0.0
+        mesh_rest_offset()
     };
     if min_separation > speculative_distance {
         // This can occur with a stale SAT cache
@@ -270,7 +270,7 @@ pub(crate) fn collide_triangle_face(
         let clip_point = &input[i as usize];
         min_separation = min_float(min_separation, clip_point.separation);
 
-        if !enable_speculative && clip_point.separation > 0.0 {
+        if !enable_speculative && clip_point.separation > mesh_rest_offset() {
             continue;
         }
 
@@ -288,7 +288,7 @@ pub(crate) fn collide_triangle_face(
     let speculative_distance = if enable_speculative {
         speculative_distance()
     } else {
-        0.0
+        mesh_rest_offset()
     };
     if min_separation >= speculative_distance {
         // This can happen if the objects move apart while re-using a cached axis

@@ -7,8 +7,8 @@ use super::types::{MeshData, MeshNode, MeshTriangle, MESH_STACK_SIZE};
 use crate::constants::linear_slop;
 use crate::core::NULL_INDEX;
 use crate::math_functions::{
-    aabb_add_point, aabb_area, aabb_center, aabb_extents, aabb_union, get_by_index, major_axis,
-    max, min, Aabb, Vec3, BOUNDS3_EMPTY,
+    aabb_area, aabb_center, aabb_extents, aabb_union, get_by_index, major_axis, max, min, Aabb,
+    Vec3, BOUNDS3_EMPTY,
 };
 use std::collections::HashMap;
 
@@ -23,9 +23,50 @@ pub(super) struct Primitive {
     pub triangle_index: i32,
 }
 
+// C 38f2ae1 bins and bounds the primitives with four lane loads over the contiguous
+// lower bound, upper bound, and center floats of b3Primitive. On the scalar path its lane
+// min and max are `a < b ? a : b` and `a > b ? a : b` (b3PrimitiveMinW4 / b3PrimitiveMaxW4),
+// the same as the component-wise min and max used here, and the lanes it keeps are the three
+// components of each bound, so the results are bit-identical.
+
+/// Bounds of the primitive boxes, empty for no primitives. (b3PrimitiveBounds)
+fn primitive_bounds(primitives: &[Primitive]) -> Aabb {
+    let mut lower = BOUNDS3_EMPTY.lower_bound;
+    let mut upper = BOUNDS3_EMPTY.upper_bound;
+
+    for primitive in primitives {
+        lower = min(lower, primitive.aabb.lower_bound);
+        upper = max(upper, primitive.aabb.upper_bound);
+    }
+
+    Aabb {
+        lower_bound: lower,
+        upper_bound: upper,
+    }
+}
+
+/// Bounds of the primitive centers. Requires at least one primitive.
+/// (b3PrimitiveCenterBounds)
+fn primitive_center_bounds(primitives: &[Primitive]) -> Aabb {
+    let mut lower = primitives[0].center;
+    let mut upper = lower;
+
+    for primitive in &primitives[1..] {
+        lower = min(lower, primitive.center);
+        upper = max(upper, primitive.center);
+    }
+
+    Aabb {
+        lower_bound: lower,
+        upper_bound: upper,
+    }
+}
+
+#[derive(Clone, Copy)]
 struct Bucket {
+    lower: Vec3,
+    upper: Vec3,
     count: i32,
-    bounds: Aabb,
 }
 
 struct Split {
@@ -179,56 +220,92 @@ fn split_binned_sah(count: i32, primitives: &mut [Primitive]) -> Split {
         index: -1,
     };
 
-    let mut bounds = Aabb {
-        lower_bound: primitives[0].center,
-        upper_bound: primitives[0].center,
-    };
-    for i in 1..count as usize {
-        bounds = aabb_add_point(bounds, primitives[i].center);
-    }
+    // Compute bounds of primitive centroids and choose split axis
+    let bounds = primitive_center_bounds(&primitives[..count as usize]);
+    let empty_lower = BOUNDS3_EMPTY.lower_bound;
+    let empty_upper = BOUNDS3_EMPTY.upper_bound;
 
+    // Compute costs for splitting after each bucket and keep track of best split
+    // This is a small O(n^2) loop. This can be further optimized, but it is already
+    // fast enough for my purposes.
     let mut best_bucket = -1i32;
     let mut best_cost = f32::MAX;
 
+    let extent = aabb_extents(bounds);
+    let mut bin_axis = [false; 3];
+    let mut factors = [0.0f32; 3];
+    let empty_bucket = Bucket {
+        lower: empty_lower,
+        upper: empty_upper,
+        count: 0,
+    };
+    let mut axis_buckets = [[empty_bucket; BIN_COUNT as usize]; 3];
     for axis in 0..3 {
-        let extent = aabb_extents(bounds);
-        if get_by_index(extent, axis) < linear_slop() {
+        bin_axis[axis] = get_by_index(extent, axis as i32) >= linear_slop();
+        factors[axis] = if bin_axis[axis] {
+            (BIN_COUNT as f32) * (1.0 - f32::EPSILON)
+                / (get_by_index(bounds.upper_bound, axis as i32)
+                    - get_by_index(bounds.lower_bound, axis as i32))
+        } else {
+            0.0
+        };
+    }
+
+    for primitive in primitives.iter().take(count as usize) {
+        let center = primitive.center;
+        let index_x = (factors[0] * (center.x - bounds.lower_bound.x)) as i32;
+        let index_y = (factors[1] * (center.y - bounds.lower_bound.y)) as i32;
+        let index_z = (factors[2] * (center.z - bounds.lower_bound.z)) as i32;
+        debug_assert!((0..BIN_COUNT).contains(&index_x));
+        debug_assert!((0..BIN_COUNT).contains(&index_y));
+        debug_assert!((0..BIN_COUNT).contains(&index_z));
+
+        let lower = primitive.aabb.lower_bound;
+        let upper = primitive.aabb.upper_bound;
+
+        for (axis, index) in [index_x, index_y, index_z].into_iter().enumerate() {
+            let bucket = &mut axis_buckets[axis][index as usize];
+            bucket.count += 1;
+            bucket.lower = min(bucket.lower, lower);
+            bucket.upper = max(bucket.upper, upper);
+        }
+    }
+
+    for axis in 0..3 {
+        if !bin_axis[axis] {
             continue;
         }
 
-        let mut buckets: [Bucket; BIN_COUNT as usize] = std::array::from_fn(|_| Bucket {
-            count: 0,
-            bounds: BOUNDS3_EMPTY,
-        });
+        let buckets = &axis_buckets[axis];
 
-        let factor = (BIN_COUNT as f32) * (1.0 - f32::EPSILON)
-            / (get_by_index(bounds.upper_bound, axis) - get_by_index(bounds.lower_bound, axis));
-
-        for i in 0..count as usize {
-            let center = primitives[i].center;
-            let index = (factor
-                * (get_by_index(center, axis) - get_by_index(bounds.lower_bound, axis)))
-                as i32;
-            debug_assert!((0..BIN_COUNT).contains(&index));
-            buckets[index as usize].count += 1;
-            buckets[index as usize].bounds =
-                aabb_union(buckets[index as usize].bounds, primitives[i].aabb);
-        }
-
+        // Evaluate splits
         for i in 0..BIN_COUNT - 1 {
             let mut left_count = 0i32;
-            let mut left_bounds = BOUNDS3_EMPTY;
+            let mut left_lower = empty_lower;
+            let mut left_upper = empty_upper;
             for k in 0..=i {
                 left_count += buckets[k as usize].count;
-                left_bounds = aabb_union(left_bounds, buckets[k as usize].bounds);
+                left_lower = min(left_lower, buckets[k as usize].lower);
+                left_upper = max(left_upper, buckets[k as usize].upper);
             }
 
             let mut right_count = 0i32;
-            let mut right_bounds = BOUNDS3_EMPTY;
+            let mut right_lower = empty_lower;
+            let mut right_upper = empty_upper;
             for k in (i + 1)..BIN_COUNT {
                 right_count += buckets[k as usize].count;
-                right_bounds = aabb_union(right_bounds, buckets[k as usize].bounds);
+                right_lower = min(right_lower, buckets[k as usize].lower);
+                right_upper = max(right_upper, buckets[k as usize].upper);
             }
+
+            let left_bounds = Aabb {
+                lower_bound: left_lower,
+                upper_bound: left_upper,
+            };
+            let right_bounds = Aabb {
+                lower_bound: right_lower,
+                upper_bound: right_upper,
+            };
 
             debug_assert!(left_count + right_count == count);
             if left_count > 0 && right_count > 0 {
@@ -237,7 +314,7 @@ fn split_binned_sah(count: i32, primitives: &mut [Primitive]) -> Split {
                 if cost < best_cost {
                     best_bucket = i;
                     best_cost = cost;
-                    split.axis = axis;
+                    split.axis = axis as i32;
                     split.index = left_count;
                     split.left_bounds = left_bounds;
                     split.right_bounds = right_bounds;
@@ -246,6 +323,7 @@ fn split_binned_sah(count: i32, primitives: &mut [Primitive]) -> Split {
         }
     }
 
+    // Partition
     if best_bucket >= 0 {
         let axis = split.axis;
         let factor = (BIN_COUNT as f32) * (1.0 - f32::EPSILON)
@@ -269,17 +347,11 @@ fn split_binned_sah(count: i32, primitives: &mut [Primitive]) -> Split {
 }
 
 fn split_half(count: i32, primitives: &[Primitive]) -> Split {
+    // Split in the middle
     let split_index = count / 2;
 
-    let mut left_bounds = BOUNDS3_EMPTY;
-    for i in 0..split_index as usize {
-        left_bounds = aabb_union(left_bounds, primitives[i].aabb);
-    }
-
-    let mut right_bounds = BOUNDS3_EMPTY;
-    for i in split_index as usize..count as usize {
-        right_bounds = aabb_union(right_bounds, primitives[i].aabb);
-    }
+    let left_bounds = primitive_bounds(&primitives[..split_index as usize]);
+    let right_bounds = primitive_bounds(&primitives[split_index as usize..count as usize]);
 
     let bounds = aabb_union(left_bounds, right_bounds);
     let axis = major_axis(aabb_extents(bounds));
@@ -295,12 +367,9 @@ fn split_half(count: i32, primitives: &[Primitive]) -> Split {
 fn split_median(count: i32, primitives: &mut [Primitive]) -> Split {
     debug_assert!(count > 2);
 
-    let mut lower_bound = primitives[0].center;
-    let mut upper_bound = primitives[0].center;
-    for i in 1..count as usize {
-        lower_bound = min(lower_bound, primitives[i].center);
-        upper_bound = max(upper_bound, primitives[i].center);
-    }
+    let center_bounds = primitive_center_bounds(&primitives[..count as usize]);
+    let lower_bound = center_bounds.lower_bound;
+    let upper_bound = center_bounds.upper_bound;
 
     let d = crate::math_functions::sub(upper_bound, lower_bound);
     let c =
@@ -373,18 +442,9 @@ fn split_median(count: i32, primitives: &mut [Primitive]) -> Split {
         i1 = count / 2;
     }
 
-    let mut left_bounds = BOUNDS3_EMPTY;
-    for i in 0..i1 as usize {
-        left_bounds = aabb_union(left_bounds, primitives[i].aabb);
-    }
-    let mut right_bounds = BOUNDS3_EMPTY;
-    for i in i1 as usize..count as usize {
-        right_bounds = aabb_union(right_bounds, primitives[i].aabb);
-    }
-
     split.index = i1;
-    split.left_bounds = left_bounds;
-    split.right_bounds = right_bounds;
+    split.left_bounds = primitive_bounds(&primitives[..i1 as usize]);
+    split.right_bounds = primitive_bounds(&primitives[i1 as usize..count as usize]);
     split
 }
 
@@ -409,10 +469,9 @@ pub(super) fn build_recursive(
             if count > MAXIMUM_TRIANGLES_PER_LEAF {
                 split = split_half(count, primitives);
             } else {
-                let mut bounds = BOUNDS3_EMPTY;
-                for i in 0..count as usize {
-                    bounds = aabb_union(bounds, primitives[i].aabb);
-                }
+                let bounds = primitive_bounds(&primitives[..count as usize]);
+
+                // We have only a few triangles left. Create a leaf.
                 let index = nodes.len() as i32;
                 nodes.push(MeshNode::store_leaf(bounds, count, base_offset));
                 return index;
@@ -451,10 +510,7 @@ pub(super) fn build_recursive(
         return index;
     }
 
-    let mut aabb = BOUNDS3_EMPTY;
-    for i in 0..count as usize {
-        aabb = aabb_union(aabb, primitives[i].aabb);
-    }
+    let aabb = primitive_bounds(&primitives[..count as usize]);
 
     let index = nodes.len() as i32;
     nodes.push(MeshNode::store_leaf(aabb, count, base_offset));

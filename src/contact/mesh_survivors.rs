@@ -1,6 +1,6 @@
 //! Mesh / height-field triangle transform and hull bounds culling.
 //!
-//! Port of the survivor stage of `b3ComputeMeshManifolds` from
+//! Port of the survivor stage of `b3CollideMeshTriangles` from
 //! `box3d-cpp-reference/src/mesh_contact.c`: the cached triangles are transformed into the
 //! shape frame four at a time, and for a hull, triangles whose bounds miss the hull bounds
 //! are culled before the narrow phase.
@@ -8,13 +8,14 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
+use super::mesh_triangles::ConvexShape;
 use super::{ContactCache, TriangleCache};
-use crate::constants::speculative_distance;
+use crate::constants::{mesh_rest_offset, speculative_distance};
 use crate::core::ctz32;
 use crate::height_field::get_height_field_triangle;
 use crate::manifold::SatCache;
-use crate::math_functions::{min_int, mul, Aabb, Matrix3, Transform, Vec3, VEC3_ONE, VEC3_ZERO};
-use crate::shape::{Shape, ShapeGeometry};
+use crate::math_functions::{min_int, mul, Aabb, Matrix3, Transform, Vec3, VEC3_ZERO};
+use crate::shape::TriangleShape;
 use crate::simd_scalar::{
     add_w, greater_than_w, less_than_w, max_w, min_w, move_mask_w, mul_w, or_w, set_w, splat_w,
     store_w, sub_w, zero_w,
@@ -29,37 +30,48 @@ pub(super) struct SurvivorTriangles {
 
 /// Transform the cached triangles into the frame of `shape_b` and cull them against the hull
 /// bounds. Culled triangles get their SAT cache reset. (survivor stage of
-/// b3ComputeMeshManifolds)
+/// b3CollideMeshTriangles)
 pub(super) fn collect_survivor_triangles(
-    shape_a: &Shape,
-    shape_b: &Shape,
+    shape_a: &TriangleShape<'_>,
+    shape_b: &ConvexShape<'_>,
     triangle_caches: &mut [TriangleCache],
     transform_a_to_b: Transform,
     relative_matrix: Matrix3,
     enable_speculative: bool,
 ) -> SurvivorTriangles {
     let triangle_count = triangle_caches.len();
-    let geom_b = &shape_b.geometry;
 
-    let hull_b = match geom_b {
-        ShapeGeometry::Hull(hull) => Some(hull),
+    // This should push apart shapes after a time of impact event.
+    // In the past I've called this `polygon skin`, but PhysX and Unreal
+    // call it `rest offset` which seems appropriate in this case.
+    // It leads to a small visual gap but seems to improve the quality of mesh
+    // collision, especially for hull versus mesh.
+    let rest_offset = mesh_rest_offset();
+
+    let hull_b = match shape_b {
+        ConvexShape::Hull(hull) => Some(*hull),
         _ => None,
     };
     let hull_speculative_distance = if enable_speculative {
         speculative_distance()
     } else {
-        0.0
+        rest_offset
     };
 
     // C bumps these from the arena.
     let mut survivor_indices: Vec<i32> = Vec::with_capacity(triangle_count);
     let mut survivor_vertices: Vec<[Vec3; 3]> = Vec::with_capacity(triangle_count);
 
-    let (mesh_data, mesh_scale, mesh_flipped) = match &shape_a.geometry {
-        ShapeGeometry::Mesh { data, scale } => {
-            (Some(data), *scale, scale.x * scale.y * scale.z < 0.0)
+    let (mesh, mesh_flipped, unit_scale) = match shape_a {
+        TriangleShape::Mesh(mesh) => {
+            let scale = mesh.scale;
+            (
+                Some(mesh),
+                scale.x * scale.y * scale.z < 0.0,
+                scale.x == 1.0 && scale.y == 1.0 && scale.z == 1.0,
+            )
         }
-        _ => (None, VEC3_ONE, false),
+        TriangleShape::HeightField(_) => (None, false, true),
     };
 
     let cxx = splat_w(relative_matrix.cx.x);
@@ -98,9 +110,9 @@ pub(super) fn collect_survivor_triangles(
             let index = base_index + min_int(lane as i32, lane_count as i32 - 1) as usize;
             let triangle_index = triangle_caches[index].triangle_index;
 
-            if let Some(data) = mesh_data {
-                let mesh_triangle = data.triangles[triangle_index as usize];
-                let mesh_vertices = &data.vertices;
+            if let Some(mesh) = mesh {
+                let mesh_triangle = mesh.data.triangles[triangle_index as usize];
+                let mesh_vertices = &mesh.data.vertices;
                 let index2 = if mesh_flipped {
                     mesh_triangle.index3
                 } else {
@@ -111,11 +123,22 @@ pub(super) fn collect_survivor_triangles(
                 } else {
                     mesh_triangle.index3
                 };
-                lanes[0][lane] = mul(mesh_scale, mesh_vertices[mesh_triangle.index1 as usize]);
-                lanes[1][lane] = mul(mesh_scale, mesh_vertices[index2 as usize]);
-                lanes[2][lane] = mul(mesh_scale, mesh_vertices[index3 as usize]);
+                let mut v1 = mesh_vertices[mesh_triangle.index1 as usize];
+                let mut v2 = mesh_vertices[index2 as usize];
+                let mut v3 = mesh_vertices[index3 as usize];
+
+                // This bool gets predicted, so worth it.
+                if !unit_scale {
+                    v1 = mul(mesh.scale, v1);
+                    v2 = mul(mesh.scale, v2);
+                    v3 = mul(mesh.scale, v3);
+                }
+
+                lanes[0][lane] = v1;
+                lanes[1][lane] = v2;
+                lanes[2][lane] = v3;
             } else {
-                let ShapeGeometry::HeightField(hf) = &shape_a.geometry else {
+                let TriangleShape::HeightField(hf) = shape_a else {
                     unreachable!()
                 };
                 let triangle = get_height_field_triangle(hf, triangle_index);

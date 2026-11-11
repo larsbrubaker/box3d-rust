@@ -11,7 +11,7 @@ use super::types::{
     LocalManifold, SatCache, SeparatingAxis, SeparatingFeature, TriangleFeature,
     FEATURE_PAIR_SINGLE,
 };
-use crate::constants::{linear_slop, speculative_distance};
+use crate::constants::{linear_slop, mesh_rest_offset, speculative_distance};
 use crate::core::NULL_INDEX;
 use crate::distance::{make_proxy, shape_distance, DistanceInput, SimplexCache};
 use crate::hull::{
@@ -21,6 +21,10 @@ use crate::math_functions::{
     abs_float, dot, length_squared, lerp, make_plane_from_points, max_float, neg, normalize,
     plane_separation, sub, Plane, Vec3, TRANSFORM_IDENTITY, VEC3_ZERO,
 };
+// cosine of hull normal versus edge axis tolerance. (B3_CROSSING_TOLERANCE)
+const CROSSING_TOLERANCE: f32 = 0.1;
+
+/// (b3TriangleData)
 pub(crate) struct TriangleData {
     pub(crate) v1: Vec3,
     pub(crate) v2: Vec3,
@@ -29,8 +33,6 @@ pub(crate) struct TriangleData {
     pub(crate) e2: Vec3,
     pub(crate) e3: Vec3,
     pub(crate) plane: Plane,
-    #[allow(dead_code)]
-    pub(crate) flags: i32,
 }
 
 /// Support vertex of a triangle in a direction. (static b3GetTriangleSupport)
@@ -180,6 +182,46 @@ fn query_triangle_and_hull_edges(triangle: &TriangleData, hull: &HullData) -> Se
     result
 }
 
+/// Triangle face contact wrapper. Used by mesh ghost handling to snap a manifold to the triangle
+/// face. The SAT cache is only updated when the face contact has points.
+/// (b3BuildTriangleAndHullFaceContact)
+pub(crate) fn build_triangle_and_hull_face_contact(
+    manifold: &mut LocalManifold,
+    capacity: i32,
+    triangle: &[Vec3; 3],
+    hull: &HullData,
+    cache: &mut SatCache,
+    enable_speculative: bool,
+) {
+    manifold.point_count = 0;
+
+    let triangle_data = TriangleData {
+        v1: triangle[0],
+        v2: triangle[1],
+        v3: triangle[2],
+        e1: sub(triangle[1], triangle[0]),
+        e2: sub(triangle[2], triangle[1]),
+        e3: sub(triangle[0], triangle[2]),
+        plane: make_plane_from_points(triangle[0], triangle[1], triangle[2]),
+    };
+
+    let query = query_triangle_face(&triangle_data, hull);
+    let mut face_cache = SatCache::default();
+    collide_triangle_face(
+        manifold,
+        capacity,
+        &triangle_data,
+        hull,
+        query,
+        &mut face_cache,
+        enable_speculative,
+    );
+
+    if manifold.point_count > 0 {
+        *cache = face_cache;
+    }
+}
+
 /// Collide a triangle and hull. Normal points from triangle to hull. The triangle is in the
 /// local space of the hull for efficiency. (b3CollideTriangleAndHull)
 pub fn collide_triangle_and_hull(
@@ -188,7 +230,6 @@ pub fn collide_triangle_and_hull(
     v1: Vec3,
     v2: Vec3,
     v3: Vec3,
-    triangle_flags: i32,
     hull_b: &HullData,
     cache: &mut SatCache,
     enable_speculative: bool,
@@ -231,7 +272,6 @@ pub fn collide_triangle_and_hull(
         e2: triangle_edges[1],
         e3: triangle_edges[2],
         plane: triangle_plane,
-        flags: triangle_flags,
     };
 
     let edges = get_hull_edges(hull_b);
@@ -241,7 +281,7 @@ pub fn collide_triangle_and_hull(
     let speculative = if enable_speculative {
         speculative_distance()
     } else {
-        0.0
+        mesh_rest_offset()
     };
     cache.hit = 1;
 
@@ -305,6 +345,9 @@ pub fn collide_triangle_and_hull(
             if separation > speculative {
                 return;
             }
+
+            // Note: it is possible for a hull face to lean into an edge direction while mainting
+            // a valid cache. But this has never been observed.
 
             // Deep overlap may lead to an invalid cache
             let is_deep = separation < -2.0 * linear_slop;
@@ -531,8 +574,21 @@ pub fn collide_triangle_and_hull(
         // If a face axis has positive separation there may be no points.
         let max_face_separation = max_float(face_query_a.separation, face_query_b.separation);
 
+        // The edge axis can win if the hull face axis is significantly aligned with the edge axis.
+        let mut crosses_edge = false;
+        if manifold.point_count >= 1
+            && manifold.feature == TriangleFeature::HullFace
+            && edge_query.separation > clip_separation
+        {
+            let edge_axis = normalize(triangle_edges[edge_query.index_a as usize]);
+
+            // Is the angle less than ~84 degrees?
+            crosses_edge = abs_float(dot(face_query_b.normal, edge_axis)) > CROSSING_TOLERANCE;
+        }
+
         if (manifold.point_count == 0 && edge_query.separation > max_face_separation)
             || (manifold.point_count == 1 && edge_query.separation > clip_separation + linear_slop)
+            || crosses_edge
         {
             debug_assert!((0..3).contains(&edge_query.index_a));
             let triangle_point = triangle_points[edge_query.index_a as usize];
@@ -547,11 +603,23 @@ pub fn collide_triangle_and_hull(
                 edge_query,
                 cache,
             );
+
+            if crosses_edge && manifold.point_count == 0 {
+                collide_hull_face(
+                    manifold,
+                    capacity,
+                    &triangle,
+                    hull_b,
+                    face_query_b,
+                    cache,
+                    enable_speculative,
+                );
+            }
         }
     }
 
     // Using the speculative distance means that sometimes there are no valid contact points from SAT.
-    // Fall back to GJK. This is important to prevent tunneling in rare cases.
+    // In this fall back to GJK. This is important to prevent tunneling in rare cases.
     if manifold.point_count == 0 {
         let triangle_b = [v1, v2, v3];
         let input = DistanceInput {
@@ -564,7 +632,7 @@ pub fn collide_triangle_and_hull(
         let mut simplex_cache = SimplexCache::default();
         let output = shape_distance(&input, &mut simplex_cache, None);
 
-        if output.distance > 0.0 {
+        if 0.0 < output.distance && output.distance <= speculative {
             debug_assert!((0 < simplex_cache.count) && (simplex_cache.count <= 3));
 
             manifold.point_count = 1;
@@ -572,6 +640,8 @@ pub fn collide_triangle_and_hull(
             manifold.normal = output.normal;
             manifold.points[0].point = output.point_b;
             manifold.points[0].separation = output.distance;
+
+            // This feature pair not accurate but maybe it doesn't matter
             manifold.points[0].pair = FEATURE_PAIR_SINGLE;
         }
 

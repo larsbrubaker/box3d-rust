@@ -14,7 +14,7 @@ use crate::id::ShapeId;
 use crate::manifold::{
     collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
     collide_hull_and_sphere, collide_hulls_at_width, collide_spheres, make_feature_id,
-    LocalManifold, Manifold, ManifoldPoint, SatCache,
+    LocalManifold, Manifold, ManifoldPoint, SatCache, TriangleFeature,
 };
 use crate::math_functions::{
     add, inv_mul_world_transforms, make_matrix_from_quat, max_float, mul_mv, mul_world_transforms,
@@ -232,6 +232,8 @@ fn compute_convex_manifold(
             target.separation = source.separation;
             target.feature_id = make_feature_id(source.pair);
             target.triangle_index = NULL_INDEX;
+            target.triangle_feature = TriangleFeature::None as u8;
+            target.mesh_flags = 0;
             target.normal_velocity = 0.0;
         }
 

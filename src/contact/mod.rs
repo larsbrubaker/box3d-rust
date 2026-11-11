@@ -235,10 +235,14 @@ mod lifecycle;
 mod mesh_cache;
 mod mesh_contact;
 mod mesh_cull;
+mod mesh_neighbors;
 mod mesh_survivors;
+mod mesh_triangles;
 mod update;
 
 pub use collide::*;
 pub use lifecycle::*;
-pub use mesh_contact::{apply_mesh_hit_flags, compute_mesh_manifolds};
+pub use mesh_contact::{
+    apply_mesh_hit_flags, collide_mesh_and_hull, collide_mesh_and_sphere, compute_mesh_manifolds,
+};
 pub use update::*;

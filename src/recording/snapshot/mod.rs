@@ -47,7 +47,9 @@ pub const SNAP_VERSION: u32 = 11;
 /// record stores the encoded body sim locators (C: sizeof( b3Shape ) changes).
 /// v5: the local inertia moved from the body record to the body sim record (C: sizeof( b3Body )
 /// and sizeof( b3BodySim ) change).
-pub const SNAP_LAYOUT_VERSION: u32 = 5;
+/// v6: the manifold point record gained the triangle feature and mesh contact flags (C keeps
+/// sizeof( b3ManifoldPoint ) through its tail padding and memcpys the new bytes).
+pub const SNAP_LAYOUT_VERSION: u32 = 6;
 
 pub const SNAP_FLAG_VALIDATION: u32 = 0x1;
 pub const SNAP_FLAG_DOUBLE_PRECISION: u32 = 0x2;

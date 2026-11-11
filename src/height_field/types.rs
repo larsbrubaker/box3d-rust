@@ -1,6 +1,7 @@
 //! Height field types and blob serialization.
 //!
-//! Maps C's `b3HeightFieldData` header + trailing arrays (heights, materials, flags).
+//! Maps C's `b3HeightFieldData` header + trailing arrays (heights, materials, flags, vertex
+//! convexity bits).
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -11,7 +12,7 @@ use crate::math_functions::{Aabb, Vec3, VEC3_ZERO};
 pub const HEIGHT_FIELD_HOLE: u8 = 0xFF;
 
 /// 64-bit height-field version. (B3_HEIGHT_FIELD_VERSION)
-pub const HEIGHT_FIELD_VERSION: u64 = 0x8E41E5FB084848F8;
+pub const HEIGHT_FIELD_VERSION: u64 = 0x5A69A297D7ACE1CD;
 
 /// Size of the C `b3HeightFieldData` header (explicit padding, no unnamed gaps).
 pub const HEIGHT_FIELD_DATA_SIZE: usize = 96;
@@ -81,12 +82,18 @@ pub struct HeightFieldData {
     pub heights_offset: i32,
     pub material_offset: i32,
     pub flags_offset: i32,
+    /// Offset to the vertex ghost collision flag. Array of bits.
+    pub vertex_flag_offset: i32,
     /// Triangle winding. C stores this as a `uint8_t`; the byte layout is identical.
     pub clockwise: bool,
-    pub padding: [u8; 7],
+    /// Explicit padding.
+    pub padding: [u8; 3],
     pub compressed_heights: Vec<u16>,
     pub material_indices: Vec<u8>,
     pub flags: Vec<u8>,
+    /// One bit per grid point, set when the vertex is convex (neither flat nor concave),
+    /// `(height_count + 7) / 8` bytes.
+    pub vertex_bits: Vec<u8>,
 }
 
 impl Default for HeightFieldData {
@@ -105,11 +112,13 @@ impl Default for HeightFieldData {
             heights_offset: 0,
             material_offset: 0,
             flags_offset: 0,
+            vertex_flag_offset: 0,
             clockwise: false,
-            padding: [0; 7],
+            padding: [0; 3],
             compressed_heights: Vec::new(),
             material_indices: Vec::new(),
             flags: Vec::new(),
+            vertex_bits: Vec::new(),
         }
     }
 }
@@ -215,8 +224,9 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
     let heights_offset = read_i32_le(bytes, 76);
     let material_offset = read_i32_le(bytes, 80);
     let flags_offset = read_i32_le(bytes, 84);
-    let clockwise = bytes[88] != 0;
-    let padding = bytes[89..96].try_into().unwrap();
+    let vertex_flag_offset = read_i32_le(bytes, 88);
+    let clockwise = bytes[92] != 0;
+    let padding = bytes[93..96].try_into().unwrap();
 
     if column_count < 0 || row_count < 0 {
         return None;
@@ -238,6 +248,13 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
     let foff = section_offset(flags_offset, flag_count, 1, bytes.len())?;
     let flags = bytes[foff..foff + flag_count].to_vec();
 
+    let mut vertex_bits = Vec::new();
+    if vertex_flag_offset != 0 {
+        let bit_count = height_count.div_ceil(8);
+        let voff = section_offset(vertex_flag_offset, bit_count, 1, bytes.len())?;
+        vertex_bits = bytes[voff..voff + bit_count].to_vec();
+    }
+
     Some(HeightFieldData {
         version,
         hash,
@@ -252,11 +269,13 @@ pub fn convert_bytes_to_height_field(bytes: &[u8]) -> Option<HeightFieldData> {
         heights_offset,
         material_offset,
         flags_offset,
+        vertex_flag_offset,
         clockwise,
         padding,
         compressed_heights,
         material_indices,
         flags,
+        vertex_bits,
     })
 }
 
@@ -299,6 +318,7 @@ fn write_header(buf: &mut Vec<u8>, h: &HeightFieldData, hash_override: Option<u6
     write_i32_le(buf, h.heights_offset);
     write_i32_le(buf, h.material_offset);
     write_i32_le(buf, h.flags_offset);
+    write_i32_le(buf, h.vertex_flag_offset);
     buf.push(u8::from(h.clockwise));
     buf.extend_from_slice(&h.padding);
     debug_assert_eq!(buf.len(), HEIGHT_FIELD_DATA_SIZE);
@@ -327,6 +347,10 @@ impl HeightFieldData {
         buf.extend_from_slice(&self.material_indices);
         pad_to(&mut buf, self.flags_offset as usize);
         buf.extend_from_slice(&self.flags);
+        if self.vertex_flag_offset != 0 {
+            pad_to(&mut buf, self.vertex_flag_offset as usize);
+            buf.extend_from_slice(&self.vertex_bits);
+        }
         pad_to(&mut buf, self.byte_count as usize);
         debug_assert_eq!(buf.len(), self.byte_count as usize);
         buf

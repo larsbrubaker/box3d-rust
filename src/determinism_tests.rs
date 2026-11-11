@@ -36,13 +36,13 @@ use crate::world::World;
 // step and the state hash differ from the float build. Both modes are
 // internally deterministic. Values from test_determinism.c.
 #[cfg(feature = "double-precision")]
-const RAGDOLL_SLEEP_STEP: i32 = 263;
+const RAGDOLL_SLEEP_STEP: i32 = 282;
 #[cfg(feature = "double-precision")]
-const RAGDOLL_HASH: u32 = 0xA542_3F98;
+const RAGDOLL_HASH: u32 = 0x6E4B_13AD;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_SLEEP_STEP: i32 = 272;
+const WAVE_PILE_SLEEP_STEP: i32 = 315;
 #[cfg(feature = "double-precision")]
-const WAVE_PILE_HASH: u32 = 0xC8E5_F3D6;
+const WAVE_PILE_HASH: u32 = 0x1500_7937;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(feature = "double-precision")]
@@ -52,18 +52,18 @@ const QUERY_SPAWN_HIT_COUNT: i32 = 59;
 #[cfg(feature = "double-precision")]
 const QUERY_SPAWN_QUERY_HASH: u32 = 0x5B44_29DC;
 #[cfg(feature = "double-precision")]
-const MESH_DROP_SLEEP_STEP: i32 = 218;
+const MESH_DROP_SLEEP_STEP: i32 = 197;
 #[cfg(feature = "double-precision")]
-const MESH_DROP_HASH: u32 = 0xD378_CF04;
+const MESH_DROP_HASH: u32 = 0x5DA0_91C3;
 
 #[cfg(not(feature = "double-precision"))]
-const RAGDOLL_SLEEP_STEP: i32 = 291;
+const RAGDOLL_SLEEP_STEP: i32 = 277;
 #[cfg(not(feature = "double-precision"))]
-const RAGDOLL_HASH: u32 = 0xFF4C_605B;
+const RAGDOLL_HASH: u32 = 0x5E04_2B6E;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_SLEEP_STEP: i32 = 272;
+const WAVE_PILE_SLEEP_STEP: i32 = 455;
 #[cfg(not(feature = "double-precision"))]
-const WAVE_PILE_HASH: u32 = 0x266F_83B0;
+const WAVE_PILE_HASH: u32 = 0x854F_313D;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_SLEEP_STEP: i32 = 242;
 #[cfg(not(feature = "double-precision"))]
@@ -73,9 +73,9 @@ const QUERY_SPAWN_HIT_COUNT: i32 = 59;
 #[cfg(not(feature = "double-precision"))]
 const QUERY_SPAWN_QUERY_HASH: u32 = 0xE327_1F3D;
 #[cfg(not(feature = "double-precision"))]
-const MESH_DROP_SLEEP_STEP: i32 = 226;
+const MESH_DROP_SLEEP_STEP: i32 = 197;
 #[cfg(not(feature = "double-precision"))]
-const MESH_DROP_HASH: u32 = 0xD2FF_069D;
+const MESH_DROP_HASH: u32 = 0x96D4_7D4F;
 
 // SingleRollingMixTest has no golden in test_determinism.c (it only compares widths). These
 // come from the scalar C build (BOX3D_DISABLE_SIMD) of efca0c1, run with one worker.
@@ -85,11 +85,11 @@ const ROLLING_MIX_HASH: u32 = 0xB7FB_CFC0;
 const ROLLING_MIX_HASH: u32 = 0x56B2_50F7;
 
 // SingleMeshMixTest has no golden in test_determinism.c either. These come from the scalar C
-// build (BOX3D_DISABLE_SIMD) of efca0c1, run with one worker.
+// build (BOX3D_DISABLE_SIMD) of 38f2ae1, run with one worker.
 #[cfg(feature = "double-precision")]
-const MESH_MIX_HASH: u32 = 0x9DA0_B374;
+const MESH_MIX_HASH: u32 = 0x943E_3EFE;
 #[cfg(not(feature = "double-precision"))]
-const MESH_MIX_HASH: u32 = 0x246C_C2A7;
+const MESH_MIX_HASH: u32 = 0xD57C_F6EA;
 
 // C loops each scenario over several worker counts to prove every schedule reproduces the
 // first run (EnsureRepeatable). The serial port ignores the worker count, so extra runs would

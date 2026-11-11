@@ -277,6 +277,7 @@ pub(crate) mod lifecycle;
 mod mutators;
 mod query;
 mod toi;
+mod triangle_shape;
 mod wind;
 
 pub use accessors::*;
@@ -286,4 +287,5 @@ pub use geometry_set::*;
 pub use mutators::*;
 pub use query::*;
 pub use toi::*;
+pub(crate) use triangle_shape::{get_neighbor_normal, is_convex_vertex, TriangleShape};
 pub use wind::*;

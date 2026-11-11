@@ -276,6 +276,18 @@ export const SAMPLES: SampleEntry[] = [
     ["Hull Transform", "live", "geometry", "hull-transform"],
     ["Capsule Mass", "live", "geometry", "capsule-mass"],
   ]),
+  // Planned: the Ghost category was added upstream at 38f2ae1. These scenes exercise the
+  // mesh and height-field ghost collision handling, which the library port covers; the
+  // samples are not ported yet.
+  ...cat("Ghost", "sample_ghost.cpp", [
+    ["Crest Ladder", "planned"],
+    ["Hub Peak", "planned"],
+    ["Saddle Vertex", "planned"],
+    ["Diagonal Roll", "planned"],
+    ["Fine Mesh Load", "planned"],
+    ["Scenarios", "planned"],
+    ["Conveyor Circuit", "planned"],
+  ]),
   ...cat("Issues", "sample_issues.cpp", [
     ["Crash", "live", "issues", "crash"],
     // Live: the six prismatic joints, ±6 limit, and constraintHertz 240 are exact,
@@ -301,6 +313,13 @@ export const SAMPLES: SampleEntry[] = [
     // below-plane chamfers/pits; a velocity-driven fixed-rotation character walks it and
     // ghost launches are counted with red markers. Walk-speed sliders + Reset Counters.
     ["s&box Ghost Collisions", "live", "issues", "sbox-ghost-collisions"],
+    // Planned: added upstream at 38f2ae1.
+    ["Rolling Deck", "planned"],
+  ]),
+  // Planned: registered in sample_issues.cpp under its own Vehicle category, added upstream
+  // at 38f2ae1.
+  ...cat("Vehicle", "sample_issues.cpp", [
+    ["Raycast Vehicle", "planned"],
   ]),
   ...cat("Joints", "sample_joint.cpp", [
     ["Distance Joint", "live", "joints", "distance"],
@@ -336,6 +355,12 @@ export const SAMPLES: SampleEntry[] = [
     ["Triangle vs Capsule", "live", "manifolds", "triangle-capsule"],
     ["Hull vs Hull", "live", "manifolds", "hull-hull"],
     ["Triangle vs Hull", "live", "manifolds", "triangle-hull"],
+    // Planned: added upstream at 38f2ae1. Interactive views of the hull and sphere mesh ghost
+    // manifolds (collide_mesh_and_hull / collide_mesh_and_sphere) and the ghost oracle scan,
+    // whose library side and oracle are ported for the unit tests.
+    ["Hull Ghost Manifold", "planned"],
+    ["Sphere Ghost Manifold", "planned"],
+    ["Ghost Oracle", "planned"],
   ]),
   ...cat("Mesh", "sample_mesh.cpp", [
     ["Grid", "live", "mesh", "grid"],

@@ -115,6 +115,7 @@ pub mod mesh;
 pub mod mover;
 pub mod name_cache;
 mod parallel_for;
+mod qsort;
 pub mod rapidhash;
 pub mod recording;
 pub mod sensor;
@@ -207,6 +208,9 @@ mod hash_tests;
 mod height_field_tests;
 
 #[cfg(test)]
+mod height_field_tests_neighbors;
+
+#[cfg(test)]
 mod hull_box_tests;
 
 #[cfg(test)]
@@ -239,6 +243,12 @@ mod math_functions_tests;
 
 #[cfg(test)]
 mod mesh_tests;
+
+#[cfg(test)]
+mod mesh_tests_edges;
+
+#[cfg(test)]
+mod mesh_tests_ghost;
 
 #[cfg(test)]
 mod mover_tests;
@@ -287,6 +297,9 @@ mod recording_tests;
 
 #[cfg(test)]
 mod recording_replay_tests;
+
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests {

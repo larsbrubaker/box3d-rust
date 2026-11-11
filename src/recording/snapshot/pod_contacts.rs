@@ -51,6 +51,8 @@ fn ser_manifold_point(buf: &mut RecBuffer, p: &ManifoldPoint) {
     buf.append_u32(p.feature_id);
     buf.append_i32(p.triangle_index);
     buf.append_bool(p.persisted);
+    buf.append_u8(p.triangle_feature);
+    buf.append_u8(p.mesh_flags);
 }
 
 pub fn des_manifold(r: &mut SnapReader<'_>) -> Manifold {
@@ -80,6 +82,8 @@ fn des_manifold_point(r: &mut SnapReader<'_>) -> ManifoldPoint {
         feature_id: r.u32(),
         triangle_index: r.i32(),
         persisted: r.bool(),
+        triangle_feature: r.u8(),
+        mesh_flags: r.u8(),
     }
 }
 

@@ -105,15 +105,10 @@ pub const MAX_SHAPE_CAST_POINTS: usize = MAX_HULL_VERTICES as usize;
 /// ported as a constant branch on this value so both paths stay faithful to C.
 pub const MAX_MANIFOLD_POINTS: usize = 4;
 
-/// Max clip points written per triangle during mesh narrow phase.
+/// Clip points budgeted per triangle during mesh narrow phase. The point buffer holds this
+/// many per surviving triangle plus room for one heavy clip.
 /// (B3_MAX_POINTS_PER_TRIANGLE)
 pub const MAX_POINTS_PER_TRIANGLE: usize = 32;
-
-/// This is the limit on how many mesh or heightfield triangles a single convex shape can collide
-/// with. Increasing this will increase stack usage, so be careful. I recommend to simplify your
-/// collision data before increasing this. For example, using render mesh for collision often leads
-/// to poor performance. (B3_MAX_MESH_CONTACT_TRIANGLES)
-pub const MAX_MESH_CONTACT_TRIANGLES: usize = 512;
 
 /// Maximum number of colors in the constraint graph. Constraints that cannot
 /// find a color are added to the overflow set. (B3_GRAPH_COLOR_COUNT)

@@ -228,8 +228,6 @@ pub fn less_than_w(a: FloatW, b: FloatW) -> FloatW {
 
 /// (b3EqualsW)
 #[inline]
-// Kept for a complete scalar simd.h API; only the untargeted wide collide path uses it.
-#[allow(dead_code)]
 pub fn equals_w(a: FloatW, b: FloatW) -> FloatW {
     FloatW {
         x: if a.x == b.x { 1.0 } else { 0.0 },
@@ -355,6 +353,33 @@ pub fn soft_mask_w(index_a: &[i32; 4], index_b: &[i32; 4]) -> FloatW {
             0.0
         },
     }
+}
+
+/// Four lane arctangent in the range [-pi, pi], the wide version of
+/// [`crate::math_functions::atan2`] with the same minimax polynomial and the same (0, 0) result.
+/// Used by mesh edge identification. (b3Atan2W4, simd.h)
+#[inline]
+pub fn atan2_w(y: FloatW, x: FloatW) -> FloatW {
+    let zero = zero_w();
+    let ax = abs_w(x);
+    let ay = abs_w(y);
+    let mx = max_w(ay, ax);
+    let mn = min_w(ay, ax);
+    let a = div_w(mn, mx);
+
+    let s = mul_w(a, a);
+    let c = mul_w(s, a);
+    let q = mul_w(s, s);
+    let mut r = mul_add_w(splat_w(0.18681418), splat_w(0.024840285), q);
+    let t = sub_w(mul_w(splat_w(-0.094097948), q), splat_w(0.33213072));
+    r = mul_add_w(t, r, s);
+    r = mul_add_w(a, r, c);
+
+    r = blend_w(r, sub_w(splat_w(1.57079637), r), greater_than_w(ay, ax));
+    r = blend_w(r, sub_w(splat_w(3.14159274), r), less_than_w(x, zero));
+    r = blend_w(r, neg_w(r), less_than_w(y, zero));
+
+    blend_w(r, zero, equals_w(add_w(ax, ay), zero))
 }
 
 /// Wide vec3. (b3Vec3W)

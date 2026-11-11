@@ -1,8 +1,8 @@
 //! 2D convex hull and hull simplification used for contact manifold reduction.
 //!
 //! Port of `b3Hull2D`, `b3SimplifyHull2D`, and their helpers (`b3Cross2D`,
-//! `b3Sort2D`, `b3Weld2D`) from `box3d-cpp-reference/src/hull.c`, plus the
-//! public `b3Point2D` type from `include/box3d/collision.h`.
+//! `b3IsPoint2DLess`, `b3Weld2D`, `b3MergeExact2D`) from `box3d-cpp-reference/src/hull.c`, plus the
+//! public `b3Point2D` type and `b3Hull2DFlags` from `include/box3d/collision.h`.
 //!
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -80,20 +80,29 @@ pub fn simplify_hull_2d(hull: &mut [Point2D], count1: i32, target: i32) -> i32 {
     count2
 }
 
-/// Sort comparator: by x, then by y. Insertion since n is typically 20 or less. (b3Sort2D)
-fn sort_2d(pts: &mut [Point2D], count: i32) {
-    for i in 1..count {
-        let base = pts[i as usize];
-        let mut j = i - 1;
-        while j >= 0
-            && (pts[j as usize].p.x > base.p.x
-                || (pts[j as usize].p.x == base.p.x && pts[j as usize].p.y > base.p.y))
-        {
-            pts[(j + 1) as usize] = pts[j as usize];
-            j -= 1;
-        }
-        pts[(j + 1) as usize] = base;
+// Options for how a 2D hull is built. (b3Hull2DFlags)
+
+/// Keep collinear points. (b3_hull2DKeepCollinear)
+pub const HULL_2D_KEEP_COLLINEAR: i32 = 0x01;
+
+/// Only merge identical points. (b3_hull2DExactMerge)
+pub const HULL_2D_EXACT_MERGE: i32 = 0x02;
+
+/// Order the output points by the input order. (b3_hull2DIndexOrder)
+pub const HULL_2D_INDEX_ORDER: i32 = 0x04;
+
+/// Comparator for sorting points for the 2D hull. (b3IsPoint2DLess)
+#[inline]
+fn is_point_2d_less(a: &Point2D, b: &Point2D) -> bool {
+    if a.p.x != b.p.x {
+        return a.p.x < b.p.x;
     }
+
+    if a.p.y != b.p.y {
+        return a.p.y < b.p.y;
+    }
+
+    a.original_index < b.original_index
 }
 
 /// Welds points that have been sorted O(n) time (b3Weld2D)
@@ -123,80 +132,123 @@ fn weld_2d(pts: &mut [Point2D], count1: i32) -> i32 {
     count2
 }
 
+/// Only merge points that line up exactly. (b3MergeExact2D)
+fn merge_exact_2d(pts: &mut [Point2D], count1: i32) -> i32 {
+    let separation_tol = linear_slop();
+
+    let mut count2: i32 = 0;
+    for i in 0..count1 {
+        let point = pts[i as usize];
+        if count2 > 0
+            && pts[(count2 - 1) as usize].p.x == point.p.x
+            && pts[(count2 - 1) as usize].p.y == point.p.y
+        {
+            if point.separation < pts[(count2 - 1) as usize].separation - separation_tol {
+                pts[(count2 - 1) as usize] = point;
+            }
+        } else {
+            pts[count2 as usize] = point;
+            count2 += 1;
+        }
+    }
+
+    count2
+}
+
 /// Compute a 2D hull. Used internally for contact manifold simplification. Here for testing.
 /// Andrew's monotone chain convex hull algorithm.
 /// `hull` must have space for 2 * `count` points. `pts` is sorted and welded in place.
-/// (b3Hull2D)
-pub fn hull_2d(pts: &mut [Point2D], count: i32, hull: &mut [Point2D]) -> i32 {
-    let mut count1 = count;
-
-    if count1 <= 0 {
+/// `flags` combines the `HULL_2D_*` bits (b3Hull2DFlags). (b3Hull2D)
+pub fn hull_2d(pts: &mut [Point2D], count: i32, hull: &mut [Point2D], flags: i32) -> i32 {
+    if count <= 0 {
         return 0;
     }
 
-    if count1 == 1 {
-        hull[0] = pts[0];
-        return 1;
-    }
+    // C sorts with QSORT on b3IsPoint2DLess.
+    crate::qsort::qsort(pts, count as usize, is_point_2d_less);
 
-    sort_2d(pts, count1);
-    count1 = weld_2d(pts, count1);
+    let count1 = if (flags & HULL_2D_EXACT_MERGE) != 0 {
+        merge_exact_2d(pts, count)
+    } else {
+        weld_2d(pts, count)
+    };
 
-    if count1 == 1 {
-        hull[0] = pts[0];
-        return 1;
-    }
-
-    if count1 == 2 {
-        hull[0] = pts[0];
-        hull[1] = pts[1];
-        return 2;
-    }
+    let keep_collinear = (flags & HULL_2D_KEEP_COLLINEAR) != 0;
 
     let mut count2: i32 = 0;
-
-    for i in 0..count1 {
-        while count2 >= 2 {
-            let area = cross_2d(
-                hull[(count2 - 2) as usize].p,
-                hull[(count2 - 1) as usize].p,
-                pts[i as usize].p,
-            );
-            if area > 0.0 {
-                break;
-            }
-
-            count2 -= 1;
+    if count1 <= 2 {
+        for i in 0..count1 {
+            hull[i as usize] = pts[i as usize];
         }
 
-        debug_assert!(count2 < 2 * count1);
-        hull[count2 as usize] = pts[i as usize];
-        count2 += 1;
-    }
+        count2 = count1;
+    } else {
+        for i in 0..count1 {
+            while count2 >= 2 {
+                let area = cross_2d(
+                    hull[(count2 - 2) as usize].p,
+                    hull[(count2 - 1) as usize].p,
+                    pts[i as usize].p,
+                );
+                if area > 0.0 || (keep_collinear && area == 0.0) {
+                    break;
+                }
 
-    let lower_count = count2 + 1;
-
-    let mut i = count1 - 2;
-    while i >= 0 {
-        while count2 >= lower_count {
-            let area = cross_2d(
-                hull[(count2 - 2) as usize].p,
-                hull[(count2 - 1) as usize].p,
-                pts[i as usize].p,
-            );
-            if area > 0.0 {
-                break;
+                count2 -= 1;
             }
 
-            count2 -= 1;
+            debug_assert!(count2 < 2 * count1);
+            hull[count2 as usize] = pts[i as usize];
+            count2 += 1;
         }
 
-        debug_assert!(count2 < 2 * count1);
-        hull[count2 as usize] = pts[i as usize];
-        count2 += 1;
-        i -= 1;
+        let lower_count = count2 + 1;
+        let mut lower_index = count2 - 2;
+
+        let mut i = count1 - 2;
+        while i >= 0 {
+            if lower_index >= 0
+                && hull[lower_index as usize].p.x == pts[i as usize].p.x
+                && hull[lower_index as usize].p.y == pts[i as usize].p.y
+            {
+                lower_index -= 1;
+                if i > 0 {
+                    i -= 1;
+                    continue;
+                }
+            }
+
+            while count2 >= lower_count {
+                let area = cross_2d(
+                    hull[(count2 - 2) as usize].p,
+                    hull[(count2 - 1) as usize].p,
+                    pts[i as usize].p,
+                );
+                if area > 0.0 || (keep_collinear && area == 0.0) {
+                    break;
+                }
+
+                count2 -= 1;
+            }
+
+            debug_assert!(count2 < 2 * count1);
+            hull[count2 as usize] = pts[i as usize];
+            count2 += 1;
+            i -= 1;
+        }
+
+        debug_assert!(hull[0].original_index == hull[(count2 - 1) as usize].original_index);
+        count2 -= 1;
     }
 
-    debug_assert!(hull[0].original_index == hull[(count2 - 1) as usize].original_index);
-    count2 - 1
+    debug_assert!(count2 <= count1);
+
+    if (flags & HULL_2D_INDEX_ORDER) != 0 {
+        // C sorts with QSORT on the original index.
+        crate::qsort::qsort(hull, count2 as usize, |a, b| {
+            a.original_index < b.original_index
+        });
+    }
+
+    count2
 }

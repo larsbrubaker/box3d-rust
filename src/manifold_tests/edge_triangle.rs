@@ -64,17 +64,7 @@ fn triangle_edge_test() {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
         };
-        collide_triangle_and_hull(
-            &mut manifold,
-            8,
-            v1,
-            v2,
-            v3,
-            0,
-            &hull.base,
-            &mut cache,
-            true,
-        );
+        collide_triangle_and_hull(&mut manifold, 8, v1, v2, v3, &hull.base, &mut cache, true);
 
         let expected_normal = neg(axis);
         let expected_point = mul_add(hull_point, 0.5 * gap, axis);
@@ -103,17 +93,7 @@ fn triangle_edge_test() {
 
         let mut manifold = LocalManifold::default();
         let mut cache = SatCache::default();
-        collide_triangle_and_hull(
-            &mut manifold,
-            8,
-            v1,
-            v2,
-            v3,
-            0,
-            &hull.base,
-            &mut cache,
-            true,
-        );
+        collide_triangle_and_hull(&mut manifold, 8, v1, v2, v3, &hull.base, &mut cache, true);
 
         assert_eq!(manifold.point_count, 0);
         assert!(edge_pair(&cache));
@@ -140,17 +120,7 @@ fn triangle_parallel_edge_test() {
 
             let mut manifold = LocalManifold::default();
             let mut cache = SatCache::default();
-            collide_triangle_and_hull(
-                &mut manifold,
-                8,
-                v1,
-                v2,
-                v3,
-                0,
-                &hull.base,
-                &mut cache,
-                true,
-            );
+            collide_triangle_and_hull(&mut manifold, 8, v1, v2, v3, &hull.base, &mut cache, true);
 
             ensure_face_points(manifold.point_count);
             assert_eq!(cache.type_, SeparatingFeature::FaceAxisA as u8);
@@ -284,7 +254,6 @@ fn triangle_hull_edge_sweep_test() {
                     v1,
                     v2,
                     v3,
-                    0,
                     &hull.base,
                     &mut cache,
                     true,

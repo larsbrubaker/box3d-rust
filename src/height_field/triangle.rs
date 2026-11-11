@@ -3,10 +3,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::types::{
-    get_height_field_flags, get_height_field_material_indices, HeightFieldData, CONCAVE_EDGE1,
-    CONCAVE_EDGE3, HEIGHT_FIELD_HOLE, INVERSE_CONCAVE_EDGE1, INVERSE_CONCAVE_EDGE3,
-};
+use super::types::{get_height_field_material_indices, HeightFieldData, HEIGHT_FIELD_HOLE};
 use crate::math_functions::{mul, Triangle, Vec3};
 
 /// Decode the four corner vertices of a height field cell into local space.
@@ -85,10 +82,7 @@ pub fn get_height_field_triangle(height_field: &HeightFieldData, triangle_index:
         triangle_index < 2 * (height_field.column_count - 1) * (height_field.row_count - 1)
     );
 
-    let mut triangle = Triangle {
-        flags: get_height_field_flags(height_field)[triangle_index as usize] as i32,
-        ..Default::default()
-    };
+    let mut triangle = Triangle::default();
 
     let column_count = height_field.column_count;
     let quad_index = triangle_index >> 1;
@@ -129,15 +123,6 @@ pub fn get_height_field_triangle(height_field: &HeightFieldData, triangle_index:
     if height_field.clockwise {
         triangle.vertices.swap(1, 2);
         core::mem::swap(&mut triangle.i2, &mut triangle.i3);
-
-        // Reversing winding swaps edge1 and edge3; edge2 (the diagonal) is preserved.
-        let mut flags = triangle.flags;
-        let edge1_bits = flags & (CONCAVE_EDGE1 | INVERSE_CONCAVE_EDGE1);
-        let edge3_bits = flags & (CONCAVE_EDGE3 | INVERSE_CONCAVE_EDGE3);
-        flags &= !(CONCAVE_EDGE1 | CONCAVE_EDGE3 | INVERSE_CONCAVE_EDGE1 | INVERSE_CONCAVE_EDGE3);
-        flags |= edge1_bits << 2;
-        flags |= edge3_bits >> 2;
-        triangle.flags = flags;
     }
 
     triangle

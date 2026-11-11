@@ -207,7 +207,7 @@ fn reduce_manifold_points_hull(
     }
 
     let mut hull = [Point2D::default(); 2 * MAX_CLIP_POINTS];
-    let hull_count = hull_2d(&mut pts, count, &mut hull);
+    let hull_count = hull_2d(&mut pts, count, &mut hull, 0);
     let final_count = simplify_hull_2d(&mut hull, hull_count, target);
     debug_assert!(0 < final_count && final_count <= target);
 

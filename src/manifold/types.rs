@@ -4,7 +4,7 @@
 //! SPDX-FileCopyrightText: 2025 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::constants::{MAX_MANIFOLD_POINTS, MAX_POINTS_PER_TRIANGLE};
+use crate::constants::MAX_MANIFOLD_POINTS;
 use crate::math_functions::{Vec3, VEC3_ZERO};
 
 /// Which shape owns a clipped feature edge. (b3FeatureOwner)
@@ -85,6 +85,17 @@ pub fn make_feature_id(pair: FeaturePair) -> u32 {
         | (pair.index2 as u32)
 }
 
+// This gives debug information about how a contact point was generated. (b3MeshContactFlags)
+
+/// Normal is a hull face normal. (b3_meshContactHullFace)
+pub const MESH_CONTACT_HULL_FACE: u8 = 0x01;
+
+/// The normal is snapped to the triangle normal. (b3_meshContactSnapped)
+pub const MESH_CONTACT_SNAPPED: u8 = 0x02;
+
+/// The contact is considered deep (2 * linear slop). (b3_meshContactDeep)
+pub const MESH_CONTACT_DEEP: u8 = 0x04;
+
 /// A local manifold point and normal in frame A. (b3LocalManifoldPoint)
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LocalManifoldPoint {
@@ -96,13 +107,23 @@ pub struct LocalManifoldPoint {
     pub pair: FeaturePair,
     /// The triangle index when collide with a mesh or height-field.
     pub triangle_index: i32,
+    /// [`TriangleFeature`] as a byte. (b3TriangleFeature)
+    pub triangle_feature: u8,
+    /// `MESH_CONTACT_*` bits. (b3MeshContactFlags)
+    pub mesh_flags: u8,
 }
+
+/// Point capacity of a [`LocalManifold`]. C points a local manifold into a caller buffer and
+/// passes the room left as the capacity. The largest single manifold is a triangle face clip,
+/// which C builds in a `2 * B3_MAX_CLIP_POINTS` buffer, so this capacity never truncates a clip
+/// that C keeps.
+pub const LOCAL_MANIFOLD_CAPACITY: usize = 2 * MAX_CLIP_POINTS;
 
 /// A local manifold with no dynamic information. Used by collide functions.
 ///
 /// Unlike C (which holds a `b3LocalManifoldPoint*` into an external buffer),
-/// this embeds a fixed [`MAX_POINTS_PER_TRIANGLE`] point array so mesh
-/// narrow-phase can gather up to 32 clip points before cluster reduction.
+/// this embeds a fixed [`LOCAL_MANIFOLD_CAPACITY`] point array so the mesh
+/// narrow-phase can gather every clip point before cluster reduction.
 /// Convex callers still pass `capacity == MAX_MANIFOLD_POINTS`.
 /// (b3LocalManifold)
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -112,23 +133,13 @@ pub struct LocalManifold {
     /// The triangle normal.
     pub triangle_normal: Vec3,
     /// The manifold points.
-    pub points: [LocalManifoldPoint; MAX_POINTS_PER_TRIANGLE],
+    pub points: [LocalManifoldPoint; LOCAL_MANIFOLD_CAPACITY],
     /// The number of manifold points. Only bounded by the buffer capacity.
     pub point_count: i32,
     /// The index of the triangle.
     pub triangle_index: i32,
-    /// Vertex 1 index.
-    pub i1: i32,
-    /// Vertex 2 index.
-    pub i2: i32,
-    /// Vertex 3 index.
-    pub i3: i32,
-    /// The squared distance of a sphere from a triangle. For ghost collision reduction.
-    pub squared_distance: f32,
     /// The triangle feature involved.
     pub feature: TriangleFeature,
-    /// b3MeshEdgeFlags.
-    pub triangle_flags: i32,
 }
 
 impl Default for LocalManifold {
@@ -136,15 +147,10 @@ impl Default for LocalManifold {
         LocalManifold {
             normal: VEC3_ZERO,
             triangle_normal: VEC3_ZERO,
-            points: [LocalManifoldPoint::default(); MAX_POINTS_PER_TRIANGLE],
+            points: [LocalManifoldPoint::default(); LOCAL_MANIFOLD_CAPACITY],
             point_count: 0,
             triangle_index: 0,
-            i1: 0,
-            i2: 0,
-            i3: 0,
-            squared_distance: 0.0,
             feature: TriangleFeature::None,
-            triangle_flags: 0,
         }
     }
 }
@@ -266,6 +272,10 @@ pub struct ManifoldPoint {
     pub triangle_index: i32,
     /// Did this contact point exist in the previous step?
     pub persisted: bool,
+    /// [`TriangleFeature`] as a byte. (b3TriangleFeature)
+    pub triangle_feature: u8,
+    /// `MESH_CONTACT_*` bits. (b3MeshContactFlags)
+    pub mesh_flags: u8,
 }
 
 /// A contact manifold describes the contact points between colliding shapes.

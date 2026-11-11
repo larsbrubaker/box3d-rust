@@ -1,18 +1,19 @@
 //! Mesh types and blob serialization.
 //!
 //! Maps C's `b3MeshData` header + trailing arrays (nodes, vertices, triangles,
-//! materials, flags).
+//! materials, flags, and with edge identification the edge angles, vertex flags, and
+//! vertex rings).
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use crate::math_functions::{Aabb, Vec3, VEC3_ONE};
+use crate::math_functions::{align_up8, Aabb, Vec3, VEC3_ONE};
 
 /// 64-bit mesh version. (B3_MESH_VERSION)
-pub const MESH_VERSION: u64 = 0xAAAB9A00F1A8AAF7;
+pub const MESH_VERSION: u64 = 0x24AA0BF74682501D;
 
 /// Size of the C `b3MeshData` header.
-pub const MESH_DATA_SIZE: usize = 96;
+pub const MESH_DATA_SIZE: usize = 104;
 
 /// Byte offset of `b3MeshData::byteCount`, which C places right after the version and the
 /// 64-bit hash. Readers that only have raw bytes (the compound blob reader) need this to
@@ -43,6 +44,17 @@ pub const FLAT_EDGE1: i32 = CONCAVE_EDGE1 | INVERSE_CONCAVE_EDGE1;
 pub const FLAT_EDGE2: i32 = CONCAVE_EDGE2 | INVERSE_CONCAVE_EDGE2;
 pub const FLAT_EDGE3: i32 = CONCAVE_EDGE3 | INVERSE_CONCAVE_EDGE3;
 pub const ALL_FLAT_EDGES: i32 = FLAT_EDGE1 | FLAT_EDGE2 | FLAT_EDGE3;
+
+/// Indicates an isolated edge (treated as a cliff). (B3_BOUNDARY_EDGE_ANGLE)
+pub const BOUNDARY_EDGE_ANGLE: i8 = -128;
+
+// Mesh vertex flags. Used for ghost collision handling. (b3MeshVertexFlags)
+
+/// All edges are flat. (b3_flatVertex)
+pub const FLAT_VERTEX: u8 = 0x01;
+
+/// Any edge is concave. (b3_concaveVertex)
+pub const CONCAVE_VERTEX: u8 = 0x02;
 
 /// Data used to create a re-usable collision mesh. (b3MeshDef)
 #[derive(Debug, Clone, Default)]
@@ -155,10 +167,21 @@ impl MeshNode {
     }
 }
 
-/// Sorted triangle collision bounding volume hierarchy. (b3MeshData)
+/// This is a sorted triangle collision bounding volume hierarchy. Offsets are a byte
+/// count offset from the struct address. (b3MeshData)
 ///
 /// Maps to C's header + trailing blob. Offsets and `byte_count` match C so
 /// [`MeshData::to_bytes`] reproduces the contiguous layout used by `b3Hash64NonZero`.
+///
+/// With edge identification the blob carries three more sections, which C reaches through
+/// the offsets: one quantized neighbor angle per triangle edge ([`Self::edge_angles`]), one
+/// [`FLAT_VERTEX`] / [`CONCAVE_VERTEX`] byte per vertex ([`Self::vertex_flags`]), and the
+/// vertex rings. The ring section starts at `vertex_ring_offset` with `vertex_count + 1`
+/// absolute byte offsets ([`Self::vertex_ring_starts`]), padded to 8 bytes, followed by the
+/// ring records, padded to 8 bytes. A record is a `u16` cliff count followed by `u16`
+/// octahedral direction codes, so the record area is held as `u16` words
+/// ([`Self::vertex_ring_data`], including the trailing padding). Without edge
+/// identification the offsets are 0 and the vectors are empty.
 #[derive(Debug, Clone)]
 pub struct MeshData {
     pub version: u64,
@@ -177,13 +200,25 @@ pub struct MeshData {
     pub material_offset: i32,
     pub material_count: i32,
     pub flags_offset: i32,
-    /// Explicit padding.
-    pub padding: i32,
+    /// Offset to the edge neighbor angles.
+    pub edge_angle_offset: i32,
+    /// Offset of the vertex flag array.
+    pub vertex_flag_offset: i32,
+    /// Offset the vertex neighbor angle ring.
+    pub vertex_ring_offset: i32,
     pub nodes: Vec<MeshNode>,
     pub vertices: Vec<Vec3>,
     pub triangles: Vec<MeshTriangle>,
     pub material_indices: Vec<u8>,
     pub flags: Vec<u8>,
+    /// Quantized angles between neighboring triangle normals, 3 per triangle.
+    pub edge_angles: Vec<i8>,
+    /// Vertex flags, 1 per vertex.
+    pub vertex_flags: Vec<u8>,
+    /// Absolute byte offsets of the vertex ring records, `vertex_count + 1` of them.
+    pub vertex_ring_starts: Vec<i32>,
+    /// The vertex ring record area as `u16` words, from the first record to the end of the blob.
+    pub vertex_ring_data: Vec<u16>,
 }
 
 impl Default for MeshData {
@@ -205,12 +240,18 @@ impl Default for MeshData {
             material_offset: 0,
             material_count: 0,
             flags_offset: 0,
-            padding: 0,
+            edge_angle_offset: 0,
+            vertex_flag_offset: 0,
+            vertex_ring_offset: 0,
             nodes: Vec::new(),
             vertices: Vec::new(),
             triangles: Vec::new(),
             material_indices: Vec::new(),
             flags: Vec::new(),
+            edge_angles: Vec::new(),
+            vertex_flags: Vec::new(),
+            vertex_ring_starts: Vec::new(),
+            vertex_ring_data: Vec::new(),
         }
     }
 }
@@ -260,6 +301,31 @@ pub fn get_mesh_flags(mesh: &MeshData) -> &[u8] {
     &mesh.flags
 }
 
+/// Get read only quantized angles between neighboring triangle normals. `None` without edge
+/// identification. (b3GetMeshEdgeAngles)
+pub fn get_mesh_edge_angles(mesh: &MeshData) -> Option<&[i8]> {
+    if mesh.edge_angle_offset == 0 {
+        return None;
+    }
+
+    Some(&mesh.edge_angles)
+}
+
+/// Get read only vertex flags. `None` without edge identification. (b3GetMeshVertexFlags)
+pub fn get_mesh_vertex_flags(mesh: &MeshData) -> Option<&[u8]> {
+    if mesh.vertex_flag_offset == 0 {
+        return None;
+    }
+
+    Some(&mesh.vertex_flags)
+}
+
+/// Byte offset of the first vertex ring record: the ring offset array is `vertex_count + 1`
+/// `int32_t` values padded to 8 bytes.
+pub(crate) fn vertex_ring_record_offset(vertex_ring_offset: i32, vertex_count: i32) -> usize {
+    vertex_ring_offset as usize + align_up8((vertex_count as usize + 1) * 4)
+}
+
 fn write_u64_le(buf: &mut Vec<u8>, v: u64) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -274,6 +340,10 @@ fn read_u32_le(buf: &[u8], off: usize) -> u32 {
 
 fn read_i32_le(buf: &[u8], off: usize) -> i32 {
     read_u32_le(buf, off) as i32
+}
+
+fn read_u16_le(buf: &[u8], off: usize) -> u16 {
+    u16::from_le_bytes(buf[off..off + 2].try_into().unwrap())
 }
 
 fn read_f32_le(buf: &[u8], off: usize) -> f32 {
@@ -340,7 +410,9 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
     let material_offset = read_i32_le(bytes, 80);
     let material_count = read_i32_le(bytes, 84);
     let flags_offset = read_i32_le(bytes, 88);
-    let padding = read_i32_le(bytes, 92);
+    let edge_angle_offset = read_i32_le(bytes, 92);
+    let vertex_flag_offset = read_i32_le(bytes, 96);
+    let vertex_ring_offset = read_i32_le(bytes, 100);
 
     if node_count < 0 || vertex_count < 0 || triangle_count < 0 || material_count < 0 {
         return None;
@@ -386,6 +458,56 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
     let foff = section_offset(flags_offset, tc, 1, bytes.len())?;
     let flags = bytes[foff..foff + tc].to_vec();
 
+    // Edge identification sections. A zero offset means the section is absent, as in C.
+    let mut edge_angles = Vec::new();
+    if edge_angle_offset != 0 {
+        let count = tc.checked_mul(3)?;
+        let eoff = section_offset(edge_angle_offset, count, 1, bytes.len())?;
+        edge_angles = bytes[eoff..eoff + count].iter().map(|&b| b as i8).collect();
+    }
+
+    let mut vertex_flags = Vec::new();
+    if vertex_flag_offset != 0 {
+        let voff = section_offset(vertex_flag_offset, vc, 1, bytes.len())?;
+        vertex_flags = bytes[voff..voff + vc].to_vec();
+    }
+
+    let mut vertex_ring_starts = Vec::new();
+    let mut vertex_ring_data = Vec::new();
+    if vertex_ring_offset != 0 {
+        let start_count = vc.checked_add(1)?;
+        let soff = section_offset(vertex_ring_offset, start_count, 4, bytes.len())?;
+        vertex_ring_starts = (0..start_count)
+            .map(|i| read_i32_le(bytes, soff + 4 * i))
+            .collect();
+
+        // The records run from after the padded offset array to the end of the blob.
+        let record_offset = soff.checked_add(align_up8(start_count.checked_mul(4)?))?;
+        if record_offset > bytes.len() || (bytes.len() - record_offset) % 2 != 0 {
+            return None;
+        }
+
+        // Divergence from C: validate the record offsets so a corrupt blob fails here
+        // instead of reading out of bounds in the ring test.
+        for pair in vertex_ring_starts.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            if a < record_offset as i32
+                || b < a
+                || b as usize > bytes.len()
+                || (a as usize - record_offset) % 2 != 0
+                || (b - a) % 2 != 0
+                || (b != a && b - a < 2)
+            {
+                return None;
+            }
+        }
+
+        vertex_ring_data = (record_offset..bytes.len())
+            .step_by(2)
+            .map(|o| read_u16_le(bytes, o))
+            .collect();
+    }
+
     Some(MeshData {
         version,
         hash,
@@ -403,12 +525,18 @@ pub fn convert_bytes_to_mesh(bytes: &[u8]) -> Option<MeshData> {
         material_offset,
         material_count,
         flags_offset,
-        padding,
+        edge_angle_offset,
+        vertex_flag_offset,
+        vertex_ring_offset,
         nodes,
         vertices,
         triangles,
         material_indices,
         flags,
+        edge_angles,
+        vertex_flags,
+        vertex_ring_starts,
+        vertex_ring_data,
     })
 }
 
@@ -459,7 +587,9 @@ fn write_header(buf: &mut Vec<u8>, m: &MeshData, hash_override: Option<u64>) {
     write_i32_le(buf, m.material_offset);
     write_i32_le(buf, m.material_count);
     write_i32_le(buf, m.flags_offset);
-    write_i32_le(buf, m.padding);
+    write_i32_le(buf, m.edge_angle_offset);
+    write_i32_le(buf, m.vertex_flag_offset);
+    write_i32_le(buf, m.vertex_ring_offset);
     debug_assert_eq!(buf.len(), MESH_DATA_SIZE);
 }
 
@@ -503,6 +633,27 @@ impl MeshData {
         buf.extend_from_slice(&self.material_indices);
         pad_to(&mut buf, self.flags_offset as usize);
         buf.extend_from_slice(&self.flags);
+        if self.edge_angle_offset != 0 {
+            pad_to(&mut buf, self.edge_angle_offset as usize);
+            buf.extend(self.edge_angles.iter().map(|&a| a as u8));
+        }
+        if self.vertex_flag_offset != 0 {
+            pad_to(&mut buf, self.vertex_flag_offset as usize);
+            buf.extend_from_slice(&self.vertex_flags);
+        }
+        if self.vertex_ring_offset != 0 {
+            pad_to(&mut buf, self.vertex_ring_offset as usize);
+            for start in &self.vertex_ring_starts {
+                write_i32_le(&mut buf, *start);
+            }
+            pad_to(
+                &mut buf,
+                vertex_ring_record_offset(self.vertex_ring_offset, self.vertex_count),
+            );
+            for word in &self.vertex_ring_data {
+                buf.extend_from_slice(&word.to_le_bytes());
+            }
+        }
         pad_to(&mut buf, self.byte_count as usize);
         debug_assert_eq!(buf.len(), self.byte_count as usize);
         buf

@@ -26,12 +26,16 @@ pub use hull_capsule::collide_hull_and_capsule;
 pub use hulls::collide_hulls;
 pub(crate) use hulls::collide_hulls_at_width;
 pub use spheres::{collide_capsule_and_sphere, collide_hull_and_sphere, collide_spheres};
+pub(crate) use triangle::build_triangle_and_capsule_face_contact;
 pub use triangle::{collide_triangle_and_capsule, collide_triangle_and_sphere};
+pub(crate) use triangle_hull::build_triangle_and_hull_face_contact;
 pub use triangle_hull::collide_triangle_and_hull;
+pub(crate) use types::MAX_CLIP_POINTS;
 pub use types::{
     make_feature_id, make_feature_pair, FeatureOwner, FeaturePair, LocalManifold,
     LocalManifoldPoint, Manifold, ManifoldPoint, SatCache, SeparatingFeature, TriangleFeature,
-    FEATURE_PAIR_SINGLE,
+    FEATURE_PAIR_SINGLE, LOCAL_MANIFOLD_CAPACITY, MESH_CONTACT_DEEP, MESH_CONTACT_HULL_FACE,
+    MESH_CONTACT_SNAPPED,
 };
 
 #[cfg(test)]

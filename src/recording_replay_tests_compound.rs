@@ -43,7 +43,8 @@ fn rec_compound() -> CompoundData {
 /// compound is a pointer-free blob addressed by offsets, so the canonical bytes need no
 /// scrubbing. The expected byte count and hash come from the scalar C build of 5d83df8 (MSVC,
 /// BOX3D_DISABLE_SIMD, float and double precision alike) interning this same compound; the
-/// full blob was also compared byte for byte.
+/// full blob was also compared byte for byte. The hash was re-taken from the scalar C build of
+/// 38f2ae1, where the compound version depends on the new mesh version.
 #[test]
 fn intern_compound_is_pointer_free() {
     let compound = rec_compound();
@@ -54,7 +55,7 @@ fn intern_compound_is_pointer_free() {
     assert_eq!(entry.bytes, compound.to_bytes());
 
     assert_eq!(entry.bytes.len(), 488);
-    assert_eq!(entry.content_hash, 0x58b8_26b8_d7e0_7710);
+    assert_eq!(entry.content_hash, 0x99d8_3625_4fad_4040);
 
     // Interning the same compound again dedups to the same id.
     assert_eq!(rec.registry.intern_compound(&compound), id);

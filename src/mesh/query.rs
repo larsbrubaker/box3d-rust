@@ -3,10 +3,7 @@
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-use super::types::{
-    Mesh, CONCAVE_EDGE1, CONCAVE_EDGE2, CONCAVE_EDGE3, INVERSE_CONCAVE_EDGE1,
-    INVERSE_CONCAVE_EDGE2, INVERSE_CONCAVE_EDGE3, MESH_STACK_SIZE,
-};
+use super::types::{Mesh, MESH_STACK_SIZE};
 use crate::constants::linear_slop;
 use crate::distance::{
     compute_proxy_aabb, make_local_proxy, make_proxy, shape_distance, DistanceInput, ShapeProxy,
@@ -115,7 +112,7 @@ pub fn overlap_mesh(shape: &Mesh<'_>, shape_transform: Transform, proxy: &ShapeP
     false
 }
 
-/// Get a scaled mesh triangle with edge flags. (b3GetMeshTriangle)
+/// Get a scaled mesh triangle. A reflecting scale reverses the winding. (b3GetMeshTriangle)
 ///
 /// Making this inline made the tree benchmarks faster.
 #[inline]
@@ -123,11 +120,9 @@ pub fn get_mesh_triangle(mesh: &Mesh<'_>, triangle_index: i32) -> Triangle {
     debug_assert!(0 <= triangle_index && triangle_index < mesh.data.triangle_count);
 
     let triangles = &mesh.data.triangles;
-    let flags = &mesh.data.flags;
     let vertices = &mesh.data.vertices;
 
     let triangle = triangles[triangle_index as usize];
-    let triangle_flags = flags[triangle_index as usize];
     let scale = mesh.scale;
 
     let mut result = Triangle {
@@ -135,7 +130,6 @@ pub fn get_mesh_triangle(mesh: &Mesh<'_>, triangle_index: i32) -> Triangle {
         i1: triangle.index1,
         i2: 0,
         i3: 0,
-        flags: 0,
     };
     result.vertices[0] = mul(scale, vertices[triangle.index1 as usize]);
 
@@ -144,23 +138,11 @@ pub fn get_mesh_triangle(mesh: &Mesh<'_>, triangle_index: i32) -> Triangle {
         result.vertices[2] = mul(scale, vertices[triangle.index2 as usize]);
         result.i2 = triangle.index3;
         result.i3 = triangle.index2;
-
-        result.flags = 0;
-        if (triangle_flags as i32) & INVERSE_CONCAVE_EDGE1 != 0 {
-            result.flags |= CONCAVE_EDGE1;
-        }
-        if (triangle_flags as i32) & INVERSE_CONCAVE_EDGE2 != 0 {
-            result.flags |= CONCAVE_EDGE2;
-        }
-        if (triangle_flags as i32) & INVERSE_CONCAVE_EDGE3 != 0 {
-            result.flags |= CONCAVE_EDGE3;
-        }
     } else {
         result.vertices[1] = mul(scale, vertices[triangle.index2 as usize]);
         result.vertices[2] = mul(scale, vertices[triangle.index3 as usize]);
         result.i2 = triangle.index2;
         result.i3 = triangle.index3;
-        result.flags = triangle_flags as i32;
     }
 
     result

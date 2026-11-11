@@ -191,8 +191,9 @@ fn query_triangle_and_capsule_edges(
     }
 }
 
-/// Build face contact between triangle and capsule. (static b3BuildTriangleAndCapsuleFaceContact)
-fn build_triangle_and_capsule_face_contact(
+/// Build face contact between triangle and capsule. Also used by mesh ghost handling to snap a
+/// capsule manifold to the triangle face. (b3BuildTriangleAndCapsuleFaceContact)
+pub(crate) fn build_triangle_and_capsule_face_contact(
     manifold: &mut LocalManifold,
     triangle: &[Vec3; 3],
     plane: Plane,
@@ -384,7 +385,6 @@ pub fn collide_triangle_and_sphere(
     manifold.normal = normal;
     manifold.point_count = 1;
     manifold.feature = closest.feature;
-    manifold.squared_distance = squared_distance;
 
     let mp = &mut manifold.points[0];
     mp.point = contact_point;

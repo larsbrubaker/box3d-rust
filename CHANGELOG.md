@@ -10,6 +10,7 @@ reference pin advances from `efca0c1`. Ported so far:
 
 - `f36d061` CMake improvements (#201)
 - `3362633` Dynamic Mover (#202)
+- `38f2ae1` Reduce ghosts (#212)
 
 ### Breaking
 
@@ -24,6 +25,41 @@ reference pin advances from `efca0c1`. Ported so far:
   default and longer for implementations that return a larger scale.
 - The recording minor version becomes 10 (upstream `3362633`, the mover and
   pogo joint ops).
+- The mesh blob grows (upstream `38f2ae1`). `MeshData` replaces `padding` with
+  `edge_angle_offset`, `vertex_flag_offset`, and `vertex_ring_offset` and gains
+  `edge_angles`, `vertex_flags`, `vertex_ring_starts`, and `vertex_ring_data`,
+  the sections a mesh built with `identify_edges` now carries. The header is
+  104 bytes (was 96) and `MESH_VERSION` changes to `0x24AA0BF74682501D`, so
+  `COMPOUND_VERSION` changes to `0xD1FF25F04CA21D1F`. Mesh and compound hashes
+  change, and mesh, compound, and recording blobs from earlier versions no
+  longer load.
+- `HeightFieldData` gains `vertex_flag_offset` and a `vertex_bits` section, and
+  `padding` shrinks to `[u8; 3]` (upstream `38f2ae1`). `HEIGHT_FIELD_VERSION`
+  changes to `0x5A69A297D7ACE1CD`; height-field hashes change and earlier
+  blobs no longer load.
+- `LocalManifoldPoint` and `ManifoldPoint` gain `triangle_feature` and
+  `mesh_flags`, and `LocalManifold` loses `i1`, `i2`, `i3`, `squared_distance`,
+  and `triangle_flags` (upstream `38f2ae1`). The `LocalManifold` point array
+  grows to `LOCAL_MANIFOLD_CAPACITY` (128): C points a local manifold into the
+  remaining point buffer, so one heavy triangle clip can keep more than the
+  former 32 points. `math_functions::Triangle` loses `flags`, so
+  `get_mesh_triangle` and `get_height_field_triangle` no longer report edge
+  flags.
+- `collide_triangle_and_hull` loses its `triangle_flags` parameter and
+  `hull_2d` gains a `flags` parameter (upstream `38f2ae1`).
+- `constants::MAX_MESH_CONTACT_TRIANGLES` is removed with upstream
+  `B3_MAX_MESH_CONTACT_TRIANGLES`: a mesh contact collides every triangle in
+  its query bounds (upstream `38f2ae1`).
+- The Rust snapshot layout version becomes 6 (the manifold point record carries
+  the new fields; upstream `sizeof( b3ManifoldPoint )` is unchanged and its
+  snapshot memcpy carries them too). With the blob versions in the layout hash,
+  snapshots and recordings from earlier versions no longer load. The demo's
+  bundled replay recording is regenerated.
+- Mesh and height-field contacts change with ghost handling (upstream
+  `38f2ae1`), so simulations on meshes and height fields are not
+  bit-compatible with earlier builds. The falling ragdoll, wave pile, and mesh
+  drop determinism goldens take the upstream `test_determinism.c` values, and
+  the mesh mix golden comes from a scalar C build of `38f2ae1`.
 
 ### Added
 
@@ -56,8 +92,57 @@ reference pin advances from `efca0c1`. Ported so far:
   confirmed bit-exact against a scalar C build of `3362633` in both
   precision modes.
 
+- Ghost collision handling for spheres, capsules, and hulls against a single
+  mesh or height field (upstream `38f2ae1`, `mesh_contact.c`). Each triangle
+  manifold that is not a face contact is tested against the neighboring
+  triangles and the vertex normal cones, and is admitted, left to the neighbor,
+  snapped to the triangle face, or dropped; deep overlaps, cliffs, and hulls
+  resting on a face get dedicated handling. Meshes need `identify_edges`;
+  height fields always carry the data. The points report the triangle feature
+  and `MESH_CONTACT_HULL_FACE` / `MESH_CONTACT_SNAPPED` / `MESH_CONTACT_DEEP`.
+- `contact::collide_mesh_and_hull` and `contact::collide_mesh_and_sphere`
+  (upstream `b3CollideMeshAndHull` / `b3CollideMeshAndSphere`), the mesh
+  collision testing interface, with the ghost handling switch.
+- Mesh edge identification stores the quantized angle across every triangle
+  edge (`get_mesh_edge_angles`, `BOUNDARY_EDGE_ANGLE`), `FLAT_VERTEX` /
+  `CONCAVE_VERTEX` vertex flags (`get_mesh_vertex_flags`), and the octahedral
+  encoded vertex rings that bound each vertex normal cone; height fields store
+  a vertex convexity bit per grid point (upstream `38f2ae1`).
+- `HULL_2D_KEEP_COLLINEAR`, `HULL_2D_EXACT_MERGE`, and `HULL_2D_INDEX_ORDER`
+  for `hull_2d` (upstream `b3Hull2DFlags`).
+- Ports `MeshEdgeAngles`, `MeshVertexRing`, `MeshWideHullSlide`,
+  `MeshManyTriangles`, `MeshSphereOnRidge`, `MeshHullOnSaddleRidge`,
+  `MeshCapsuleOverCrest`, `MeshApexContact`, `MeshPeelCylinder`, and
+  `MeshGhostOracle` from `test_mesh.c`, with the ghost oracle and the PEEL
+  internal-edge scene of `shared/` as test support; the four new Hull2D tests
+  from `test_hull.c`; and `HeightFieldNeighborNormals` and
+  `NeighborNormalDispatch` from `test_height_field.c`. Mesh and height-field
+  blobs, with and without edge identification, were compared byte for byte
+  with a scalar C build of `38f2ae1`, and the mesh manifolds (hull and sphere
+  over scaled meshes, with and without ghost handling and speculation), the
+  ghost oracle scan, and mixed-body simulations on height fields, scaled
+  meshes, and the PEEL scene were confirmed bit-exact in both precision modes.
+
 ### Changed
 
+- The mesh builder bins and bounds its primitives the way upstream's optimized
+  builder does (upstream `38f2ae1`); on the scalar path the trees are
+  unchanged. Edge identification finds shared edges with a counting sort
+  instead of a hash map.
+- Mesh contacts query a growing triangle list instead of stopping at 512,
+  clusters with more than 64 points drop interior points with a bounding
+  octagon before culling (with a linear sweep above 256), and a reduced cluster
+  keeps its deepest point when culling would leave only separated points
+  (upstream `38f2ae1`). The found edge and vertex bookkeeping is gone.
+- Triangle versus hull uses the mesh rest offset instead of zero as the
+  separation limit without speculation, lets an edge axis win when the hull
+  face normal crosses the triangle edge, and bounds the GJK fallback by the
+  speculative distance (upstream `38f2ae1`). Convex manifold points clear the
+  new mesh fields, as in C.
+- `hull_2d` sorts with a port of upstream `qsort.h` (new crate-internal
+  `qsort`), breaking ties by the original index, and no longer lists a nearly
+  collinear point twice. New crate-internal `simd_scalar::atan2_w`
+  (`b3Atan2W4`).
 - Ports upstream's new explanatory comments on the isotropic inertia test
   (`update_isotropic_inertia`) and the gyroscopic solve in the velocity
   integration (upstream `f36d061`). No behavior change.
@@ -83,6 +168,15 @@ reference pin advances from `efca0c1`. Ported so far:
   `geometric_mover.cpp`, plus compound, manifold, replay, camera, and input
   updates). Dynamic Mover is listed as planned in the demo registry. The
   header comment rewrapping in that commit needs no port.
+- The samples, benchmarks, and docs of upstream `38f2ae1`: the new Ghost
+  category, the Manifold ghost views, Issues Rolling Deck, and Vehicle Raycast
+  Vehicle are listed as planned in the demo registry; the ghost scan, mesh
+  benchmark, and mesh soak benchmarks with their baselines, `shared/mesh_drop.c`,
+  and the docs figures are not ported. Of `shared/ghost_collisions.c` only the
+  internal-edge mesh scene that `MeshPeelCylinder` drives is ported, and the
+  oracle's pair ownership pass, which only the sample displays, is skipped.
+  The header reformatting, `.clang-format`, `.editorconfig`, and natvis changes
+  need no port.
 
 ## 0.5.0
 
