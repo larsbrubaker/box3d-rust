@@ -4,8 +4,7 @@
 // and Overflow Color Pile reads back the constraint-graph color overflow.
 
 import {
-  createButtonGroup,
-  createInfoBox,
+  createButton,
   createReadout,
   createSlider,
   updateReadout,
@@ -56,7 +55,7 @@ const CAMERAS: Record<Mode, [number, number, number, [number, number, number]]> 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("robustness", SCENES);
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, panel } = demoPage(
     container,
     "Robustness",
     "The four <code>sample_robustness.cpp</code> samples: <strong>HighMassRatio1</strong> " +
@@ -64,18 +63,24 @@ export function init(container: HTMLElement, initialScene?: string) {
       "<strong>Overlap Recovery</strong> (intentionally interpenetrating pyramid, tuned live), and " +
       "<strong>Overflow Color Pile</strong> (a heavy hub ringed to overflow the constraint-graph " +
       "colors).",
-    "Drag to orbit · pick a scene · Overlap Recovery sliders · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · P/O/R",
     wasm.version(),
-    { category: "Robustness", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "Overlap Recovery exposes the C <code>DrawControls</code> sliders driving " +
-        "<code>b3World_SetContactTuning</code> (Hertz / Damping / push-out Speed) and rebuilds the " +
-        "pyramid on change. Overflow Color Pile reads <code>b3World_GetCounters</code> — the last " +
-        "graph color is the overflow bucket.",
-    ),
+    {
+      category: "Robustness",
+      samplesShell: true,
+      info: {
+        "high-mass-ratio1":
+          "<strong>HighMassRatio1</strong> — pyramids capped by 100–300× density boxes.",
+        "tiny-pyramid": "<strong>Tiny Pyramid</strong> — 5 cm boxes.",
+        "overlap-recovery":
+          "Overlap Recovery exposes the C <code>DrawControls</code> sliders driving " +
+          "<code>b3World_SetContactTuning</code> (Hertz / Damping / push-out Speed) and rebuilds the " +
+          "pyramid on change.",
+        "overflow-color-pile":
+          "Overflow Color Pile reads <code>b3World_GetCounters</code> — the last " +
+          "graph color is the overflow bucket.",
+      },
+    },
   );
 
   let mode: Mode =
@@ -139,25 +144,22 @@ export function init(container: HTMLElement, initialScene?: string) {
         applyOverlapParams();
       }),
     );
-    recoveryControls.appendChild(
-      createButtonGroup([{ label: "Reset Scene", value: "reset" }], "reset", () =>
-        applyOverlapParams(),
-      ),
-    );
+    // An action, not a radio: a plain button (no stuck "active" state).
+    const resetRow = document.createElement("div");
+    resetRow.className = "control-row";
+    resetRow.appendChild(createButton("Reset Scene", () => applyOverlapParams()));
+    recoveryControls.appendChild(resetRow);
   }
 
-  controls.appendChild(
-    createButtonGroup(
-      SCENES.map((s) => ({ label: NAMES[s], value: s })),
-      mode,
-      (v) => {
-        mode = v as Mode;
-        const nameEl = controls.querySelector(".sample-name");
-        if (nameEl) nameEl.textContent = NAMES[mode];
-        rebuildRecoveryControls();
-        reset();
-      },
-    ),
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  panel.addSceneSelect(
+    SCENES.map((s) => ({ label: NAMES[s], value: s })),
+    mode,
+    (v) => {
+      mode = v as Mode;
+      rebuildRecoveryControls();
+      reset();
+    },
   );
   controls.appendChild(recoveryControls);
 
@@ -175,6 +177,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     if (mode === "overlap-recovery") applyOverlapParams();
     const [yaw, pitch, dist, target] = CAMERAS[mode];
     setView(demo, yaw, pitch, dist, target);
+    panel.setScene(mode);
   }
 
   let subSteps = 4;

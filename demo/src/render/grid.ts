@@ -79,6 +79,18 @@ export function makeGridMaterial(
     color: baseColor,
     roughness: 0.7, // static-body roughness (debug_adapter.c:140)
     metalness: 0.0,
+    // The grid is an extra y=0 plane: C has no such plane — it shades the
+    // sample's own ground shapes with the grid instead (geom.glsl ground mode,
+    // shapes named "ground"). Many port scenes draw real geometry whose top face
+    // is exactly y=0 (ground boxes, the test_map01 level slab, terrain meshes),
+    // so the two coplanar surfaces z-fought: depth ties resolved per pixel by
+    // interpolation rounding, painting light/dark streaks across the floor at
+    // grazing angles. Bias the grid plane slightly *behind* in depth so any
+    // coplanar scene geometry always wins; the plane still shows wherever
+    // nothing else is drawn. (Depth-only bias: no geometry or scene change.)
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 4,
   });
   mat.onBeforeCompile = (shader) => gridInjectShader(shader, cellSize);
   // Marker + cell size so the shadow path can recognize the grid material and

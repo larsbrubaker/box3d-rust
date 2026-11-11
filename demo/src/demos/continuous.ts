@@ -13,7 +13,6 @@ import {
   createButton,
   createButtonGroup,
   createCheckbox,
-  createInfoBox,
   createSlider,
 } from "../controls.ts";
 import {
@@ -98,26 +97,32 @@ export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   // Self-check the scene table against the registry (see registry.ts pattern).
   assertRouteScenes("continuous", SCENES);
+  const MESH_GROUND = "drops bodies onto a static collision mesh (rendered as wireframe).";
+  const LAUNCH_HINT = "L or Launch fires · Ctrl+click grab · Shift+click spawn · P/O/R";
   const { canvas, controls } = demoPage(
     container,
     "Continuous",
     "Official Continuous samples from <code>sample_continuous.cpp</code> — fast bodies with " +
       "continuous collision: Thin Wall, Bounce House, Spinning Stick, Bullet vs Stack, Needle Mesh, " +
       "Mesh Drop (+ Unit Test), Hump Mesh, Is Fast, and Stall.",
-    "Ctrl+click grab · Shift+click spawn · L launch (Bullet/Stall) · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · P/O/R",
     wasm.version(),
-    { category: "Continuous", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "<strong>Spinning Stick</strong> spins at a random ω (C <code>RandomVec3</code>, seed 12345). " +
-        "<strong>Needle/Hump/Stall</strong> drop bodies onto static collision meshes (rendered as " +
-        "wireframe). <strong>Mesh Drop</strong> rains 1024 tiny shapes into a wave basin — 1024 " +
-        "continuous bodies runs below 60 fps in serial WASM; its RNG seed varies per Generate (C " +
-        "seeds from ticks), and Auto Generate regenerates on settle. <strong>Stall</strong> fires a " +
-        "600 m/s rock at a 200×200 torus.",
-    ),
+    {
+      category: "Continuous",
+      samplesShell: true,
+      info: {
+        spin:
+          "<strong>Spinning Stick</strong> spins at a random ω (C <code>RandomVec3</code>, seed 12345).",
+        needle: `<strong>Needle Mesh</strong> ${MESH_GROUND}`,
+        hump: `<strong>Hump Mesh</strong> ${MESH_GROUND}`,
+        "mesh-drop":
+          "<strong>Mesh Drop</strong> rains 1024 tiny shapes into a wave basin — 1024 " +
+          "continuous bodies runs below 60 fps in serial WASM; its RNG seed varies per Generate (C " +
+          "seeds from ticks), and Auto Generate regenerates on settle.",
+        stall: `<strong>Stall</strong> ${MESH_GROUND} It fires a 600 m/s rock at a 200×200 torus.`,
+      },
+      sceneHints: { bullet: LAUNCH_HINT, stall: LAUNCH_HINT },
+    },
   );
 
   let mode: Mode =
@@ -414,6 +419,7 @@ export function init(container: HTMLElement, initialScene?: string) {
         type: "select",
         key: "sample",
         label: "Sample",
+        role: "scene",
         options: SCENES.map((s) => ({ label: CONTINUOUS_NAMES[s], value: s })),
         default: mode,
         restart: true,
@@ -422,8 +428,6 @@ export function init(container: HTMLElement, initialScene?: string) {
     onParamsChange: (values: ParamValues, key: string) => {
       if (key !== "sample") return;
       mode = String(values.sample) as Mode;
-      const nameEl = controls.querySelector(".sample-name");
-      if (nameEl) nameEl.textContent = CONTINUOUS_NAMES[mode];
     },
   }) as SimControllerWithTick;
 

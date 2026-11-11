@@ -18,7 +18,7 @@ import {
 } from "../interaction.ts";
 import { getWasm, type Box3dWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
-import { createButton, createCanvasOverlay } from "../controls.ts";
+import { createButtonGroup, createCanvasOverlay } from "../controls.ts";
 import { demoPage, makeStyleGate, runLoop } from "./common.ts";
 import {
   applyShapeStyle,
@@ -93,7 +93,13 @@ export function init(container: HTMLElement, initialScene?: string) {
       "thousands of kilometres from the origin to exercise the double-precision path.",
     "Ctrl+click grab · Shift+click spawn · P/O/R",
     wasm.version(),
-    { category: "World", samplesShell: true },
+    {
+      category: "World",
+      samplesShell: true,
+      about:
+        "Large-world samples from <code>sample_world.cpp</code>: identical scenes built " +
+        "thousands of kilometres from the origin to exercise the double-precision path.",
+    },
   );
 
   let scene: Scene =
@@ -260,16 +266,15 @@ export function init(container: HTMLElement, initialScene?: string) {
   const stackLabel = document.createElement("label");
   stackLabel.textContent = "World offset";
   stackControls.appendChild(stackLabel);
-  const stackBtnRow = document.createElement("div");
-  stackBtnRow.className = "control-row";
-  for (const preset of STACK_PRESETS) {
-    stackBtnRow.appendChild(
-      createButton(preset.label, () => {
-        stackOffsetKm = preset.km;
-        reset();
-      }),
-    );
-  }
+  // A radio group (C RadioButton) so the active offset preset is visible.
+  const stackBtnRow = createButtonGroup(
+    STACK_PRESETS.map((p) => ({ label: p.label, value: String(p.km) })),
+    String(stackOffsetKm),
+    (v) => {
+      stackOffsetKm = Number(v);
+      reset();
+    },
+  );
   stackControls.appendChild(stackBtnRow);
   function updateStackControls() {
     stackControls.style.display = scene === "far-stack" ? "" : "none";
@@ -281,6 +286,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       type: "select",
       key: "scene",
       label: "Sample",
+      role: "scene",
       options: [
         { label: "Far Stack", value: "far-stack" },
         { label: "Far Pyramid", value: "far-pyramid" },

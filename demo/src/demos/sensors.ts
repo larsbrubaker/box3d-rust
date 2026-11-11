@@ -8,9 +8,7 @@
 import * as THREE from "three";
 import {
   createButton,
-  createButtonGroup,
   createCheckbox,
-  createInfoBox,
   createReadout,
   updateReadout,
 } from "../controls.ts";
@@ -51,56 +49,56 @@ export function init(container: HTMLElement, initialScene?: string) {
   // Self-check the scene table against the registry (see registry.ts pattern).
   // Benchmark Sensor is a Benchmark-category sample hosted on this route.
   assertRouteScenes("sensors", SCENES);
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, panel } = demoPage(
     container,
     "Sensors & Events",
     "Every <code>sample_events.cpp</code> scene — Sensor Visit, Sensor Hits, Hit, Move, Joint, " +
       "Persistent Contact — plus <strong>Benchmark Sensor</strong> (a <em>Benchmark-category</em> " +
       "sample from <code>sample_benchmark.cpp</code> hosted here for convenience).",
-    "Pick a sample · Launch (B) on Hits · Ctrl/Shift+click to grab/throw · Restart",
+    "Ctrl+click grab · Shift+click throw · Restart",
     wasm.version(),
-    { category: "Events", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "<strong>Sensor Visit / Sensor Hits</strong> — sensor overlap events (kinematic sensor destroys " +
-        "the visitor; launch a bullet sphere on Hits).<br>" +
-        "<strong>Hit</strong> — a welded capsule chain drops onto a 6-material grid mesh; contact-hit " +
-        "events draw yellow points + approach-speed rays labelled <em>speed, material</em>.<br>" +
-        "<strong>Move</strong> — a spinning tall box; body move/sleep events shown in the readout.<br>" +
-        "<strong>Joint</strong> — distance / prismatic / revolute / weld joints with force+torque " +
-        "thresholds; drive a joint over threshold to destroy it via joint events — " +
-        "<em>Ctrl+click</em> to grab and yank a body, or <em>Shift+click</em> to throw a projectile " +
-        "at one.<br>" +
-        "<strong>Persistent Contact</strong> — a rolling sphere; one contact id is tracked and its " +
-        "manifold impulses drawn (crimson).<br>" +
-        "<strong>Benchmark Sensor</strong> (Benchmark category) — full C-scale 40×40 grid; lime tint on " +
-        "overlap; mid row fuchsia (custom filter active).",
-    ),
+    {
+      category: "Events",
+      samplesShell: true,
+      info: {
+        visit:
+          "<strong>Sensor Visit</strong> — sensor overlap events (kinematic sensor destroys the visitor).",
+        hits: "<strong>Sensor Hits</strong> — sensor overlap events; launch a bullet sphere.",
+        hit:
+          "<strong>Hit</strong> — a welded capsule chain drops onto a 6-material grid mesh; contact-hit " +
+          "events draw yellow points + approach-speed rays labelled <em>speed, material</em>.",
+        move: "<strong>Move</strong> — a spinning tall box; body move/sleep events shown in the readout.",
+        joint:
+          "<strong>Joint</strong> — distance / prismatic / revolute / weld joints with force+torque " +
+          "thresholds; drive a joint over threshold to destroy it via joint events — " +
+          "<em>Ctrl+click</em> to grab and yank a body, or <em>Shift+click</em> to throw a projectile " +
+          "at one.",
+        persistent:
+          "<strong>Persistent Contact</strong> — a rolling sphere; one contact id is tracked and its " +
+          "manifold impulses drawn (crimson).",
+        benchmark:
+          "<strong>Benchmark Sensor</strong> (Benchmark category) — full C-scale 40×40 grid; lime tint on " +
+          "overlap; mid row fuchsia (custom filter active).",
+      },
+      sceneHints: {
+        hits: "B or Launch fires a bullet · Ctrl+click grab · Shift+click throw",
+        joint: "Ctrl+click yank a body · Shift+click throw a projectile",
+      },
+    },
   );
 
   let scene: Scene =
     initialScene && SCENES.includes(initialScene as Scene) ? (initialScene as Scene) : "visit";
   let hitsRow: HTMLElement | null = null;
 
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Sensor Visit", value: "visit" },
-        { label: "Sensor Hits", value: "hits" },
-        { label: "Hit", value: "hit" },
-        { label: "Move", value: "move" },
-        { label: "Joint", value: "joint" },
-        { label: "Persistent Contact", value: "persistent" },
-        { label: "Benchmark Sensor", value: "benchmark" },
-      ],
-      scene,
-      (v) => {
-        scene = v as Scene;
-        reset();
-      },
-    ),
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  panel.addSceneSelect(
+    SCENES.map((s) => ({ label: s, value: s })),
+    scene,
+    (v) => {
+      scene = v as Scene;
+      reset();
+    },
   );
 
   const actionRow = document.createElement("div");
@@ -178,6 +176,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     readout.innerHTML = "";
     buildGroundWire();
     setCamera();
+    panel.setScene(scene);
   }
 
   reset();

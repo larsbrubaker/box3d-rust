@@ -5,15 +5,14 @@
 
 import type * as THREE from "three";
 import {
-  createButtonGroup,
-  createInfoBox,
+  createButton,
   createReadout,
   createSlider,
   updateReadout,
 } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
-import { demoPage, runLoop } from "./common.ts";
+import { demoPage, ORBIT_HINT, runLoop } from "./common.ts";
 import {
   DemoScene,
   makeTriangleMesh,
@@ -47,25 +46,32 @@ const CAMERAS: Record<Mode, [number, number, number, [number, number, number]]> 
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("ragdolls", SCENES);
-  const { canvas, controls } = demoPage(
+  const JOINT_SLIDERS =
+    "exposes the C <code>DrawControls</code> joint sliders (<code>Human_SetJoint*</code>).";
+  const { canvas, controls, panel } = demoPage(
     container,
     "Ragdolls",
     "The four <code>sample_ragdoll.cpp</code> samples driving the ported <code>create_human</code> " +
       "builder: <strong>Box</strong>, <strong>Mesh</strong> (walled grid + parallel anchors), " +
       "<strong>Pile</strong> (20 stacked humans), and <strong>Incline</strong> (slides down two " +
       "tilted grid grounds, de-motorized after 2 s).",
-    "Drag to orbit · pick a scene · tweak joint params · P/O/R",
+    `${ORBIT_HINT} · tweak joint params · Respawn`,
     wasm.version(),
-    { category: "Ragdoll", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "Box / Mesh expose the C <code>DrawControls</code> joint sliders " +
-        "(<code>Human_SetJoint*</code>). Pile (groupIndex per human, torque 10 / hertz 0.5) and " +
-        "Incline (torque 10 / hertz 2, then friction 0.5 / hertz 0.5 after 2 s) use fixed joint " +
-        "parameters, matching the C samples.",
-    ),
+    {
+      category: "Ragdoll",
+      samplesShell: true,
+      info: {
+        box: `<strong>Box</strong> ${JOINT_SLIDERS}`,
+        mesh: `<strong>Mesh</strong> (walled grid + parallel anchors) ${JOINT_SLIDERS}`,
+        pile:
+          "<strong>Pile</strong> (20 stacked humans; groupIndex per human, torque 10 / hertz 0.5) " +
+          "uses fixed joint parameters, matching the C sample.",
+        incline:
+          "<strong>Incline</strong> (slides down two tilted grid grounds; torque 10 / hertz 2, then " +
+          "friction 0.5 / hertz 0.5 after 2 s) uses fixed joint parameters, matching the C sample.",
+      },
+      sceneHints: { pile: `${ORBIT_HINT} · Respawn`, incline: `${ORBIT_HINT} · Respawn` },
+    },
   );
 
   let mode: Mode =
@@ -112,23 +118,23 @@ export function init(container: HTMLElement, initialScene?: string) {
     );
   }
 
-  controls.appendChild(
-    createButtonGroup(
-      SCENES.map((s) => ({ label: RAGDOLL_NAMES[s], value: s })),
-      mode,
-      (v) => {
-        mode = v as Mode;
-        const nameEl = controls.querySelector(".sample-name");
-        if (nameEl) nameEl.textContent = RAGDOLL_NAMES[mode];
-        rebuildJointControls();
-        reset();
-      },
-    ),
-  );
   controls.appendChild(jointControls);
 
-  controls.appendChild(
-    createButtonGroup([{ label: "Respawn", value: "restart" }], "restart", () => reset()),
+  // Respawn is an action, not a radio: a plain button (no stuck "active" state).
+  const respawnRow = document.createElement("div");
+  respawnRow.className = "control-row";
+  respawnRow.appendChild(createButton("Respawn", () => reset()));
+  controls.appendChild(respawnRow);
+
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  panel.addSceneSelect(
+    SCENES.map((s) => ({ label: RAGDOLL_NAMES[s], value: s })),
+    mode,
+    (v) => {
+      mode = v as Mode;
+      rebuildJointControls();
+      reset();
+    },
   );
   const readout = createReadout();
   controls.appendChild(readout);
@@ -174,6 +180,7 @@ export function init(container: HTMLElement, initialScene?: string) {
     buildGround();
     const [yaw, pitch, dist, target] = CAMERAS[mode];
     setView(demo, yaw, pitch, dist, target);
+    panel.setScene(mode);
   }
 
   rebuildJointControls();

@@ -10,7 +10,7 @@
 // convex hulls (kind 4) keep per-body BufferGeometries from sim_hull_geometry().
 
 import * as THREE from "three";
-import { createButtonGroup, createCanvasOverlay, createInfoBox, fmt2g } from "../controls.ts";
+import { createButtonGroup, createCanvasOverlay, fmt2g, withLabel } from "../controls.ts";
 import {
   attachInteraction,
   type SimControllerWithTick,
@@ -76,7 +76,11 @@ export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   // Self-check the scene table against the registry (see registry.ts pattern).
   assertRouteScenes("stacking", SCENES);
-  const { canvas, controls, page } = demoPage(
+  const HULLS = "renders its true convex hulls.";
+  const PLANAR =
+    "is intentionally planar: C locks the Z axis (and angular axes) so collapse stays " +
+    "in-plane — not a 3D engine bug.";
+  const { canvas, controls, page, panel } = demoPage(
     container,
     "Stacking",
     "The full official Stacking roster — Jenga, Box Stack, Pyramid2D (planar), Sphere/Capsule " +
@@ -84,21 +88,26 @@ export function init(container: HTMLElement, initialScene?: string) {
       "Domino — driven by the ported <code>World::step</code> scalar solver.",
     "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
-    { category: "Stacking", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "Exact C sample counts and materials. <strong>Dominoes</strong> (30 rings) and " +
-        "<strong>Double Domino</strong> kick off with the C linear impulse at reset. " +
-        "<strong>Cylinder</strong>/<strong>Cylinder Stack</strong>/<strong>Wedge</strong>/" +
-        "<strong>Arch</strong> render their true convex hulls. " +
-        "<strong>Pyramid2D and Capsule Stack are intentionally planar</strong>: C locks the Z " +
-        "axis (and angular axes) so collapse stays in-plane — not a 3D engine bug. " +
-        "<strong>Dominoes / timing:</strong> this demo runs the serial scalar solver — for an " +
+    {
+      category: "Stacking",
+      samplesShell: true,
+      info: {
+        dominoes: "<strong>Dominoes</strong> (30 rings) kicks off with the C linear impulse at reset.",
+        "double-domino":
+          "<strong>Double Domino</strong> kicks off with the C linear impulse at reset.",
+        cylinder: `<strong>Cylinder</strong> ${HULLS}`,
+        "cylinder-stack": `<strong>Cylinder Stack</strong> ${HULLS}`,
+        wedge: `<strong>Wedge</strong> ${HULLS}`,
+        arch: `<strong>Arch</strong> ${HULLS}`,
+        pyramid: `<strong>Pyramid2D</strong> ${PLANAR}`,
+        "capsule-stack": `<strong>Capsule Stack</strong> ${PLANAR}`,
+      },
+      about:
+        "Exact C sample counts and materials, driven by the ported <code>World::step</code> " +
+        "scalar solver. <strong>Timing:</strong> this demo runs the serial scalar solver — for an " +
         "honest comparison with C, build Box3D with <code>BOX3D_DISABLE_SIMD=ON</code> and " +
         "workers=1 (C defaults to workers + SIMD).",
-    ),
+    },
   );
 
   // Jenga is the 3D showcase; Pyramid2D must never be the default (it looks like a 2D sim).
@@ -353,49 +362,39 @@ export function init(container: HTMLElement, initialScene?: string) {
     else if (mode === "cylinder-stack") wasm.sim_set_draw_scales(1, 0.001);
     else wasm.sim_set_draw_scales(1, 1);
     setCameraForMode();
+    panel.setScene(mode);
   }
 
   // C JengaStack DrawControls Capsule/Hull radio — only shown while Jenga is active.
   const jengaControls = document.createElement("div");
   jengaControls.style.display = "none";
   jengaControls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Hull", value: "hull" },
-        { label: "Capsule", value: "capsule" },
-      ],
-      "hull",
-      (v) => {
-        jengaShape = v as "hull" | "capsule";
-        if (mode === "jenga") reset();
-      },
+    withLabel(
+      "Block shape",
+      createButtonGroup(
+        [
+          { label: "Hull", value: "hull" },
+          { label: "Capsule", value: "capsule" },
+        ],
+        "hull",
+        (v) => {
+          jengaShape = v as "hull" | "capsule";
+          if (mode === "jenga") reset();
+        },
+      ),
     ),
   );
 
-  controls.appendChild(
-    createButtonGroup(
-      [
-        { label: "Jenga Stack", value: "jenga" },
-        { label: "Box Stack", value: "boxes" },
-        { label: "Pyramid2D (planar)", value: "pyramid" },
-        { label: "Sphere Stack", value: "spheres" },
-        { label: "Capsule Stack (planar)", value: "capsule-stack" },
-        { label: "Single Box", value: "single" },
-        { label: "Card House", value: "card-house" },
-        { label: "Cylinder", value: "cylinder" },
-        { label: "Cylinder Stack", value: "cylinder-stack" },
-        { label: "Dominoes", value: "dominoes" },
-        { label: "Wedge", value: "wedge" },
-        { label: "Arch", value: "arch" },
-        { label: "Double Domino", value: "double-domino" },
-      ],
-      mode,
-      (v) => {
-        mode = v as Mode;
-        jengaControls.style.display = mode === "jenga" ? "" : "none";
-        reset();
-      },
-    ),
+  // The in-page scene switcher is the panel's demoted <select> (the sidebar tree
+  // and ◀/▶ are the primary navigation); its options are the full SCENES table.
+  panel.addSceneSelect(
+    SCENES.map((s) => ({ label: s, value: s })),
+    mode,
+    (v) => {
+      mode = v as Mode;
+      jengaControls.style.display = mode === "jenga" ? "" : "none";
+      reset();
+    },
   );
   controls.appendChild(jengaControls);
   jengaControls.style.display = mode === "jenga" ? "" : "none";

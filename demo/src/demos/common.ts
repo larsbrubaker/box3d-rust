@@ -1,5 +1,7 @@
 // Shared demo page scaffolding (2D canvas helpers remain for Deterministic Math).
 
+import { SamplePanel, type SamplePanelOpts } from "../sample-panel.ts";
+
 export function fitCanvas(canvas: HTMLCanvasElement) {
   const w = Math.max(1, Math.round(canvas.clientWidth));
   const h = Math.max(1, Math.round(canvas.clientHeight));
@@ -73,15 +75,40 @@ export function makeStyleGate<T>(): (awake: number, fetch: () => T) => T {
   };
 }
 
+/**
+ * Canvas-hint fragment for camera orbit. With a mouse, plain left-drag does not
+ * orbit (C camera: right-drag / Alt+drag); on touch, one-finger drag does. The
+ * `.hint-desktop` / `.hint-mobile` spans switch on `(pointer: coarse)`.
+ */
+export const ORBIT_HINT =
+  '<span class="hint-desktop">Right-drag orbit</span><span class="hint-mobile">Drag to orbit</span>';
+
 export type DemoPageOpts = {
-  /** C sample category label (shown in Info panel). */
+  /** C sample category label (Info-panel fallback when no registry entry resolves). */
   category?: string;
   /** Use Samples App dark shell (right Info panel). Default false. */
   samplesShell?: boolean;
   /** Hide the top demo header — name lives in the Info panel. Default follows samplesShell. */
   hideHeader?: boolean;
+  /**
+   * Description of the sample on screen, shown right under the panel header:
+   * one string for a single-sample page, or per-scene text keyed by the page's
+   * scene key (the panel shows only the active scene's entry).
+   */
+  info?: SamplePanelOpts["info"];
+  /** Per-scene canvas hints for scenes with their own controls (falls back to `hint`). */
+  sceneHints?: Record<string, string>;
+  /** Page-wide notes not tied to one sample (collapsed "About this page"). */
+  about?: string;
 };
 
+/**
+ * Build a sample page: canvas area + the shared Info panel (see sample-panel.ts).
+ * `controls` is the panel body — everything a page appends lands directly under
+ * the active sample's description; the shared sim chrome (transport, scene
+ * switcher, Solver, …) lives in the panel tail below it. Multi-scene pages call
+ * `panel.setScene(key)` whenever the scene on screen changes.
+ */
 export function demoPage(
   container: HTMLElement,
   title: string,
@@ -89,7 +116,7 @@ export function demoPage(
   hint: string,
   version: string,
   opts: DemoPageOpts = {},
-): { canvas: HTMLCanvasElement; controls: HTMLElement; page: HTMLElement } {
+): { canvas: HTMLCanvasElement; controls: HTMLElement; page: HTMLElement; panel: SamplePanel } {
   const samplesShell = opts.samplesShell === true;
   const hideHeader = opts.hideHeader ?? samplesShell;
   const shellClass = samplesShell ? " samples-shell" : "";
@@ -114,9 +141,19 @@ export function demoPage(
       </div>
     </div>
   `;
+  const panel = new SamplePanel(document.getElementById("controls")!, {
+    title,
+    category: opts.category,
+    hintEl: container.querySelector(".canvas-hint") as HTMLElement | null,
+    hint,
+    info: opts.info,
+    sceneHints: opts.sceneHints,
+    about: opts.about,
+  });
   return {
     canvas: document.getElementById("demo-canvas") as HTMLCanvasElement,
-    controls: document.getElementById("controls")!,
+    controls: panel.body,
     page: container.querySelector(".demo-page") as HTMLElement,
+    panel,
   };
 }

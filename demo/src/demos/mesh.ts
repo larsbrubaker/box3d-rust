@@ -5,7 +5,7 @@
 // controls, plus the async OBJ-loading gate for the mesh-file scenes.
 
 import * as THREE from "three";
-import { createButton, createButtonGroup, createCheckbox, createInfoBox, createSlider } from "../controls.ts";
+import { createButton, createButtonGroup, createCheckbox, createSlider, withLabel } from "../controls.ts";
 import {
   attachInteraction,
   makeInteractAdapter,
@@ -103,7 +103,8 @@ function loadObj(name: string): Promise<string> {
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("mesh", SCENES);
-  const { canvas, controls } = demoPage(
+  const DROP = "drop a sphere/capsule/box/cylinder onto a mesh ground.";
+  const { canvas, controls, panel } = demoPage(
     container,
     "Mesh",
     "The eight <code>sample_mesh.cpp</code> Mesh samples: grid / box / big-box mesh grounds " +
@@ -112,18 +113,22 @@ export function init(container: HTMLElement, initialScene?: string) {
       "zero-gravity Hollow Box.",
     "Ctrl+click grab · Shift+click spawn · P/O/R",
     wasm.version(),
-    { category: "Mesh", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "<strong>Grid / Big Box / Box</strong> — drop a sphere/capsule/box/cylinder onto a mesh ground.<br>" +
-        "<strong>Reflection</strong> — a building mesh and its X-mirror rain 20 ragdolls.<br>" +
-        "<strong>Viewer</strong> — inspect a voxel mesh's BVH level by level.<br>" +
-        "<strong>Creation Benchmark</strong> — time <code>b3CreateMesh</code> over four meshes.<br>" +
-        "<strong>Voxel</strong> — a collision-mesh terrain 8&nbsp;km from the origin (large world).<br>" +
-        "<strong>Hollow Box</strong> — 14 zero-gravity bodies inside a hollow box mesh.",
-    ),
+    {
+      category: "Mesh",
+      samplesShell: true,
+      info: {
+        grid: `<strong>Grid</strong> — ${DROP}`,
+        "big-box": `<strong>Big Box</strong> — ${DROP}`,
+        box: `<strong>Box</strong> — ${DROP}`,
+        reflection: "<strong>Reflection</strong> — a building mesh and its X-mirror rain 20 ragdolls.",
+        viewer: "<strong>Viewer</strong> — inspect a voxel mesh's BVH level by level.",
+        "creation-benchmark":
+          "<strong>Creation Benchmark</strong> — time <code>b3CreateMesh</code> over four meshes.",
+        voxel:
+          "<strong>Voxel</strong> — a collision-mesh terrain 8&nbsp;km from the origin (large world).",
+        "hollow-box": "<strong>Hollow Box</strong> — 14 zero-gravity bodies inside a hollow box mesh.",
+      },
+    },
   );
 
   let scene: Scene =
@@ -132,10 +137,8 @@ export function init(container: HTMLElement, initialScene?: string) {
 
   // Async gate for the OBJ-backed scenes (Viewer / Creation Benchmark / Voxel).
   let sceneReady = false;
-  const hintEl = container.querySelector(".canvas-hint") as HTMLElement | null;
-  const baseHint = hintEl?.textContent ?? "";
   const setLoading = (on: boolean) => {
-    if (hintEl) hintEl.textContent = on ? "Loading mesh…" : baseHint;
+    panel.setHintOverride(on ? "Loading mesh…" : null);
   };
 
   const demo = new DemoScene(canvas, { target: [0, 0, 0], distance: 20, shadowExtent: 60 });
@@ -277,18 +280,21 @@ export function init(container: HTMLElement, initialScene?: string) {
     if (scene === "grid" || scene === "big-box" || scene === "box") {
       const shapeName = Object.keys(SHAPE_IDS).find((k) => SHAPE_IDS[k] === shapeId) ?? "cylinder";
       sceneControls.appendChild(
-        createButtonGroup(
-          [
-            { label: "Sphere", value: "sphere" },
-            { label: "Capsule", value: "capsule" },
-            { label: "Box", value: "box" },
-            { label: "Cylinder", value: "cylinder" },
-          ],
-          shapeName,
-          (v) => {
-            shapeId = SHAPE_IDS[v]!;
-            wasm.mesh_set_shape(shapeId); // C Spawn(): live re-drop, ground untouched
-          },
+        withLabel(
+          "Shape",
+          createButtonGroup(
+            [
+              { label: "Sphere", value: "sphere" },
+              { label: "Capsule", value: "capsule" },
+              { label: "Box", value: "box" },
+              { label: "Cylinder", value: "cylinder" },
+            ],
+            shapeName,
+            (v) => {
+              shapeId = SHAPE_IDS[v]!;
+              wasm.mesh_set_shape(shapeId); // C Spawn(): live re-drop, ground untouched
+            },
+          ),
         ),
       );
       sceneControls.appendChild(
@@ -496,6 +502,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       type: "select",
       key: "sample",
       label: "Sample",
+      role: "scene",
       options: SCENES.map((s) => ({ label: NAMES[s], value: s })),
       default: scene,
       restart: true,

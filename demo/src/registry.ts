@@ -561,6 +561,15 @@ export function findByRouteName(route: string, name: string): SampleEntry | unde
   return SAMPLES_SORTED.find((s) => s.route === route && s.name === name);
 }
 
+/**
+ * Resolve a route + page scene key to its entry. The shared sample panel
+ * (sample-panel.ts) uses this to show the *active* scene's registry name,
+ * category, and C source when a multi-scene page switches scenes in place.
+ */
+export function findByRouteScene(route: string, scene: string): SampleEntry | undefined {
+  return SAMPLES_SORTED.find((s) => s.route === route && s.scene === scene);
+}
+
 /** Canonical deep-link hash for an entry (`#/<route>/<slug>`). */
 export function entryHref(entry: SampleEntry): string {
   return `#/${entry.route}/${entry.slug}`;

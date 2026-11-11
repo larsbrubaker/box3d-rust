@@ -11,7 +11,6 @@ import * as THREE from "three";
 import {
   createButtonGroup,
   createCheckbox,
-  createInfoBox,
   createReadout,
   updateReadout,
 } from "../controls.ts";
@@ -205,7 +204,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("manifolds", SCENES);
 
-  const { canvas, controls } = demoPage(
+  const { canvas, controls, panel } = demoPage(
     container,
     "Contact Manifolds",
     "Every <code>sample_manifold.cpp</code> viewer — the nine narrow-phase pairs computed by the " +
@@ -214,20 +213,27 @@ export function init(container: HTMLElement, initialScene?: string) {
       "Yellow points penetrate; white points are speculative.",
     "Drag body B to move it · Shift-drag to rotate · Alt-drag to orbit the camera",
     wasm.version(),
+    {
+      category: "Manifold",
+      samplesShell: true,
+      // Every manifold viewer is driven the same way, so each shows this text.
+      info:
+        "Body A is fixed. <strong>Drag</strong> body B to translate it, <strong>Shift-drag</strong> " +
+        "to rotate it, and <strong>Alt-drag</strong> to orbit the camera. Contact points show their " +
+        "separation and feature-pair ids; enable <em>Use cache</em> to persist the SAT/simplex cache " +
+        "across frames (the faceA/faceB/edgePair radios override the SAT axis on the hull pairs).",
+      about:
+        "Every <code>sample_manifold.cpp</code> viewer — the nine narrow-phase pairs computed by the " +
+        "ported <code>b3CollideSpheres</code>, <code>b3CollideCapsules</code>, " +
+        "<code>b3CollideHulls</code>, <code>b3CollideHullAndTriangle</code> and friends. " +
+        "Yellow points penetrate; white points are speculative.",
+    },
   );
 
   let sceneId = initialScene ? Math.max(0, SCENES.indexOf(initialScene as (typeof SCENES)[number])) : 0;
 
-  controls.appendChild(
-    createInfoBox(
-      "Body A is fixed. <strong>Drag</strong> body B to translate it, <strong>Shift-drag</strong> " +
-        "to rotate it, and <strong>Alt-drag</strong> to orbit the camera. Contact points show their " +
-        "separation and feature-pair ids; enable <em>Use cache</em> to persist the SAT/simplex cache " +
-        "across frames (the faceA/faceB/edgePair radios override the SAT axis on the hull pairs).",
-    ),
-  );
-
-  const sceneGroup = createButtonGroup(
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  panel.addSceneSelect(
     SCENES.map((s, i) => ({ label: SCENE_LABELS[i]!, value: s })),
     SCENES[sceneId]!,
     (v) => {
@@ -235,7 +241,6 @@ export function init(container: HTMLElement, initialScene?: string) {
       loadScene();
     },
   );
-  controls.appendChild(sceneGroup);
 
   let useCache = false;
   let manualFeature = 0;
@@ -285,6 +290,7 @@ export function init(container: HTMLElement, initialScene?: string) {
   let bGroup: THREE.Group | null = null;
 
   function loadScene() {
+    panel.setScene(SCENES[sceneId]!);
     const info = parseSceneInfo(wasm.manifold_reset(sceneId));
     baseTriangle = info.baseTriangle;
     bPos.copy(info.transformB.p);

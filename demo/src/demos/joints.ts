@@ -1,7 +1,7 @@
 // Joints — Ball and Chain, Revolute, Gear Lift, Driving (sample_joint.cpp).
 
 import type * as THREE from "three";
-import { createButton, createInfoBox, createReadout, updateReadout } from "../controls.ts";
+import { createButton, createReadout, updateReadout } from "../controls.ts";
 import {
   attachInteraction,
   makeInteractAdapter,
@@ -67,18 +67,23 @@ export function init(container: HTMLElement, initialScene?: string) {
     "Joints",
     "Official Joints samples: Ball and Chain, Revolute, Gear Lift, and Driving — " +
       "ported from <code>sample_joint.cpp</code>.",
-    "Ctrl+click grab · click select · P/O/R · WASD drives",
+    "Ctrl+click grab · click select · P/O/R",
     wasm.version(),
-    { category: "Joints", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "<strong>Ball and Chain</strong> — 32 spherical links + heavy ball.<br>" +
-        "<strong>Revolute</strong> — hanging plank with limit / spring / motor.<br>" +
-        "<strong>Gear Lift</strong> — meshed gears raise a gate over a stairwell basin.<br>" +
-        "<strong>Driving</strong> — wheel-joint rover; WASD (or arrows) throttle / steer.",
-    ),
+    {
+      category: "Joints",
+      samplesShell: true,
+      info: {
+        chain: "<strong>Ball and Chain</strong> — 32 spherical links + heavy ball.",
+        revolute: "<strong>Revolute</strong> — hanging plank with limit / spring / motor.",
+        gear: "<strong>Gear Lift</strong> — meshed gears raise a gate over a stairwell basin.",
+        driving: "<strong>Driving</strong> — wheel-joint rover; WASD (or arrows) throttle / steer.",
+      },
+      sceneHints: {
+        driving: "WASD/arrows throttle + steer · Ctrl+click grab · P/O/R",
+        door: "Ctrl+click a body to launch it · P/O/R",
+        "motion-locks": "Hold L to push the first body · Ctrl+click grab · P/O/R",
+      },
+    },
   );
 
   // A deep link (`#/joints/<slug>`) can request a specific scene via initialScene.
@@ -449,6 +454,9 @@ export function init(container: HTMLElement, initialScene?: string) {
     explodeBtn.style.display = scene === "top-down-friction" ? "" : "none";
     doorImpulseBtn.style.display = scene === "door" ? "" : "none";
     doorNote.style.display = scene === "door" ? "" : "none";
+    // No empty spacer row on scenes without an action button.
+    const hasButton = scene === "motor" || scene === "top-down-friction" || scene === "door";
+    buttonRow.style.display = hasButton ? "" : "none";
   }
 
   // Per-scene controls, expressed declaratively. `visibleWhen` keyed on the
@@ -464,6 +472,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       type: "select",
       key: "sample",
       label: "Sample",
+      role: "scene",
       options: [
         { label: "Distance Joint", value: "distance" },
         { label: "Filter", value: "filter" },

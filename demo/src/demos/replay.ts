@@ -32,7 +32,7 @@ import * as THREE from "three";
 import { getWasm } from "../wasm.ts";
 import { createButton } from "../controls.ts";
 import { createCanvasOverlay } from "../controls.ts";
-import { demoPage, runLoop } from "./common.ts";
+import { demoPage, ORBIT_HINT, runLoop } from "./common.ts";
 import { applyShapeStyle, DemoScene, makeShapeMaterial, setView } from "../three-scene.ts";
 
 // Single-scene page, not registry-backed (Replay is registered via g_replayIndex
@@ -71,9 +71,15 @@ export function init(container: HTMLElement) {
     "Replay",
     "Recording viewer for <code>.b3rec</code> files (port of <code>sample_replay.cpp</code>): " +
       "transport, scrubber, and faithful playback of a recording captured by the port itself.",
-    "Drag to orbit · load a .b3rec to replay",
+    `${ORBIT_HINT} · load a .b3rec to replay`,
     wasm.version(),
-    { category: "Replay", samplesShell: true },
+    {
+      category: "Replay",
+      samplesShell: true,
+      info:
+        "Recording viewer for <code>.b3rec</code> files (port of <code>sample_replay.cpp</code>): " +
+        "transport, scrubber, and faithful playback of a recording captured by the port itself.",
+    },
   );
 
   const demo = new DemoScene(canvas, {

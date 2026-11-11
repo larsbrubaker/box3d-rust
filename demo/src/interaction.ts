@@ -17,14 +17,7 @@ import type { DemoScene } from "./three-scene.ts";
 import { makeFatLineMaterial, updateFatLineResolution } from "./render/lines.ts";
 import { demoBus, emitInitialState, viewFlags } from "./bus.ts";
 import { VIEW_BITS, OVERLAY_MASK, TEXT_MASK } from "./view-flags.ts";
-import {
-  type SampleEntry,
-  cSourceUrl,
-  entryHref,
-  findByRouteName,
-  firstEntryForRoute,
-  neighborOf,
-} from "./registry.ts";
+import { SamplePanel, getSamplePanel } from "./sample-panel.ts";
 
 /** Wasm bindings needed by the interaction layer (sim_* today; other demos can adapt). */
 export type InteractWasm = {
@@ -181,6 +174,13 @@ export type ParamDef =
       type: "select";
       options: { label: string; value: string }[];
       default: string;
+      /**
+       * `"scene"` marks the page's in-place scene switcher. It is not rendered
+       * with the sample's own parameters: attachInteraction routes it to the
+       * shared panel's demoted scene <select> (after the sample controls) and
+       * keeps the panel header / description / deep link on the active scene.
+       */
+      role?: "scene";
     });
 
 export type ParamValues = Record<string, number | boolean | string>;
@@ -281,11 +281,24 @@ function paramVisible(vw: ParamVisibility | ParamVisibility[] | undefined, value
   return conds.every((c) => values[c.key] === c.equals);
 }
 
-/** Build a declarative parameter panel; returns current values + dispose. */
+/**
+ * Build a declarative parameter panel; returns current values + dispose.
+ *
+ * A `role: "scene"` select is handed to `opts.sceneSelect` (the shared panel's
+ * demoted switcher) instead of being drawn among the parameters; without that
+ * hook it falls back to an in-panel button group. The section hides itself
+ * whenever none of its parameters are visible for the active scene.
+ */
 export function createParamPanel(
   parent: HTMLElement,
   defs: ParamDef[],
   onChange: (values: ParamValues, key: string, shouldRestart: boolean) => void,
+  opts: {
+    sceneSelect?: (
+      def: Extract<ParamDef, { type: "select" }>,
+      onPick: (value: string) => void,
+    ) => void;
+  } = {},
 ): { values: ParamValues; dispose: () => void } {
   const values: ParamValues = {};
   const section = document.createElement("div");
@@ -358,16 +371,31 @@ export function createParamPanel(
   };
 
   function applyVisibility() {
+    let anyVisible = false;
     for (const e of entries) {
-      e.el.style.display = paramVisible(e.def.visibleWhen, values) ? "" : "none";
+      const visible = paramVisible(e.def.visibleWhen, values);
+      e.el.style.display = visible ? "" : "none";
+      anyVisible ||= visible;
     }
     for (const g of groups) {
       const any = g.members.some((m) => paramVisible(m.visibleWhen, values));
       g.container.style.display = any ? "" : "none";
     }
+    // No orphan "Parameters" title on scenes whose C sample has no controls.
+    section.style.display = anyVisible ? "" : "none";
   }
 
   for (const def of defs) {
+    if (def.type === "select" && def.role === "scene" && opts.sceneSelect) {
+      values[def.key] = def.default;
+      const restart = def.restart !== false;
+      opts.sceneSelect(def, (v) => {
+        values[def.key] = v;
+        onChange(values, def.key, restart);
+        applyVisibility();
+      });
+      continue;
+    }
     const container = containerFor(def);
     const el = buildControl(def, def.restart !== false);
     container.appendChild(el);
@@ -651,7 +679,13 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   // setters on the returned controller rather than baking them in once.
   let worldOrigin: [number, number, number] = opts.worldOrigin ?? [0, 0, 0];
 
-  controls.classList.add("samples-info-panel");
+  // The shared Info panel (built by demoPage) owns the header, the active
+  // sample's description, and the slot order. Pages built without demoPage get
+  // one created in place so the layout is identical either way.
+  const panel =
+    getSamplePanel(controls) ??
+    new SamplePanel(controls, { title: sampleName, category: sampleCategory });
+  panel.root.classList.add("samples-info-panel");
 
   const state: SimController = {
     paused: false,
@@ -686,19 +720,15 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     },
   };
 
-  // --- Info header (C DrawInfoPanel top) ---
-  const infoHead = document.createElement("div");
-  infoHead.className = "samples-info-head";
-  infoHead.innerHTML = `
-    <div class="sample-title-row">
-      <button class="sample-nav-btn sample-prev" type="button" title="Previous sample ([)" aria-label="Previous sample">◀</button>
-      <div class="sample-name">${escapeHtml(sampleName)}</div>
-      <button class="sample-nav-btn sample-next" type="button" title="Next sample (])" aria-label="Next sample">▶</button>
-    </div>
-    <div class="sample-category">${escapeHtml(sampleCategory)}</div>
-    <a class="sample-csource" target="_blank" rel="noopener" hidden>C source ↗</a>
-    <div class="sample-paused" hidden>PAUSED <span class="sample-paused-hint">(P)</span></div>
-    <div class="sample-sep"></div>
+  // --- Header (C DrawInfoPanel top): name / category / C source / ◀▶ live in
+  // the shared panel head; only the PAUSED badge is driven from here. ---
+  const pauseBadge = panel.pausedEl;
+
+  // --- Stats + camera readouts (C DrawInfoPanel), placed after the sample's
+  // own controls so they never push its parameters below the fold. ---
+  const readouts = document.createElement("div");
+  readouts.className = "sample-readouts";
+  readouts.innerHTML = `
     <div class="sample-stats">
       <div class="sample-stat frame-ms">0.0 ms</div>
       <div class="sample-stat step-ms">step 0.0 ms</div>
@@ -710,71 +740,50 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       <div class="sample-stat cam-yaw">yaw/pitch (0.0, 0.0)</div>
       <div class="sample-stat cam-radius">radius m 0.0</div>
     </div>
-    <div class="sample-sep"></div>
   `;
-  controls.appendChild(infoHead);
-  const pauseBadge = infoHead.querySelector(".sample-paused") as HTMLElement;
-  const frameMsEl = infoHead.querySelector(".frame-ms") as HTMLElement;
-  const stepMsEl = infoHead.querySelector(".step-ms") as HTMLElement;
-  const stepCountEl = infoHead.querySelector(".step-count") as HTMLElement;
-  const camPivotEl = infoHead.querySelector(".cam-pivot") as HTMLElement;
-  const camYawEl = infoHead.querySelector(".cam-yaw") as HTMLElement;
-  const camRadiusEl = infoHead.querySelector(".cam-radius") as HTMLElement;
+  panel.simSlot.appendChild(readouts);
+  const frameMsEl = readouts.querySelector(".frame-ms") as HTMLElement;
+  const stepMsEl = readouts.querySelector(".step-ms") as HTMLElement;
+  const stepCountEl = readouts.querySelector(".step-count") as HTMLElement;
+  const camPivotEl = readouts.querySelector(".cam-pivot") as HTMLElement;
+  const camYawEl = readouts.querySelector(".cam-yaw") as HTMLElement;
+  const camRadiusEl = readouts.querySelector(".cam-radius") as HTMLElement;
 
-  // --- Prev/next sample buttons + C-source link (C-sorted registry order) ---
-  // These share `NAVIGABLE_SAMPLES` ordering with the `[`/`]` keys and the Sim
-  // menu (all route through registry.neighborOf), so the button, key, and menu
-  // walks are one order. `activeEntry` tracks the *displayed* sample — updated by
-  // setSampleName when a multi-scene page's in-page selector switches scenes
-  // (which does not change the hash) — so the C-source link and the ◀/▶ walk
-  // always reflect what is on screen. The route is fixed for the page's lifetime.
-  const route = currentRoute();
-  const prevBtn = infoHead.querySelector(".sample-prev") as HTMLButtonElement;
-  const nextBtn = infoHead.querySelector(".sample-next") as HTMLButtonElement;
-  const cSourceLink = infoHead.querySelector(".sample-csource") as HTMLAnchorElement;
-  let activeEntry: SampleEntry | undefined =
-    findByRouteName(route, sampleName) ?? firstEntryForRoute(route);
-
-  const refreshSampleMeta = (): void => {
-    if (activeEntry) {
-      cSourceLink.href = cSourceUrl(activeEntry);
-      cSourceLink.textContent = `C source: ${activeEntry.cSource} ↗`;
-      cSourceLink.hidden = false;
-    } else {
-      cSourceLink.hidden = true;
-    }
-    const prev = neighborOf(activeEntry, -1);
-    const next = neighborOf(activeEntry, 1);
-    prevBtn.disabled = prev == null || prev === activeEntry;
-    nextBtn.disabled = next == null || next === activeEntry;
-  };
-  refreshSampleMeta();
-
-  const gotoNeighbor = (dir: -1 | 1): void => {
-    const entry = neighborOf(activeEntry, dir);
-    if (!entry || entry === activeEntry) return;
-    window.location.hash = entryHref(entry);
-    // Emit for parity with the menu / keyboard paths (same bus events).
-    demoBus.emit(dir === 1 ? "sim.nextSample" : "sim.prevSample", { entry });
-  };
-  prevBtn.addEventListener("click", () => gotoNeighbor(-1));
-  nextBtn.addEventListener("click", () => gotoNeighbor(1));
-
-  // --- Parameter panel ---
+  // --- Parameter panel: the sample's own controls, directly under its
+  // description. A `role: "scene"` param becomes the panel's demoted scene
+  // <select>; picking from it moves the header / description / deep link. ---
   let paramDispose = () => {};
+  let sceneParamDefault: string | null = null;
   if (paramDefs.length > 0) {
-    const panel = createParamPanel(controls, paramDefs, (values, key, shouldRestart) => {
-      // onParamsChange may clamp values in place; copy after it so state.params
-      // (and any restart that reads it) sees the corrected values.
-      onParamsChange?.(values, key);
-      state.params = { ...values };
-      if (shouldRestart) state.restart();
-    });
-    state.params = { ...panel.values };
-    paramDispose = panel.dispose;
+    const params = createParamPanel(
+      controls,
+      paramDefs,
+      (values, key, shouldRestart) => {
+        // onParamsChange may clamp values in place; copy after it so state.params
+        // (and any restart that reads it) sees the corrected values.
+        onParamsChange?.(values, key);
+        state.params = { ...values };
+        if (shouldRestart) state.restart();
+      },
+      {
+        sceneSelect: (def, onPick) => {
+          sceneParamDefault = def.default;
+          panel.addSceneSelect(def.options, def.default, (v) => {
+            panel.setScene(v);
+            onPick(v);
+          });
+        },
+      },
+    );
+    state.params = { ...params.values };
+    paramDispose = params.dispose;
   }
+  // Show the active sample: the scene param when the page has one, else the
+  // name the page passed (ignored when it is only a category label).
+  if (sceneParamDefault != null) panel.setScene(sceneParamDefault);
+  else panel.setSampleName(sampleName);
 
-  // --- Transport ---
+  // --- Transport (first in the panel tail, right after the sample controls) ---
   const transport = document.createElement("div");
   transport.className = "control-row samples-transport";
   const pauseBtn = createButton("Pause (P)", () => state.setPaused(!state.paused));
@@ -783,9 +792,9 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     state.requestStep(1);
   });
   transport.append(pauseBtn, stepBtn);
-  controls.appendChild(transport);
+  panel.transportSlot.appendChild(transport);
 
-  controls.appendChild(
+  panel.transportSlot.appendChild(
     createSlider("Time scale", 0, 2, 1, 0.05, (v) => {
       state.timeScale = v;
     }),
@@ -815,7 +824,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
 
   if (showSolverPanel) {
     const solver = createCollapsingSection("Solver", true);
-    controls.appendChild(solver.root);
+    panel.simSlot.appendChild(solver.root);
 
     solver.body.appendChild(
       createSlider("Sub-steps", 1, 50, state.subSteps, 1, (v) => {
@@ -828,13 +837,11 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       }),
     );
 
-    const workers = createSlider("Workers", 1, 8, 1, 1, () => {});
-    workers.querySelector("input")!.setAttribute("disabled", "true");
-    workers.title = "WASM demos run single-threaded (serial port)";
+    // C has a Workers slider; the port is serial, so state the fixed value
+    // instead of showing a slider that can never move.
     const workersNote = document.createElement("div");
     workersNote.className = "control-note";
-    workersNote.textContent = "Workers: 1 (WASM is serial)";
-    solver.body.appendChild(workers);
+    workersNote.textContent = "Workers: 1 (the WASM port runs serially)";
     solver.body.appendChild(workersNote);
 
     solver.body.appendChild(
@@ -858,17 +865,17 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     restartBtn.classList.add("control-btn-block");
     solver.body.appendChild(restartBtn);
 
-    // --- Recording ---
-    const hasRecordingApi = typeof wasm.sim_start_recording === "function";
-    const recording = createCollapsingSection("Recording", true);
-    controls.appendChild(recording.root);
+    // --- Recording (only where this demo's wasm family exports the recorder;
+    // elsewhere the section used to show two permanently disabled buttons) ---
+    if (typeof wasm.sim_start_recording === "function") {
+      const recording = createCollapsingSection("Recording", true);
+      panel.simSlot.appendChild(recording.root);
 
-    const fileField = createTextInput("File", recordingFile, (v) => {
-      recordingFile = v.trim() || "recording.b3rec";
-    });
-    recording.body.appendChild(fileField.root);
+      const fileField = createTextInput("File", recordingFile, (v) => {
+        recordingFile = v.trim() || "recording.b3rec";
+      });
+      recording.body.appendChild(fileField.root);
 
-    if (hasRecordingApi) {
       recordRestartBtn = createButton("Record (restart)", () => {
         state.restart();
         wasm.sim_start_recording?.();
@@ -892,18 +899,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
       row.append(recordRestartBtn, recordNowBtn, recordStopBtn);
       recording.body.appendChild(row);
       recording.body.appendChild(recordingStatusEl);
-    } else {
-      const note = document.createElement("div");
-      note.className = "control-note";
-      note.textContent = "Recording API coming soon";
-      const disabledRow = document.createElement("div");
-      disabledRow.className = "control-row";
-      const a = createButton("Record (restart)", () => {});
-      const b = createButton("Record Now", () => {});
-      a.disabled = true;
-      b.disabled = true;
-      disabledRow.append(a, b);
-      recording.body.append(disabledRow, note);
     }
   }
 
@@ -930,7 +925,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
 
   // --- Debug draw toggles ---
   const dbg = createCollapsingSection("Debug draw", false);
-  controls.appendChild(dbg.root);
+  panel.simSlot.appendChild(dbg.root);
 
   // Side-panel checkboxes for the overlay bits (C Controls window). Mirrors the
   // View menu — every mask bit except shapes/transparent (solid-mesh path) and
@@ -965,7 +960,7 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
 
   // --- Keyboard / mouse legend (C Controls window, adapted) ---
   const keys = createCollapsingSection("Keyboard", false);
-  controls.appendChild(keys.root);
+  panel.simSlot.appendChild(keys.root);
   keys.body.innerHTML = `
     <table class="key-legend">
       <tr><td>P</td><td>Pause / resume</td></tr>
@@ -1294,20 +1289,15 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
     return stepped;
   }
 
-  const sampleNameEl = infoHead.querySelector(".sample-name") as HTMLElement;
-
   const withTick = state as SimControllerWithTick;
   withTick.tickFrame = tickFrame;
   withTick.setWorldOrigin = (o) => {
     worldOrigin = o;
   };
   withTick.setSampleName = (name) => {
-    sampleNameEl.textContent = name;
-    // Re-resolve the displayed entry so the C-source link + ◀/▶ walk follow an
-    // in-page scene switch (no hash change fires for those). Fall back to the
-    // route's first entry so single-scene pages stay pinned to their sample.
-    activeEntry = findByRouteName(route, name) ?? firstEntryForRoute(route);
-    refreshSampleMeta();
+    // Re-resolve the displayed entry so the header, description, C-source link,
+    // ◀/▶ walk, and deep link follow an in-page scene switch (no hashchange).
+    panel.setSampleName(name);
   };
 
   state.dispose = () => {
@@ -1327,20 +1317,6 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   };
 
   return withTick;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/** The `<route>` segment of the current `#/<route>/<slug>` hash ("" at home). */
-function currentRoute(): string {
-  const raw = window.location.hash.replace(/^#\/?/, "");
-  return raw.split("/").filter(Boolean)[0] ?? "";
 }
 
 export type SimControllerWithTick = SimController & {

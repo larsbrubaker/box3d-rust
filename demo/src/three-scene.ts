@@ -771,6 +771,16 @@ export function makeTriangleMesh(
   geo.computeVertexNormals();
   const mat = solidMat(color, opacity);
   mat.wireframe = wireframe;
+  if (!wireframe) {
+    // Callers overlay these fills with their own triangle edges (makeWireEdges /
+    // a wireframe twin) at exactly the same depth, so the edge lines z-fought
+    // their face and drew as dashes across flat floors. Bias the fill slightly
+    // back so its edges always win; the grid plane is biased further (grid.ts),
+    // so a fill lying on y=0 still covers the grid.
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = 1;
+    mat.polygonOffsetUnits = 1;
+  }
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
