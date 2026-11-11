@@ -435,71 +435,6 @@ body {
   touch-action: none;
 }
 
-/* --- Fallback sample-nav header (main.ts ensureSampleNav) ------------------ */
-/* Injected at the top of the Info panel on sample pages that don't use the
-   shared attachInteraction header. Generic (theme-var) styling for non-shell
-   pages; the `.demo-page.samples-shell .sample-nav-btn / .sample-csource` rules
-   below have higher specificity and take over inside the dark samples shell. */
-.sample-nav-header {
-  margin-bottom: 12px;
-}
-
-.sample-nav-header .sample-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sample-nav-header .sample-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.sample-nav-header .sample-nav-btn {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--text-secondary);
-  background: var(--surface-alt, #f0f0f0);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.sample-nav-header .sample-nav-btn:hover:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.sample-nav-header .sample-nav-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.sample-nav-header .sample-csource {
-  display: inline-block;
-  margin-top: 4px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  color: var(--accent);
-  text-decoration: none;
-  word-break: break-all;
-}
-
-.sample-nav-header .sample-csource:hover {
-  text-decoration: underline;
-}
-
 .demo-controls {
   width: 280px;
   min-width: 280px;
@@ -1457,11 +1392,112 @@ body {
   cursor: default;
 }
 
-.demo-page.samples-shell .sample-category {
-  font-size: 12px;
-  color: #d3d3d3;
-  margin-top: 2px;
+/* Category breadcrumb above the sample name (+ PARTIAL tag when the registry
+   discloses a divergence from the C sample). */
+.demo-page.samples-shell .sample-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 4px;
+  min-height: 14px;
+}
+
+.demo-page.samples-shell .sample-category {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--samples-muted);
+}
+
+.demo-page.samples-shell .sample-category:not(:empty)::after {
+  content: " ›";
+  font-weight: 400;
+}
+
+.demo-page.samples-shell .sample-status {
+  font-size: 8.5px;
+}
+
+/* Active sample description, directly under the header. */
+.demo-page.samples-shell .panel-desc {
+  margin-top: 6px;
+}
+
+.demo-page.samples-shell .panel-desc .info-box {
+  margin-bottom: 10px;
+}
+
+/* Page-wide notes not tied to the sample on screen (collapsed by default). */
+.demo-page.samples-shell .about-page {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--samples-muted);
+}
+
+.demo-page.samples-shell .about-page > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--samples-muted);
+  padding: 2px 0;
+  list-style-position: inside;
+}
+
+.demo-page.samples-shell .about-page > summary:hover {
+  color: var(--samples-text);
+}
+
+.demo-page.samples-shell .about-page-body {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--samples-border);
+  line-height: 1.5;
+}
+
+.demo-page.samples-shell .about-page-body code,
+.demo-page.samples-shell .info-box code {
+  font-size: 11px;
+}
+
+/* Shared sim chrome below the sample's own controls. Empty slots collapse. */
+.demo-page.samples-shell .panel-body:not(:empty) {
+  margin-bottom: 4px;
+}
+
+.demo-page.samples-shell .panel-tail {
+  border-top: 1px solid var(--samples-border);
+  padding-top: 12px;
+}
+
+.demo-page.samples-shell .panel-body:empty + .panel-tail {
+  border-top: none;
+  padding-top: 0;
+}
+
+.demo-page.samples-shell .panel-transport:empty,
+.demo-page.samples-shell .panel-switcher:empty,
+.demo-page.samples-shell .panel-sim:empty {
+  display: none;
+}
+
+.demo-page.samples-shell .sample-readouts {
+  margin: 4px 0 6px;
+}
+
+/* Demoted in-page scene switcher (the sidebar tree / ◀▶ are the primary nav). */
+.demo-page.samples-shell .scene-switcher {
+  margin-bottom: 12px;
+}
+
+.demo-page.samples-shell .control-group select {
+  background: var(--samples-panel-alt);
+  border-color: var(--samples-border);
+  color: var(--samples-text);
+}
+
+.demo-page.samples-shell .control-group select:focus {
+  border-color: var(--samples-accent);
 }
 
 /* Link to the exact upstream C sample file at the pinned submodule commit. */

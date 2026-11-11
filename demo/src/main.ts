@@ -12,7 +12,6 @@ import {
   firstEntryForRoute,
   entryHref,
   neighborOf,
-  cSourceUrl,
   type SampleEntry,
   type CategoryStats,
 } from "./registry.ts";
@@ -813,54 +812,12 @@ async function navigate(): Promise<void> {
     const scene = active?.scene ?? parsed.slug;
     const cleanup = mod.init(container, scene);
     if (cleanup) currentCleanup = cleanup;
-    ensureSampleNav(container, active);
   } catch (e) {
     console.error("Failed to load demo:", e);
     container.innerHTML = `<div class="home-page"><h2>Error loading demo</h2><pre style="color:var(--clip-stroke)">${escapeHtml(
       String(e),
     )}</pre></div>`;
   }
-}
-
-/**
- * Fallback Info-panel nav header (◀ name ▶ + "C source" link) for sample pages
- * that build their own panel instead of using the shared `attachInteraction`
- * header (which already carries these). Skipped when that header is present (its
- * `.sample-csource` marks it), so the 13 dynamics pages keep their integrated,
- * per-scene version and every other sample page still gets the same affordance.
- * The buttons walk the shared C-sorted `NAVIGABLE_SAMPLES` order via `neighborOf`,
- * anchored to the deep-link entry (like the `[`/`]` keys and Sim menu).
- */
-function ensureSampleNav(container: HTMLElement, entry: SampleEntry | undefined): void {
-  if (!entry) return;
-  const panel = container.querySelector(".demo-controls") as HTMLElement | null;
-  if (!panel || panel.querySelector(".sample-csource")) return;
-
-  const header = document.createElement("div");
-  header.className = "sample-nav-header";
-  header.innerHTML =
-    `<div class="sample-title-row">` +
-    `<button class="sample-nav-btn sample-prev" type="button" title="Previous sample ([)" aria-label="Previous sample">◀</button>` +
-    `<span class="sample-name">${escapeHtml(entry.name)}</span>` +
-    `<button class="sample-nav-btn sample-next" type="button" title="Next sample (])" aria-label="Next sample">▶</button>` +
-    `</div>` +
-    `<a class="sample-csource" href="${cSourceUrl(entry)}" target="_blank" rel="noopener">C source: ${escapeHtml(
-      entry.cSource,
-    )} ↗</a>`;
-
-  const prevBtn = header.querySelector(".sample-prev") as HTMLButtonElement;
-  const nextBtn = header.querySelector(".sample-next") as HTMLButtonElement;
-  const prev = neighborOf(entry, -1);
-  const next = neighborOf(entry, 1);
-  prevBtn.disabled = prev == null || prev === entry;
-  nextBtn.disabled = next == null || next === entry;
-  prevBtn.addEventListener("click", () => {
-    if (prev && prev !== entry) window.location.hash = entryHref(prev);
-  });
-  nextBtn.addEventListener("click", () => {
-    if (next && next !== entry) window.location.hash = entryHref(next);
-  });
-  panel.prepend(header);
 }
 
 // ---------------------------------------------------------------------------
@@ -910,6 +867,15 @@ demoBus.on("render.setting", ({ key, value }) => {
 demoBus.on("view.flag", ({ name, value }) => {
   const tick = menubar.querySelector(`.menu-check[data-flag="${name}"] .menu-tick`);
   if (tick) tick.textContent = value ? "✓" : "";
+});
+
+// --- Sidebar follows in-place scene switches ------------------------------
+// A multi-scene page's demoted scene <select> swaps the sample without a
+// hashchange; the shared panel rewrites the URL and emits this so the tree
+// highlight (and its open category) tracks the sample on screen.
+demoBus.on("sample.active", ({ entry }) => {
+  expanded.add(entry.category);
+  renderTree(entry);
 });
 
 emitInitialState();

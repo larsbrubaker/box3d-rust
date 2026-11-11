@@ -133,6 +133,19 @@ export function createButtonGroup(
   return row;
 }
 
+/**
+ * Wrap an unlabeled control (e.g. a radio button group) in a `.control-group`
+ * with a caption, so every panel control reads like the labeled sliders.
+ */
+export function withLabel(label: string, control: HTMLElement): HTMLElement {
+  const group = document.createElement("div");
+  group.className = "control-group";
+  const lbl = document.createElement("label");
+  lbl.textContent = label;
+  group.append(lbl, control);
+  return group;
+}
+
 export function createInfoBox(html: string): HTMLElement {
   const box = document.createElement("div");
   box.className = "info-box";

@@ -5,9 +5,9 @@
 // drive the probe live. Camera (45, 30, 40) per the C ctor.
 
 import type * as THREE from "three";
-import { createCheckbox, createInfoBox, createReadout, createSlider, updateReadout } from "../controls.ts";
+import { createCheckbox, createReadout, createSlider, updateReadout } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
-import { demoPage, runLoop } from "./common.ts";
+import { demoPage, ORBIT_HINT, runLoop } from "./common.ts";
 import {
   COLORS,
   DemoScene,
@@ -30,17 +30,20 @@ export function init(container: HTMLElement) {
     "A sinusoidal <code>b3CreateWave</code> (or flat <code>b3CreateGrid</code>) height field probed " +
       "by <code>b3World_CastRayClosest</code> and, when the radius is set, a sphere " +
       "<code>b3World_CastShape</code> — the two branches of the C <code>HeightField::Step</code>.",
-    "Drag to orbit · tune the field and the ray",
+    `${ORBIT_HINT} · tune the field and the ray`,
     wasm.version(),
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "The C sample builds 400×400 in release / 10×10 in debug; rendering a 400×400 wireframe in the " +
+    {
+      category: "Mesh",
+      samplesShell: true,
+      info:
+        "A sinusoidal <code>b3CreateWave</code> (or flat <code>b3CreateGrid</code>) height field probed " +
+        "by <code>b3World_CastRayClosest</code> and, when the radius is set, a sphere " +
+        "<code>b3World_CastShape</code> — the two branches of the C <code>HeightField::Step</code>. " +
+        "Set the radius to 0 for a ray cast, or above 0 for a sphere shape cast.<br><br>" +
+        "The C sample builds 400×400 in release / 10×10 in debug; rendering a 400×400 wireframe in the " +
         "browser is infeasible, so this serial-wasm build defaults to 40×40 and caps the sliders at 100 " +
-        "(a disclosed scaling, not a changed C constant). Set the radius to 0 for a ray cast, or above 0 " +
-        "for a sphere shape cast.",
-    ),
+        "(a disclosed scaling, not a changed C constant).",
+    },
   );
 
   // C HeightField defaults.

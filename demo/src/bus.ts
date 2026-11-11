@@ -22,6 +22,12 @@ export interface DemoEventMap {
   "sim.frame": void;
   "sim.prevSample": { entry: SampleEntry | null };
   "sim.nextSample": { entry: SampleEntry | null };
+  /**
+   * A multi-scene page switched its displayed sample in place (no hashchange —
+   * the sample panel rewrote the URL with replaceState). The shell re-highlights
+   * the sidebar tree so it follows the sample on screen.
+   */
+  "sample.active": { entry: SampleEntry };
   /** Toggle the bottom Diagnostics drawer (C showMetrics / M key). */
   "ui.metrics": void;
   "view.flag": { name: string; value: boolean };

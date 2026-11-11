@@ -8,12 +8,12 @@ import {
   createButton,
   createButtonGroup,
   createCanvasOverlay,
-  createInfoBox,
   createSlider,
+  withLabel,
 } from "../controls.ts";
 import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
-import { demoPage, runLoop } from "./common.ts";
+import { demoPage, ORBIT_HINT, runLoop } from "./common.ts";
 import {
   DemoScene,
   makeAxes,
@@ -103,33 +103,45 @@ export function init(container: HTMLElement, initialScene?: string) {
     ? (initialScene as Scene)
     : "box-hull";
 
-  const { canvas, controls, page } = demoPage(
+  const { canvas, controls, page, panel } = demoPage(
     container,
     "Geometry",
     "The five static hull &amp; mass viewers from Erin Catto's Geometry samples. " +
       "Convex hulls, plane recomputation, hull reduction, transform/clone, and mass/inertia " +
       "all come from the ported <code>box3d_rust::hull</code> / <code>::geometry</code> code.",
-    "Drag to orbit",
+    ORBIT_HINT,
     wasm.version(),
+    {
+      category: "Geometry",
+      samplesShell: true,
+      info: {
+        "box-hull":
+          "Yellow is <code>b3CreateHull</code> of eight transformed + post-scaled box " +
+          "corners; cyan is <code>b3MakeScaledBoxHull</code>. They should coincide.",
+        hull:
+          "A fixed 48-point cloud scaled ×0.01 and reduced to at most 16 vertices by " +
+          "<code>b3CreateHull</code>. No controls — matches the C sample.",
+        "hull-reduction":
+          "128 random points (seed 42) reduced to <code>count</code> vertices. Box clusters " +
+          "on a cube; Sphere samples the unit sphere.",
+        "hull-transform":
+          "Green is a 9-sided cylinder; yellow is <code>b3CloneAndTransformHull</code> of it " +
+          "under the scale / rotation / offset sliders. Negative net scale reflects it.",
+        "capsule-mass":
+          "Mass and diagonal inertia of a tessellated capsule hull (yellow) vs the analytic " +
+          "capsule (aqua) vs an enclosing box hull (blue-violet).",
+      },
+      about:
+        "The five static hull &amp; mass viewers from Erin Catto's Geometry samples. " +
+        "Convex hulls, plane recomputation, hull reduction, transform/clone, and mass/inertia " +
+        "all come from the ported <code>box3d_rust::hull</code> / <code>::geometry</code> code.",
+    },
   );
 
+  // C `DrawTextLine` overlay pinned over the canvas (styled by the samples shell);
+  // multi-line via `pre`.
   const overlay = createCanvasOverlay(page);
-  // `.sample-draw-text` is only styled under the samples-shell page variant;
-  // this page uses the plain shell, so pin the C `DrawTextLine` overlay to the
-  // canvas top-left inline (multi-line via `pre`).
-  Object.assign(overlay.style, {
-    position: "absolute",
-    top: "12px",
-    left: "12px",
-    zIndex: "3",
-    pointerEvents: "none",
-    fontFamily: "var(--font-mono)",
-    fontSize: "13px",
-    lineHeight: "1.45",
-    color: "#ffffff",
-    textShadow: "0 1px 2px rgba(0, 0, 0, 0.45)",
-    whiteSpace: "pre",
-  });
+  overlay.style.whiteSpace = "pre";
 
   // --- Per-scene parameters (defaults mirror the C sample constructors) ---
   // Box Hull
@@ -147,18 +159,18 @@ export function init(container: HTMLElement, initialScene?: string) {
   };
 
   // --- Controls: scene selector + a per-scene control block rebuilt on switch ---
-  const sceneRow = createButtonGroup(
+  // In-page scene switcher → the panel's demoted <select> (after the controls).
+  panel.addSceneSelect(
     SCENES.map((s) => ({ label: SCENE_LABELS[s], value: s })),
     scene,
     (v) => {
       scene = v as Scene;
-      // Keep the deep link in sync without triggering a full re-navigation.
-      history.replaceState(null, "", `#/geometry/${scene}`);
+      panel.setScene(scene); // header, description, and deep link follow the scene
       buildSceneControls();
       markDirty();
     },
   );
-  controls.appendChild(sceneRow);
+  panel.setScene(scene);
 
   const sceneControls = document.createElement("div");
   controls.appendChild(sceneControls);
@@ -184,12 +196,6 @@ export function init(container: HTMLElement, initialScene?: string) {
     sceneControls.innerHTML = "";
     switch (scene) {
       case "box-hull":
-        sceneControls.appendChild(
-          createInfoBox(
-            "Yellow is <code>b3CreateHull</code> of eight transformed + post-scaled box " +
-              "corners; cyan is <code>b3MakeScaledBoxHull</code>. They should coincide.",
-          ),
-        );
         slider3(["h x", "h y", "h z"], bh.h, 0.1, 2.0, 0.1);
         slider3(["c x", "c y", "c z"], bh.c, -2.0, 2.0, 0.1);
         slider3(["r x°", "r y°", "r z°"], bh.r, -180, 180, 1);
@@ -197,31 +203,22 @@ export function init(container: HTMLElement, initialScene?: string) {
         sceneControls.appendChild(createButton("Refresh", markDirty));
         break;
       case "hull":
-        sceneControls.appendChild(
-          createInfoBox(
-            "A fixed 48-point cloud scaled ×0.01 and reduced to at most 16 vertices by " +
-              "<code>b3CreateHull</code>. No controls — matches the C sample.",
-          ),
-        );
         break;
       case "hull-reduction":
         sceneControls.appendChild(
-          createInfoBox(
-            "128 random points (seed 42) reduced to <code>count</code> vertices. Box clusters " +
-              "on a cube; Sphere samples the unit sphere.",
-          ),
-        );
-        sceneControls.appendChild(
-          createButtonGroup(
-            [
-              { label: "Box", value: "0" },
-              { label: "Sphere", value: "1" },
-            ],
-            String(hr.kind),
-            (v) => {
-              hr.kind = parseInt(v, 10);
-              markDirty();
-            },
+          withLabel(
+            "Point cloud",
+            createButtonGroup(
+              [
+                { label: "Box", value: "0" },
+                { label: "Sphere", value: "1" },
+              ],
+              String(hr.kind),
+              (v) => {
+                hr.kind = parseInt(v, 10);
+                markDirty();
+              },
+            ),
           ),
         );
         sceneControls.appendChild(
@@ -232,23 +229,11 @@ export function init(container: HTMLElement, initialScene?: string) {
         );
         break;
       case "hull-transform":
-        sceneControls.appendChild(
-          createInfoBox(
-            "Green is a 9-sided cylinder; yellow is <code>b3CloneAndTransformHull</code> of it " +
-              "under the scale / rotation / offset sliders. Negative net scale reflects it.",
-          ),
-        );
         slider3(["s x", "s y", "s z"], ht.s, -2.0, 2.0, 0.1);
         slider3(["r x°", "r y°", "r z°"], ht.r, -180, 180, 1);
         slider3(["p x", "p y", "p z"], ht.p, -1.0, 1.0, 0.1);
         break;
       case "capsule-mass":
-        sceneControls.appendChild(
-          createInfoBox(
-            "Mass and diagonal inertia of a tessellated capsule hull (yellow) vs the analytic " +
-              "capsule (aqua) vs an enclosing box hull (blue-violet).",
-          ),
-        );
         sceneControls.appendChild(
           createSlider("sides", 3, 6, cm.sides, 1, (v) => {
             cm.sides = Math.round(v);
