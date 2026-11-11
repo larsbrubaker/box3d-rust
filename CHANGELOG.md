@@ -179,7 +179,9 @@ reference pin advances from `efca0c1`. Ported so far:
 
 ### Demo
 
-- Character / Dynamic Mover is live (upstream `3362633`): the vendored
+- Character / Dynamic Mover is ported (upstream `3362633`; `partial` for the
+  pointer lock browsers only grant on a gesture and the C debug-build counts,
+  like Rigid Body): the vendored
   `DynamicMover` and the full `DynamicMoverSample` playground with its
   controls, aim camera, and ball launcher, bit-exact with a scalar C build of
   `38f2ae1` under a scripted session in both precision modes
@@ -194,7 +196,10 @@ reference pin advances from `efca0c1`. Ported so far:
 - Character / Rigid Body builds its level with the default shape material like
   C (it attached an old three-material table).
 - The demo's default debug-draw force scale is 0.001, as in
-  `b3DefaultDebugDraw`.
+  `b3DefaultDebugDraw`, and the View > Force slider runs on a log scale over
+  1e-5 to 10 so that default (and the samples' 0.1 / 0.01) can be shown and set.
+- The registry's C-source links point at the `38f2ae1` pin, and its header
+  discloses the 23 upstream samples it does not list yet.
 
 ## 0.5.0
 

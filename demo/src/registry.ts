@@ -10,12 +10,19 @@
 //               and/or on the page.
 //   `planned` — no route yet.
 //
-// Enumerated from the pinned submodule (pinned at c52908c). 157 active entries
-// across 19 categories. This inventory is fully migrated from the 540ea38 samples
-// to c52908c: the c52908c removals (Stacking "Card House Thick", Issues "Dump
-// Loader", Continuous "Mesh Drop Unit Test" — the last moved to Determinism) are
-// dropped here, and the new c52908c samples (Bodies "Gyroscopic Precession", Issues
-// "GMod Wheel Stack" and "s&box Ghost Collisions") are all landed.
+// The pinned submodule is at 38f2ae1 (CPP_REFERENCE_COMMIT below). The inventory was
+// last fully enumerated at c52908c (the 540ea38 → c52908c migration is complete: the
+// c52908c removals — Stacking "Card House Thick", Issues "Dump Loader", Continuous
+// "Mesh Drop Unit Test", the last moved to Determinism — are dropped, and the new
+// c52908c samples are landed); later syncs added the rows each upstream commit
+// introduced (efca0c1, 3362633, 38f2ae1). Known gap against 38f2ae1, disclosed rather
+// than silently missing: 23 active RegisterSample calls, all already upstream by
+// efca0c1, have no row yet — Benchmark "SAT vs GJK" / "Sleep" / "Spinner", Bodies
+// "Offset Kinematic", Collision "Hull 2D", Continuous "Safety Factor", Events
+// "Contact", Issues "Heightfield" / "Huge Box" / "Thin Wall Push Out", Joints "Fold
+// Out", Manifold "Edge Axis Wedge" / "Hull Culling", and the ten-sample Restitution
+// category (sample_restitution.cpp, which absorbed Shapes "Restitution" at 79fc559,
+// so that row's C source moved).
 // Two upstream RegisterSample calls are `#if 0`'d and therefore excluded: Benchmark
 // "Large World" (the first one at :203; the live one at :1022 is kept), Ragdoll
 // "Pose". (Bodies "Gyroscopic Precession" was `#if 0`'d at 540ea38 but upstream
@@ -182,15 +189,15 @@ export const SAMPLES: SampleEntry[] = [
     // Live: GeometricMoverSample (named "Geometric Mover" since upstream 47d7f7c; the old
     // `#/character/mover` deep link redirects here). Scene key stays "mover".
     ["Geometric Mover", "live", "character", "mover"],
-    // Live: DynamicMoverSample (upstream 3362633), the vendored DynamicMover driven by the
-    // mover + pogo joints over the full playground (bridge, ramps, platforms, seesaw, door,
-    // ball pit, pressure plate, sweeper, pillars, 17 gems, box swap, ball launcher with the
-    // aim camera). Bit-exact with the C reference under a scripted run in both precision
-    // modes (character_demo/dynamic/tests.rs). Disclosed: C debug-build counts (pyramid
-    // baseCount 20, release-only skittles skipped — too heavy for serial wasm, the Village /
-    // Benchmark DEBUG convention); the mouse locks on a canvas click since browsers only
-    // allow pointer lock from a user gesture (C locks at construction).
-    ["Dynamic Mover", "live", "character", "dynamic-mover"],
+    // Partial: DynamicMoverSample (upstream 3362633), the vendored DynamicMover driven by
+    // the mover + pogo joints over the full playground (bridge, ramps, platforms, seesaw,
+    // door, ball pit, pressure plate, sweeper, pillars, 17 gems, box swap, ball launcher
+    // with the aim camera). Bit-exact with the C reference at 38f2ae1 under a scripted run
+    // in both precision modes (character_demo/dynamic/tests.rs). Disclosed divergences:
+    // the mouse locks on a canvas click or T (browsers can't auto-lock like C's
+    // sapp_lock_mouse at construction), and the scene uses the C debug-build counts
+    // (pyramid baseCount 20, release-only skittles skipped — too heavy for serial wasm).
+    ["Dynamic Mover", "partial", "character", "dynamic-mover"],
     // Partial: RigidbodyCharacter physics, third-person boom, and Debug (V) match C.
     // Remaining disclosed divergence: mouse locks on canvas click (browsers can't
     // auto-lock like sapp_lock_mouse).
@@ -603,7 +610,7 @@ export function neighborOf(entry: SampleEntry | undefined, dir: -1 | 1): SampleE
  * `git -C box3d-cpp-reference rev-parse HEAD`. Used to build stable "C source"
  * links into the exact upstream sources this port mirrors.
  */
-export const CPP_REFERENCE_COMMIT = "c52908c9a907714e4d3a8a30be5272a1761158e1";
+export const CPP_REFERENCE_COMMIT = "38f2ae1e19fdc200744762c29c2f9cc6fe40b10a";
 
 /** Upstream GitHub URL for the C sample file an entry was ported from, at the pin. */
 export function cSourceUrl(entry: SampleEntry): string {
