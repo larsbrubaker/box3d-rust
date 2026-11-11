@@ -3,6 +3,27 @@
 All notable changes to box3d-rust are documented here. This project adheres to
 semantic versioning (0.x: minor-compatible additive changes bump the patch number).
 
+## Unreleased
+
+Syncs the port toward upstream Box3D, one upstream commit at a time. The C
+reference pin advances from `efca0c1`. Ported so far:
+
+- `f36d061` CMake improvements (#201)
+
+### Changed
+
+- Ports upstream's new explanatory comments on the isotropic inertia test
+  (`update_isotropic_inertia`) and the gyroscopic solve in the velocity
+  integration (upstream `f36d061`). No behavior change.
+
+### Not ported
+
+- The CMake, pkg-config, CI, `.clang-format`, `.editorconfig`, Doxygen, and
+  `timer.c` warning-suppression changes (upstream `f36d061`), which have no
+  Rust counterpart. Its new zero initializers in `replay.c`, `simd.h`, and
+  `world_snapshot.c` need no port, as the Rust code initializes those values
+  already.
+
 ## 0.5.0
 
 This release syncs the port to upstream Box3D `efca0c1`. The C reference pin

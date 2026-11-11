@@ -53,8 +53,12 @@ pub(super) fn integrate_velocities(world: &mut World, context: &StepContext) {
         let angular_velocity_delta = mul_sv(h, mul_mv(sim.inv_inertia_world, sim.torque));
         w = mul_add(angular_velocity_delta, angular_damping, w);
 
-        // Gyroscopic torque — one Newton iteration (matches C). Bodies within the world
-        // isotropic inertia tolerance skip this solve.
+        // Gyroscopic torque by solving this nonlinear equation using Newton-Raphson.
+        // I * (w2 - w1) + h * cross(w2, I * w2) = 0
+        // This is all done in local coordinates where the Jacobian is easier to compute.
+        // This improves the simulation of long skinny bodies.
+        // If the principal inertia values of I are roughly equal (isotropic) then
+        // cross(w2, I * w2) ~= 0, so this can be skipped.
         if (sim.flags & body_flags::ENABLE_GYROSCOPIC_TORQUE) != 0 {
             let q0 = sim.transform.q;
             let q = mul_quat(state.delta_rotation, q0);

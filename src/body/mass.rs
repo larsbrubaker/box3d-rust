@@ -18,6 +18,9 @@ use crate::solver_set::AWAKE_SET;
 use crate::types::BodyType;
 use crate::world::World;
 
+// This computes the deviation of the principal inertia values without computing eigenvalues.
+// It computes:
+// ((I1 - I2)^2 + (I1 - I3)^2 + (I2 - I3)^2) / (I1^2 + I2^2 + I3^2)
 // https://en.wikipedia.org/wiki/Cauchy_stress_tensor#Stress_deviator_tensor
 /// Enable gyroscopic torque only when the body inertia deviates from isotropic by more than
 /// the world tolerance. (b3UpdateIsotropicInertia)
