@@ -6,18 +6,20 @@
 //! SPDX-License-Identifier: MIT
 
 use super::{
-    prepare_distance_joint, prepare_motor_joint, prepare_parallel_joint, prepare_prismatic_joint,
-    prepare_revolute_joint, prepare_spherical_joint, prepare_weld_joint, prepare_wheel_joint,
-    solve_distance_joint, solve_motor_joint, solve_parallel_joint, solve_prismatic_joint,
+    prepare_distance_joint, prepare_motor_joint, prepare_mover_joint, prepare_parallel_joint,
+    prepare_pogo_joint, prepare_prismatic_joint, prepare_revolute_joint, prepare_spherical_joint,
+    prepare_weld_joint, prepare_wheel_joint, solve_distance_joint, solve_motor_joint,
+    solve_mover_joint, solve_parallel_joint, solve_pogo_joint, solve_prismatic_joint,
     solve_revolute_joint, solve_spherical_joint, solve_weld_joint, solve_wheel_joint,
-    warm_start_distance_joint, warm_start_motor_joint, warm_start_parallel_joint,
-    warm_start_prismatic_joint, warm_start_revolute_joint, warm_start_spherical_joint,
-    warm_start_weld_joint, warm_start_wheel_joint, JointSim, JointType,
+    warm_start_distance_joint, warm_start_motor_joint, warm_start_mover_joint,
+    warm_start_parallel_joint, warm_start_pogo_joint, warm_start_prismatic_joint,
+    warm_start_revolute_joint, warm_start_spherical_joint, warm_start_weld_joint,
+    warm_start_wheel_joint, JointSim, JointType,
 };
 use crate::body::{get_body_transform, BodyState};
 use crate::math_functions::{
-    abs_float, add, cross, length, min_float, mul_add, mul_quat, mul_sv, normalize, rotate_vector,
-    sub, Matrix3, Vec3, VEC3_AXIS_Z, VEC3_ZERO,
+    abs_float, add, cross, length, length2, min_float, mul_add, mul_quat, mul_sv, normalize,
+    rotate_vector, sub, Matrix3, Vec3, VEC3_AXIS_Z, VEC3_ZERO,
 };
 use crate::solver::{make_soft, StepContext};
 use crate::world::World;
@@ -38,6 +40,8 @@ pub fn prepare_joint(world: &World, base: &mut JointSim, context: &StepContext) 
         JointType::Spherical => prepare_spherical_joint(world, base, context),
         JointType::Weld => prepare_weld_joint(world, base, context),
         JointType::Wheel => prepare_wheel_joint(world, base, context),
+        JointType::Mover => prepare_mover_joint(world, base, context),
+        JointType::Pogo => prepare_pogo_joint(world, base, context),
     }
 }
 
@@ -53,13 +57,15 @@ pub fn warm_start_joint(base: &mut JointSim, states: &mut [BodyState]) {
         JointType::Spherical => warm_start_spherical_joint(base, states),
         JointType::Weld => warm_start_weld_joint(base, states),
         JointType::Wheel => warm_start_wheel_joint(base, states),
+        JointType::Mover => warm_start_mover_joint(base, states),
+        JointType::Pogo => warm_start_pogo_joint(base, states),
     }
 }
 
 /// (b3SolveJoint)
 ///
-/// Motor and parallel ignore `use_bias` like C (`B3_UNUSED(useBias)` at the
-/// top of b3SolveJoint; those callees have no useBias parameter).
+/// Motor, mover, and parallel ignore `use_bias` like C (`B3_UNUSED(useBias)` at
+/// the top of b3SolveJoint; those callees have no useBias parameter).
 pub fn solve_joint(
     base: &mut JointSim,
     context: &StepContext,
@@ -78,6 +84,8 @@ pub fn solve_joint(
         JointType::Spherical => solve_spherical_joint(base, context, states, use_bias),
         JointType::Weld => solve_weld_joint(base, context, states, use_bias),
         JointType::Wheel => solve_wheel_joint(base, context, states, use_bias),
+        JointType::Mover => solve_mover_joint(base, context, states),
+        JointType::Pogo => solve_pogo_joint(base, context, states, use_bias),
     }
 }
 
@@ -173,6 +181,14 @@ pub fn get_joint_reaction(world: &World, sim: &JointSim, inv_time_step: f32) -> 
                 + axial_impulse * axial_impulse)
                 .sqrt();
             angular_impulse = abs_float(joint.spin_impulse);
+        }
+        JointType::Mover => {
+            let joint = sim.mover();
+            linear_impulse = length2(joint.impulse);
+        }
+        JointType::Pogo => {
+            let joint = sim.pogo();
+            linear_impulse = abs_float(joint.impulse);
         }
         JointType::Filter => {}
     }

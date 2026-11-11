@@ -1,7 +1,7 @@
 //! Joints (constraints) between bodies.
 //!
 //! Create typed joints with the `create_*_joint` helpers (distance, motor,
-//! parallel, prismatic, revolute, spherical, weld, wheel, filter), each taking
+//! parallel, prismatic, revolute, spherical, weld, wheel, filter, mover, pogo), each taking
 //! the matching def from [`crate::types`] (`default_revolute_joint_def`, etc.).
 //!
 //! Port of `joint.h` / `joint.c` (lifecycle, plumbing, and per-type solve).
@@ -14,13 +14,16 @@ mod distance;
 mod draw;
 mod lifecycle;
 mod motor;
+mod mover;
 mod parallel;
 mod plumbing;
+mod pogo;
 mod prismatic;
 mod revolute;
 mod solve;
 mod spherical;
 mod types;
+mod union_access;
 mod weld;
 mod wheel;
 mod wheel_api;
@@ -30,8 +33,10 @@ pub use distance::*;
 pub use draw::*;
 pub use lifecycle::*;
 pub use motor::*;
+pub use mover::*;
 pub use parallel::*;
 pub use plumbing::*;
+pub use pogo::*;
 pub use prismatic::*;
 pub use revolute::*;
 pub use solve::*;

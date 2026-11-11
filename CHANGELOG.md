@@ -9,12 +9,67 @@ Syncs the port toward upstream Box3D, one upstream commit at a time. The C
 reference pin advances from `efca0c1`. Ported so far:
 
 - `f36d061` CMake improvements (#201)
+- `3362633` Dynamic Mover (#202)
+
+### Breaking
+
+- `JointType` gains `Mover` (9) and `Pogo` (10), and `JointUnion` gains the
+  matching `Mover` / `Pogo` payloads (upstream `3362633`). Exhaustive matches
+  on either enum must handle them.
+- The default `DebugDraw::force_scale` is now 0.001 (was 1), as upstream's
+  `b3DefaultDebugDraw` changed `forceScale` (upstream `3362633`). Contact
+  force and friction segments drawn by implementations that keep the default
+  are 1000 times shorter. The joint extras force segment now scales by
+  `force_scale()` instead of a fixed 0.001, so it is unchanged under the
+  default and longer for implementations that return a larger scale.
+- The recording minor version becomes 10 (upstream `3362633`, the mover and
+  pogo joint ops).
+
+### Added
+
+- The mover joint (upstream `3362633`, `mover_joint.c`): `MoverJointDef` /
+  `default_mover_joint_def`, `create_mover_joint`,
+  `mover_joint_set_linear_velocity` / `mover_joint_get_linear_velocity`, and
+  `mover_joint_set_max_velocity_force` / `mover_joint_get_max_velocity_force`.
+  It drives the relative linear velocity in the xz plane of joint frame B
+  within a force budget and does not affect rotation.
+- The pogo joint (upstream `3362633`, `pogo_joint.c`): `PogoJointDef` /
+  `default_pogo_joint_def` (the normal defaults to +y), `create_pogo_joint`,
+  setters and getters for the rest length, spring hertz, spring damping ratio,
+  maximum tension and compression forces, and ground normal (the setters
+  return early, unrecorded, when the value is unchanged, as in C), and
+  `pogo_joint_get_current_length`, `pogo_joint_get_current_speed`, and
+  `pogo_joint_get_impulse`. It is a spring along the frame B y-axis, solved
+  with the new `math_functions::spring_damper` (upstream `b3SpringDamper`),
+  that pushes along the ground normal with separate tension and compression
+  limits.
+- Both joints report constraint forces (zero torque and zero separations),
+  draw debug geometry, are recorded as the new ops `CreateMoverJoint` (0x81),
+  `MoverJointSetLinearVelocity` (0x82), `MoverJointSetMaxVelocityForce`
+  (0x83), `CreatePogoJoint` (0x84), and `PogoJointSetRestLength` through
+  `PogoJointSetNormal` (0x85 to 0x8A), and are stored in world snapshots. The
+  snapshot and Rust snapshot layout versions are unchanged: upstream's
+  `sizeof( b3JointSim )` stays the same, and existing records keep their
+  layout. Ports `TestMoverJoint` and `TestPogoJoint` from `test_joint.c` and
+  the `AllOps` dynamic mover addition as a replay round trip with keyframe
+  seeks. Trajectories, impulses, forces, and the joint debug draw output were
+  confirmed bit-exact against a scalar C build of `3362633` in both
+  precision modes.
 
 ### Changed
 
 - Ports upstream's new explanatory comments on the isotropic inertia test
   (`update_isotropic_inertia`) and the gyroscopic solve in the velocity
   integration (upstream `f36d061`). No behavior change.
+- The wheel joint steering limit arc is drawn by rotating the previous vertex
+  by a precomputed angle step instead of recomputing the cosine and sine of
+  each slice angle (upstream `3362633`), so its vertices can change in the
+  last bits. Joint extras skip the generic force label for mover and pogo
+  joints, which draw their own.
+- The crate-internal `simd_scalar::sym_clamp_w` is removed, as upstream
+  removed `b3SymClampW4` (upstream `3362633`). The recording code generators
+  route the new joint ops and def tags, and the joint snapshot generator
+  covers the new payloads.
 
 ### Not ported
 
@@ -23,6 +78,11 @@ reference pin advances from `efca0c1`. Ported so far:
   Rust counterpart. Its new zero initializers in `replay.c`, `simd.h`, and
   `world_snapshot.c` need no port, as the Rust code initializes those values
   already.
+- The new Character / Dynamic Mover sample and the other samples-only changes
+  in upstream `3362633` (the geometric mover split into
+  `geometric_mover.cpp`, plus compound, manifold, replay, camera, and input
+  updates). Dynamic Mover is listed as planned in the demo registry. The
+  header comment rewrapping in that commit needs no port.
 
 ## 0.5.0
 

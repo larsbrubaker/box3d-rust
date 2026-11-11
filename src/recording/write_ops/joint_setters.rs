@@ -658,4 +658,72 @@ impl Recording {
         self.buffer.append_f32(radians);
         self.end_record();
     }
+
+    /// Write framed `MoverJointSetLinearVelocity` op.
+    pub fn write_mover_joint_set_linear_velocity(&mut self, joint: JointId, velocity: Vec3) {
+        self.begin_record(RecOp::MoverJointSetLinearVelocity as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_vec3(velocity);
+        self.end_record();
+    }
+
+    /// Write framed `MoverJointSetMaxVelocityForce` op.
+    pub fn write_mover_joint_set_max_velocity_force(&mut self, joint: JointId, max_force: f32) {
+        self.begin_record(RecOp::MoverJointSetMaxVelocityForce as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_f32(max_force);
+        self.end_record();
+    }
+
+    /// Write framed `PogoJointSetRestLength` op.
+    pub fn write_pogo_joint_set_rest_length(&mut self, joint: JointId, length: f32) {
+        self.begin_record(RecOp::PogoJointSetRestLength as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_f32(length);
+        self.end_record();
+    }
+
+    /// Write framed `PogoJointSetSpringHertz` op.
+    pub fn write_pogo_joint_set_spring_hertz(&mut self, joint: JointId, hertz: f32) {
+        self.begin_record(RecOp::PogoJointSetSpringHertz as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_f32(hertz);
+        self.end_record();
+    }
+
+    /// Write framed `PogoJointSetSpringDampingRatio` op.
+    pub fn write_pogo_joint_set_spring_damping_ratio(
+        &mut self,
+        joint: JointId,
+        damping_ratio: f32,
+    ) {
+        self.begin_record(RecOp::PogoJointSetSpringDampingRatio as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_f32(damping_ratio);
+        self.end_record();
+    }
+
+    /// Write framed `PogoJointSetMaxTensionForce` op.
+    pub fn write_pogo_joint_set_max_tension_force(&mut self, joint: JointId, force: f32) {
+        self.begin_record(RecOp::PogoJointSetMaxTensionForce as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_f32(force);
+        self.end_record();
+    }
+
+    /// Write framed `PogoJointSetMaxCompressionForce` op.
+    pub fn write_pogo_joint_set_max_compression_force(&mut self, joint: JointId, force: f32) {
+        self.begin_record(RecOp::PogoJointSetMaxCompressionForce as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_f32(force);
+        self.end_record();
+    }
+
+    /// Write framed `PogoJointSetNormal` op.
+    pub fn write_pogo_joint_set_normal(&mut self, joint: JointId, normal: Vec3) {
+        self.begin_record(RecOp::PogoJointSetNormal as u8);
+        self.buffer.append_joint_id(joint);
+        self.buffer.append_vec3(normal);
+        self.end_record();
+    }
 }

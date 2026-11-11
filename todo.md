@@ -35,7 +35,7 @@ gaps.**
 
 ## Upstream tracking (recurring)
 
-Upstream Box3D moves fast (released June 2026; submodule pinned at `f36d061`;
+Upstream Box3D moves fast (released June 2026; submodule pinned at `3362633`;
 the sync to upstream `38f2ae1` is in progress, one upstream commit at a time).
 
 - [ ] Periodically diff the pinned submodule against upstream main; triage new

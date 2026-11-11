@@ -25,6 +25,8 @@ pub enum JointType {
     Spherical = 6,
     Weld = 7,
     Wheel = 8,
+    Mover = 9,
+    Pogo = 10,
 }
 
 /// A joint edge connects bodies and joints in a joint graph. (b3JointEdge)
@@ -185,6 +187,77 @@ impl Default for MotorJoint {
             frame_b: TRANSFORM_IDENTITY,
             delta_center: VEC3_ZERO,
             angular_mass: MAT3_ZERO,
+        }
+    }
+}
+
+/// (b3MoverJoint)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MoverJoint {
+    pub linear_velocity: Vec3,
+    pub max_force: f32,
+
+    pub axis_x: Vec3,
+    pub axis_z: Vec3,
+    pub impulse: Vec2,
+
+    pub index_a: i32,
+    pub index_b: i32,
+    pub linear_mass: f32,
+}
+
+impl Default for MoverJoint {
+    fn default() -> Self {
+        MoverJoint {
+            linear_velocity: VEC3_ZERO,
+            max_force: 0.0,
+            axis_x: VEC3_ZERO,
+            axis_z: VEC3_ZERO,
+            impulse: VEC2_ZERO,
+            index_a: NULL_INDEX,
+            index_b: NULL_INDEX,
+            linear_mass: 0.0,
+        }
+    }
+}
+
+/// (b3PogoJoint)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PogoJoint {
+    pub normal: Vec3,
+    pub rest_length: f32,
+    pub hertz: f32,
+    pub damping_ratio: f32,
+    pub max_tension_force: f32,
+    pub max_compression_force: f32,
+
+    pub impulse: f32,
+    pub index_a: i32,
+    pub index_b: i32,
+    pub frame_a: Transform,
+    pub frame_b: Transform,
+    pub delta_center: Vec3,
+    pub linear_mass: f32,
+    pub velocity: f32,
+}
+
+impl Default for PogoJoint {
+    fn default() -> Self {
+        PogoJoint {
+            normal: VEC3_ZERO,
+            rest_length: 0.0,
+            hertz: 0.0,
+            damping_ratio: 0.0,
+            max_tension_force: 0.0,
+            max_compression_force: 0.0,
+            impulse: 0.0,
+            index_a: NULL_INDEX,
+            index_b: NULL_INDEX,
+            frame_a: TRANSFORM_IDENTITY,
+            frame_b: TRANSFORM_IDENTITY,
+            delta_center: VEC3_ZERO,
+            linear_mass: 0.0,
+            velocity: 0.0,
         }
     }
 }
@@ -572,7 +645,9 @@ pub enum JointUnion {
     Distance(DistanceJoint),
     Filter,
     Motor(MotorJoint),
+    Mover(MoverJoint),
     Parallel(ParallelJoint),
+    Pogo(PogoJoint),
     Revolute(RevoluteJoint),
     Spherical(SphericalJoint),
     Prismatic(PrismaticJoint),
@@ -593,6 +668,8 @@ impl JointUnion {
             JointType::Spherical => JointUnion::Spherical(SphericalJoint::default()),
             JointType::Weld => JointUnion::Weld(WeldJoint::default()),
             JointType::Wheel => JointUnion::Wheel(WheelJoint::default()),
+            JointType::Mover => JointUnion::Mover(MoverJoint::default()),
+            JointType::Pogo => JointUnion::Pogo(PogoJoint::default()),
         }
     }
 }
@@ -600,128 +677,6 @@ impl JointUnion {
 impl Default for JointUnion {
     fn default() -> Self {
         JointUnion::Distance(DistanceJoint::default())
-    }
-}
-
-impl JointSim {
-    /// (C: &base->distanceJoint)
-    pub fn distance(&self) -> &DistanceJoint {
-        match &self.union_ {
-            JointUnion::Distance(joint) => joint,
-            _ => unreachable!("joint union is not a distance joint"),
-        }
-    }
-
-    pub fn distance_mut(&mut self) -> &mut DistanceJoint {
-        match &mut self.union_ {
-            JointUnion::Distance(joint) => joint,
-            _ => unreachable!("joint union is not a distance joint"),
-        }
-    }
-
-    /// (C: &base->parallelJoint)
-    pub fn parallel(&self) -> &ParallelJoint {
-        match &self.union_ {
-            JointUnion::Parallel(joint) => joint,
-            _ => unreachable!("joint union is not a parallel joint"),
-        }
-    }
-
-    pub fn parallel_mut(&mut self) -> &mut ParallelJoint {
-        match &mut self.union_ {
-            JointUnion::Parallel(joint) => joint,
-            _ => unreachable!("joint union is not a parallel joint"),
-        }
-    }
-
-    /// (C: &base->weldJoint)
-    pub fn weld(&self) -> &WeldJoint {
-        match &self.union_ {
-            JointUnion::Weld(joint) => joint,
-            _ => unreachable!("joint union is not a weld joint"),
-        }
-    }
-
-    pub fn weld_mut(&mut self) -> &mut WeldJoint {
-        match &mut self.union_ {
-            JointUnion::Weld(joint) => joint,
-            _ => unreachable!("joint union is not a weld joint"),
-        }
-    }
-
-    /// (C: &base->revoluteJoint)
-    pub fn revolute(&self) -> &RevoluteJoint {
-        match &self.union_ {
-            JointUnion::Revolute(joint) => joint,
-            _ => unreachable!("joint union is not a revolute joint"),
-        }
-    }
-
-    pub fn revolute_mut(&mut self) -> &mut RevoluteJoint {
-        match &mut self.union_ {
-            JointUnion::Revolute(joint) => joint,
-            _ => unreachable!("joint union is not a revolute joint"),
-        }
-    }
-
-    /// (C: &base->prismaticJoint)
-    pub fn prismatic(&self) -> &PrismaticJoint {
-        match &self.union_ {
-            JointUnion::Prismatic(joint) => joint,
-            _ => unreachable!("joint union is not a prismatic joint"),
-        }
-    }
-
-    pub fn prismatic_mut(&mut self) -> &mut PrismaticJoint {
-        match &mut self.union_ {
-            JointUnion::Prismatic(joint) => joint,
-            _ => unreachable!("joint union is not a prismatic joint"),
-        }
-    }
-
-    /// (C: &base->motorJoint)
-    pub fn motor(&self) -> &MotorJoint {
-        match &self.union_ {
-            JointUnion::Motor(joint) => joint,
-            _ => unreachable!("joint union is not a motor joint"),
-        }
-    }
-
-    pub fn motor_mut(&mut self) -> &mut MotorJoint {
-        match &mut self.union_ {
-            JointUnion::Motor(joint) => joint,
-            _ => unreachable!("joint union is not a motor joint"),
-        }
-    }
-
-    /// (C: &base->sphericalJoint)
-    pub fn spherical(&self) -> &SphericalJoint {
-        match &self.union_ {
-            JointUnion::Spherical(joint) => joint,
-            _ => unreachable!("joint union is not a spherical joint"),
-        }
-    }
-
-    pub fn spherical_mut(&mut self) -> &mut SphericalJoint {
-        match &mut self.union_ {
-            JointUnion::Spherical(joint) => joint,
-            _ => unreachable!("joint union is not a spherical joint"),
-        }
-    }
-
-    /// (C: &base->wheelJoint)
-    pub fn wheel(&self) -> &WheelJoint {
-        match &self.union_ {
-            JointUnion::Wheel(joint) => joint,
-            _ => unreachable!("joint union is not a wheel joint"),
-        }
-    }
-
-    pub fn wheel_mut(&mut self) -> &mut WheelJoint {
-        match &mut self.union_ {
-            JointUnion::Wheel(joint) => joint,
-            _ => unreachable!("joint union is not a wheel joint"),
-        }
     }
 }
 

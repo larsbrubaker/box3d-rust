@@ -6,11 +6,11 @@
 
 use super::{
     get_distance_joint_force, get_joint_full_id, get_joint_sim, get_joint_sim_ref,
-    get_motor_joint_force, get_motor_joint_torque, get_parallel_joint_torque,
-    get_prismatic_joint_force, get_prismatic_joint_torque, get_revolute_joint_force,
-    get_revolute_joint_torque, get_spherical_joint_force, get_spherical_joint_torque,
-    get_weld_joint_force, get_weld_joint_torque, get_wheel_joint_force, get_wheel_joint_torque,
-    JointSim, JointType,
+    get_motor_joint_force, get_motor_joint_torque, get_mover_joint_force,
+    get_parallel_joint_torque, get_pogo_joint_force, get_prismatic_joint_force,
+    get_prismatic_joint_torque, get_revolute_joint_force, get_revolute_joint_torque,
+    get_spherical_joint_force, get_spherical_joint_torque, get_weld_joint_force,
+    get_weld_joint_torque, get_wheel_joint_force, get_wheel_joint_torque, JointSim, JointType,
 };
 use crate::body::{get_body_transform, wake_body};
 use crate::core::NULL_INDEX;
@@ -189,6 +189,8 @@ pub fn joint_get_constraint_force(world: &World, joint_id: JointId) -> Vec3 {
         JointType::Spherical => get_spherical_joint_force(world, &base),
         JointType::Weld => get_weld_joint_force(world, &base),
         JointType::Wheel => get_wheel_joint_force(world, &base),
+        JointType::Mover => get_mover_joint_force(world, &base),
+        JointType::Pogo => get_pogo_joint_force(world, &base),
     }
 }
 
@@ -230,6 +232,7 @@ pub fn joint_get_constraint_torque(world: &mut World, joint_id: JointId) -> Vec3
             let base = joint_sim_copy(world, id);
             get_wheel_joint_torque(world, &base)
         }
+        JointType::Mover | JointType::Pogo => VEC3_ZERO,
     }
 }
 
@@ -274,7 +277,11 @@ pub fn joint_get_linear_separation(world: &World, joint_id: JointId) -> f32 {
     let dp = sub_pos(p_b, p_a);
 
     match type_ {
-        JointType::Parallel | JointType::Motor | JointType::Filter => 0.0,
+        JointType::Parallel
+        | JointType::Motor
+        | JointType::Mover
+        | JointType::Pogo
+        | JointType::Filter => 0.0,
         JointType::Distance => {
             let distance_joint = base.distance();
             let len = length(dp);
@@ -364,7 +371,11 @@ pub fn joint_get_angular_separation(world: &World, joint_id: JointId) -> f32 {
             rel_q.v.z = 0.0;
             get_quat_angle(rel_q)
         }
-        JointType::Distance | JointType::Motor | JointType::Filter => 0.0,
+        JointType::Distance
+        | JointType::Motor
+        | JointType::Mover
+        | JointType::Pogo
+        | JointType::Filter => 0.0,
         JointType::Prismatic => get_quat_angle(rel_q),
         JointType::Revolute => {
             let revolute = base.revolute();

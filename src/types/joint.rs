@@ -7,7 +7,9 @@
 use crate::constants::huge;
 use crate::core::{get_length_units_per_meter, SECRET_COOKIE};
 use crate::id::BodyId;
-use crate::math_functions::{Quat, Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_ZERO};
+use crate::math_functions::{
+    Quat, Transform, Vec3, QUAT_IDENTITY, TRANSFORM_IDENTITY, VEC3_AXIS_Y, VEC3_ZERO,
+};
 
 /// Base joint definition used by all joint types. The local frames are measured
 /// from the body's origin rather than the center of mass because:
@@ -160,6 +162,90 @@ pub fn default_motor_joint_def() -> MotorJointDef {
 impl Default for MotorJointDef {
     fn default() -> Self {
         default_motor_joint_def()
+    }
+}
+
+/// A mover joint is used to move a dynamic character mover through velocity commands. Force is only
+/// applied in the xz plane of joint frame B. Does not affect rotation. (b3MoverJointDef)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MoverJointDef {
+    /// Base joint definition
+    pub base: JointDef,
+
+    /// The desired linear velocity
+    pub linear_velocity: Vec3,
+
+    /// The maximum motor force in newtons.
+    pub max_force: f32,
+}
+
+/// Use this to initialize your joint definition. (b3DefaultMoverJointDef)
+pub fn default_mover_joint_def() -> MoverJointDef {
+    MoverJointDef {
+        base: default_joint_def(),
+        linear_velocity: VEC3_ZERO,
+        max_force: 0.0,
+    }
+}
+
+impl Default for MoverJointDef {
+    fn default() -> Self {
+        default_mover_joint_def()
+    }
+}
+
+/// The pogo joint is used for the dynamic character mover. The pogo axis is along the frame B
+/// y-axis. (b3PogoJointDef)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PogoJointDef {
+    /// Base joint definition
+    pub base: JointDef,
+
+    /// Normal vector at the contact
+    pub normal: Vec3,
+
+    /// The spring stiffness Hertz, cycles per second
+    pub hertz: f32,
+
+    /// The spring damping ratio, non-dimensional
+    pub damping_ratio: f32,
+
+    /// Spring length.
+    pub rest_length: f32,
+
+    /// Maximum tension force. Controls how sticky the mover is to ground.
+    pub max_tension_force: f32,
+
+    /// Maximum compression force. How hard the pogo pushes the mover up from the ground.
+    pub max_compression_force: f32,
+
+    /// The initial pogo internal impulse. The pogo is typically recreated every frame. This gives a
+    /// way to move the internal state forward for smoother spring behavior.
+    pub impulse: f32,
+
+    /// The initial pogo internal velocity. The pogo is typically recreated every frame. This gives
+    /// a way to move the internal state forward for smoother spring behavior.
+    pub velocity: f32,
+}
+
+/// Use this to initialize your joint definition. (b3DefaultPogoJointDef)
+pub fn default_pogo_joint_def() -> PogoJointDef {
+    PogoJointDef {
+        base: default_joint_def(),
+        normal: VEC3_AXIS_Y,
+        hertz: 0.0,
+        damping_ratio: 0.0,
+        rest_length: 0.0,
+        max_tension_force: 0.0,
+        max_compression_force: 0.0,
+        impulse: 0.0,
+        velocity: 0.0,
+    }
+}
+
+impl Default for PogoJointDef {
+    fn default() -> Self {
+        default_pogo_joint_def()
     }
 }
 

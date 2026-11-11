@@ -12,11 +12,12 @@ use crate::math_functions::min_int;
 use crate::recording::buffer::{RecBuffer, SnapReader};
 use crate::types::{
     default_body_def, default_distance_joint_def, default_explosion_def, default_filter_joint_def,
-    default_joint_def, default_motor_joint_def, default_parallel_joint_def,
-    default_prismatic_joint_def, default_query_filter, default_revolute_joint_def,
-    default_shape_def, default_spherical_joint_def, default_weld_joint_def,
-    default_wheel_joint_def, BodyDef, BodyType, DistanceJointDef, ExplosionDef, FilterJointDef,
-    JointDef, MotionLocks, MotorJointDef, ParallelJointDef, PrismaticJointDef, QueryFilter,
+    default_joint_def, default_motor_joint_def, default_mover_joint_def,
+    default_parallel_joint_def, default_pogo_joint_def, default_prismatic_joint_def,
+    default_query_filter, default_revolute_joint_def, default_shape_def,
+    default_spherical_joint_def, default_weld_joint_def, default_wheel_joint_def, BodyDef,
+    BodyType, DistanceJointDef, ExplosionDef, FilterJointDef, JointDef, MotionLocks, MotorJointDef,
+    MoverJointDef, ParallelJointDef, PogoJointDef, PrismaticJointDef, QueryFilter,
     RevoluteJointDef, ShapeDef, SphericalJointDef, WeldJointDef, WheelJointDef,
 };
 
@@ -272,6 +273,26 @@ impl RecBuffer {
         self.append_bool(v.enable_steering_limit);
         self.append_f32(v.lower_steering_limit);
         self.append_f32(v.upper_steering_limit);
+    }
+
+    /// (b3RecW_MOVERJOINTDEF)
+    pub fn append_mover_joint_def(&mut self, v: &MoverJointDef) {
+        self.append_joint_base(&v.base);
+        self.append_vec3(v.linear_velocity);
+        self.append_f32(v.max_force);
+    }
+
+    /// (b3RecW_POGOJOINTDEF)
+    pub fn append_pogo_joint_def(&mut self, v: &PogoJointDef) {
+        self.append_joint_base(&v.base);
+        self.append_vec3(v.normal);
+        self.append_f32(v.hertz);
+        self.append_f32(v.damping_ratio);
+        self.append_f32(v.rest_length);
+        self.append_f32(v.max_tension_force);
+        self.append_f32(v.max_compression_force);
+        self.append_f32(v.impulse);
+        self.append_f32(v.velocity);
     }
 }
 
@@ -573,6 +594,30 @@ impl<'a> SnapReader<'a> {
         d.enable_steering_limit = self.bool();
         d.lower_steering_limit = self.f32();
         d.upper_steering_limit = self.f32();
+        d
+    }
+
+    /// (b3RecR_MOVERJOINTDEF)
+    pub fn mover_joint_def(&mut self) -> MoverJointDef {
+        let mut d = default_mover_joint_def();
+        d.base = self.joint_base();
+        d.linear_velocity = self.vec3();
+        d.max_force = self.f32();
+        d
+    }
+
+    /// (b3RecR_POGOJOINTDEF)
+    pub fn pogo_joint_def(&mut self) -> PogoJointDef {
+        let mut d = default_pogo_joint_def();
+        d.base = self.joint_base();
+        d.normal = self.vec3();
+        d.hertz = self.f32();
+        d.damping_ratio = self.f32();
+        d.rest_length = self.f32();
+        d.max_tension_force = self.f32();
+        d.max_compression_force = self.f32();
+        d.impulse = self.f32();
+        d.velocity = self.f32();
         d
     }
 }

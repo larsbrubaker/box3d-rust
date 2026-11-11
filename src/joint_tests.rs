@@ -21,6 +21,11 @@ use crate::types::{
 };
 use crate::world::World;
 
+// TestMoverJoint and TestPogoJoint share this fixture; they live in their own file for the
+// file-length limit.
+#[path = "joint_tests_mover_pogo.rs"]
+mod mover_pogo;
+
 struct JointFixture {
     world: World,
     ground_id: crate::id::BodyId,

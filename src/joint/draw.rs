@@ -12,10 +12,10 @@ use crate::core::NULL_INDEX;
 use crate::debug_draw::{DebugDraw, HexColor};
 use crate::id::JointId;
 use crate::math_functions::{
-    compute_cos_sin, cos, dot_quat, get_twist_angle, inv_mul_quat, length, lerp_float,
-    lerp_position, make_matrix_from_quat, max_float, mul_sv, mul_world_transforms, negate_quat,
-    normalize, offset_pos, rotate_vector, sin, sub_pos, transform_world_point, Vec3,
-    WorldTransform, PI, VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z,
+    compute_cos_sin, cos, dot_quat, get_twist_angle, inv_mul_quat, length, lerp_position,
+    make_matrix_from_quat, max_float, mul_sv, mul_world_transforms, negate_quat, normalize,
+    offset_pos, rotate_vector, sin, sub_pos, transform_world_point, Vec3, WorldTransform, PI,
+    VEC3_AXIS_X, VEC3_AXIS_Y, VEC3_AXIS_Z,
 };
 use crate::solver_set::DISABLED_SET;
 use crate::world::World;
@@ -487,7 +487,8 @@ fn draw_wheel_joint(
         let lower = joint.lower_steering_limit;
         let upper = joint.upper_steering_limit;
 
-        let cs = compute_cos_sin(lower);
+        let mut cs = compute_cos_sin(lower);
+        let delta = compute_cos_sin((upper - lower) / slice_count as f32);
         let mut vertex1 = transform_world_point(
             frame,
             Vec3 {
@@ -498,10 +499,11 @@ fn draw_wheel_joint(
         );
 
         for index in 0..slice_count {
-            let t2 = (index as f32 + 1.0) / slice_count as f32;
-            let phi = lerp_float(lower, upper, t2);
+            let cosine = delta.cosine * cs.cosine - delta.sine * cs.sine;
+            let sine = delta.sine * cs.cosine + delta.cosine * cs.sine;
+            cs.cosine = cosine;
+            cs.sine = sine;
 
-            let cs = compute_cos_sin(phi);
             let vertex2 = transform_world_point(
                 frame,
                 Vec3 {
@@ -589,6 +591,12 @@ pub fn draw_joint(draw: &mut dyn DebugDraw, world: &mut World, joint: &Joint) {
         JointType::Wheel => {
             draw_wheel_joint(draw, &joint_sim, transform_a, transform_b, scale);
         }
+        JointType::Mover => {
+            super::mover::draw_mover_joint(draw, world, &joint_sim, transform_a, transform_b);
+        }
+        JointType::Pogo => {
+            super::pogo::draw_pogo_joint(draw, world, &joint_sim, transform_a, transform_b, scale);
+        }
     }
 
     if draw.draw_graph_colors() {
@@ -599,13 +607,18 @@ pub fn draw_joint(draw: &mut dyn DebugDraw, world: &mut World, joint: &Joint) {
         }
     }
 
-    if draw.draw_joint_extras() {
+    if draw.draw_joint_extras() && joint.type_ != JointType::Mover && joint.type_ != JointType::Pogo
+    {
         let jid = joint_full_id(world, joint);
         let force = joint_get_constraint_force(world, jid);
         let torque = joint_get_constraint_torque(world, jid);
         let p = lerp_position(p_a, p_b, 0.5);
 
-        draw.draw_segment(p, offset_pos(p, mul_sv(0.001, force)), HexColor::AZURE);
+        draw.draw_segment(
+            p,
+            offset_pos(p, mul_sv(draw.force_scale(), force)),
+            HexColor::AZURE,
+        );
 
         let buffer = format!("f = {}, t = {}", length(force), length(torque));
         draw.draw_string(p, &buffer, HexColor::AZURE);

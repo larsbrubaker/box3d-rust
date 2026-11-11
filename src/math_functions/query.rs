@@ -122,6 +122,24 @@ pub fn closest_point_to_aabb(point: Vec3, a: Aabb) -> Vec3 {
     clamp(point, a.lower_bound, a.upper_bound)
 }
 
+/// One-dimensional mass-spring-damper simulation. Returns the new velocity given the position and
+/// time step. You can then compute the new position using:
+/// position += timeStep * newVelocity
+/// This drives towards a zero position. By using implicit integration we get a stable solution that
+/// doesn't require transcendental functions. (b3SpringDamper)
+pub fn spring_damper(
+    hertz: f32,
+    damping_ratio: f32,
+    position: f32,
+    velocity: f32,
+    time_step: f32,
+) -> f32 {
+    let omega = 2.0 * PI * hertz;
+    let omega_h = omega * time_step;
+    (velocity - omega * omega_h * position)
+        / (1.0 + 2.0 * damping_ratio * omega_h + omega_h * omega_h)
+}
+
 /// Compute the closest point on the segment a-b to the target q.
 pub fn point_to_segment_distance(a: Vec3, b: Vec3, q: Vec3) -> Vec3 {
     let ab = sub(b, a);

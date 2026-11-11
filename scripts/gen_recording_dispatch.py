@@ -53,10 +53,11 @@ TAG_READ = {
     "FILTERJOINTDEF": "filter_joint_def", "MOTORJOINTDEF": "motor_joint_def",
     "PRISMATICJOINTDEF": "prismatic_joint_def", "REVOLUTEJOINTDEF": "revolute_joint_def",
     "SPHERICALJOINTDEF": "spherical_joint_def", "WELDJOINTDEF": "weld_joint_def",
-    "WHEELJOINTDEF": "wheel_joint_def",
+    "WHEELJOINTDEF": "wheel_joint_def", "MOVERJOINTDEF": "mover_joint_def",
+    "POGOJOINTDEF": "pogo_joint_def",
 }
 
-LINEAR_JOINT_PREFIXES = ("Parallel", "Distance", "Motor", "Prismatic")
+LINEAR_JOINT_PREFIXES = ("Parallel", "Distance", "Motor", "Prismatic", "Mover", "Pogo")
 ANGULAR_JOINT_PREFIXES = ("Revolute", "Spherical", "Weld", "Wheel")
 
 
@@ -506,14 +507,15 @@ FAMILIES = [
         "joint",
         [
             "crate::joint::{create_distance_joint, create_filter_joint, create_motor_joint, "
-            "create_parallel_joint, create_prismatic_joint, create_revolute_joint, "
-            "create_spherical_joint, create_weld_joint, create_wheel_joint}",
+            "create_mover_joint, create_parallel_joint, create_pogo_joint, "
+            "create_prismatic_joint, create_revolute_joint, create_spherical_joint, "
+            "create_weld_joint, create_wheel_joint}",
         ],
         "",
     ),
     (
         "joint_linear_type_ops",
-        """//! Parallel/distance/motor/prismatic joint setter replay handlers,
+        """//! Parallel/distance/motor/prismatic/mover/pogo joint setter replay handlers,
 //! dispatch.rs to satisfy the file-length limit. One function per op family;
 //! returns false when the op belongs to another family.
 """,

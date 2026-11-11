@@ -201,8 +201,8 @@ pub type DestroyDebugShapeCallback = fn(u64, u64);
 /// Debug drawing callbacks and options (`b3DebugDraw`).
 ///
 /// Defaults match `b3DefaultDebugDraw`: draw callbacks are no-ops, option flags
-/// are off, `drawing_bounds` is a cube of half-extent `100 * lengthUnits`, and
-/// force/joint scales are 1.
+/// are off, `drawing_bounds` is a cube of half-extent `100 * lengthUnits`, the
+/// force scale is 0.001, and the joint scale is 1.
 pub trait DebugDraw {
     /// Draws a previously created user shape. (`DrawShapeFcn`)
     ///
@@ -267,7 +267,7 @@ pub trait DebugDraw {
 
     /// Scale for drawing forces. (`forceScale`)
     fn force_scale(&self) -> f32 {
-        1.0
+        0.001
     }
 
     /// Global scaling for joint drawing. (`jointScale`)

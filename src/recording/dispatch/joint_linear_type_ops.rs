@@ -1,4 +1,4 @@
-//! Parallel/distance/motor/prismatic joint setter replay handlers,
+//! Parallel/distance/motor/prismatic/mover/pogo joint setter replay handlers,
 //! dispatch.rs to satisfy the file-length limit. One function per op family;
 //! returns false when the op belongs to another family.
 //!
@@ -460,6 +460,106 @@ pub(super) fn dispatch(
                     rdr.make_joint_id(joint),
                     force,
                 );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::MoverJointSetLinearVelocity => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let velocity = s.vec3();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::mover_joint_set_linear_velocity(
+                    world,
+                    rdr.make_joint_id(joint),
+                    velocity,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::MoverJointSetMaxVelocityForce => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let max_force = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::mover_joint_set_max_velocity_force(
+                    world,
+                    rdr.make_joint_id(joint),
+                    max_force,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::PogoJointSetRestLength => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let length = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::pogo_joint_set_rest_length(world, rdr.make_joint_id(joint), length);
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::PogoJointSetSpringHertz => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let hertz = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::pogo_joint_set_spring_hertz(world, rdr.make_joint_id(joint), hertz);
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::PogoJointSetSpringDampingRatio => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let damping_ratio = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::pogo_joint_set_spring_damping_ratio(
+                    world,
+                    rdr.make_joint_id(joint),
+                    damping_ratio,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::PogoJointSetMaxTensionForce => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let force = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::pogo_joint_set_max_tension_force(
+                    world,
+                    rdr.make_joint_id(joint),
+                    force,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::PogoJointSetMaxCompressionForce => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let force = s.f32();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::pogo_joint_set_max_compression_force(
+                    world,
+                    rdr.make_joint_id(joint),
+                    force,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::PogoJointSetNormal => {
+            let mut s = rdr.snap();
+            let joint = s.joint_id();
+            let normal = s.vec3();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                crate::joint::pogo_joint_set_normal(world, rdr.make_joint_id(joint), normal);
             }
             let _ = (payload_start, payload_size);
         }

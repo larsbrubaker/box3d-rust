@@ -22,14 +22,16 @@ use crate::core::NULL_INDEX;
 use crate::id::JointId;
 use crate::island::link_joint;
 use crate::math_functions::{
-    clamp_float, is_valid_float, is_valid_transform, max_float, max_int, min_float, PI,
+    clamp_float, is_normalized, is_valid_float, is_valid_transform, is_valid_vec3, max_float,
+    max_int, min_float, PI,
 };
 use crate::solver_set::{
     merge_solver_sets, wake_solver_set, AWAKE_SET, DISABLED_SET, FIRST_SLEEPING_SET, STATIC_SET,
 };
 use crate::types::{
-    BodyType, DistanceJointDef, FilterJointDef, JointDef, MotorJointDef, ParallelJointDef,
-    PrismaticJointDef, RevoluteJointDef, SphericalJointDef, WeldJointDef, WheelJointDef,
+    BodyType, DistanceJointDef, FilterJointDef, JointDef, MotorJointDef, MoverJointDef,
+    ParallelJointDef, PogoJointDef, PrismaticJointDef, RevoluteJointDef, SphericalJointDef,
+    WeldJointDef, WheelJointDef,
 };
 use crate::world::World;
 
@@ -371,6 +373,68 @@ pub fn create_motor_joint(world: &mut World, def: &MotorJointDef) -> JointId {
     let id = make_joint_id(world, joint_id);
     crate::recording::capture::rec(world, |rec, wid| {
         rec.write_create_motor_joint(wid, def, id);
+    });
+    id
+}
+
+/// Create a mover joint. (b3CreateMoverJoint)
+pub fn create_mover_joint(world: &mut World, def: &MoverJointDef) -> JointId {
+    debug_assert!(def.base.internal_value == crate::core::SECRET_COOKIE);
+    debug_assert!(is_valid_vec3(def.linear_velocity));
+    debug_assert!(is_valid_float(def.max_force) && def.max_force >= 0.0);
+    debug_assert!(!world.locked);
+    if world.locked {
+        return crate::id::NULL_JOINT_ID;
+    }
+
+    let joint_id = create_joint(world, &def.base, JointType::Mover);
+
+    let joint_sim = get_joint_sim(world, joint_id);
+    let joint = joint_sim.mover_mut();
+    *joint = super::MoverJoint::default();
+    joint.linear_velocity = def.linear_velocity;
+    joint.max_force = def.max_force;
+
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_mover_joint(wid, def, id);
+    });
+    id
+}
+
+/// Create a pogo joint. (b3CreatePogoJoint)
+pub fn create_pogo_joint(world: &mut World, def: &PogoJointDef) -> JointId {
+    debug_assert!(def.base.internal_value == crate::core::SECRET_COOKIE);
+    debug_assert!(is_valid_vec3(def.normal) && is_normalized(def.normal));
+    debug_assert!(is_valid_float(def.rest_length) && def.rest_length >= 0.0);
+    debug_assert!(is_valid_float(def.hertz) && def.hertz >= 0.0);
+    debug_assert!(is_valid_float(def.damping_ratio) && def.damping_ratio >= 0.0);
+    debug_assert!(is_valid_float(def.max_tension_force) && def.max_tension_force >= 0.0);
+    debug_assert!(is_valid_float(def.max_compression_force) && def.max_compression_force >= 0.0);
+    debug_assert!(is_valid_float(def.impulse));
+    debug_assert!(is_valid_float(def.velocity));
+    debug_assert!(!world.locked);
+    if world.locked {
+        return crate::id::NULL_JOINT_ID;
+    }
+
+    let joint_id = create_joint(world, &def.base, JointType::Pogo);
+
+    let joint_sim = get_joint_sim(world, joint_id);
+    let joint = joint_sim.pogo_mut();
+    *joint = super::PogoJoint::default();
+    joint.normal = def.normal;
+    joint.rest_length = def.rest_length;
+    joint.hertz = def.hertz;
+    joint.damping_ratio = def.damping_ratio;
+    joint.max_tension_force = def.max_tension_force;
+    joint.max_compression_force = def.max_compression_force;
+    joint.impulse = def.impulse;
+    joint.velocity = def.velocity;
+
+    let id = make_joint_id(world, joint_id);
+    crate::recording::capture::rec(world, |rec, wid| {
+        rec.write_create_pogo_joint(wid, def, id);
     });
     id
 }

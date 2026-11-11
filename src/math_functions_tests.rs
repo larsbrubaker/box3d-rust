@@ -503,3 +503,16 @@ fn large_world_relative_transform_at_1e8() {
     let rel = inv_mul_world_transforms(w_a, w_b);
     assert!(rel.p.x == 1.0 && rel.p.y == 0.0 && rel.p.z == 0.0);
 }
+
+/// spring_damper (b3SpringDamper) is bit-exact with a scalar C build of upstream 3362633.
+#[test]
+fn spring_damper_matches_c() {
+    assert_eq!(
+        spring_damper(4.0, 0.7, 0.25, -0.5, 1.0 / 240.0).to_bits(),
+        0xBF80_0B52
+    );
+    assert_eq!(
+        spring_damper(30.0, 2.0, -1.5, 3.0, 1.0 / 60.0).to_bits(),
+        0x4218_1E78
+    );
+}

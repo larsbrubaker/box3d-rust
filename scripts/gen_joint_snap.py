@@ -53,6 +53,8 @@ joint_types = [
     "SphericalJoint",
     "WeldJoint",
     "WheelJoint",
+    "MoverJoint",
+    "PogoJoint",
 ]
 
 
@@ -77,8 +79,9 @@ def des_fields(fields, indent="        "):
 out = []
 out.append("//! JointSim field-by-field snapshot ser/de.")
 out.append("use crate::joint::{")
-out.append("    DistanceJoint, Joint, JointEdge, JointSim, JointType, JointUnion, MotorJoint,")
-out.append("    ParallelJoint, PrismaticJoint, RevoluteJoint, SphericalJoint, WeldJoint, WheelJoint,")
+out.append("    DistanceJoint, Joint, JointEdge, JointSim, JointType, JointUnion, MotorJoint, MoverJoint,")
+out.append("    ParallelJoint, PogoJoint, PrismaticJoint, RevoluteJoint, SphericalJoint, WeldJoint,")
+out.append("    WheelJoint,")
 out.append("};")
 out.append("use crate::math_functions::Vec2;")
 out.append("use crate::recording::buffer::{RecBuffer, SnapReader};")
@@ -144,6 +147,8 @@ out.append("            4 => JointType::Prismatic,")
 out.append("            5 => JointType::Revolute,")
 out.append("            6 => JointType::Spherical,")
 out.append("            7 => JointType::Weld,")
+out.append("            9 => JointType::Mover,")
+out.append("            10 => JointType::Pogo,")
 out.append("            _ => JointType::Wheel,")
 out.append("        },")
 out.append("        generation: r.u16(),")
@@ -194,7 +199,10 @@ out.append(
     "        3 => JointType::Motor, 4 => JointType::Prismatic, 5 => JointType::Revolute,"
 )
 out.append(
-    "        6 => JointType::Spherical, 7 => JointType::Weld, _ => JointType::Wheel,"
+    "        6 => JointType::Spherical, 7 => JointType::Weld, 9 => JointType::Mover,"
+)
+out.append(
+    "        10 => JointType::Pogo, _ => JointType::Wheel,"
 )
 out.append("    };")
 out.append("    let local_frame_a = r.transform();")
@@ -221,6 +229,8 @@ mapping = {
     6: "Spherical",
     7: "Weld",
     8: "Wheel",
+    9: "Mover",
+    10: "Pogo",
 }
 for tag, short in mapping.items():
     if short == "Filter":

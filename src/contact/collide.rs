@@ -128,6 +128,8 @@ fn collide_task(world: &mut World, contact_indices: &[i32], worker_index: i32) {
 
         let transform_a = sim_a.transform;
         let transform_b = sim_b.transform;
+
+        // This is really just needed for mesh collision to prevent tunneling.
         let is_fast = ((sim_a.flags | sim_b.flags) & body_flags::IS_FAST) != 0;
 
         let recycle_tolerance = if was_touching {

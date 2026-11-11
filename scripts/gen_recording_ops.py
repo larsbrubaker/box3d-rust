@@ -76,6 +76,8 @@ TAG_TY = {
     "SPHERICALJOINTDEF": "SphericalJointDef",
     "WELDJOINTDEF": "WeldJointDef",
     "WHEELJOINTDEF": "WheelJointDef",
+    "MOVERJOINTDEF": "MoverJointDef",
+    "POGOJOINTDEF": "PogoJointDef",
 }
 
 TAG_WRITE = {
@@ -120,6 +122,8 @@ TAG_WRITE = {
     "SPHERICALJOINTDEF": "append_spherical_joint_def",
     "WELDJOINTDEF": "append_weld_joint_def",
     "WHEELJOINTDEF": "append_wheel_joint_def",
+    "MOVERJOINTDEF": "append_mover_joint_def",
+    "POGOJOINTDEF": "append_pogo_joint_def",
 }
 
 REF_TAGS = {
@@ -137,6 +141,8 @@ REF_TAGS = {
     "SPHERICALJOINTDEF",
     "WELDJOINTDEF",
     "WHEELJOINTDEF",
+    "MOVERJOINTDEF",
+    "POGOJOINTDEF",
 }
 
 
@@ -184,6 +190,7 @@ RET_WRITE = {
 
 JOINT_TYPE_PREFIXES = (
     "Parallel", "Distance", "Motor", "Prismatic", "Revolute", "Spherical", "Weld", "Wheel",
+    "Mover", "Pogo",
 )
 
 # Writer families: (module, doc noun). List order is the write_ops/mod.rs order.

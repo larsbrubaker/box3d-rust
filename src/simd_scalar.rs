@@ -180,25 +180,6 @@ pub fn max_w(a: FloatW, b: FloatW) -> FloatW {
     }
 }
 
-/// Clamp `a` to `[-b, b]`. (b3SymClampW)
-#[inline]
-// Kept for a complete scalar simd.h API; the 0cfc475 twist friction clamps the delta impulse with
-// min/max instead.
-#[allow(dead_code)]
-pub fn sym_clamp_w(a: FloatW, b: FloatW) -> FloatW {
-    let mut r = FloatW {
-        x: if a.x <= b.x { a.x } else { b.x },
-        y: if a.y <= b.y { a.y } else { b.y },
-        z: if a.z <= b.z { a.z } else { b.z },
-        w: if a.w <= b.w { a.w } else { b.w },
-    };
-    r.x = if r.x <= -b.x { -b.x } else { r.x };
-    r.y = if r.y <= -b.y { -b.y } else { r.y };
-    r.z = if r.z <= -b.z { -b.z } else { r.z };
-    r.w = if r.w <= -b.w { -b.w } else { r.w };
-    r
-}
-
 // Logical operations on the scalar path are 0/1 float values. Not bit-wise like SIMD.
 
 /// (b3AndW)

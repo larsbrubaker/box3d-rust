@@ -1,7 +1,7 @@
 //! JointSim field-by-field snapshot ser/de.
 use crate::joint::{
-    DistanceJoint, Joint, JointEdge, JointSim, JointType, JointUnion, MotorJoint, ParallelJoint,
-    PrismaticJoint, RevoluteJoint, SphericalJoint, WeldJoint, WheelJoint,
+    DistanceJoint, Joint, JointEdge, JointSim, JointType, JointUnion, MotorJoint, MoverJoint,
+    ParallelJoint, PogoJoint, PrismaticJoint, RevoluteJoint, SphericalJoint, WeldJoint, WheelJoint,
 };
 use crate::math_functions::Vec2;
 use crate::recording::buffer::{RecBuffer, SnapReader};
@@ -85,6 +85,8 @@ pub fn des_joint(r: &mut SnapReader<'_>) -> Joint {
             5 => JointType::Revolute,
             6 => JointType::Spherical,
             7 => JointType::Weld,
+            9 => JointType::Mover,
+            10 => JointType::Pogo,
             _ => JointType::Wheel,
         },
         generation: r.u16(),
@@ -324,6 +326,34 @@ pub fn ser_joint_sim(buf: &mut RecBuffer, s: &JointSim) {
             buf.append_bool(j.enable_steering_limit);
             buf.append_bool(j.enable_steering_motor);
         }
+        JointUnion::Mover(j) => {
+            buf.append_i32(s.type_ as i32);
+            buf.append_vec3(j.linear_velocity);
+            buf.append_f32(j.max_force);
+            buf.append_vec3(j.axis_x);
+            buf.append_vec3(j.axis_z);
+            buf.append_vec2(j.impulse);
+            buf.append_i32(j.index_a);
+            buf.append_i32(j.index_b);
+            buf.append_f32(j.linear_mass);
+        }
+        JointUnion::Pogo(j) => {
+            buf.append_i32(s.type_ as i32);
+            buf.append_vec3(j.normal);
+            buf.append_f32(j.rest_length);
+            buf.append_f32(j.hertz);
+            buf.append_f32(j.damping_ratio);
+            buf.append_f32(j.max_tension_force);
+            buf.append_f32(j.max_compression_force);
+            buf.append_f32(j.impulse);
+            buf.append_i32(j.index_a);
+            buf.append_i32(j.index_b);
+            buf.append_transform(j.frame_a);
+            buf.append_transform(j.frame_b);
+            buf.append_vec3(j.delta_center);
+            buf.append_f32(j.linear_mass);
+            buf.append_f32(j.velocity);
+        }
         JointUnion::Filter => {
             buf.append_i32(JointType::Filter as i32);
         }
@@ -344,6 +374,8 @@ pub fn des_joint_sim(r: &mut SnapReader<'_>) -> JointSim {
         5 => JointType::Revolute,
         6 => JointType::Spherical,
         7 => JointType::Weld,
+        9 => JointType::Mover,
+        10 => JointType::Pogo,
         _ => JointType::Wheel,
     };
     let local_frame_a = r.transform();
@@ -566,6 +598,32 @@ pub fn des_joint_sim(r: &mut SnapReader<'_>) -> JointSim {
             enable_steering: r.bool(),
             enable_steering_limit: r.bool(),
             enable_steering_motor: r.bool(),
+        }),
+        9 => JointUnion::Mover(MoverJoint {
+            linear_velocity: r.vec3(),
+            max_force: r.f32(),
+            axis_x: r.vec3(),
+            axis_z: r.vec3(),
+            impulse: r.vec2(),
+            index_a: r.i32(),
+            index_b: r.i32(),
+            linear_mass: r.f32(),
+        }),
+        10 => JointUnion::Pogo(PogoJoint {
+            normal: r.vec3(),
+            rest_length: r.f32(),
+            hertz: r.f32(),
+            damping_ratio: r.f32(),
+            max_tension_force: r.f32(),
+            max_compression_force: r.f32(),
+            impulse: r.f32(),
+            index_a: r.i32(),
+            index_b: r.i32(),
+            frame_a: r.transform(),
+            frame_b: r.transform(),
+            delta_center: r.vec3(),
+            linear_mass: r.f32(),
+            velocity: r.f32(),
         }),
         _ => JointUnion::Filter,
     };

@@ -7,8 +7,8 @@
 use crate::id::{JointId, WorldId};
 use crate::math_functions::Transform;
 use crate::types::{
-    DistanceJointDef, FilterJointDef, MotorJointDef, ParallelJointDef, PrismaticJointDef,
-    RevoluteJointDef, SphericalJointDef, WeldJointDef, WheelJointDef,
+    DistanceJointDef, FilterJointDef, MotorJointDef, MoverJointDef, ParallelJointDef, PogoJointDef,
+    PrismaticJointDef, RevoluteJointDef, SphericalJointDef, WeldJointDef, WheelJointDef,
 };
 
 use crate::recording::ops::RecOp;
@@ -202,6 +202,29 @@ impl Recording {
         self.begin_record(RecOp::JointSetTorqueThreshold as u8);
         self.buffer.append_joint_id(joint);
         self.buffer.append_f32(threshold);
+        self.end_record();
+    }
+
+    /// Write framed `CreateMoverJoint` op.
+    pub fn write_create_mover_joint(
+        &mut self,
+        world: WorldId,
+        def: &MoverJointDef,
+        ret_id: JointId,
+    ) {
+        self.begin_record(RecOp::CreateMoverJoint as u8);
+        self.buffer.append_world_id(world);
+        self.buffer.append_mover_joint_def(def);
+        self.buffer.append_joint_id(ret_id);
+        self.end_record();
+    }
+
+    /// Write framed `CreatePogoJoint` op.
+    pub fn write_create_pogo_joint(&mut self, world: WorldId, def: &PogoJointDef, ret_id: JointId) {
+        self.begin_record(RecOp::CreatePogoJoint as u8);
+        self.buffer.append_world_id(world);
+        self.buffer.append_pogo_joint_def(def);
+        self.buffer.append_joint_id(ret_id);
         self.end_record();
     }
 }

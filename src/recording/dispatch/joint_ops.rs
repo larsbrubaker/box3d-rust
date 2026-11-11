@@ -6,9 +6,9 @@
 //! SPDX-License-Identifier: MIT
 
 use crate::joint::{
-    create_distance_joint, create_filter_joint, create_motor_joint, create_parallel_joint,
-    create_prismatic_joint, create_revolute_joint, create_spherical_joint, create_weld_joint,
-    create_wheel_joint,
+    create_distance_joint, create_filter_joint, create_motor_joint, create_mover_joint,
+    create_parallel_joint, create_pogo_joint, create_prismatic_joint, create_revolute_joint,
+    create_spherical_joint, create_weld_joint, create_wheel_joint,
 };
 use crate::recording::dispatch::RecReader;
 use crate::recording::ops::RecOp;
@@ -331,6 +331,54 @@ pub(super) fn dispatch(
                     world,
                     rdr.make_joint_id(joint),
                     threshold,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::CreateMoverJoint => {
+            let mut s = rdr.snap();
+            let _world_id = s.world_id();
+            let def = s.mover_joint_def();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                let mut s2 = rdr.snap();
+                let rec_id = s2.joint_id();
+                rdr.sync_from(&s2);
+                let mut def = def;
+                def.base.body_id_a = rdr.make_body_id(def.base.body_id_a);
+                def.base.body_id_b = rdr.make_body_id(def.base.body_id_b);
+                let got = create_mover_joint(world, &def);
+                RecReader::check_id(
+                    &mut rdr.ok,
+                    "joint",
+                    got.index1,
+                    got.generation,
+                    rec_id.index1,
+                    rec_id.generation,
+                );
+            }
+            let _ = (payload_start, payload_size);
+        }
+        RecOp::CreatePogoJoint => {
+            let mut s = rdr.snap();
+            let _world_id = s.world_id();
+            let def = s.pogo_joint_def();
+            rdr.sync_from(&s);
+            if rdr.ok {
+                let mut s2 = rdr.snap();
+                let rec_id = s2.joint_id();
+                rdr.sync_from(&s2);
+                let mut def = def;
+                def.base.body_id_a = rdr.make_body_id(def.base.body_id_a);
+                def.base.body_id_b = rdr.make_body_id(def.base.body_id_b);
+                let got = create_pogo_joint(world, &def);
+                RecReader::check_id(
+                    &mut rdr.ok,
+                    "joint",
+                    got.index1,
+                    got.generation,
+                    rec_id.index1,
+                    rec_id.generation,
                 );
             }
             let _ = (payload_start, payload_size);

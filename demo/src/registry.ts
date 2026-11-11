@@ -180,6 +180,10 @@ export const SAMPLES: SampleEntry[] = [
     ["CapsulePlane", "live", "character", "capsule-plane"],
     ["MoverOverlap", "live", "character", "mover-overlap"],
     ["Mover", "live", "character", "mover"],
+    // Planned: added upstream at 3362633. A capsule character driven by the new mover joint
+    // and held up by a pogo joint rebuilt every step; the library joints are ported, the
+    // sample is not.
+    ["Dynamic Mover", "planned"],
     // Partial: RigidbodyCharacter physics, third-person boom, and Debug (V) match C.
     // Remaining disclosed divergence: mouse locks on canvas click (browsers can't
     // auto-lock like sapp_lock_mouse).

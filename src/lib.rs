@@ -139,12 +139,13 @@ pub use math_functions::{
 };
 pub use types::{
     default_body_def, default_distance_joint_def, default_explosion_def, default_filter,
-    default_filter_joint_def, default_motor_joint_def, default_parallel_joint_def,
-    default_prismatic_joint_def, default_query_filter, default_revolute_joint_def,
-    default_shape_def, default_spherical_joint_def, default_weld_joint_def,
-    default_wheel_joint_def, default_world_def, BodyDef, BodyType, Capacity, Counters,
-    DistanceJointDef, ExplosionDef, Filter, FilterJointDef, JointDef, MotionLocks, MotorJointDef,
-    ParallelJointDef, PrismaticJointDef, QueryFilter, RayResult, RevoluteJointDef, ShapeDef,
+    default_filter_joint_def, default_motor_joint_def, default_mover_joint_def,
+    default_parallel_joint_def, default_pogo_joint_def, default_prismatic_joint_def,
+    default_query_filter, default_revolute_joint_def, default_shape_def,
+    default_spherical_joint_def, default_weld_joint_def, default_wheel_joint_def,
+    default_world_def, BodyDef, BodyType, Capacity, Counters, DistanceJointDef, ExplosionDef,
+    Filter, FilterJointDef, JointDef, MotionLocks, MotorJointDef, MoverJointDef, ParallelJointDef,
+    PogoJointDef, PrismaticJointDef, QueryFilter, RayResult, RevoluteJointDef, ShapeDef,
     SphericalJointDef, WeldJointDef, WheelJointDef, WorldCastOutput, WorldDef, BODY_TYPE_COUNT,
 };
 
