@@ -60,6 +60,37 @@ fn set_heading(state: &mut CharacterState, fwd_x: f32, fwd_z: f32) {
     };
 }
 
+/// Drive the Geometric Mover the way the page does: third person on, the C key table
+/// (`GetMoverInput`) and a camera yaw whose look direction is the requested heading.
+#[allow(clippy::too_many_arguments)]
+fn drive_mover(
+    state: &mut CharacterState,
+    fwd_x: f32,
+    fwd_z: f32,
+    throttle_x: f32,
+    throttle_y: f32,
+    jump: bool,
+    sprint: bool,
+    walk: bool,
+) {
+    state.third_person = true;
+    if let SceneState::Mover(m) = &mut state.state {
+        m.keys = dynamic::camera::KeysDown {
+            w: throttle_x > 0.33,
+            s: throttle_x < -0.33,
+            d: throttle_y > 0.33,
+            a: throttle_y < -0.33,
+            space: jump,
+            shift: sprint,
+            control: walk,
+        };
+        // forward = -camera forward (horizontal): -(sin yaw, cos yaw).
+        m.camera.yaw = (-fwd_x).atan2(-fwd_z);
+        m.camera.pitch = 0.3;
+        m.camera.update_transform();
+    }
+}
+
 #[test]
 fn mover_scene_stays_finite_walking_the_level() {
     let dt = 1.0 / 60.0;
@@ -70,11 +101,18 @@ fn mover_scene_stays_finite_walking_the_level() {
     // the dynamic-body push loop (door, sphere) are all exercised.
     for step in 0..900 {
         let angle = (step as f32) * 0.03;
-        set_heading(&mut state, angle.cos(), angle.sin());
-        state.input.throttle_x = 1.0;
-        state.input.throttle_y = if (step / 60) % 2 == 0 { 0.5 } else { -0.5 };
-        state.input.jump = step % 75 == 0;
-        state.input.want_sprint = step % 40 < 18;
+        let strafe = if (step / 60) % 2 == 0 { 0.5 } else { -0.5 };
+        let walk = step % 200 > 170;
+        drive_mover(
+            &mut state,
+            angle.cos(),
+            angle.sin(),
+            1.0,
+            strafe,
+            step % 75 == 0,
+            step % 40 < 18,
+            walk,
+        );
         state.clip_velocity = step % 120 < 60; // toggle the Clip Velocity control
 
         mover::step(&mut state, dt, 4);
@@ -103,18 +141,23 @@ fn mover_scene_stays_finite_ramming_obstacles() {
     for &(tx, tz) in &targets {
         for _ in 0..200 {
             let (px, pz) = if let SceneState::Mover(m) = &state.state {
-                (m.transform.p.x as f32, m.transform.p.z as f32)
+                (m.mover.position.x as f32, m.mover.position.z as f32)
             } else {
                 (0.0, 0.0)
             };
             let dx = tx - px;
             let dz = tz - pz;
             let len = (dx * dx + dz * dz).sqrt().max(1e-4);
-            set_heading(&mut state, dx / len, dz / len);
-            state.input.throttle_x = 1.0;
-            state.input.throttle_y = 0.0;
-            state.input.want_sprint = true;
-            state.input.jump = step % 50 == 0;
+            drive_mover(
+                &mut state,
+                dx / len,
+                dz / len,
+                1.0,
+                0.0,
+                step % 50 == 0,
+                true,
+                false,
+            );
             mover::step(&mut state, dt, 4);
             assert_scene_finite(&state, step);
             step += 1;
@@ -136,11 +179,20 @@ fn mover_scene_stays_finite_under_random_input() {
 
     for step in 0..2000 {
         let angle = next() * std::f32::consts::TAU;
-        set_heading(&mut state, angle.cos(), angle.sin());
-        state.input.throttle_x = 2.0 * next() - 1.0;
-        state.input.throttle_y = 2.0 * next() - 1.0;
-        state.input.want_sprint = next() > 0.4;
-        state.input.jump = next() > 0.85;
+        let throttle_x = 2.0 * next() - 1.0;
+        let throttle_y = 2.0 * next() - 1.0;
+        let sprint = next() > 0.4;
+        let jump = next() > 0.85;
+        drive_mover(
+            &mut state,
+            angle.cos(),
+            angle.sin(),
+            throttle_x,
+            throttle_y,
+            jump,
+            sprint,
+            false,
+        );
         state.clip_velocity = next() > 0.5;
         mover::step(&mut state, dt, 4);
         assert_scene_finite(&state, step);

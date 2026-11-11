@@ -28,6 +28,9 @@
 
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
+pub(crate) mod dynamic;
+pub(crate) mod dynamic_mover;
+pub(crate) mod hulls;
 mod mover;
 mod overlap;
 mod rigid_body;
@@ -43,7 +46,6 @@ use box3d_rust::world::World;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
-pub(crate) use mover::MoverController;
 pub(crate) use rigid_body::RigidbodyCharacter;
 
 /// Box3D `b3HexColor` values used by the Character samples (draw.h enum).
@@ -74,6 +76,7 @@ pub(crate) enum SceneKind {
     MoverOverlap,
     Mover,
     RigidBody,
+    DynamicMover,
 }
 
 /// Camera-relative input the page feeds each step (C reads keyboard + camera).
@@ -117,6 +120,13 @@ pub(crate) struct RenderCapsule {
     pub style: u32,
 }
 
+/// One world-space debug label (C `DrawString3D`).
+pub(crate) struct DebugText {
+    pub p: Pos,
+    pub color: u32,
+    pub text: String,
+}
+
 /// Pack an `0xRRGGBB` color + body-type index into a `draw_data` style word so a
 /// render-only capsule matches the engine-driven style stream.
 pub(crate) fn capsule_style(rgb: u32, body_type_index: u32) -> u32 {
@@ -127,10 +137,12 @@ pub(crate) fn capsule_style(rgb: u32, body_type_index: u32) -> u32 {
 pub(crate) enum SceneState {
     /// CapsulePlane / MoverOverlap: a draggable query capsule + solved planes.
     Drag(overlap::DragScene),
-    /// BasicMover kinematic controller.
-    Mover(MoverController),
+    /// GeometricMoverSample: the kinematic GeometricMover + falling tree / box.
+    Mover(Box<mover::GeometricMoverScene>),
     /// s&box-style dynamic rigid-body character.
     RigidBody(RigidbodyCharacter),
+    /// DynamicMoverSample playground (boxed: it carries the whole sample state).
+    Dynamic(Box<dynamic::DynamicMoverSample>),
 }
 
 pub(crate) struct CharacterState {
@@ -141,10 +153,14 @@ pub(crate) struct CharacterState {
     pub ground_edges: Vec<f32>,
     /// Render-only capsules appended after `bodies` in the pose stream.
     pub render_capsules: Vec<RenderCapsule>,
+    /// Convex-hull render channel (see [`hulls`]).
+    pub hulls: Vec<hulls::HullVis>,
     /// Debug line segments: `[x0,y0,z0, x1,y1,z1, color]` septuples.
     pub debug_segs: Vec<f32>,
     /// Debug points: `[x,y,z, color, size]` quintuples.
     pub debug_pts: Vec<f32>,
+    /// World-space debug labels (C `DrawString3D`).
+    pub debug_text: Vec<DebugText>,
     /// Scalar status readouts (scene-specific; see `character_status`).
     pub status: Vec<f32>,
     pub input: InputState,
@@ -161,8 +177,10 @@ impl CharacterState {
             bodies: Vec::new(),
             ground_edges: Vec::new(),
             render_capsules: Vec::new(),
+            hulls: Vec::new(),
             debug_segs: Vec::new(),
             debug_pts: Vec::new(),
+            debug_text: Vec::new(),
             status: Vec::new(),
             input: InputState::default(),
             clip_velocity: true,
@@ -197,6 +215,11 @@ pub(crate) fn with_state<R>(f: impl FnOnce(&mut CharacterState) -> R) -> R {
     })
 }
 
+/// C `Sample::CreateWorld` (sample.cpp:395) with the default `SampleContext`: the default
+/// world def (gravity `{0,-10,0}`, sleep on; `workerCount = 1` has no counterpart in the
+/// serial port), then `b3World_SetContactRecycleDistance( m_context->recycleDistance )`
+/// with the context's 0.05f. That literal is one ulp above the world default
+/// `10 * B3_LINEAR_SLOP`, so it is applied explicitly to match the C samples bit-for-bit.
 pub(crate) fn new_world() -> World {
     let mut def = default_world_def();
     def.gravity = Vec3 {
@@ -204,7 +227,10 @@ pub(crate) fn new_world() -> World {
         y: -10.0,
         z: 0.0,
     };
-    World::new(&def)
+    def.enable_sleep = true;
+    let mut world = World::new(&def);
+    box3d_rust::world::world_set_contact_recycle_distance(&mut world, 0.05);
+    world
 }
 
 /// The shared mover capsule (`CharacterMover::Initialize`, C `{ {0,-0.5,0}, {0,0.5,0}, 0.3 }`).
@@ -244,7 +270,7 @@ pub(crate) fn ground_materials() -> Vec<box3d_rust::geometry::SurfaceMaterial> {
     vec![m(0.6, 0.0, 0.0), m(0.6, 1.0, 1.0), m(0.1, 0.0, 2.0)]
 }
 
-fn install(state: CharacterState) -> u32 {
+pub(crate) fn install(state: CharacterState) -> u32 {
     let n = state.bodies.len() as u32 + state.render_capsules.len() as u32;
     STATE.with(|cell| *cell.borrow_mut() = Some(state));
     n
@@ -370,12 +396,14 @@ pub fn character_step(dt: f32, sub_steps: i32) -> u32 {
         state.render_capsules.clear();
         state.debug_segs.clear();
         state.debug_pts.clear();
+        state.debug_text.clear();
         state.status.clear();
 
         match state.state {
             SceneState::Drag(_) => overlap::step(state),
             SceneState::Mover(_) => mover::step(state, dt, sub_steps),
             SceneState::RigidBody(_) => rigid_body::step(state, dt, sub_steps),
+            SceneState::Dynamic(_) => dynamic::step(state, dt, sub_steps),
         }
 
         (state.bodies.len() + state.render_capsules.len()) as u32
@@ -442,6 +470,77 @@ pub fn character_debug_points() -> Vec<f32> {
     with_state(|state| state.debug_pts.clone())
 }
 
+/// World-space debug labels as JSON, the `collect_debug_text` schema the page's
+/// `TextLabelOverlay` reads: `[{"x":..,"y":..,"z":..,"color":0xRRGGBB,"text":".."}]`.
+#[wasm_bindgen]
+pub fn character_debug_text() -> String {
+    with_state(|state| {
+        let mut out = String::from("[");
+        for (i, t) in state.debug_text.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            let escaped = t.text.replace('\\', "\\\\").replace('"', "\\\"");
+            out.push_str(&format!(
+                "{{\"x\":{},\"y\":{},\"z\":{},\"color\":{},\"text\":\"{}\"}}",
+                t.p.x as f32, t.p.y as f32, t.p.z as f32, t.color, escaped
+            ));
+        }
+        out.push(']');
+        out
+    })
+}
+
+/// Per-frame raw key state (C `IsKeyDown`) for the scenes that read
+/// `Sample::GetMoverInput` (Geometric Mover, Dynamic Mover): WASD, Space, either Shift,
+/// either Ctrl.
+#[wasm_bindgen]
+pub fn character_set_keys(
+    w: bool,
+    a: bool,
+    s: bool,
+    d: bool,
+    space: bool,
+    shift: bool,
+    control: bool,
+) {
+    let keys = dynamic::camera::KeysDown {
+        w,
+        a,
+        s,
+        d,
+        space,
+        shift,
+        control,
+    };
+    with_state(|state| match &mut state.state {
+        SceneState::Mover(m) => m.keys = keys,
+        SceneState::Dynamic(d) => d.keys = keys,
+        _ => {}
+    });
+}
+
+/// Per-frame camera feed for the `GetMoverInput` scenes: the page's yaw / pitch
+/// (radians, C `m_camera->m_yaw/m_pitch`), the wheel-zoom radius (`m_camera->m_radius`),
+/// and the frame time (`ImGui::GetIO().DeltaTime`, the Dynamic Mover aim blend).
+#[wasm_bindgen]
+pub fn character_set_camera(yaw: f32, pitch: f32, radius: f32, frame_dt: f32) {
+    with_state(|state| {
+        let camera = match &mut state.state {
+            SceneState::Mover(m) => &mut m.camera,
+            SceneState::Dynamic(d) => {
+                d.frame_dt = frame_dt;
+                &mut d.camera
+            }
+            _ => return,
+        };
+        camera.yaw = yaw;
+        camera.pitch = pitch;
+        camera.radius = radius;
+        camera.update_transform();
+    });
+}
+
 /// Scene-specific scalar readouts (see each scene's `step`):
 /// - Drag scenes: `[plane_count, degenerate_count]`
 /// - Mover / Rigid Body: `[px,py,pz, vx,vy,vz, on_ground, sprint]`
@@ -456,12 +555,16 @@ pub fn character_status() -> Vec<f32> {
 pub fn character_follow_target() -> Vec<f32> {
     with_state(|state| match &state.state {
         SceneState::Mover(m) => vec![
-            m.transform.p.x as f32,
-            m.transform.p.y as f32,
-            m.transform.p.z as f32,
+            m.mover.position.x as f32,
+            m.mover.position.y as f32,
+            m.mover.position.z as f32,
         ],
         SceneState::RigidBody(c) => {
             let p = c.position(&state.world);
+            vec![p.x as f32, p.y as f32, p.z as f32]
+        }
+        SceneState::Dynamic(d) => {
+            let p = box3d_rust::body::body_get_position(&state.world, d.mover.body_id());
             vec![p.x as f32, p.y as f32, p.z as f32]
         }
         SceneState::Drag(_) => Vec::new(),

@@ -11,7 +11,7 @@
 
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
-use crate::mover_shared::{self, MoverBody, MoverDraw, MoverParams, JUMP_SPEED};
+use crate::geometric_mover::{GeometricMover, GeometricMoverDef};
 use crate::obj_loader::load_building_mesh;
 use crate::rng::XorShift32;
 use box3d_rust::body::create_body;
@@ -240,21 +240,19 @@ pub fn build_village(world: &mut World, grid: i32) -> VillageScene {
 // Village character mover (C `sample_compound.cpp` Village embeds a CharacterMover)
 // ---------------------------------------------------------------------------
 //
-// This is the same kinematic `CharacterMover` the Character page uses: both the
-// `VillageMover` here and `character_demo`'s `MoverController` delegate the whole
-// integration (friction, accelerate, pogo spring, plane slide, dynamic-body push,
-// clip) to the one shared port in [`crate::mover_shared`]. The Village mover only
-// differs in its inputs: it collides with everything (default query filters), has
-// no shapes to ignore, and always clips its velocity.
+// C Village embeds the same `GeometricMover` the Character page's Geometric Mover
+// scene uses (upstream 3362633); both delegate the whole integration (friction,
+// accelerate, pogo spring, plane slide, dynamic-body push, clip) to the one shared
+// port in [`crate::geometric_mover`]. The Village mover has no shapes to ignore and
+// always clips its velocity (the `GeometricMover` defaults).
 
 /// Compound Village character mover + the C sweeping query visualization.
 pub struct VillageMover {
     pub mover_pos: Pos,
     pub velocity: Vec3,
     pub capsule: Capsule,
-    pogo_velocity: f32,
-    on_ground: bool,
-    sprint: bool,
+    /// C `m_mover` (`GeometricMover`); `mover_pos` / `velocity` mirror it after updates.
+    mover: GeometricMover,
     throttle_x: f32,
     throttle_y: f32,
     jump: bool,
@@ -281,13 +279,17 @@ impl VillageMover {
             y: 20.0 as _,
             z: (-0.45 * world_width) as _,
         };
+        // C: GeometricMoverDef moverDef; moverDef.position = position; m_mover.Create(...).
+        let mut mover = GeometricMover::new();
+        mover.create(&GeometricMoverDef {
+            position: start,
+            ..GeometricMoverDef::default()
+        });
         Self {
             mover_pos: start,
             velocity: VEC3_ZERO,
-            capsule: mover_shared::mover_capsule(),
-            pogo_velocity: 0.0,
-            on_ground: false,
-            sprint: false,
+            capsule: mover.capsule,
+            mover,
             throttle_x: 0.0,
             throttle_y: 0.0,
             jump: false,
@@ -368,53 +370,39 @@ impl VillageMover {
         self.third_person = !self.third_person;
     }
 
-    /// One mover integration step against `world` (does not step the world).
-    /// Delegates to the shared [`crate::mover_shared::solve_move`] (C
-    /// `CharacterMover::SolveMove`), so the Village mover picks up the friction,
-    /// dynamic-body push loop, and clip behavior identical to the Character page.
+    /// One mover integration step against `world` (does not step the world): C
+    /// `Village::Step`'s `Jump` + `GeometricMover::Update` with the walk / sprint speed
+    /// scale (sprint only while grounded). A jump press queued by the page persists until
+    /// the mover is grounded (the page sends key edges rather than held state).
     pub fn solve_move(&mut self, world: &mut World, time_step: f32) {
         if time_step <= 0.0 {
             return;
         }
 
-        // Jump / sprint from the previous frame's ground state, matching C's `Step`
-        // order (applied before SolveMove). A queued jump persists until grounded.
-        if self.jump && self.on_ground {
-            self.velocity.y = JUMP_SPEED;
-            self.on_ground = false;
+        if self.jump && self.mover.jump() {
             self.jump = false;
         }
-        self.sprint = self.on_ground && self.want_sprint;
 
-        let mut body = MoverBody {
-            position: self.mover_pos,
-            velocity: self.velocity,
-            capsule: self.capsule,
-            pogo_velocity: self.pogo_velocity,
-            on_ground: self.on_ground,
-            sprint: self.sprint,
+        let speed_scale = if self.mover.on_ground && self.want_sprint {
+            1.5
+        } else {
+            1.0
         };
-        // The Village mover collides with everything, ignores nothing, and always
-        // clips its velocity (C Village uses the default CharacterMover behavior).
-        let params = MoverParams {
-            forward: self.forward,
-            right: self.right,
-            throttle_x: self.throttle_x,
-            throttle_y: self.throttle_y,
-            clip_velocity: true,
-            ignore_shapes: &[],
-            pogo_filter: default_query_filter(),
-            mover_filter: default_query_filter(),
-            cast_filter: default_query_filter(),
+        let throttle = box3d_rust::math_functions::Vec2 {
+            x: self.throttle_x,
+            y: self.throttle_y,
         };
-        let mut draw = MoverDraw::default();
-        mover_shared::solve_move(world, &mut body, &params, &mut draw, time_step);
+        self.mover.update(
+            world,
+            time_step,
+            self.forward,
+            self.right,
+            throttle,
+            speed_scale,
+        );
 
-        self.mover_pos = body.position;
-        self.velocity = body.velocity;
-        self.pogo_velocity = body.pogo_velocity;
-        self.on_ground = body.on_ground;
-        self.sprint = body.sprint;
+        self.mover_pos = self.mover.position;
+        self.velocity = self.mover.velocity;
     }
 
     /// C Village::Step query sweep (:711-779): a moving ray cast, a sphere shape
