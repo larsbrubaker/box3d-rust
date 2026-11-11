@@ -15,7 +15,7 @@ import {
 } from "../interaction.ts";
 import { getWasm } from "../wasm.ts";
 import { assertRouteScenes } from "../registry.ts";
-import { createButton, createCanvasOverlay, createInfoBox, createSlider } from "../controls.ts";
+import { createButton, createButtonGroup, createCanvasOverlay, createSlider } from "../controls.ts";
 import { demoPage, makeStyleGate, runLoop } from "./common.ts";
 import {
   applyInstancedStyles,
@@ -170,7 +170,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       "ported from <code>benchmarks.c</code> with Erin's DEBUG/release body counts.",
     "Ctrl+click grab · Shift+click spawn · click select · P/O/R",
     wasm.version(),
-    { category: "Benchmark", samplesShell: true },
+    { category: "Benchmark", samplesShell: true, info: SCENE_INFO },
   );
 
   let scene: Scene =
@@ -178,8 +178,6 @@ export function init(container: HTMLElement, initialScene?: string) {
   let treeGridSize = 100;
   let ctrl!: SimControllerWithTick;
 
-  const infoBox = createInfoBox(SCENE_INFO[scene]);
-  controls.appendChild(infoBox);
   const overlay = createCanvasOverlay(page);
 
   const demo = new DemoScene(canvas, { target: [0, 8, 0], distance: 55, fov: 50, gridSize: 400 });
@@ -346,7 +344,6 @@ export function init(container: HTMLElement, initialScene?: string) {
     buildGround();
     const [yaw, pitch, dist, target] = SCENE_VIEW[scene];
     setView(demo, yaw, pitch, dist, target);
-    infoBox.innerHTML = SCENE_INFO[scene];
     treeGrid.style.display = scene === "trees" ? "" : "none";
     explosionControls.style.display = scene === "explosion" ? "" : "none";
     heightFieldControls.style.display = scene === "height-field" ? "" : "none";
@@ -361,6 +358,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       type: "select",
       key: "scene",
       label: "Sample",
+      role: "scene",
       options: SCENES.map((s) => ({ label: SCENE_LABEL[s], value: s })),
       default: scene,
       restart: true,
@@ -382,16 +380,19 @@ export function init(container: HTMLElement, initialScene?: string) {
   }) as SimControllerWithTick;
 
   // --- Falling Trees grid radio (sample_benchmark.cpp:702-719) ---
-  const treeGrid = document.createElement("div");
-  treeGrid.className = "control-row";
-  for (const [label, value] of [["100 cm", 100], ["50 cm", 50], ["25 cm (~1M tris)", 25]] as const) {
-    treeGrid.appendChild(
-      createButton(label, () => {
-        treeGridSize = value;
-        if (scene === "trees") reset();
-      }),
-    );
-  }
+  // A radio group (C RadioButton) so the active grid size is visible.
+  const treeGrid = createButtonGroup(
+    [
+      { label: "100 cm", value: "100" },
+      { label: "50 cm", value: "50" },
+      { label: "25 cm (~1M tris)", value: "25" },
+    ],
+    String(treeGridSize),
+    (v) => {
+      treeGridSize = Number(v);
+      if (scene === "trees") reset();
+    },
+  );
   controls.appendChild(treeGrid);
 
   // --- Explosion Magnitude slider + Explode button (:466-475) ---

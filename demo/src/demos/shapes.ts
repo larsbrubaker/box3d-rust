@@ -3,7 +3,7 @@
 // Static Invoke, Conveyor Belt, Conveyor Mesh, Wind, Wind Drop, Wind Flap.
 
 import * as THREE from "three";
-import { createButton, createInfoBox } from "../controls.ts";
+import { createButton } from "../controls.ts";
 import {
   attachInteraction,
   makeInteractAdapter,
@@ -81,25 +81,36 @@ const str = (v: ParamValues, k: string) => v[k] as string;
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("shapes", SCENES);
-  const { canvas, controls } = demoPage(
+  const FRICTION_RAMPS = "friction &amp; rolling-resistance ramps.";
+  const ISOTROPIC = "friction is direction-independent.";
+  const CONVEYOR = "tangent-velocity surfaces.";
+  const WIND = "aerodynamic drag &amp; lift.";
+  const { canvas, controls, panel } = demoPage(
     container,
     "Shapes",
     "The 12 official Shapes samples ported from <code>sample_shapes.cpp</code> — friction, " +
       "rolling resistance, restitution, conveyor belts (box &amp; mesh), and the wind/lift samples.",
     "Ctrl+click grab · Shift+click spawn · P/O/R",
     wasm.version(),
-    { category: "Shapes", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "<strong>Inclined Plane / Rolling / High Resistance</strong> — friction &amp; rolling-resistance ramps.<br>" +
-        "<strong>Isotropic Friction / Slide Twist</strong> — friction is direction-independent.<br>" +
-        "<strong>Restitution</strong> — bounce ramp (Sphere / Box).<br>" +
-        "<strong>Static Invoke</strong> — create a static shape at runtime (Invoke vs Passive contact).<br>" +
-        "<strong>Conveyor Belt / Mesh</strong> — tangent-velocity surfaces.<br>" +
-        "<strong>Wind / Wind Drop / Wind Flap</strong> — aerodynamic drag &amp; lift.",
-    ),
+    {
+      category: "Shapes",
+      samplesShell: true,
+      info: {
+        "inclined-plane": `<strong>Inclined Plane</strong> — ${FRICTION_RAMPS}`,
+        "rolling-resistance": `<strong>Rolling Resistance</strong> — ${FRICTION_RAMPS}`,
+        "high-resistance": `<strong>High Resistance</strong> — ${FRICTION_RAMPS}`,
+        "isotropic-friction": `<strong>Isotropic Friction</strong> — ${ISOTROPIC}`,
+        "slide-twist": `<strong>Slide Twist</strong> — ${ISOTROPIC}`,
+        restitution: "<strong>Restitution</strong> — bounce ramp (Sphere / Box).",
+        "static-invoke":
+          "<strong>Static Invoke</strong> — create a static shape at runtime (Invoke vs Passive contact).",
+        "conveyor-belt": `<strong>Conveyor Belt</strong> — ${CONVEYOR}`,
+        "conveyor-mesh": `<strong>Conveyor Mesh</strong> — ${CONVEYOR}`,
+        wind: `<strong>Wind</strong> — ${WIND}`,
+        "wind-drop": `<strong>Wind Drop</strong> — ${WIND}`,
+        "wind-flap": `<strong>Wind Flap</strong> — ${WIND}`,
+      },
+    },
   );
 
   let scene: Scene =
@@ -109,10 +120,8 @@ export function init(container: HTMLElement, initialScene?: string) {
   // Gate for the async Conveyor Mesh reset (fetches conveyor.obj before the scene
   // exists in wasm). The loop skips stepping/rendering until this is true.
   let sceneReady = false;
-  const hintEl = container.querySelector(".canvas-hint") as HTMLElement | null;
-  const baseHint = hintEl?.textContent ?? "";
   const setLoading = (on: boolean) => {
-    if (hintEl) hintEl.textContent = on ? "Loading conveyor mesh…" : baseHint;
+    panel.setHintOverride(on ? "Loading conveyor mesh…" : null);
   };
 
   const demo = new DemoScene(canvas, { target: [0, 7.5, 0], distance: 60, shadowExtent: 80 });
@@ -281,6 +290,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       type: "select",
       key: "sample",
       label: "Sample",
+      role: "scene",
       options: SCENES.map((s) => ({ label: sceneLabel(s), value: s })),
       default: scene,
       restart: true,

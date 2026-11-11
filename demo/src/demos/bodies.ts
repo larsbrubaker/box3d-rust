@@ -3,7 +3,7 @@
 // Disable, Cast, Kinematic, Lock Mixing, Fixed Rotation, Class Ring.
 
 import * as THREE from "three";
-import { createButton, createInfoBox, createReadout, updateReadout } from "../controls.ts";
+import { createButton, createReadout, updateReadout } from "../controls.ts";
 import {
   attachInteraction,
   DebugDrawOverlay,
@@ -99,31 +99,43 @@ function typeId(v: string): number {
 export function init(container: HTMLElement, initialScene?: string) {
   const wasm = getWasm();
   assertRouteScenes("bodies", SCENES);
+  const DZHANIBEKOV = "the Dzhanibekov (tennis-racket) effect.";
+  const MOTION_LOCKS = "motion locks.";
   const { canvas, controls } = demoPage(
     container,
     "Bodies",
     "The eleven Bodies-category samples from <code>sample_bodies.cpp</code> — body types, " +
       "gyroscopic effects, spinning-top precession, explosions, kinematic targets, casts, motion locks.",
-    "Ctrl+click grab · Shift+click spawn · Shift+drag moves the Cast target · P/O/R",
+    "Ctrl+click grab · Shift+click spawn · P/O/R",
     wasm.version(),
-    { category: "Bodies", samplesShell: true },
-  );
-
-  controls.appendChild(
-    createInfoBox(
-      "<strong>Body Type</strong> — switch platform/attachments between static / kinematic / dynamic.<br>" +
-        "<strong>Spinning Book / Gyroscopic Torque</strong> — the Dzhanibekov (tennis-racket) effect.<br>" +
-        "<strong>Gyroscopic Precession</strong> — a field of tilted spinning tops; the measured top's " +
-        "precession rate is compared to the classical heavy-top solution (Goldstein 5.7).<br>" +
-        "<strong>Weeble</strong> — self-righting capsule; Teleport / Explode.<br>" +
-        "<strong>Disable</strong> — enable/disable a welded link or the ball.<br>" +
-        "<strong>Cast</strong> — ray / sphere / capsule / mover queries against a Shift-drag target " +
-        "(cast proxy shapes drawn as translucent solids; the blue target as a wireframe).<br>" +
-        "<strong>Kinematic</strong> — a driven Lissajous target. <strong>Lock Mixing / Fixed Rotation</strong> — motion locks.<br>" +
-        "<strong>Class Ring</strong> — a ring of 24 capsules with a heavy gem, spun at 100 rad/s; " +
-        "the gem flips from bottom to top. Runs at 960 Hz / 8 sub-steps (16 steps per rendered " +
-        "frame, as in C), so the Hertz and Sub-steps sliders do not apply to this scene.",
-    ),
+    {
+      category: "Bodies",
+      samplesShell: true,
+      info: {
+        "body-type":
+          "<strong>Body Type</strong> — switch platform/attachments between static / kinematic / dynamic.",
+        "spinning-book": `<strong>Spinning Book</strong> — ${DZHANIBEKOV}`,
+        "gyroscopic-torque": `<strong>Gyroscopic Torque</strong> — ${DZHANIBEKOV}`,
+        "gyroscopic-precession":
+          "<strong>Gyroscopic Precession</strong> — a field of tilted spinning tops; the measured top's " +
+          "precession rate is compared to the classical heavy-top solution (Goldstein 5.7).",
+        weeble: "<strong>Weeble</strong> — self-righting capsule; Teleport / Explode.",
+        disable: "<strong>Disable</strong> — enable/disable a welded link or the ball.",
+        cast:
+          "<strong>Cast</strong> — ray / sphere / capsule / mover queries against a Shift-drag target " +
+          "(cast proxy shapes drawn as translucent solids; the blue target as a wireframe).",
+        kinematic: "<strong>Kinematic</strong> — a driven Lissajous target.",
+        "lock-mixing": `<strong>Lock Mixing</strong> — ${MOTION_LOCKS}`,
+        "fixed-rotation": `<strong>Fixed Rotation</strong> — ${MOTION_LOCKS}`,
+        "class-ring":
+          "<strong>Class Ring</strong> — a ring of 24 capsules with a heavy gem, spun at 100 rad/s; " +
+          "the gem flips from bottom to top. Runs at 960 Hz / 8 sub-steps (16 steps per rendered " +
+          "frame, as in C), so the Hertz and Sub-steps sliders do not apply to this scene.",
+      },
+      sceneHints: {
+        cast: "Shift+drag moves the cast target · Ctrl+click grab · P/O/R",
+      },
+    },
   );
 
   let scene: Scene =
@@ -310,6 +322,7 @@ export function init(container: HTMLElement, initialScene?: string) {
       type: "select",
       key: "sample",
       label: "Sample",
+      role: "scene",
       options: SCENES.map((s) => ({
         label: s.replace(/(^|-)([a-z])/g, (_m, p, c: string) => (p ? " " : "") + c.toUpperCase()),
         value: s,
