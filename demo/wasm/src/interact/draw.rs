@@ -39,8 +39,8 @@ thread_local! {
     static DEBUG_FLAGS: Cell<u32> = const { Cell::new(0) };
     /// `b3DebugDraw.jointScale` (default 1).
     static JOINT_SCALE: Cell<f32> = const { Cell::new(1.0) };
-    /// `b3DebugDraw.forceScale` (default 1).
-    static FORCE_SCALE: Cell<f32> = const { Cell::new(1.0) };
+    /// `b3DebugDraw.forceScale` (`b3DefaultDebugDraw` default 0.001 since upstream 3362633).
+    static FORCE_SCALE: Cell<f32> = const { Cell::new(DEFAULT_FORCE_SCALE) };
     /// Large-world draw origin subtracted from every emitted point/segment/label,
     /// in `b3Pos` space (f64 under `double-precision`) *before* the `f32`
     /// truncation — the shared far-sample mechanism (C's draw-origin trick). The
@@ -82,14 +82,22 @@ pub fn set_draw_scales(joint_scale: f32, force_scale: f32) {
     FORCE_SCALE.with(|c| c.set(force_scale));
 }
 
-/// Restore the debug-draw joint/force scales to their `b3DebugDraw` defaults (both
-/// 1.0). These live in thread-locals, so without an explicit reset a scene that set
-/// a small `forceScale` (e.g. the Cylinder stacks' 0.001, Mesh Drop's 0.1) would
-/// leak its value onto every subsequent demo. Called at each world-construction
-/// seam via [`crate::interact::reset_scene_scales`]; a scene needing a non-default
-/// scale re-applies it after reset (via `set_draw_scales` / `sim_set_draw_scales`).
+/// `b3DefaultDebugDraw().jointScale` (types.c).
+pub const DEFAULT_JOINT_SCALE: f32 = 1.0;
+/// `b3DefaultDebugDraw().forceScale` (types.c; 1.0 before upstream 3362633). The C
+/// samples seed their GUI draw settings from `b3DefaultDebugDraw()`
+/// (`debug_adapter.c` InitAdapter), so this is the samples' default too.
+pub const DEFAULT_FORCE_SCALE: f32 = 0.001;
+
+/// Restore the debug-draw joint/force scales to their `b3DefaultDebugDraw` defaults
+/// (joint 1, force 0.001). These live in thread-locals, so without an explicit reset a
+/// scene that set its own `forceScale` (e.g. the Cylinder stacks' 0.01, Mesh Drop's
+/// 0.1) would leak its value onto every subsequent demo. Called at each
+/// world-construction seam via [`crate::interact::reset_scene_scales`]; a scene needing
+/// a non-default scale re-applies it after reset (via `set_draw_scales` /
+/// `sim_set_draw_scales`).
 pub fn reset_draw_scales() {
-    set_draw_scales(1.0, 1.0);
+    set_draw_scales(DEFAULT_JOINT_SCALE, DEFAULT_FORCE_SCALE);
 }
 
 /// Whether dynamic bodies should draw translucent this frame — the
@@ -517,4 +525,26 @@ fn push_json_escaped(out: &mut String, s: &str) {
             c => out.push(c),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The samples' GUI draw settings come from `b3DefaultDebugDraw()`, whose force scale
+    /// is 0.001 since upstream 3362633: a scene reset must restore that, not 1.0.
+    #[test]
+    fn reset_restores_default_debug_draw_scales() {
+        set_draw_scales(2.0, 0.1);
+        reset_draw_scales();
+        assert_eq!(JOINT_SCALE.with(|c| c.get()), 1.0);
+        assert_eq!(FORCE_SCALE.with(|c| c.get()), 0.001);
+        assert_eq!(
+            DEFAULT_FORCE_SCALE,
+            box3d_rust::debug_draw::DebugDraw::force_scale(&NullDraw)
+        );
+    }
+
+    struct NullDraw;
+    impl DebugDraw for NullDraw {}
 }
