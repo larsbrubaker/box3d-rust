@@ -909,7 +909,8 @@ export function attachInteraction(opts: AttachInteractionOpts): SimControllerWit
   // the guarded sim_set_debug_flags. tickFrame then fetches the overlay/text
   // channels off that one mask. There is no parallel client-side flag word.
   let viewMask = 0;
-  const drawScales = { joint: 1, force: 1 };
+  // b3DefaultDebugDraw: jointScale 1, forceScale 0.001 (bus.ts viewScaleDefaults).
+  const drawScales = { joint: 1, force: 0.001 };
   const pushDebugFlags = () => {
     wasm.sim_set_debug_flags?.(viewMask);
   };

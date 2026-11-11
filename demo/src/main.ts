@@ -435,11 +435,25 @@ function buildMenuBar(): void {
           demoBus.emit("view.scale", { name: "joint", value: v });
         }),
       );
+      // C exposes forceScale as an unbounded InputFloat ("%.6f", scientific chars;
+      // sample.cpp Debug Draw) with the b3DefaultDebugDraw default 0.001, and samples
+      // set 0.1 / 0.01 / 0.001. A linear 0..1 slider can't show or reach those, so the
+      // slider runs on log10 over [1e-5, 10] and displays the value like C's "%.6f".
+      const forceFromLog = (t: number) => Number((10 ** t).toPrecision(6));
       p.appendChild(
-        sliderItem("Force", 0, 1, 0.01, viewScales.force!, (v) => v.toFixed(2), (v) => {
-          viewScales.force = v;
-          demoBus.emit("view.scale", { name: "force", value: v });
-        }),
+        sliderItem(
+          "Force",
+          -5,
+          1,
+          0.01,
+          Math.log10(viewScales.force!),
+          (t) => forceFromLog(t).toFixed(6),
+          (t) => {
+            const v = forceFromLog(t);
+            viewScales.force = v;
+            demoBus.emit("view.scale", { name: "force", value: v });
+          },
+        ),
       );
       p.appendChild(
         sliderItem("Draw Distance", 10, 1000, 10, viewScales.drawDistance!, (v) => `${v.toFixed(0)} m`, (v) => {
