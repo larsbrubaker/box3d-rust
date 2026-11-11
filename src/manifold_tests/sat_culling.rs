@@ -17,8 +17,8 @@
 use crate::core::NULL_INDEX;
 use crate::hull::{create_complex_hull, create_hull, make_box_hull};
 use crate::manifold::{
-    collide_hulls, compute_separating_axis, test_edge_candidate_sorted, LocalManifold, SatCache,
-    SeparatingFeature,
+    collide_hulls, compute_separating_axis, test_edge_candidate_sorted, LocalManifold,
+    LocalManifoldPoint, SatCache, SeparatingFeature,
 };
 use crate::math_functions::{Quat, Transform, Vec3};
 
@@ -192,7 +192,8 @@ fn collide_hulls_separating_edge_axis_without_fallback() {
     assert_eq!(full.edge.separation.to_bits(), 0x3ca5bcc0);
     assert_eq!((full.edge.index_a, full.edge.index_b), (10, 6));
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_hulls(&mut manifold, 8, &hull_a, &hull_b, xf, &mut cache);
 
@@ -252,7 +253,8 @@ fn collide_hulls_empty_clip_edge_beats_faces_builds_edge_contact() {
     assert_eq!(q.edge.separation.to_bits(), 0xbd0bb9f8);
     assert_eq!((q.edge.index_a, q.edge.index_b), (10, 12));
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_hulls(&mut manifold, 8, &hull_a, &hull_b, xf, &mut cache);
 
@@ -313,7 +315,8 @@ fn collide_hulls_empty_clip_edge_below_faces_returns_no_points() {
     assert_eq!(q.edge.separation.to_bits(), 0x3a5e8000);
     assert_eq!((q.edge.index_a, q.edge.index_b), (10, 12));
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_hulls(&mut manifold, 8, &hull_a, &hull_b, xf, &mut cache);
 
@@ -358,7 +361,8 @@ fn separating_axis_probe_culls_edge_candidates() {
     assert_eq!(full.edge.separation.to_bits(), 0x3beb2c60);
     assert_eq!((full.edge.index_a, full.edge.index_b), (18, 136));
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); 32];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_hulls(&mut manifold, 32, &hull, &hull, xf, &mut cache);
 

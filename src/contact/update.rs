@@ -14,7 +14,7 @@ use crate::id::ShapeId;
 use crate::manifold::{
     collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
     collide_hull_and_sphere, collide_hulls_at_width, collide_spheres, make_feature_id,
-    LocalManifold, Manifold, ManifoldPoint, SatCache, TriangleFeature,
+    LocalManifold, LocalManifoldPoint, Manifold, ManifoldPoint, SatCache, TriangleFeature,
 };
 use crate::math_functions::{
     add, inv_mul_world_transforms, make_matrix_from_quat, max_float, mul_mv, mul_world_transforms,
@@ -86,8 +86,12 @@ fn compute_convex_manifold(
     let type_a = geom_a.shape_type();
     let type_b = geom_b.shape_type();
 
-    let mut geom_manifold = LocalManifold::default();
+    // C bumps the point buffer from the step arena. A stack buffer of the same capacity is the
+    // port's arena slot.
     let capacity = MAX_MANIFOLD_POINTS as i32;
+    let mut point_buffer = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+
+    let mut geom_manifold = LocalManifold::new(&mut point_buffer);
     let transform_b_to_a = inv_mul_world_transforms(xf_a, xf_b);
     let simd_width = world.simd_width;
 

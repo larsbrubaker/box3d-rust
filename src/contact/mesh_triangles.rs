@@ -157,17 +157,17 @@ pub(super) fn collide_mesh_triangles(
     // Make room for clip points. Additional capacity for a heavy clip.
     let point_buffer_capacity = MAX_POINTS_PER_TRIANGLE * survivor_count + 2 * MAX_CLIP_POINTS;
 
-    let mut point_buffer = vec![LocalManifoldPoint::default(); point_buffer_capacity];
+    // C bumps the whole buffer from the arena uninitialized and only its capacity matters, as
+    // the loop guard and the room left for each manifold. The port grows the buffer only as far
+    // as the window the current triangle manifold can write, and reserves one heavy clip window
+    // plus as many kept points up front so typical contacts never reallocate.
+    let mut point_buffer: Vec<LocalManifoldPoint> =
+        Vec::with_capacity(point_buffer_capacity.min(2 * LOCAL_MANIFOLD_CAPACITY));
     let mut total_point_count = 0usize;
 
     let mut manifold_buffer: Vec<TriangleManifold> = Vec::with_capacity(survivor_count);
 
     let mut survivor_manifolds = vec![NULL_INDEX; survivor_count];
-
-    // C collides into `manifoldBuffer + manifoldCount` with its points at the end of the point
-    // buffer and keeps the manifold by advancing the counts. The port collides into a scratch
-    // local manifold whose capacity covers any single clip, then copies the kept points.
-    let mut manifold = LocalManifold::default();
 
     let mut survivor_index = 0;
     while survivor_index < survivor_count && total_point_count + 3 < point_buffer_capacity {
@@ -175,12 +175,19 @@ pub(super) fn collide_mesh_triangles(
         let triangle_index = triangle_caches[index].triangle_index;
         let vertices = &survivor_vertices[survivor_index];
 
+        // C collides into `manifoldBuffer + manifoldCount` with its points at the end of the
+        // point buffer and keeps the manifold by advancing the counts. No single clip writes
+        // more than LOCAL_MANIFOLD_CAPACITY points, so a window that size keeps every point C
+        // keeps.
         let point_capacity = min_int(
             (point_buffer_capacity - total_point_count) as i32,
             LOCAL_MANIFOLD_CAPACITY as i32,
         );
-        manifold.point_count = 0;
-        manifold.feature = TriangleFeature::None;
+        let window_end = total_point_count + point_capacity as usize;
+        if point_buffer.len() < window_end {
+            point_buffer.resize(window_end, LocalManifoldPoint::default());
+        }
+        let mut manifold = LocalManifold::new(&mut point_buffer[total_point_count..window_end]);
 
         match shape_b {
             ConvexShape::Capsule(capsule) => {
@@ -375,9 +382,6 @@ pub(super) fn collide_mesh_triangles(
                 point.triangle_feature = point_feature as u8;
                 point.mesh_flags = mesh_flags;
             }
-
-            point_buffer[total_point_count..total_point_count + count]
-                .copy_from_slice(&manifold.points[..count]);
 
             survivor_manifolds[survivor_index] = manifold_buffer.len() as i32;
             manifold_buffer.push(TriangleManifold {

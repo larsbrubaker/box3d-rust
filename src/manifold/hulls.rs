@@ -642,7 +642,8 @@ pub(crate) fn collide_hulls_at_width(
         debug_assert!(0 <= edge_query.index_b && edge_query.index_b < hull_b.edge_count);
 
         // Edge contact
-        let mut edge_manifold = LocalManifold::default();
+        let mut edge_point = LocalManifoldPoint::default();
+        let mut edge_manifold = LocalManifold::new(core::slice::from_mut(&mut edge_point));
 
         let mut edge_cache = SatCache::default();
         build_edge_contact(
@@ -658,9 +659,20 @@ pub(crate) fn collide_hulls_at_width(
         // so edge contact yields no points. In that case perhaps the face contact has some points.
         if edge_manifold.point_count == 1 {
             // Copy edge manifold out, being careful to preserve manifold point buffer.
-            let edge_point = edge_manifold.points[0];
-            *manifold = edge_manifold;
-            manifold.points[0] = edge_point;
+            let LocalManifold {
+                normal,
+                triangle_normal,
+                points: edge_points,
+                point_count,
+                triangle_index,
+                feature,
+            } = edge_manifold;
+            manifold.normal = normal;
+            manifold.triangle_normal = triangle_normal;
+            manifold.point_count = point_count;
+            manifold.triangle_index = triangle_index;
+            manifold.feature = feature;
+            manifold.points[0] = edge_points[0];
             *cache = edge_cache;
         }
     }

@@ -113,27 +113,36 @@ pub struct LocalManifoldPoint {
     pub mesh_flags: u8,
 }
 
-/// Point capacity of a [`LocalManifold`]. C points a local manifold into a caller buffer and
-/// passes the room left as the capacity. The largest single manifold is a triangle face clip,
-/// which C builds in a `2 * B3_MAX_CLIP_POINTS` buffer, so this capacity never truncates a clip
-/// that C keeps.
+/// The most points a single collide call writes. C points a local manifold into a caller buffer
+/// and passes the room left as the capacity. The largest single manifold is a triangle face clip,
+/// which C builds in a `2 * B3_MAX_CLIP_POINTS` buffer, so a window of this many points never
+/// truncates a clip that C keeps.
 pub const LOCAL_MANIFOLD_CAPACITY: usize = 2 * MAX_CLIP_POINTS;
 
 /// A local manifold with no dynamic information. Used by collide functions.
 ///
-/// Unlike C (which holds a `b3LocalManifoldPoint*` into an external buffer),
-/// this embeds a fixed [`LOCAL_MANIFOLD_CAPACITY`] point array so the mesh
-/// narrow-phase can gather every clip point before cluster reduction.
-/// Convex callers still pass `capacity == MAX_MANIFOLD_POINTS`.
+/// As in C, the points live in a caller buffer: `points` borrows the buffer and the collide
+/// functions take its room as their `capacity`, so a collide call never fills point storage it
+/// does not write. Convex callers use a [`MAX_MANIFOLD_POINTS`] buffer; the mesh narrow phase
+/// points each triangle manifold at a window of its shared point buffer.
+///
+/// ```
+/// use box3d_rust::constants::MAX_MANIFOLD_POINTS;
+/// use box3d_rust::manifold::{LocalManifold, LocalManifoldPoint};
+///
+/// let mut points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+/// let manifold = LocalManifold::new(&mut points);
+/// assert_eq!(manifold.point_count, 0);
+/// ```
 /// (b3LocalManifold)
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LocalManifold {
+#[derive(Debug, PartialEq)]
+pub struct LocalManifold<'a> {
     /// Local normal in frame A.
     pub normal: Vec3,
     /// The triangle normal.
     pub triangle_normal: Vec3,
-    /// The manifold points.
-    pub points: [LocalManifoldPoint; LOCAL_MANIFOLD_CAPACITY],
+    /// The manifold points. From a point buffer.
+    pub points: &'a mut [LocalManifoldPoint],
     /// The number of manifold points. Only bounded by the buffer capacity.
     pub point_count: i32,
     /// The index of the triangle.
@@ -142,12 +151,15 @@ pub struct LocalManifold {
     pub feature: TriangleFeature,
 }
 
-impl Default for LocalManifold {
-    fn default() -> Self {
+impl<'a> LocalManifold<'a> {
+    /// An empty manifold that writes its points into `points`. The buffer is not cleared; the
+    /// collide functions write every point they report.
+    /// (`b3LocalManifold manifold = { 0 }; manifold.points = points;`)
+    pub fn new(points: &'a mut [LocalManifoldPoint]) -> Self {
         LocalManifold {
             normal: VEC3_ZERO,
             triangle_normal: VEC3_ZERO,
-            points: [LocalManifoldPoint::default(); LOCAL_MANIFOLD_CAPACITY],
+            points,
             point_count: 0,
             triangle_index: 0,
             feature: TriangleFeature::None,

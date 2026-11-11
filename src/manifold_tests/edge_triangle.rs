@@ -15,7 +15,8 @@ use crate::geometry::{Capsule, Sphere};
 use crate::hull::{make_box_hull, make_transformed_box_hull};
 use crate::manifold::{
     collide_hull_and_capsule, collide_hull_and_sphere, collide_triangle_and_capsule,
-    collide_triangle_and_hull, LocalManifold, SatCache, SeparatingFeature, TriangleFeature,
+    collide_triangle_and_hull, LocalManifold, LocalManifoldPoint, SatCache, SeparatingFeature,
+    TriangleFeature,
 };
 use crate::math_functions::{
     add, cross, dot, lerp, mul_add, mul_sv, neg, normalize, rotate_vector, sub, PI,
@@ -59,7 +60,8 @@ fn triangle_edge_test() {
         let v2 = mul_add(triangle_point, 1.0, tri_edge);
         let v3 = mul_add(v1, 1.5, cross(tri_normal, tri_edge));
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
@@ -91,7 +93,8 @@ fn triangle_edge_test() {
         let v2 = mul_add(triangle_point, 1.0, tri_edge);
         let v3 = mul_add(v1, 1.5, cross(tri_normal, tri_edge));
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache::default();
         collide_triangle_and_hull(&mut manifold, 8, v1, v2, v3, &hull.base, &mut cache, true);
 
@@ -118,7 +121,8 @@ fn triangle_parallel_edge_test() {
             let v2 = rotate_vector(q, v(0.0, y, 2.0));
             let v3 = rotate_vector(q, v(2.0, y, -1.0));
 
-            let mut manifold = LocalManifold::default();
+            let mut manifold_points = [LocalManifoldPoint::default(); 8];
+            let mut manifold = LocalManifold::new(&mut manifold_points);
             let mut cache = SatCache::default();
             collide_triangle_and_hull(&mut manifold, 8, v1, v2, v3, &hull.base, &mut cache, true);
 
@@ -166,7 +170,8 @@ fn hull_capsule_edge_deep_test() {
                     radius,
                 };
 
-                let mut manifold = LocalManifold::default();
+                let mut manifold_points = [LocalManifoldPoint::default(); 8];
+                let mut manifold = LocalManifold::new(&mut manifold_points);
                 let mut cache = SimplexCache::default();
                 collide_hull_and_capsule(
                     &mut manifold,
@@ -243,7 +248,8 @@ fn triangle_hull_edge_sweep_test() {
                 let triangle_edges = [sub(v2, v1), sub(v3, v2), sub(v1, v3)];
                 let triangle_center = mul_sv(1.0 / 3.0, add(v1, add(v2, v3)));
 
-                let mut manifold = LocalManifold::default();
+                let mut manifold_points = [LocalManifoldPoint::default(); 8];
+                let mut manifold = LocalManifold::new(&mut manifold_points);
                 let mut cache = SatCache {
                     type_: SeparatingFeature::ManualEdgePairAxis as u8,
                     ..Default::default()
@@ -317,7 +323,8 @@ fn capsule_triangle_edge_deep_test() {
                         radius,
                     };
 
-                    let mut manifold = LocalManifold::default();
+                    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+                    let mut manifold = LocalManifold::new(&mut manifold_points);
                     let mut cache = SimplexCache::default();
                     collide_triangle_and_capsule(&mut manifold, 8, &triangle, &capsule, &mut cache);
 
@@ -385,7 +392,8 @@ fn sphere_hull_seam_test() {
             radius,
         };
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SimplexCache::default();
         collide_hull_and_sphere(
             &mut manifold,
@@ -450,7 +458,8 @@ fn capsule_hull_seam_test() {
             radius,
         };
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SimplexCache::default();
         collide_hull_and_capsule(
             &mut manifold,

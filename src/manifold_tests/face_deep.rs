@@ -11,7 +11,8 @@ use crate::distance::SimplexCache;
 use crate::geometry::Capsule;
 use crate::hull::make_box_hull;
 use crate::manifold::{
-    collide_hull_and_capsule, collide_triangle_and_capsule, LocalManifold, TriangleFeature,
+    collide_hull_and_capsule, collide_triangle_and_capsule, LocalManifold, LocalManifoldPoint,
+    TriangleFeature,
 };
 use crate::math_functions::{max_float, min_float, mul_add, TRANSFORM_IDENTITY};
 
@@ -50,7 +51,8 @@ fn capsule_triangle_face_deep_test() {
                     radius,
                 };
 
-                let mut manifold = LocalManifold::default();
+                let mut manifold_points = [LocalManifoldPoint::default(); 8];
+                let mut manifold = LocalManifold::new(&mut manifold_points);
                 let mut cache = SimplexCache::default();
                 collide_triangle_and_capsule(&mut manifold, 8, &triangle, &capsule, &mut cache);
 
@@ -111,7 +113,8 @@ fn hull_capsule_face_deep_test() {
                         radius,
                     };
 
-                    let mut manifold = LocalManifold::default();
+                    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+                    let mut manifold = LocalManifold::new(&mut manifold_points);
                     let mut cache = SimplexCache::default();
                     collide_hull_and_capsule(
                         &mut manifold,

@@ -10,7 +10,9 @@ use super::{
     HALF_DIAGONAL, HALF_ROOT2, ROOT2, TILT_ANGLES, TILT_AXES,
 };
 use crate::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
-use crate::manifold::{collide_hulls, LocalManifold, SatCache, SeparatingFeature};
+use crate::manifold::{
+    collide_hulls, LocalManifold, LocalManifoldPoint, SatCache, SeparatingFeature,
+};
 use crate::math_functions::{
     dot, mul_sv, transform_point, Transform, PI, QUAT_IDENTITY, TRANSFORM_IDENTITY,
 };
@@ -52,7 +54,8 @@ fn crossed_edge_test() {
     for &d in &distances {
         let expected = d - ROOT2;
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache::default();
         collide_hulls(
             &mut manifold,
@@ -74,7 +77,8 @@ fn crossed_edge_test() {
         ensure_small(manifold.points[0].point.z, 1e-5);
 
         // The forced edge query must agree with what the full solver chose
-        let mut manual = LocalManifold::default();
+        let mut manual_points = [LocalManifoldPoint::default(); 8];
+        let mut manual = LocalManifold::new(&mut manual_points);
         let mut manual_cache = SatCache {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
@@ -94,7 +98,8 @@ fn crossed_edge_test() {
 
     // Beyond the speculative distance the query reports the axis without building a contact.
     // The axis carries its own orientation now, so a sign error here would read as deep overlap.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_hulls(
         &mut manifold,
@@ -122,7 +127,8 @@ fn edge_axis_scale_test() {
         let expected = -0.002;
         let d = s * ROOT2 + expected;
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache::default();
         collide_hulls(
             &mut manifold,
@@ -152,7 +158,8 @@ fn edge_axis_scale_test() {
 fn edge_cache_test() {
     let (hull_a, hull_b) = make_crossed_edge_hulls(0.5);
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); 8];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
 
     collide_hulls(
@@ -213,7 +220,8 @@ fn edge_endpoint_test() {
             p: v(d, 0.49, 0.0),
             q: QUAT_IDENTITY,
         };
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
@@ -239,7 +247,8 @@ fn edge_endpoint_test() {
             p: v(d, 0.55, 0.0),
             q: QUAT_IDENTITY,
         };
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache {
             type_: SeparatingFeature::ManualEdgePairAxis as u8,
             ..Default::default()
@@ -288,7 +297,8 @@ fn parallel_edge_test() {
                 q: exact_quat(tilt_axis, angle),
             };
 
-            let mut manifold = LocalManifold::default();
+            let mut manifold_points = [LocalManifoldPoint::default(); 8];
+            let mut manifold = LocalManifold::new(&mut manifold_points);
             let mut cache = SatCache::default();
             collide_hulls(
                 &mut manifold,
@@ -332,7 +342,8 @@ fn parallel_edge_manual_test() {
                 q: exact_quat(tilt_axis, angle),
             };
 
-            let mut manifold = LocalManifold::default();
+            let mut manifold_points = [LocalManifoldPoint::default(); 8];
+            let mut manifold = LocalManifold::new(&mut manifold_points);
             let mut cache = SatCache {
                 type_: SeparatingFeature::ManualEdgePairAxis as u8,
                 ..Default::default()
@@ -395,7 +406,8 @@ fn overlap_never_empty_test() {
             q: exact_quat(axis, angle),
         };
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache::default();
         collide_hulls(
             &mut manifold,
@@ -455,7 +467,8 @@ fn ridge_crossing_test() {
                 q: exact_quat(AXIS_Y, angle),
             };
 
-            let mut manifold = LocalManifold::default();
+            let mut manifold_points = [LocalManifoldPoint::default(); 8];
+            let mut manifold = LocalManifold::new(&mut manifold_points);
             let mut cache = SatCache::default();
             collide_hulls(
                 &mut manifold,
@@ -483,7 +496,8 @@ fn ridge_crossing_test() {
                 q: exact_quat(AXIS_Y, angle),
             };
 
-            let mut manifold = LocalManifold::default();
+            let mut manifold_points = [LocalManifoldPoint::default(); 8];
+            let mut manifold = LocalManifold::new(&mut manifold_points);
             let mut cache = SatCache::default();
             collide_hulls(
                 &mut manifold,
@@ -521,7 +535,8 @@ fn ridge_crossing_test() {
                 q: exact_quat(AXIS_Y, angle),
             };
 
-            let mut manifold = LocalManifold::default();
+            let mut manifold_points = [LocalManifoldPoint::default(); 8];
+            let mut manifold = LocalManifold::new(&mut manifold_points);
             let mut cache = SatCache::default();
             collide_hulls(
                 &mut manifold,
@@ -561,7 +576,8 @@ fn edge_axis_oracle_test() {
                     q: exact_quat(AXIS_Y, yaw),
                 };
 
-                let mut manifold = LocalManifold::default();
+                let mut manifold_points = [LocalManifoldPoint::default(); 8];
+                let mut manifold = LocalManifold::new(&mut manifold_points);
                 let mut cache = SatCache::default();
                 collide_hulls(
                     &mut manifold,
@@ -618,7 +634,8 @@ fn edge_axis_random_oracle_test() {
             q: exact_quat(dir_rotation, angle_b),
         };
 
-        let mut manifold = LocalManifold::default();
+        let mut manifold_points = [LocalManifoldPoint::default(); 8];
+        let mut manifold = LocalManifold::new(&mut manifold_points);
         let mut cache = SatCache::default();
         collide_hulls(
             &mut manifold,

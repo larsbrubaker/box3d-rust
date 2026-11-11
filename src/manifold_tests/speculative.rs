@@ -12,7 +12,8 @@ use crate::hull::{make_box_hull, make_transformed_box_hull};
 use crate::manifold::{
     collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
     collide_hull_and_sphere, collide_hulls, collide_spheres, collide_triangle_and_capsule,
-    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, SatCache,
+    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, LocalManifoldPoint,
+    SatCache,
 };
 use crate::math_functions::{Transform, QUAT_IDENTITY, VEC3_ZERO};
 
@@ -65,7 +66,8 @@ fn speculative_margin_test() {
     // Normal is +y
     let triangle = [v(-2.0, 0.0, -2.0), v(0.0, 0.0, 2.0), v(2.0, 0.0, -2.0)];
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
 
     for &gap in &gaps {
         manifold.point_count = 0;

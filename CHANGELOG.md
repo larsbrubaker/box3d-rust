@@ -39,10 +39,15 @@ reference pin advances from `efca0c1`. Ported so far:
   blobs no longer load.
 - `LocalManifoldPoint` and `ManifoldPoint` gain `triangle_feature` and
   `mesh_flags`, and `LocalManifold` loses `i1`, `i2`, `i3`, `squared_distance`,
-  and `triangle_flags` (upstream `38f2ae1`). The `LocalManifold` point array
-  grows to `LOCAL_MANIFOLD_CAPACITY` (128): C points a local manifold into the
-  remaining point buffer, so one heavy triangle clip can keep more than the
-  former 32 points. `math_functions::Triangle` loses `flags`, so
+  and `triangle_flags` (upstream `38f2ae1`). `LocalManifold` no longer embeds
+  its points: as in C it borrows them from a caller buffer
+  (`LocalManifold<'a>` with `points: &'a mut [LocalManifoldPoint]`, built with
+  `LocalManifold::new(&mut points)`), so it no longer implements `Default`,
+  `Clone`, or `Copy`, and the buffer must hold the `capacity` passed to the
+  collide functions. The mesh narrow phase points each triangle manifold into
+  the remaining point buffer, so one heavy triangle clip can keep more than the
+  former 32 points (up to `LOCAL_MANIFOLD_CAPACITY`, 128).
+  `math_functions::Triangle` loses `flags`, so
   `get_mesh_triangle` and `get_height_field_triangle` no longer report edge
   flags.
 - `collide_triangle_and_hull` loses its `triangle_flags` parameter and

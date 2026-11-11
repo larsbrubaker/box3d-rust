@@ -14,8 +14,8 @@ use crate::hull::make_box_hull;
 use crate::manifold::{
     collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
     collide_hull_and_sphere, collide_hulls, collide_spheres, collide_triangle_and_capsule,
-    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, SatCache,
-    SeparatingFeature, TriangleFeature,
+    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, LocalManifoldPoint,
+    SatCache, SeparatingFeature, TriangleFeature,
 };
 use crate::math_functions::{
     inv_mul_world_transforms, offset_pos, Transform, Vec3, WorldTransform, POS_ZERO, QUAT_IDENTITY,
@@ -43,7 +43,8 @@ fn collide_spheres_overlap_and_separation() {
     };
 
     // Centers 1.5 apart → overlap of 0.5 along +x.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     collide_spheres(
         &mut manifold,
         MAX_MANIFOLD_POINTS as i32,
@@ -60,7 +61,8 @@ fn collide_spheres_overlap_and_separation() {
     ensure_small(manifold.points[0].point.x - 0.75, 1e-6);
 
     // Far apart: no contact (point_count left at 0 from default).
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     collide_spheres(
         &mut far,
         MAX_MANIFOLD_POINTS as i32,
@@ -71,7 +73,8 @@ fn collide_spheres_overlap_and_separation() {
     assert_eq!(far.point_count, 0);
 
     // Coincident centers: fallback normal (0,1,0), separation = -2.
-    let mut coincident = LocalManifold::default();
+    let mut coincident_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut coincident = LocalManifold::new(&mut coincident_points);
     collide_spheres(
         &mut coincident,
         MAX_MANIFOLD_POINTS as i32,
@@ -99,7 +102,8 @@ fn collide_capsule_and_sphere_overlap_and_separation() {
     };
 
     // Sphere above capsule mid-segment, centers 0.8 apart → overlap 0.2.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     collide_capsule_and_sphere(
         &mut manifold,
         MAX_MANIFOLD_POINTS as i32,
@@ -114,7 +118,8 @@ fn collide_capsule_and_sphere_overlap_and_separation() {
     ensure_small(manifold.points[0].separation + 0.2, 1e-5);
 
     // Far above: separated.
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     collide_capsule_and_sphere(
         &mut far,
         MAX_MANIFOLD_POINTS as i32,
@@ -125,7 +130,8 @@ fn collide_capsule_and_sphere_overlap_and_separation() {
     assert_eq!(far.point_count, 0);
 
     // Sphere beyond an end-cap (along +x past center2).
-    let mut end = LocalManifold::default();
+    let mut end_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut end = LocalManifold::new(&mut end_points);
     collide_capsule_and_sphere(
         &mut end,
         MAX_MANIFOLD_POINTS as i32,
@@ -152,7 +158,8 @@ fn collide_capsules_parallel_and_skew() {
         radius: 0.5,
     };
 
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     collide_capsules(
         &mut manifold,
         MAX_MANIFOLD_POINTS as i32,
@@ -168,7 +175,8 @@ fn collide_capsules_parallel_and_skew() {
     ensure_small(manifold.points[1].separation + 0.1, 1e-4);
 
     // Far apart.
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     collide_capsules(
         &mut far,
         MAX_MANIFOLD_POINTS as i32,
@@ -184,7 +192,8 @@ fn collide_capsules_parallel_and_skew() {
         center2: v(0.0, 0.0, 1.0),
         radius: 0.5,
     };
-    let mut skew = LocalManifold::default();
+    let mut skew_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut skew = LocalManifold::new(&mut skew_points);
     collide_capsules(
         &mut skew,
         MAX_MANIFOLD_POINTS as i32,
@@ -207,7 +216,8 @@ fn collide_hull_and_sphere_via_gjk() {
 
     // Sphere resting above the +y face with 0.05 penetration.
     // Box half-extent 1, sphere radius 0.5, center at y=1.45 → separation -0.05.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SimplexCache::default();
     collide_hull_and_sphere(
         &mut manifold,
@@ -224,7 +234,8 @@ fn collide_hull_and_sphere_via_gjk() {
     ensure_small(manifold.points[0].separation + 0.05, 1e-4);
 
     // Far above: separated, cache cleared.
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     let mut far_cache = SimplexCache::default();
     // Seed cache so we can observe the clear-on-separation path.
     far_cache.count = 1;
@@ -240,7 +251,8 @@ fn collide_hull_and_sphere_via_gjk() {
     assert_eq!(far_cache.count, 0);
 
     // Deep penetration: sphere center inside the box → face-support path.
-    let mut deep = LocalManifold::default();
+    let mut deep_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut deep = LocalManifold::new(&mut deep_points);
     let mut deep_cache = SimplexCache::default();
     collide_hull_and_sphere(
         &mut deep,
@@ -262,7 +274,8 @@ fn collide_hulls_face_overlap_and_separation() {
     let box_b = make_box_hull(0.5, 0.5, 0.5);
 
     // Centers 0.9 apart → cubes overlap by 0.1 along +x; face clip yields 4 points.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_hulls(
         &mut manifold,
@@ -279,7 +292,8 @@ fn collide_hulls_face_overlap_and_separation() {
     }
 
     // Far apart: no contact, cache stores separating face.
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     let mut far_cache = SatCache::default();
     collide_hulls(
         &mut far,
@@ -305,7 +319,8 @@ fn collide_hull_and_capsule_overlap_and_separation() {
     // Capsule axis along y, shifted along +x so the segment is outside the box
     // but the radius overlaps the +x face.
     // Box face at x=0.5, capsule centers at x=0.65 → plane sep 0.15, minus radius 0.25 → -0.1.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SimplexCache::default();
     collide_hull_and_capsule(
         &mut manifold,
@@ -322,7 +337,8 @@ fn collide_hull_and_capsule_overlap_and_separation() {
     }
 
     // Far apart.
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     let mut far_cache = SimplexCache::default();
     far_cache.count = 1;
     collide_hull_and_capsule(
@@ -349,7 +365,8 @@ fn large_world_manifold_test() {
     // Centers 0.9 apart so the cubes overlap by 0.1 along x
     let sep = v(0.9, 0.0, 0.0);
 
-    let mut m_origin = LocalManifold::default();
+    let mut m_origin_points = [LocalManifoldPoint::default(); 8];
+    let mut m_origin = LocalManifold::new(&mut m_origin_points);
     let xf_ao = WORLD_TRANSFORM_IDENTITY;
     let xf_bo = WorldTransform {
         p: offset_pos(POS_ZERO, sep),
@@ -378,7 +395,8 @@ fn large_world_manifold_test() {
         // is preserved to float precision.
         let base = offset_pos(POS_ZERO, v(1.0e7, 1.0e7, 1.0e7));
 
-        let mut m_large = LocalManifold::default();
+        let mut m_large_points = [LocalManifoldPoint::default(); 8];
+        let mut m_large = LocalManifold::new(&mut m_large_points);
         let xf_al = WorldTransform {
             p: base,
             q: QUAT_IDENTITY,
@@ -428,7 +446,8 @@ fn collide_sphere_and_triangle_face_edge_vertex() {
         center: v(0.0, 0.4, 0.0),
         radius: 0.5,
     };
-    let mut face = LocalManifold::default();
+    let mut face_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut face = LocalManifold::new(&mut face_points);
     collide_triangle_and_sphere(&mut face, MAX_MANIFOLD_POINTS as i32, &tri, &sphere_face);
     assert_eq!(face.point_count, 1);
     assert_eq!(face.feature, TriangleFeature::TriangleFace);
@@ -442,7 +461,8 @@ fn collide_sphere_and_triangle_face_edge_vertex() {
         center: v(0.0, 0.0, -1.4),
         radius: 0.5,
     };
-    let mut edge = LocalManifold::default();
+    let mut edge_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut edge = LocalManifold::new(&mut edge_points);
     collide_triangle_and_sphere(&mut edge, MAX_MANIFOLD_POINTS as i32, &tri, &sphere_edge);
     assert_eq!(edge.point_count, 1);
     assert_eq!(edge.feature, TriangleFeature::Edge1);
@@ -453,7 +473,8 @@ fn collide_sphere_and_triangle_face_edge_vertex() {
         center: v(0.0, 0.0, 1.4),
         radius: 0.5,
     };
-    let mut vert = LocalManifold::default();
+    let mut vert_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut vert = LocalManifold::new(&mut vert_points);
     collide_triangle_and_sphere(&mut vert, MAX_MANIFOLD_POINTS as i32, &tri, &sphere_vert);
     assert_eq!(vert.point_count, 1);
     assert_eq!(vert.feature, TriangleFeature::Vertex3);
@@ -468,7 +489,8 @@ fn collide_sphere_and_triangle_backface_cull() {
         center: v(0.0, -0.2, 0.0),
         radius: 0.5,
     };
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     collide_triangle_and_sphere(&mut manifold, MAX_MANIFOLD_POINTS as i32, &tri, &sphere);
     assert_eq!(manifold.point_count, 0);
 }
@@ -483,7 +505,8 @@ fn collide_capsule_and_triangle_face_vs_edge() {
         center2: v(0.3, 0.4, 0.0),
         radius: 0.5,
     };
-    let mut face = LocalManifold::default();
+    let mut face_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut face = LocalManifold::new(&mut face_points);
     let mut cache = SimplexCache::default();
     collide_triangle_and_capsule(
         &mut face,
@@ -504,7 +527,8 @@ fn collide_capsule_and_triangle_face_vs_edge() {
         center2: v(0.3, 0.0, -1.4),
         radius: 0.5,
     };
-    let mut edge = LocalManifold::default();
+    let mut edge_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut edge = LocalManifold::new(&mut edge_points);
     let mut edge_cache = SimplexCache::default();
     collide_triangle_and_capsule(
         &mut edge,
@@ -529,7 +553,8 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
 
     // Box at origin; triangle at y=-0.4 so hull bottom (y=-0.5) penetrates by 0.1.
     // CCW from +y so the triangle normal points toward the hull.
-    let mut manifold = LocalManifold::default();
+    let mut manifold_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut manifold = LocalManifold::new(&mut manifold_points);
     let mut cache = SatCache::default();
     collide_triangle_and_hull(
         &mut manifold,
@@ -549,7 +574,8 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
     }
 
     // Far below: separated.
-    let mut far = LocalManifold::default();
+    let mut far_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut far = LocalManifold::new(&mut far_points);
     let mut far_cache = SatCache::default();
     collide_triangle_and_hull(
         &mut far,
@@ -565,7 +591,8 @@ fn collide_hull_and_triangle_face_overlap_and_separation() {
     assert!(far_cache.separation > 0.0 || far_cache.type_ != 0);
 
     // Backface: triangle above the hull with +y normal → hull is behind the plane.
-    let mut back = LocalManifold::default();
+    let mut back_points = [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS];
+    let mut back = LocalManifold::new(&mut back_points);
     let mut back_cache = SatCache::default();
     collide_triangle_and_hull(
         &mut back,

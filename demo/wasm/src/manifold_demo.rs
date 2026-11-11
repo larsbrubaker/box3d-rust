@@ -24,8 +24,8 @@ use box3d_rust::hull::{make_box_hull, make_transformed_box_hull, BoxHull};
 use box3d_rust::manifold::{
     collide_capsule_and_sphere, collide_capsules, collide_hull_and_capsule,
     collide_hull_and_sphere, collide_hulls, collide_spheres, collide_triangle_and_capsule,
-    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, SatCache,
-    SeparatingFeature,
+    collide_triangle_and_hull, collide_triangle_and_sphere, LocalManifold, LocalManifoldPoint,
+    SatCache, SeparatingFeature, TriangleFeature,
 };
 use box3d_rust::math_functions::{
     inv_mul_transforms, make_quat_from_axis_angle, rotate_vector, transform_point, Quat, Transform,
@@ -106,6 +106,57 @@ const BASE_CAMERA: Camera = Camera {
     },
 };
 
+/// The C samples' `m_manifold` with its `m_points` buffer. The header persists across steps as
+/// in C; each collide call borrows the buffer through a [`LocalManifold`].
+struct ManifoldState {
+    normal: Vec3,
+    triangle_normal: Vec3,
+    points: [LocalManifoldPoint; MAX_MANIFOLD_POINTS],
+    point_count: i32,
+    triangle_index: i32,
+    feature: TriangleFeature,
+}
+
+impl ManifoldState {
+    /// C: `m_manifold = {}; memset( m_points, 0, sizeof( m_points ) ); m_manifold.points = m_points;`
+    fn new() -> ManifoldState {
+        ManifoldState {
+            normal: VEC3_ZERO,
+            triangle_normal: VEC3_ZERO,
+            points: [LocalManifoldPoint::default(); MAX_MANIFOLD_POINTS],
+            point_count: 0,
+            triangle_index: 0,
+            feature: TriangleFeature::None,
+        }
+    }
+
+    /// Run one `b3Collide*` call on the persistent header and point buffer.
+    fn collide(&mut self, collide: impl FnOnce(&mut LocalManifold<'_>)) {
+        let mut manifold = LocalManifold {
+            normal: self.normal,
+            triangle_normal: self.triangle_normal,
+            points: &mut self.points,
+            point_count: self.point_count,
+            triangle_index: self.triangle_index,
+            feature: self.feature,
+        };
+        collide(&mut manifold);
+        let LocalManifold {
+            normal,
+            triangle_normal,
+            points: _,
+            point_count,
+            triangle_index,
+            feature,
+        } = manifold;
+        self.normal = normal;
+        self.triangle_normal = triangle_normal;
+        self.point_count = point_count;
+        self.triangle_index = triangle_index;
+        self.feature = feature;
+    }
+}
+
 /// All state for the currently-selected viewer.
 struct ManifoldDemo {
     kind: Kind,
@@ -126,7 +177,7 @@ struct ManifoldDemo {
     sat_cache: SatCache,
     use_cache: bool,
     manual_feature: i32,
-    manifold: LocalManifold,
+    manifold: ManifoldState,
 }
 
 impl ManifoldDemo {
@@ -170,7 +221,7 @@ impl ManifoldDemo {
             sat_cache: SatCache::default(),
             use_cache: false,
             manual_feature: 0,
-            manifold: LocalManifold::default(),
+            manifold: ManifoldState::new(),
         };
 
         demo.setup();
@@ -381,104 +432,110 @@ impl ManifoldDemo {
         match self.kind {
             Kind::SphereSphere => {
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
-                collide_spheres(
-                    &mut self.manifold,
-                    cap,
-                    &self.sphere_a,
-                    &self.sphere_b,
-                    b_to_a,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_spheres(manifold, cap, &self.sphere_a, &self.sphere_b, b_to_a)
+                });
             }
             Kind::CapsuleSphere => {
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
-                collide_capsule_and_sphere(
-                    &mut self.manifold,
-                    cap,
-                    &self.capsule_a,
-                    &self.sphere_b,
-                    b_to_a,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_capsule_and_sphere(
+                        manifold,
+                        cap,
+                        &self.capsule_a,
+                        &self.sphere_b,
+                        b_to_a,
+                    )
+                });
             }
             Kind::HullSphere => {
                 if !self.use_cache {
                     self.simplex_cache = SimplexCache::default();
                 }
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
-                collide_hull_and_sphere(
-                    &mut self.manifold,
-                    cap,
-                    &self.hull_a.base,
-                    &self.sphere_b,
-                    b_to_a,
-                    &mut self.simplex_cache,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_hull_and_sphere(
+                        manifold,
+                        cap,
+                        &self.hull_a.base,
+                        &self.sphere_b,
+                        b_to_a,
+                        &mut self.simplex_cache,
+                    )
+                });
             }
             Kind::TriangleSphere => {
                 let local = self.local_triangle_in_b();
-                collide_triangle_and_sphere(&mut self.manifold, cap, &local, &self.sphere_b);
+                self.manifold.collide(|manifold| {
+                    collide_triangle_and_sphere(manifold, cap, &local, &self.sphere_b)
+                });
             }
             Kind::CapsuleCapsule => {
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
-                collide_capsules(
-                    &mut self.manifold,
-                    cap,
-                    &self.capsule_a,
-                    &self.capsule_b,
-                    b_to_a,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_capsules(manifold, cap, &self.capsule_a, &self.capsule_b, b_to_a)
+                });
             }
             Kind::CapsuleHull => {
                 if !self.use_cache {
                     self.simplex_cache = SimplexCache::default();
                 }
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
-                collide_hull_and_capsule(
-                    &mut self.manifold,
-                    cap,
-                    &self.hull_a.base,
-                    &self.capsule_b,
-                    b_to_a,
-                    &mut self.simplex_cache,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_hull_and_capsule(
+                        manifold,
+                        cap,
+                        &self.hull_a.base,
+                        &self.capsule_b,
+                        b_to_a,
+                        &mut self.simplex_cache,
+                    )
+                });
             }
             Kind::TriangleCapsule => {
                 if !self.use_cache {
                     self.simplex_cache = SimplexCache::default();
                 }
                 let local = self.local_triangle_in_b();
-                collide_triangle_and_capsule(
-                    &mut self.manifold,
-                    cap,
-                    &local,
-                    &self.capsule_b,
-                    &mut self.simplex_cache,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_triangle_and_capsule(
+                        manifold,
+                        cap,
+                        &local,
+                        &self.capsule_b,
+                        &mut self.simplex_cache,
+                    )
+                });
             }
             Kind::HullHull => {
                 self.apply_manual_sat_feature();
                 let b_to_a = inv_mul_transforms(self.transform_a, self.transform_b);
-                collide_hulls(
-                    &mut self.manifold,
-                    cap,
-                    &self.hull_a.base,
-                    &self.hull_b.base,
-                    b_to_a,
-                    &mut self.sat_cache,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_hulls(
+                        manifold,
+                        cap,
+                        &self.hull_a.base,
+                        &self.hull_b.base,
+                        b_to_a,
+                        &mut self.sat_cache,
+                    )
+                });
             }
             Kind::TriangleHull => {
                 self.apply_manual_sat_feature();
                 let local = self.local_triangle_in_b();
-                collide_triangle_and_hull(
-                    &mut self.manifold,
-                    cap,
-                    local[0],
-                    local[1],
-                    local[2],
-                    &self.hull_b.base,
-                    &mut self.sat_cache,
-                    true,
-                );
+                self.manifold.collide(|manifold| {
+                    collide_triangle_and_hull(
+                        manifold,
+                        cap,
+                        local[0],
+                        local[1],
+                        local[2],
+                        &self.hull_b.base,
+                        &mut self.sat_cache,
+                        true,
+                    )
+                });
             }
         }
     }
