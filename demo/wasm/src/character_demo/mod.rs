@@ -256,20 +256,6 @@ pub(crate) fn load_level_mesh(obj_text: &str) -> Option<MeshData> {
     create_mesh_data_from_obj(obj_text, 1.0, false, false, true, true)
 }
 
-/// The 3-material set the C level mesh + height field use
-/// (`{0.6,0,0}`, `{0.6,1,1}`, `{0.1,0,2}` — friction, restitution, rolling).
-pub(crate) fn ground_materials() -> Vec<box3d_rust::geometry::SurfaceMaterial> {
-    use box3d_rust::geometry::{default_surface_material, SurfaceMaterial};
-    let base = default_surface_material();
-    let m = |friction: f32, restitution: f32, rolling: f32| SurfaceMaterial {
-        friction,
-        restitution,
-        rolling_resistance: rolling,
-        ..base
-    };
-    vec![m(0.6, 0.0, 0.0), m(0.6, 1.0, 1.0), m(0.1, 0.0, 2.0)]
-}
-
 pub(crate) fn install(state: CharacterState) -> u32 {
     let n = state.bodies.len() as u32 + state.render_capsules.len() as u32;
     STATE.with(|cell| *cell.borrow_mut() = Some(state));
