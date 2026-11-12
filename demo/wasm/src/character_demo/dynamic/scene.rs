@@ -21,11 +21,11 @@ use super::{
     DynamicMoverSample, ALL_BITS, DEBRIS_BIT, DYNAMIC_BIT, GEM_BIT, GEM_COUNT, MOVER_BIT,
     PILLAR_COUNT, PLATFORM_COUNT, PLATFORM_MATERIAL,
 };
-use crate::character_demo::dynamic_mover::{DynamicMover, DynamicMoverDef};
 use crate::character_demo::hulls::HullVis;
 use crate::vis::{hull_triangles, VisBody};
 use box3d_rust::body::{body_get_local_point, create_body};
 use box3d_rust::debug_draw::HexColor;
+use box3d_rust::dynamic_mover::{DynamicMover, DynamicMoverDef};
 use box3d_rust::geometry::Sphere;
 use box3d_rust::hull::{
     create_cylinder, make_box_hull, make_cube_hull, make_transformed_box_hull, HullData,

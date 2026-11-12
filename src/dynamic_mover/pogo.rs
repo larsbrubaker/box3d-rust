@@ -1,24 +1,21 @@
-//! The pogo half of C `DynamicMover::Update` and `DynamicMover::Draw`
-//! (dynamic_mover.cpp:474-584), split from [`super`] for file length.
+//! The pogo half of C `DynamicMover::Update` (dynamic_mover.cpp:474-562), split from
+//! [`super`] for file length.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
 
-#![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
-
 use super::DynamicMover;
-use crate::character_demo::colors;
-use box3d_rust::body::{body_get_local_point, body_get_mass};
-use box3d_rust::id::NULL_JOINT_ID;
-use box3d_rust::joint::{
+use crate::body::{body_get_local_point, body_get_mass};
+use crate::id::NULL_JOINT_ID;
+use crate::joint::{
     create_pogo_joint, destroy_joint, joint_is_valid, joint_set_local_frame_a,
     joint_set_local_frame_b, pogo_joint_get_current_speed, pogo_joint_get_impulse,
     pogo_joint_set_max_compression_force, pogo_joint_set_max_tension_force, pogo_joint_set_normal,
     pogo_joint_set_spring_damping_ratio, pogo_joint_set_spring_hertz,
 };
-use box3d_rust::math_functions::{length, offset_pos, Pos, Transform, Vec3, QUAT_IDENTITY};
-use box3d_rust::types::default_pogo_joint_def;
-use box3d_rust::world::{world_get_gravity, World};
+use crate::math_functions::{length, Transform, Vec3, QUAT_IDENTITY};
+use crate::types::default_pogo_joint_def;
+use crate::world::{world_get_gravity, World};
 
 impl DynamicMover {
     /// The `m_castResult.hit && b3IsNormalized(normal)` branch of C `DynamicMover::Update`
@@ -110,39 +107,4 @@ impl DynamicMover {
             pogo_joint_set_spring_damping_ratio(world, self.pogo_joint_id, self.pogo_damping_ratio);
         }
     }
-
-    /// C `DynamicMover::Draw` (dynamic_mover.cpp:567): gray misses, the selected probe
-    /// green, the other hits yellow, each hit capped with a 6 px point. Appends
-    /// `[x0,y0,z0,x1,y1,z1,color]` segments and `[x,y,z,color,size]` points.
-    pub(crate) fn draw(&self, segs: &mut Vec<f32>, pts: &mut Vec<f32>) {
-        for i in 0..self.probe_count {
-            let probe = &self.probes[i];
-            let end = offset_pos(probe.origin, probe.fraction * probe.translation);
-
-            if !probe.hit {
-                push_line(segs, probe.origin, end, colors::GRAY);
-                continue;
-            }
-
-            let color = if i == self.selected_probe {
-                colors::GREEN
-            } else {
-                colors::YELLOW
-            };
-            push_line(segs, probe.origin, end, color);
-            pts.extend_from_slice(&[end.x as f32, end.y as f32, end.z as f32, color as f32, 6.0]);
-        }
-    }
-}
-
-fn push_line(segs: &mut Vec<f32>, a: Pos, b: Pos, color: u32) {
-    segs.extend_from_slice(&[
-        a.x as f32,
-        a.y as f32,
-        a.z as f32,
-        b.x as f32,
-        b.y as f32,
-        b.z as f32,
-        color as f32,
-    ]);
 }

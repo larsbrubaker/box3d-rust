@@ -9,10 +9,10 @@
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
 use super::{DYNAMIC_BIT, MOVER_BIT, PLATE_CENTER, PLATE_TRAVEL, SWEEPER_CENTER};
-use crate::character_demo::dynamic_mover::DynamicMover;
 use crate::vis::VisBody;
 use box3d_rust::body::{body_get_local_point, body_get_mass, create_body};
 use box3d_rust::debug_draw::HexColor;
+use box3d_rust::dynamic_mover::DynamicMover;
 use box3d_rust::geometry::Sphere;
 use box3d_rust::hull::{make_box_hull, make_transformed_box_hull};
 use box3d_rust::id::{BodyId, JointId};

@@ -1,6 +1,7 @@
 //! Character / Dynamic Mover — a 1:1 port of `DynamicMoverSample`
-//! (`sample_character.cpp:848`, upstream 3362633), the playground for the vendored
-//! [`DynamicMover`]: stairs, a suspension bridge, ramps / a wall / a steep slope / a curb,
+//! (`sample_character.cpp:848`, upstream 3362633), the playground for the
+//! library's [`DynamicMover`] (`box3d_rust::dynamic_mover`, the port of the vendored
+//! sample class): stairs, a suspension bridge, ramps / a wall / a steep slope / a curb,
 //! ledges, a vertical and a horizontal moving platform (ridden through
 //! `platformMaterialId`), a seesaw, a box pyramid, a spring door, a weld-sprung ball pit,
 //! an exploding pressure plate on a prismatic joint, a big ball, a motorized sweeper, a
@@ -11,6 +12,7 @@
 //! - [`camera`] — the host camera basis + `GetMoverInput` slice the sample relies on.
 //! - this module — `Step` / `FollowMover` / `ShootBall` / `CollectGems` /
 //!   `UpdatePressurePlate` / `SwapMoverShape` and the render list.
+//! - [`probes`] — C `DynamicMover::Draw`, the pogo probes in the debug buffers.
 //! - [`exports`] — the wasm surface the Character page drives.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
@@ -20,6 +22,7 @@
 
 pub(crate) mod camera;
 mod exports;
+mod probes;
 mod scene;
 mod scene_parts;
 
@@ -27,7 +30,6 @@ pub(crate) use exports::step;
 pub(crate) use scene::build_dynamic_mover;
 use scene::get_platform_position;
 
-use super::dynamic_mover::DynamicMover;
 use super::hulls::HullVis;
 use crate::vis::{hull_triangles, VisBody};
 use box3d_rust::body::{
@@ -36,6 +38,7 @@ use box3d_rust::body::{
     destroy_body,
 };
 use box3d_rust::debug_draw::HexColor;
+use box3d_rust::dynamic_mover::DynamicMover;
 use box3d_rust::geometry::{Capsule, Sphere};
 use box3d_rust::hull::{make_offset_box_hull, HullData};
 use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID};
@@ -571,7 +574,7 @@ impl DynamicMoverSample {
         hulls: &mut [HullVis],
     ) {
         if self.draw_probes {
-            self.mover.draw(segs, pts);
+            probes::draw_mover_probes(&self.mover, segs, pts);
         }
 
         if let Some(launcher) = hulls.last_mut().filter(|h| h.body_id.is_null()) {

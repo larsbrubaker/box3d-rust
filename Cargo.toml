@@ -47,6 +47,12 @@ double-precision = []
 [dev-dependencies]
 criterion = "0.5"
 
+# Its own binary: it installs a counting global allocator. Named explicitly because the
+# directory is tracked as `Tests/`, which a case-sensitive file system does not discover.
+[[test]]
+name = "dynamic_mover_alloc"
+path = "Tests/dynamic_mover_alloc.rs"
+
 [[bench]]
 name = "large_pyramid"
 harness = false

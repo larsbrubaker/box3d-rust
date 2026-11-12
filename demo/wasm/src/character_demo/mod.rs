@@ -29,7 +29,6 @@
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
 pub(crate) mod dynamic;
-pub(crate) mod dynamic_mover;
 pub(crate) mod hulls;
 mod mover;
 mod overlap;

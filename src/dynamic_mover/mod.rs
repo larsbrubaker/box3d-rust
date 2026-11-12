@@ -1,21 +1,67 @@
-//! Dynamic character mover — a 1:1 port of the vendored sample class
-//! `box3d-cpp-reference/samples/dynamic_mover.{h,cpp}` (upstream 3362633).
+//! Dynamic character mover: a port of the C sample class
+//! `box3d-cpp-reference/samples/dynamic_mover.{h,cpp}` (upstream `3362633`, "Dynamic
+//! Mover (#202)", unchanged at the pinned `38f2ae1`).
 //!
-//! The capsule is a rigid body with locked rotation, so it collides and is pushed
-//! like everything else in the world. A mover joint drives it to the target velocity
-//! and a pogo joint holds it above the ground so it can climb steps without touching
-//! the capsule.
+//! The capsule is a rigid body with locked rotation, so it collides and is pushed like
+//! everything else in the world. A mover joint drives it to the target velocity and a
+//! pogo joint holds it above the ground so it can climb steps without touching the
+//! capsule. Each update casts a pogo ray down from the capsule's lower end, and when that
+//! ray misses or lands on a surface too steep to walk, an octagon skirt of eight more rays
+//! around it, so the mover stands on ledges and rails and steps off the foot of a slope.
+//! While grounded the ray reaches a further rest length down, so the spring steps down
+//! stairs instead of launching off them. Over a kinematic body whose user material is
+//! `platform_material_id` the mover joint re-anchors to that body, so the mover rides it.
 //!
-//! The dynamic mover should be vendored into your project so you can alter it to meet
-//! your game's specific needs.
+//! Upstream ships this as sample code to vendor into a game; the port carries it in the
+//! library so every game gets the same tested copy, and the demo's Dynamic Mover page uses
+//! it. Arithmetic and call order follow the C++ line by line (the C++ operator overloads
+//! map to the same component-wise `f32` ops), so the mover matches the C sample
+//! bit-for-bit given the same inputs; the demo's scripted Dynamic Mover trace is checked
+//! against a C driver built from the reference. Drawing the probes is left to the caller
+//! (the C `Draw` lives in the demo), from [`DynamicMover::probes`].
 //!
 //! This system is inspired by Tom Waterson's presentation:
 //! <https://www.youtube.com/watch?v=_jRLlTDqoGI>
 //!
-//! Arithmetic and call order follow the C++ line by line (the C++ operator overloads
-//! map to the same component-wise `f32` ops), so the mover body matches the C sample
-//! bit-for-bit given the same inputs. `Draw` writes into the Character page's debug
-//! segment / point buffers instead of the sample renderer.
+//! # Driving it
+//!
+//! ```text
+//! let mut mover = DynamicMover::new();
+//! mover.create(&mut world, &DynamicMoverDef { position, ..DynamicMoverDef::default() });
+//! // every fixed tick, before world.step(dt, sub_steps):
+//! if jump_pressed { mover.jump(&mut world); }
+//! mover.update(&mut world, dt, forward, right, throttle, speed_scale);
+//! world.step(dt, sub_steps);
+//! // read back: body_get_position(&world, mover.body_id()), mover.on_ground, mover.walkable
+//! ```
+//!
+//! - `forward` and `right` are horizontal world directions (the camera's or the
+//!   character's facing); `throttle` is the stick on [-1, 1] along each, and
+//!   `speed_scale` multiplies `max_speed` (sprint, walk). The vertical component of the
+//!   resulting velocity is dropped: the pogo owns the vertical motion.
+//! - [`DynamicMover::jump`] only jumps when grounded on walkable ground and reports
+//!   whether it did. [`DynamicMover::launch`] releases the ground so an impulse the game
+//!   applies itself (a jump pad, an explosion) carries the mover into the air.
+//! - Change the gravity scale through [`DynamicMover::set_gravity_scale`]: the pogo force
+//!   limits are sized from it.
+//! - [`DynamicMover::destroy`] removes the body (its joints go with it) and a private
+//!   anchor; a shared anchor ([`DynamicMoverDef::anchor_id`]) stays.
+//!
+//! # Units and axes
+//!
+//! Metres, kilograms, seconds, newtons. **Y is up**: the pogo casts along -Y, ground is a
+//! surface whose normal has `y >= min_ground_normal_y` (0.7, about 45 degrees), and jumps
+//! push along +Y. A game with another up axis maps its directions at the call.
+//!
+//! # Saving
+//!
+//! The controller keeps state between updates outside the world (ground and jump flags,
+//! the slide timer, the pogo warm start, the anchor, body and joint ids, the last cast).
+//! A save or a replay keyframe stores it beside the world snapshot:
+//! [`DynamicMover::serialize`] after `recording::serialize_world`, and
+//! [`DynamicMover::deserialize`] after restoring the world from it. The world snapshot
+//! keeps body and joint ids, so the restored controller drives the restored bodies and
+//! both step on bit-identically.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -23,38 +69,45 @@
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
 mod pogo;
+mod state;
 mod types;
 
 use types::cast_closest;
-pub(crate) use types::{DynamicMoverCastResult, DynamicMoverDef, DynamicMoverProbe};
-#[allow(unused_imports)]
-pub(crate) use types::{PROBE_CAPACITY, SKIRT_COUNT};
+pub use types::{
+    DynamicMoverCastResult, DynamicMoverDef, DynamicMoverProbe, PROBE_CAPACITY, SKIRT_COUNT,
+};
 
-use box3d_rust::body::{
+pub use state::{DYNAMIC_MOVER_STATE_MAGIC, DYNAMIC_MOVER_STATE_VERSION};
+
+use crate::body::{
     body_apply_linear_impulse_to_center, body_get_linear_velocity, body_get_mass,
     body_get_position, body_get_type, body_get_world_point_velocity, body_is_valid,
     body_set_gravity_scale, create_body, destroy_body,
 };
-use box3d_rust::debug_draw::HexColor;
-use box3d_rust::geometry::Capsule;
-use box3d_rust::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
-use box3d_rust::joint::{
+use crate::geometry::Capsule;
+use crate::id::{BodyId, JointId, NULL_BODY_ID, NULL_JOINT_ID};
+use crate::joint::{
     create_mover_joint, destroy_joint, joint_get_body_a, joint_is_valid,
     mover_joint_set_linear_velocity, mover_joint_set_max_velocity_force,
 };
-use box3d_rust::math_functions::{
+use crate::math_functions::{
     abs_float, clamp_float, compute_cos_sin, dot, get_length_and_normalize, is_normalized,
-    length_squared, max_float, min_float, normalize, offset_pos, Vec2, Vec3, PI, POS_ZERO,
-    VEC3_AXIS_X, VEC3_ZERO,
+    length_squared, max_float, min_float, normalize, offset_pos, Vec2, Vec3, PI, VEC3_AXIS_X,
+    VEC3_ZERO,
 };
-use box3d_rust::shape::create_capsule_shape;
-use box3d_rust::types::{
-    default_body_def, default_mover_joint_def, default_shape_def, BodyType, Filter, QueryFilter,
+use crate::shape::create_capsule_shape;
+use crate::types::{
+    default_body_def, default_mover_joint_def, default_query_filter, default_shape_def, BodyType,
+    Filter, QueryFilter,
 };
-use box3d_rust::world::World;
+use crate::world::World;
+
+/// The label of the pogo ray casts in a recording when the def gives no query filter.
+const POGO_QUERY_NAME: &str = "dynamic_mover_pogo";
 
 /// C `class DynamicMover` (dynamic_mover.h:66). Member names drop the C `m_` prefix.
-pub(crate) struct DynamicMover {
+#[derive(Clone, Debug, PartialEq)]
+pub struct DynamicMover {
     pub jump_speed: f32,
     pub max_speed: f32,
     pub min_speed: f32,
@@ -97,7 +150,15 @@ pub(crate) struct DynamicMover {
     pub capsule: Capsule,
     pub filter: Filter,
 
+    /// The filter of the pogo ray casts, built once in `create` so an update allocates
+    /// nothing (port addition; C builds the filter on the stack each update).
+    pub query_filter: QueryFilter,
+
+    /// The static body the mover joint anchors to off platforms (C `m_groundId`).
     pub ground_id: BodyId,
+    /// Whether `create` made `ground_id` for this mover alone, so `destroy` removes it
+    /// (port addition: false for a shared [`DynamicMoverDef::anchor_id`]).
+    pub owns_ground: bool,
     pub mover_id: BodyId,
     pub surface_body_id: BodyId,
     pub mover_joint_id: JointId,
@@ -124,9 +185,15 @@ pub(crate) struct DynamicMover {
     pub selected_probe: usize,
 }
 
+impl Default for DynamicMover {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DynamicMover {
     /// C `DynamicMover::DynamicMover` (dynamic_mover.cpp:46).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let def = DynamicMoverDef::default();
         DynamicMover {
             jump_speed: def.jump_speed,
@@ -150,8 +217,10 @@ impl DynamicMover {
 
             capsule: def.capsule,
             filter: def.filter,
+            query_filter: default_query_filter(),
 
             ground_id: NULL_BODY_ID,
+            owns_ground: false,
             mover_id: NULL_BODY_ID,
             surface_body_id: NULL_BODY_ID,
             mover_joint_id: NULL_JOINT_ID,
@@ -171,19 +240,14 @@ impl DynamicMover {
             pogo_velocity: 0.0,
             pogo_length: 0.0,
 
-            probes: [DynamicMoverProbe {
-                origin: POS_ZERO,
-                translation: VEC3_ZERO,
-                fraction: 1.0,
-                hit: false,
-            }; PROBE_CAPACITY],
+            probes: [DynamicMoverProbe::default(); PROBE_CAPACITY],
             probe_count: 0,
             selected_probe: 0,
         }
     }
 
     /// C `DynamicMover::Create` (dynamic_mover.cpp:96).
-    pub(crate) fn create(&mut self, world: &mut World, def: &DynamicMoverDef) {
+    pub fn create(&mut self, world: &mut World, def: &DynamicMoverDef) {
         self.capsule = def.capsule;
         self.filter = def.filter;
         self.jump_speed = def.jump_speed;
@@ -204,6 +268,16 @@ impl DynamicMover {
         self.enable_skirt_pogo = def.enable_skirt_pogo;
         self.platform_material_id = def.platform_material_id;
 
+        self.query_filter = match &def.query_filter {
+            Some(filter) => filter.clone(),
+            None => QueryFilter {
+                category_bits: def.filter.category_bits,
+                mask_bits: def.filter.mask_bits,
+                id: 0,
+                name: String::from(POGO_QUERY_NAME),
+            },
+        };
+
         self.velocity = VEC3_ZERO;
         self.on_ground = false;
         self.walkable = false;
@@ -215,7 +289,13 @@ impl DynamicMover {
         self.pogo_joint_id = NULL_JOINT_ID;
 
         let mut body_def = default_body_def();
-        self.ground_id = create_body(world, &body_def);
+        if def.anchor_id.is_null() {
+            self.ground_id = create_body(world, &body_def);
+            self.owns_ground = true;
+        } else {
+            self.ground_id = def.anchor_id;
+            self.owns_ground = false;
+        }
 
         // Position is the center of the capsule.
         body_def.type_ = BodyType::Dynamic;
@@ -236,7 +316,7 @@ impl DynamicMover {
         // fight them.
         shape_def.base_material.friction = 0.0;
         shape_def.base_material.restitution = 0.0;
-        shape_def.base_material.custom_color = HexColor::DODGER_BLUE.0;
+        shape_def.base_material.custom_color = def.custom_color;
         shape_def.filter = def.filter;
         shape_def.enable_pre_solve_events = def.enable_pre_solve_events;
         shape_def.enable_sensor_events = def.enable_sensor_events;
@@ -258,18 +338,18 @@ impl DynamicMover {
         self.mover_joint_id = create_mover_joint(world, &mover_def);
     }
 
-    /// C `DynamicMover::Destroy` (dynamic_mover.cpp:170).
-    #[allow(dead_code)] // C API surface; the sample tears the world down instead.
-    pub(crate) fn destroy(&mut self, world: &mut World) {
+    /// C `DynamicMover::Destroy` (dynamic_mover.cpp:170). A shared anchor is left in place.
+    pub fn destroy(&mut self, world: &mut World) {
         if self.mover_id.is_non_null() {
             destroy_body(world, self.mover_id);
         }
 
-        if self.ground_id.is_non_null() {
+        if self.owns_ground && self.ground_id.is_non_null() {
             destroy_body(world, self.ground_id);
         }
 
         self.ground_id = NULL_BODY_ID;
+        self.owns_ground = false;
         self.mover_id = NULL_BODY_ID;
 
         // Joints are implicitly destroyed.
@@ -279,7 +359,7 @@ impl DynamicMover {
 
     /// C `DynamicMover::SetGravityScale` — gravity scale is used to size the pogo
     /// forces, so change it here.
-    pub(crate) fn set_gravity_scale(&mut self, world: &mut World, gravity_scale: f32) {
+    pub fn set_gravity_scale(&mut self, world: &mut World, gravity_scale: f32) {
         self.gravity_scale = gravity_scale;
 
         if self.mover_id.is_non_null() {
@@ -288,12 +368,12 @@ impl DynamicMover {
     }
 
     /// C `DynamicMover::GetBodyId`.
-    pub(crate) fn body_id(&self) -> BodyId {
+    pub fn body_id(&self) -> BodyId {
         self.mover_id
     }
 
     /// C `DynamicMover::Jump` — jump if grounded. Returns false when airborne.
-    pub(crate) fn jump(&mut self, world: &mut World) -> bool {
+    pub fn jump(&mut self, world: &mut World) -> bool {
         if !self.on_ground || !self.walkable {
             return false;
         }
@@ -330,7 +410,7 @@ impl DynamicMover {
 
     /// C `DynamicMover::Launch` — release the ground so an external impulse can carry the
     /// mover into the air. Otherwise the pogo pulls it back down.
-    pub(crate) fn launch(&mut self) {
+    pub fn launch(&mut self) {
         // This removes the pogo step down on the next update.
         self.on_ground = false;
         self.walkable = false;
@@ -347,7 +427,7 @@ impl DynamicMover {
     /// - onGround - controls friction, mover max force, and pogo step-down extension
     /// - walkable - controls air steer
     /// - jumping - blocks the pogo from pulling down
-    pub(crate) fn update(
+    pub fn update(
         &mut self,
         world: &mut World,
         time_step: f32,
@@ -372,14 +452,13 @@ impl DynamicMover {
         let position = body_get_position(world, self.mover_id);
         let origin = offset_pos(position, self.capsule.center1);
 
-        let query_filter = QueryFilter {
-            category_bits: self.filter.category_bits,
-            mask_bits: self.filter.mask_bits,
-            id: 0,
-            name: String::from("dynamic_mover_pogo"),
-        };
-
-        self.cast_result = cast_closest(world, self.mover_id, origin, translation, &query_filter);
+        self.cast_result = cast_closest(
+            world,
+            self.mover_id,
+            origin,
+            translation,
+            &self.query_filter,
+        );
 
         self.probes[0] = DynamicMoverProbe {
             origin,
@@ -429,7 +508,7 @@ impl DynamicMover {
                     self.mover_id,
                     skirt_origin,
                     translation,
-                    &query_filter,
+                    &self.query_filter,
                 );
 
                 self.probes[self.probe_count] = DynamicMoverProbe {

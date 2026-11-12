@@ -189,9 +189,10 @@ export const SAMPLES: SampleEntry[] = [
     // Live: GeometricMoverSample (named "Geometric Mover" since upstream 47d7f7c; the old
     // `#/character/mover` deep link redirects here). Scene key stays "mover".
     ["Geometric Mover", "live", "character", "mover"],
-    // Partial: DynamicMoverSample (upstream 3362633), the vendored DynamicMover driven by
-    // the mover + pogo joints over the full playground (bridge, ramps, platforms, seesaw,
-    // door, ball pit, pressure plate, sweeper, pillars, 17 gems, box swap, ball launcher
+    // Partial: DynamicMoverSample (upstream 3362633), the library's DynamicMover
+    // (box3d_rust::dynamic_mover, the vendored sample class) driven by the mover + pogo
+    // joints over the full playground (bridge, ramps, platforms, seesaw, door, ball pit,
+    // pressure plate, sweeper, pillars, 17 gems, box swap, ball launcher
     // with the aim camera). Bit-exact with the C reference at 38f2ae1 under a scripted run
     // in both precision modes (character_demo/dynamic/tests.rs). Disclosed divergences:
     // the mouse locks on a canvas click or T (browsers can't auto-lock like C's

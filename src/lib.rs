@@ -83,6 +83,7 @@
 //! | [`joint`] | Constraints between bodies |
 //! | [`types`] | Public defs/defaults (`WorldDef`, `BodyDef`, `ShapeDef`, …) |
 //! | [`math_functions`] | `Vec3`, `Quat`, `Transform`, and deterministic math |
+//! | [`dynamic_mover`] | A character controller: a capsule body driven by mover and pogo joints |
 //!
 //! See the repository README for port status and the live wasm demo.
 
@@ -99,6 +100,7 @@ pub mod core;
 pub mod debug_draw;
 pub mod determinism;
 pub mod distance;
+pub mod dynamic_mover;
 pub mod dynamic_tree;
 pub mod events;
 pub mod geometry;
@@ -191,6 +193,9 @@ mod debug_draw_tests;
 
 #[cfg(test)]
 mod distance_tests;
+
+#[cfg(test)]
+mod dynamic_mover_tests;
 
 #[cfg(test)]
 mod dynamic_tree_box2d_tests;

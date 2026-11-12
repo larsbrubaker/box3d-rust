@@ -128,6 +128,37 @@ reference pin advances from `efca0c1`. Ported so far:
   ghost oracle scan, and mixed-body simulations on height fields, scaled
   meshes, and the PEEL scene were confirmed bit-exact in both precision modes.
 
+- `dynamic_mover`, the dynamic character controller, as library code: the
+  port of the upstream sample class `samples/dynamic_mover.{h,cpp}` (upstream
+  `3362633`) that the demo's Dynamic Mover page used to carry. `DynamicMover`
+  (`new`, `create`, `update`, `jump`, `launch`, `set_gravity_scale`,
+  `body_id`, `destroy`) and `DynamicMoverDef` keep the sample's arithmetic and
+  call order, so the demo's scripted trace stays bit-exact with the C sample,
+  and a 3000-tick lockstep run of the former demo copy against the library
+  copy gave identical world hashes in both precision modes. Port additions,
+  all defaulting to the sample's behaviour:
+  - `DynamicMoverDef::anchor_id` lets many movers share one static joint
+    anchor instead of each creating its own body (`destroy` removes only an
+    anchor the mover created). A shared anchor gives bit-identical mover
+    motion; the world hash differs only by the missing static bodies.
+  - `DynamicMoverDef::query_filter` sets the pogo casts' filter apart from the
+    capsule's `filter` (by default the casts use the capsule's bits, as in C).
+  - `DynamicMoverDef::custom_color` sets the capsule's debug colour (default
+    dodger blue, as in C).
+  - `DynamicMover::serialize` / `DynamicMover::deserialize` save and restore
+    the controller's own state (tuning, ids, flags, timers, pogo warm start,
+    last cast, probes) through `RecBuffer` / `SnapReader`, beside a world
+    snapshot (`DYNAMIC_MOVER_STATE_MAGIC`, `DYNAMIC_MOVER_STATE_VERSION` 1).
+  - `update` no longer allocates: the pogo query filter is built once in
+    `create`.
+  The probes stay public data; drawing them is the caller's (the demo keeps
+  C `DynamicMover::Draw`). Tests: snapshot plus mover images resume four
+  scripted movers bit-identically (world hash and mover state every tick), a
+  shared anchor moves exactly like private anchors, the def's filters reach
+  the capsule shape and the pogo casts, truncated or foreign images are
+  refused, and a counting-allocator test binary checks a walking update makes
+  no heap allocation.
+
 ### Changed
 
 - The mesh builder bins and bounds its primitives the way upstream's optimized
@@ -186,8 +217,8 @@ reference pin advances from `efca0c1`. Ported so far:
 
 - Character / Dynamic Mover is ported (upstream `3362633`; `partial` for the
   pointer lock browsers only grant on a gesture and the C debug-build counts,
-  like Rigid Body): the vendored
-  `DynamicMover` and the full `DynamicMoverSample` playground with its
+  like Rigid Body): the vendored `DynamicMover` (now the library's
+  `dynamic_mover`) and the full `DynamicMoverSample` playground with its
   controls, aim camera, and ball launcher, bit-exact with a scalar C build of
   `38f2ae1` under a scripted session in both precision modes
   (`scripts/c_trace/`).

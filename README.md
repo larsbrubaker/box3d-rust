@@ -43,6 +43,7 @@ suite.
 | Solver: serial contact solve, sub-step pipeline, sleeping, CCD/bullets, sensors, hit events | ✅ | ✅ (test_world.c) |
 | Narrow phase: mesh/height-field contacts (mesh_contact.c) | ✅ | ✅ (TestMeshDrop + authored) |
 | World API: queries, casts, explode, character mover | ✅ | ✅ (test_body_query.c, test_mover.c) |
+| Dynamic character mover (samples/dynamic_mover.cpp as library code), save/restore | ✅ | ✅ (C sample trace + authored) |
 | Shape/Body public API (filters, materials, geometry set, per-shape queries) | ✅ | ✅ (test_shape.c, test_body.c) |
 | Determinism: bit-exact vs the C scalar build (both precision modes) | ✅ | ✅ (test_determinism.c) |
 | Large world mode (`double-precision` feature = `BOX3D_DOUBLE_PRECISION`) | ✅ | ✅ (test_large_world.c) |
