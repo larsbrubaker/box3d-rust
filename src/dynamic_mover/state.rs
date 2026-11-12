@@ -10,6 +10,10 @@
 //! bits, so the restored mover is identical, and the world snapshot keeps body and joint
 //! ids, so its ids name the restored bodies and joints.
 //!
+//! The world snapshot does not store the world's `world_id`, so `deserialize` writes the
+//! target world's id into the world part of every non-null saved id. [`DynamicMover::validate`]
+//! checks that the ids name live bodies and joints of the expected kinds.
+//!
 //! Image layout: magic, version, flags (bit 0x2 marks a double-precision build, whose
 //! positions are `f64`), then the members in declaration order.
 //!
@@ -17,10 +21,13 @@
 //! SPDX-License-Identifier: MIT
 
 use super::{DynamicMover, DynamicMoverCastResult, DynamicMoverProbe, PROBE_CAPACITY};
+use crate::body::{body_get_type, body_is_valid};
 use crate::id::{BodyId, JointId};
+use crate::joint::{joint_get_body_b, joint_get_type, joint_is_valid, JointType};
 use crate::recording::snapshot::SNAP_FLAG_DOUBLE_PRECISION;
 use crate::recording::{RecBuffer, SnapReader};
-use crate::types::QueryFilter;
+use crate::types::{BodyType, QueryFilter};
+use crate::world::World;
 
 /// Dynamic mover image magic 'BDM3'.
 pub const DYNAMIC_MOVER_STATE_MAGIC: u32 = 0x334D_4442;
@@ -169,10 +176,12 @@ impl DynamicMover {
         buf.append_u32(self.selected_probe as u32);
     }
 
-    /// Read a mover written by [`DynamicMover::serialize`] at the reader's cursor. Returns
-    /// `None` for a truncated image, a wrong magic or version, an image from a build with
-    /// the other position precision, or out-of-range probe counts.
-    pub fn deserialize(r: &mut SnapReader) -> Option<DynamicMover> {
+    /// Read a mover written by [`DynamicMover::serialize`] at the reader's cursor, for the
+    /// restored `world` it will drive: every non-null id takes `world.world_id` as its world
+    /// part. Returns `None` for a truncated image, a wrong magic or version, an image from
+    /// a build with the other position precision, or out-of-range probe counts. Check the
+    /// result against the world with [`DynamicMover::validate`] before stepping.
+    pub fn deserialize(r: &mut SnapReader, world: &World) -> Option<DynamicMover> {
         if r.u32() != DYNAMIC_MOVER_STATE_MAGIC
             || r.u32() != DYNAMIC_MOVER_STATE_VERSION
             || r.u32() != state_flags()
@@ -239,6 +248,48 @@ impl DynamicMover {
         if !r.ok || m.probe_count > PROBE_CAPACITY || m.selected_probe >= PROBE_CAPACITY {
             return None;
         }
+
+        let world0 = world.world_id;
+        for id in [
+            &mut m.ground_id,
+            &mut m.mover_id,
+            &mut m.surface_body_id,
+            &mut m.cast_result.body_id,
+        ] {
+            if id.is_non_null() {
+                id.world0 = world0;
+            }
+        }
+        for id in [&mut m.mover_joint_id, &mut m.pogo_joint_id] {
+            if id.is_non_null() {
+                id.world0 = world0;
+            }
+        }
         Some(m)
+    }
+
+    /// Whether this mover's ids name what it needs in `world`: a live dynamic body, a live
+    /// static anchor, a live mover joint on the body, and, when set, a live pogo joint on
+    /// the body and a live surface body, all in this world. A game checks a loaded image
+    /// with it before stepping.
+    pub fn validate(&self, world: &World) -> bool {
+        let world0 = world.world_id;
+        let body_ok = |id: BodyId| id.world0 == world0 && body_is_valid(world, id);
+        let joint_ok = |id: JointId, type_: JointType| {
+            id.world0 == world0
+                && joint_is_valid(world, id)
+                && joint_get_type(world, id) == type_
+                && joint_get_body_b(world, id) == self.mover_id
+        };
+
+        body_ok(self.mover_id)
+            && body_get_type(world, self.mover_id) == BodyType::Dynamic
+            && body_ok(self.ground_id)
+            && body_get_type(world, self.ground_id) == BodyType::Static
+            && joint_ok(self.mover_joint_id, JointType::Mover)
+            && (self.pogo_joint_id.is_null() || joint_ok(self.pogo_joint_id, JointType::Pogo))
+            && (self.surface_body_id.is_null() || body_ok(self.surface_body_id))
+            && self.probe_count <= PROBE_CAPACITY
+            && self.selected_probe < PROBE_CAPACITY
     }
 }

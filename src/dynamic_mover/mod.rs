@@ -49,9 +49,11 @@
 //!
 //! # Units and axes
 //!
-//! Metres, kilograms, seconds, newtons. **Y is up**: the pogo casts along -Y, ground is a
-//! surface whose normal has `y >= min_ground_normal_y` (0.7, about 45 degrees), and jumps
-//! push along +Y. A game with another up axis maps its directions at the call.
+//! Metres, kilograms, seconds, newtons. **The physics world must be Y-up**: the pogo casts
+//! along -Y, ground is a surface whose normal has `y >= min_ground_normal_y` (0.7, about
+//! 45 degrees), jumps push along +Y, and friction and steering work in the x/z plane. A
+//! game with another up axis converts positions and directions at its own boundary with
+//! the physics world (its gravity, bodies and these calls all in Y-up terms).
 //!
 //! # Saving
 //!
@@ -60,8 +62,12 @@
 //! A save or a replay keyframe stores it beside the world snapshot:
 //! [`DynamicMover::serialize`] after `recording::serialize_world`, and
 //! [`DynamicMover::deserialize`] after restoring the world from it. The world snapshot
-//! keeps body and joint ids, so the restored controller drives the restored bodies and
-//! both step on bit-identically.
+//! keeps body and joint slots and generations, so the restored controller drives the
+//! restored bodies and both step on bit-identically. The snapshot does not keep the
+//! world's `world_id`, so `deserialize` takes the target world and rewrites the world
+//! part of every saved id to it (a mismatched id would make the mover re-create its
+//! joints every update). [`DynamicMover::validate`] checks a loaded image against the
+//! world before the game steps it.
 //!
 //! SPDX-FileCopyrightText: 2026 Erin Catto
 //! SPDX-License-Identifier: MIT
@@ -148,6 +154,9 @@ pub struct DynamicMover {
     pub min_ground_normal_y: f32,
 
     pub capsule: Capsule,
+    /// The capsule shape's collision filter, applied in `create`; changing it afterwards
+    /// changes neither the shape nor the casts. Change [`Self::query_filter`] for the
+    /// casts (and the shape's filter through the shape API).
     pub filter: Filter,
 
     /// The filter of the pogo ray casts, built once in `create` so an update allocates
@@ -287,6 +296,13 @@ impl DynamicMover {
         self.pogo_velocity = 0.0;
         self.pogo_length = 0.0;
         self.pogo_joint_id = NULL_JOINT_ID;
+
+        debug_assert!(
+            def.anchor_id.is_null()
+                || (body_is_valid(world, def.anchor_id)
+                    && body_get_type(world, def.anchor_id) == BodyType::Static),
+            "DynamicMoverDef::anchor_id must be a valid static body"
+        );
 
         let mut body_def = default_body_def();
         if def.anchor_id.is_null() {
@@ -436,6 +452,11 @@ impl DynamicMover {
         throttle: Vec2,
         speed_scale: f32,
     ) {
+        debug_assert!(
+            body_is_valid(world, self.mover_id) && body_is_valid(world, self.ground_id),
+            "update needs a created mover whose anchor still exists"
+        );
+
         // Reach further while grounded so the spring can find the ground over a step
         let step_down_length = self.pogo_rest_length;
         let ray_length = if self.on_ground {

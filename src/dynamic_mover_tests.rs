@@ -2,8 +2,10 @@
 //!
 //! A small scene (ground, a step, a ramp, a kinematic platform, a pushable crate) carries
 //! several scripted movers that walk, climb, jump, launch and ride. The tests check that
-//! a world snapshot plus the movers' own images resume bit-identically, that a shared
-//! joint anchor gives the same motion as the sample's private anchors, and that the def's
+//! a world snapshot plus the movers' own images resume bit-identically (also in a world
+//! with another `world_id`), that `validate` refuses images that do not fit the world,
+//! that a shared joint anchor leaves every body but the anchors bit-identical to the
+//! sample's private anchors, and that the def's
 //! filters reach the capsule shape and the pogo casts. The demo's Dynamic Mover trace
 //! test checks the mover against the C sample itself.
 //!
@@ -13,8 +15,8 @@
 #![allow(clippy::unnecessary_cast)] // Pos is f64 under the double-precision feature
 
 use crate::body::{
-    body_apply_linear_impulse_to_center, body_get_linear_velocity, body_get_position,
-    body_get_shapes, body_is_valid, create_body,
+    body_apply_linear_impulse_to_center, body_get_angular_velocity, body_get_linear_velocity,
+    body_get_position, body_get_shapes, body_get_transform, body_is_valid, create_body,
 };
 use crate::dynamic_mover::{DynamicMover, DynamicMoverDef};
 use crate::hull::{make_box_hull, make_offset_box_hull};
@@ -204,8 +206,21 @@ fn mover_bytes(movers: &[DynamicMover]) -> Vec<u8> {
     buf.data
 }
 
-#[test]
-fn snapshot_with_mover_state_resumes_bit_identically() {
+/// The movers' images as they read back into `world`: ids carry `world`'s id, so two runs
+/// in worlds with different ids compare equal.
+fn mover_bytes_in(movers: &[DynamicMover], world: &World) -> Vec<u8> {
+    let bytes = mover_bytes(movers);
+    let mut reader = SnapReader::new(&bytes);
+    let normalized: Vec<DynamicMover> = movers
+        .iter()
+        .map(|_| DynamicMover::deserialize(&mut reader, world).expect("mover image reads"))
+        .collect();
+    mover_bytes(&normalized)
+}
+
+/// Run to tick N, save the world snapshot and every mover's image, restore both into a
+/// fresh world with `world_id`, and step the original and the copy to 2N together.
+fn resume_after_snapshot(world_id: u16) {
     const N: usize = 300;
     let (mut world, mut movers) = build_scene(false);
     for step in 0..N {
@@ -216,19 +231,23 @@ fn snapshot_with_mover_state_resumes_bit_identically() {
         "the script must leave someone on the ground"
     );
 
-    // Save: the world snapshot and every mover's image.
     let saved = mover_bytes(&movers);
     let mut restored_world = clone_world_via_snapshot(&world).expect("world snapshot restores");
+    restored_world.world_id = world_id;
     let mut reader = SnapReader::new(&saved);
     let mut restored: Vec<DynamicMover> = (0..MOVER_COUNT)
-        .map(|_| DynamicMover::deserialize(&mut reader).expect("mover image restores"))
+        .map(|_| {
+            DynamicMover::deserialize(&mut reader, &restored_world).expect("mover image restores")
+        })
         .collect();
     assert_eq!(
         reader.cursor(),
         saved.len(),
         "every mover image is read to its end"
     );
-    assert_eq!(restored, movers);
+    assert!(restored.iter().all(|m| m.validate(&restored_world)));
+    assert!(restored.iter().all(|m| m.mover_id.world0 == world_id));
+    assert_eq!(mover_bytes_in(&restored, &world), saved);
     assert_eq!(hash_world_state(&restored_world), hash_world_state(&world));
 
     for step in N..2 * N {
@@ -240,7 +259,7 @@ fn snapshot_with_mover_state_resumes_bit_identically() {
             "world hash diverged at tick {step}"
         );
         assert_eq!(
-            mover_bytes(&restored),
+            mover_bytes_in(&restored, &world),
             mover_bytes(&movers),
             "mover state diverged at tick {step}"
         );
@@ -248,18 +267,60 @@ fn snapshot_with_mover_state_resumes_bit_identically() {
 }
 
 #[test]
+fn snapshot_with_mover_state_resumes_bit_identically() {
+    resume_after_snapshot(0);
+}
+
+#[test]
+fn snapshot_restores_into_a_world_with_another_id() {
+    resume_after_snapshot(5);
+}
+
+#[test]
 fn mover_image_rejects_truncation_and_bad_magic() {
-    let (_world, movers) = build_scene(false);
+    let (world, movers) = build_scene(false);
     let bytes = mover_bytes(&movers[..1]);
-    assert!(DynamicMover::deserialize(&mut SnapReader::new(&bytes)).is_some());
-    assert!(DynamicMover::deserialize(&mut SnapReader::new(&bytes[..bytes.len() - 1])).is_none());
+    assert!(DynamicMover::deserialize(&mut SnapReader::new(&bytes), &world).is_some());
+    let truncated = &bytes[..bytes.len() - 1];
+    assert!(DynamicMover::deserialize(&mut SnapReader::new(truncated), &world).is_none());
     let mut bad = bytes.clone();
     bad[0] ^= 0xFF;
-    assert!(DynamicMover::deserialize(&mut SnapReader::new(&bad)).is_none());
+    assert!(DynamicMover::deserialize(&mut SnapReader::new(&bad), &world).is_none());
+}
+
+#[test]
+fn validate_refuses_images_that_do_not_fit_the_world() {
+    let (mut world, mut movers) = build_scene(false);
+    for step in 0..60 {
+        tick(&mut world, &mut movers, step);
+    }
+    let read_back = |m: &DynamicMover, w: &World| {
+        let mut buf = RecBuffer::new();
+        m.serialize(&mut buf);
+        DynamicMover::deserialize(&mut SnapReader::new(&buf.data), w).expect("image reads")
+    };
+    let good = &movers[0];
+    assert!(good.pogo_joint_id.is_non_null());
+    assert!(read_back(good, &world).validate(&world));
+
+    // A stale body generation, the joints swapped, an anchor that is the mover itself.
+    let mut stale = good.clone();
+    stale.mover_id.generation += 1;
+    assert!(!read_back(&stale, &world).validate(&world));
+    let mut swapped = good.clone();
+    std::mem::swap(&mut swapped.mover_joint_id, &mut swapped.pogo_joint_id);
+    assert!(!read_back(&swapped, &world).validate(&world));
+    let mut dynamic_anchor = good.clone();
+    dynamic_anchor.ground_id = good.mover_id;
+    assert!(!read_back(&dynamic_anchor, &world).validate(&world));
+
+    // A sound image against a world it was not saved from.
+    let empty = World::new(&default_world_def());
+    assert!(!read_back(good, &empty).validate(&empty));
 }
 
 /// Every mover's body position and velocity bits plus its controller state, without the
-/// ids (which differ by the anchors' slots).
+/// ids (which differ by the anchors' slots), then the bits of every body but the anchors.
 fn motion_trace(world: &World, movers: &[DynamicMover]) -> Vec<u64> {
     let mut out = Vec::new();
     for m in movers {
@@ -281,6 +342,31 @@ fn motion_trace(world: &World, movers: &[DynamicMover]) -> Vec<u64> {
         }
         out.push(u64::from(m.on_ground) | u64::from(m.walkable) << 1 | u64::from(m.jumping) << 2);
         out.push(m.probe_count as u64);
+    }
+
+    // Every other body except the anchors, in slot order: the scenery, the crate the movers
+    // push and the movers themselves, so the anchors are the only difference.
+    let anchors: Vec<BodyId> = movers.iter().map(|m| m.ground_id).collect();
+    for (i, body) in world.bodies.iter().enumerate() {
+        let id = BodyId {
+            index1: i as i32 + 1,
+            world0: world.world_id,
+            generation: body.generation,
+        };
+        if body.id != i as i32 || anchors.contains(&id) {
+            continue;
+        }
+        let xf = body_get_transform(world, id);
+        for x in [xf.p.x as f64, xf.p.y as f64, xf.p.z as f64] {
+            out.push(x.to_bits());
+        }
+        let v = body_get_linear_velocity(world, id);
+        let w = body_get_angular_velocity(world, id);
+        for x in [
+            xf.q.v.x, xf.q.v.y, xf.q.v.z, xf.q.s, v.x, v.y, v.z, w.x, w.y, w.z,
+        ] {
+            out.push(x.to_bits() as u64);
+        }
     }
     out
 }

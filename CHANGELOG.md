@@ -139,8 +139,9 @@ reference pin advances from `efca0c1`. Ported so far:
   all defaulting to the sample's behaviour:
   - `DynamicMoverDef::anchor_id` lets many movers share one static joint
     anchor instead of each creating its own body (`destroy` removes only an
-    anchor the mover created). A shared anchor gives bit-identical mover
-    motion; the world hash differs only by the missing static bodies.
+    anchor the mover created). A shared anchor leaves every body but the
+    anchors bit-identical; the world hash differs only by the missing static
+    bodies.
   - `DynamicMoverDef::query_filter` sets the pogo casts' filter apart from the
     capsule's `filter` (by default the casts use the capsule's bits, as in C).
   - `DynamicMoverDef::custom_color` sets the capsule's debug colour (default
@@ -149,15 +150,23 @@ reference pin advances from `efca0c1`. Ported so far:
     the controller's own state (tuning, ids, flags, timers, pogo warm start,
     last cast, probes) through `RecBuffer` / `SnapReader`, beside a world
     snapshot (`DYNAMIC_MOVER_STATE_MAGIC`, `DYNAMIC_MOVER_STATE_VERSION` 1).
-  - `update` no longer allocates: the pogo query filter is built once in
-    `create`.
+    `deserialize` takes the restored world and gives the ids its `world_id`,
+    which the world snapshot does not keep; `DynamicMover::validate` checks a
+    loaded image names a live dynamic body, static anchor, and mover and pogo
+    joints of that world.
+  - No per-update allocation while walking: the pogo query filter is built
+    once in `create`.
   The probes stay public data; drawing them is the caller's (the demo keeps
   C `DynamicMover::Draw`). Tests: snapshot plus mover images resume four
-  scripted movers bit-identically (world hash and mover state every tick), a
-  shared anchor moves exactly like private anchors, the def's filters reach
+  scripted movers bit-identically (world hash and mover state every tick),
+  also into a world with another `world_id`, `validate` refuses stale,
+  swapped, or foreign ids, a shared anchor leaves every other body exactly as
+  private anchors do, the def's filters reach
   the capsule shape and the pogo casts, truncated or foreign images are
   refused, and a counting-allocator test binary checks a walking update makes
-  no heap allocation.
+  no heap allocation. `Tests/file_length_validation.rs` and the allocation
+  test are named in `Cargo.toml`, so they also run on case-sensitive file
+  systems.
 
 ### Changed
 

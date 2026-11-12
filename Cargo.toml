@@ -47,8 +47,13 @@ double-precision = []
 [dev-dependencies]
 criterion = "0.5"
 
-# Its own binary: it installs a counting global allocator. Named explicitly because the
-# directory is tracked as `Tests/`, which a case-sensitive file system does not discover.
+# The integration tests live in `Tests/`, which a case-sensitive file system does not
+# discover as `tests/`, so each is named explicitly.
+[[test]]
+name = "file_length_validation"
+path = "Tests/file_length_validation.rs"
+
+# Its own binary: it installs a counting global allocator.
 [[test]]
 name = "dynamic_mover_alloc"
 path = "Tests/dynamic_mover_alloc.rs"
